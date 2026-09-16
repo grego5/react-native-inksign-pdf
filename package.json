@@ -1,0 +1,97 @@
+{
+  "name": "@grego5/react-native-inksign-pdf",
+  "version": "1.0.0",
+  "description": "A React Native Nitro Module for signing local PDFs with native, velocity-sensitive ink.",
+  "main": "lib/commonjs/index.js",
+  "module": "lib/module/index.js",
+  "react-native": "src/index.ts",
+  "types": "lib/typescript/src/index.d.ts",
+  "source": "src/index.ts",
+  "files": [
+    "android/CMakeLists.txt",
+    "android/build.gradle",
+    "android/src",
+    "cpp/StrokeEngine.cpp",
+    "cpp/StrokeEngine.hpp",
+    "cpp/engine/StrokeEngineInternal.cpp",
+    "cpp/engine/StrokeEngineInternal.hpp",
+    "cpp/engine/StrokeEngineProcessing.cpp",
+    "cpp/engine/StrokeEnginePrediction.cpp",
+    "cpp/StrokeEngineC.cpp",
+    "cpp/StrokeEngineC.h",
+    "cpp/core/Vec2.hpp",
+    "cpp/core/StrokePrimitives.hpp",
+    "cpp/core/StrokeOutline.hpp",
+    "cpp/input/CommittedCenterline.cpp",
+    "cpp/input/CommittedCenterline.hpp",
+    "cpp/input/CurrentInkInputModeler.cpp",
+    "cpp/input/CurrentInkInputModeler.hpp",
+    "cpp/input/InputNormalizer.cpp",
+    "cpp/input/InputNormalizer.hpp",
+    "cpp/modeling/ContactLifecycle.cpp",
+    "cpp/modeling/ContactLifecycle.hpp",
+    "cpp/modeling/SignatureStrokeStyle.hpp",
+    "cpp/modeling/SignatureBrushTipModeler.cpp",
+    "cpp/modeling/SignatureBrushTipModeler.hpp",
+    "cpp/modeling/VelocityWidthModel.cpp",
+    "cpp/modeling/VelocityWidthModel.hpp",
+    "cpp/upstream",
+    "third_party",
+    "CMakeLists.txt",
+    "THIRD_PARTY_NOTICES.md",
+    "ios",
+    "lib",
+    "nitrogen/generated",
+    "src",
+    "*.podspec",
+    "nitro.json",
+    "README.md",
+    "AGENTS.md"
+  ],
+  "scripts": {
+    "nitrogen": "nitrogen",
+    "build": "bob build",
+    "test:stroke:fast": "node tools/test-stroke-replay-fast.mjs",
+    "check:artifact-parity": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-managed-artifact-parity.ps1",
+    "verify:change": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-change.ps1"
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      "commonjs",
+      "module",
+      [
+        "typescript",
+        {
+          "project": "tsconfig.json",
+          "tsc": "./node_modules/typescript/bin/tsc6"
+        }
+      ]
+    ]
+  },
+  "keywords": [
+    "react-native",
+    "nitro",
+    "pdf",
+    "signature",
+    "apple-pencil"
+  ],
+  "peerDependencies": {
+    "react": "*",
+    "react-native": ">=0.86.0 <0.87.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.28.0",
+    "@types/react": "^19.0.0",
+    "nitrogen": "0.37.1",
+    "react-native": "0.86.0",
+    "react-native-builder-bob": "^0.40.0",
+    "react-native-nitro-modules": "0.37.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+
