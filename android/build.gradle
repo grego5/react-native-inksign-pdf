@@ -1,0 +1,101 @@
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+apply from: '../nitrogen/generated/android/ReactNativeInkSignPdf+autolinking.gradle'
+
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get('reactNativeArchitectures')
+  return value ? value.split(',') : ['arm64-v8a', 'x86_64']
+}
+
+def reactNativeReleaseArchitectures() {
+  def value = rootProject.getProperties().get('reactNativeReleaseArchitectures')
+  return value ? value.split(',') : ['arm64-v8a']
+}
+
+def getExtOrIntegerDefault(name) {
+  return rootProject.ext.has(name)
+    ? rootProject.ext.get(name)
+    : project.properties["ReactNativeInkSignPdf_${name}"].toInteger()
+}
+
+android {
+  namespace = 'com.margelo.nitro.inksignpdf'
+  ndkVersion = rootProject.ext.ndkVersion
+  compileSdkVersion = getExtOrIntegerDefault('compileSdkVersion')
+  compileSdkExtension = 18
+
+  buildFeatures {
+    buildConfig = true
+    prefab = true
+  }
+
+  packagingOptions {
+    jniLibs {
+      pickFirsts += [
+        '**/libc++_shared.so',
+        '**/libfbjni.so',
+        '**/libjsi.so',
+        '**/libreactnative.so'
+      ]
+    }
+  }
+
+  defaultConfig {
+    minSdkVersion getExtOrIntegerDefault('minSdkVersion')
+    targetSdkVersion getExtOrIntegerDefault('targetSdkVersion')
+    testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    ndk {
+      abiFilters(*reactNativeArchitectures())
+    }
+    externalNativeBuild {
+      cmake {
+        cppFlags '-std=c++20 -frtti -fexceptions -Wall -Wextra'
+        arguments '-DANDROID_STL=c++_shared', '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
+        abiFilters(*reactNativeArchitectures())
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      ndk {
+        abiFilters(*reactNativeReleaseArchitectures())
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake { path 'CMakeLists.txt' }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+}
+
+androidComponents {
+  onVariants(selector().withBuildType('debug')) { variant ->
+    variant.externalNativeBuild.abiFilters.set(reactNativeArchitectures() as Set)
+  }
+  onVariants(selector().withBuildType('release')) { variant ->
+    variant.externalNativeBuild.abiFilters.set(reactNativeReleaseArchitectures() as Set)
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  implementation project(':react-native-nitro-modules')
+  implementation 'androidx.core:core-ktx:1.13.1'
+  implementation 'androidx.graphics:graphics-core:1.0.4'
+  implementation 'androidx.input:input-motionprediction:1.0.0'
+  testImplementation 'junit:junit:4.13.2'
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+  androidTestImplementation 'com.facebook.fbjni:fbjni:0.7.0'
+}

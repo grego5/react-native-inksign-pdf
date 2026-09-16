@@ -1,0 +1,39 @@
+{
+  "name": "react-native-inksign-pdf-example",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "start": "react-native start",
+    "android": "react-native run-android",
+    "typecheck": "tsc --noEmit --pretty false",
+    "build:debug": "cd android && gradlew.bat :app:assembleDebug --no-daemon --console=plain",
+    "build:release": "cd android && gradlew.bat :app:assembleRelease --no-daemon --console=plain",
+    "android:install": "cd android && gradlew.bat :app:installDebug --no-daemon --console=plain",
+    "android:clean": "cd android && gradlew.bat --stop && gradlew.bat clean --no-daemon --console=plain"
+  },
+  "dependencies": {
+    "@grego5/react-native-inksign-pdf": "file:..",
+    "@react-native-documents/picker": "^12.0.2",
+    "@react-native-documents/viewer": "^4.0.1",
+    "react": "19.2.8",
+    "react-native": "0.86.0",
+    "react-native-fs": "^2.20.0",
+    "react-native-nitro-modules": "0.37.0",
+    "react-native-safe-area-context": "^5.9.1"
+  },
+  "devDependencies": {
+    "@babel/core": "7.29.7",
+    "@babel/preset-env": "7.29.7",
+    "@babel/runtime": "7.29.7",
+    "@react-native-community/cli": "^20.1.3",
+    "@react-native-community/cli-platform-android": "^20.1.3",
+    "@react-native/babel-preset": "^0.86.0",
+    "@react-native/metro-config": "^0.86.0",
+    "@react-native/typescript-config": "^0.86.0",
+    "@types/react": "19.2.8",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

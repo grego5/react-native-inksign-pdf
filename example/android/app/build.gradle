@@ -1,0 +1,61 @@
+apply plugin: 'com.android.application'
+apply plugin: 'org.jetbrains.kotlin.android'
+apply plugin: 'com.facebook.react'
+
+react {
+  reactNativeDir = file('../../../node_modules/react-native')
+  codegenDir = file('../../../node_modules/@react-native/codegen')
+  cliFile = file('../../../node_modules/react-native/cli.js')
+  hermesCommand = "$rootDir/../../node_modules/hermes-compiler/hermesc/%OS-BIN%/hermesc"
+  autolinkLibrariesWithApp()
+}
+
+android {
+  namespace = 'com.margelo.nitro.inksignpdf.example'
+  ndkVersion = rootProject.ext.ndkVersion
+  buildToolsVersion = rootProject.ext.buildToolsVersion
+  compileSdkVersion = rootProject.ext.compileSdkVersion
+  compileSdkExtension = 18
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+
+  defaultConfig {
+    applicationId 'com.margelo.nitro.inksignpdf.example'
+    minSdkVersion rootProject.ext.minSdkVersion
+    targetSdkVersion rootProject.ext.targetSdkVersion
+    versionCode 1
+    versionName '1.0'
+  }
+
+  buildFeatures {
+    buildConfig = true
+  }
+
+  // Local release testing only. This keeps the release variant installable
+  // without introducing a production signing key into the repository.
+  buildTypes {
+    release {
+      signingConfig = signingConfigs.debug
+      minifyEnabled = false
+      profileable = true
+    }
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  implementation 'androidx.appcompat:appcompat:1.7.0'
+
+  if (hermesEnabled.toBoolean()) {
+    implementation 'com.facebook.react:hermes-android'
+  } else {
+    implementation 'org.webkit:android-jsc:+'
+  }
+}
