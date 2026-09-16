@@ -1,0 +1,70 @@
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+def canonicalMainSources = files(
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PageViewport.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkBounds.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PdfApiSupport.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PdfSession.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PdfExport.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PdfTiles.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PagePreview.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PageNavigationPolicy.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/CacheArtifactPolicy.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/TextLayout.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/StrokeFrameCodec.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkBounds.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkPathData.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkRenderer.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkHistory.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkDocumentState.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkPathData.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PenConfiguration.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/CubicStrokePathBuilder.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkPerfetto.kt',
+)
+def canonicalTestSources = files(
+  '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/PageViewportTest.kt',
+  '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/PdfTilesTest.kt',
+  '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/PdfSessionWorkerTest.kt',
+  '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/StrokeFrameCodecTest.kt',
+  '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/InkHistoryTest.kt',
+  '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/PenConfigurationTest.kt',
+)
+
+android {
+  namespace = 'com.margelo.nitro.inksignpdf'
+  compileSdkVersion = rootProject.ext.compileSdkVersion
+  compileSdkExtension = 18
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+
+  defaultConfig {
+    minSdkVersion rootProject.ext.minSdkVersion
+    targetSdkVersion rootProject.ext.targetSdkVersion
+  }
+
+  sourceSets {
+    main.java.srcDirs = []
+    test.java.srcDirs = []
+  }
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+  if (name.endsWith('UnitTestKotlin')) {
+    source = canonicalTestSources
+  } else if (name.endsWith('Kotlin')) {
+    source = canonicalMainSources
+  }
+}
+
+dependencies {
+  testImplementation 'junit:junit:4.13.2'
+}

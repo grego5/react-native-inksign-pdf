@@ -1,0 +1,9 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "strict": true,
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["./src", "./index.js"]
+}

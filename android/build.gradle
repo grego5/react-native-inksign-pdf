@@ -1,0 +1,328 @@
+import groovy.json.JsonSlurper
+import java.net.HttpURLConnection
+import java.security.MessageDigest
+import java.nio.charset.StandardCharsets
+
+apply plugin: 'com.android.library'
+apply plugin: 'org.jetbrains.kotlin.android'
+
+apply from: '../nitrogen/generated/android/ReactNativeInkSignPdf+autolinking.gradle'
+
+def pdfiumRoot = file('../third_party/pdfium')
+def pdfiumAndroidRoot = file("${buildDir}/pdfium")
+def pdfiumManifest = new JsonSlurper().parse(new File(pdfiumRoot, 'manifest.json'))
+def requiredPdfiumAndroidNdk = pdfiumManifest.buildWorkflow.androidNdk.toString()
+def pdfiumStaticRelease = pdfiumManifest.distribution.staticRelease
+def pdfiumAndroidArtifacts = pdfiumStaticRelease.artifacts.findAll { artifact ->
+  artifact.target == 'android' && artifact.buildType == 'static'
+}.collectEntries { artifact -> [(artifact.abi.toString()): artifact] }
+def pdfiumAndroidArchives = [
+  new File(pdfiumAndroidRoot, 'arm64-v8a/libpdfium.a'),
+  new File(pdfiumAndroidRoot, 'x86_64/libpdfium.a')
+]
+
+def sha256File = { File input ->
+  def digest = MessageDigest.getInstance('SHA-256')
+  input.withInputStream { stream ->
+    byte[] buffer = new byte[1024 * 1024]
+    int read
+    while ((read = stream.read(buffer)) != -1) {
+      digest.update(buffer, 0, read)
+    }
+  }
+  digest.digest().collect { byteValue -> String.format('%02x', byteValue & 0xff) }.join()
+}
+
+def assertStaticArchive = { File archive, def artifact ->
+  if (!archive.isFile()) {
+    return false
+  }
+
+  if (archive.length() != artifact.packagedLibraryBytes as long ||
+      sha256File(archive) != artifact.packagedLibrarySha256.toString().toLowerCase()) {
+    return false
+  }
+
+  byte[] bytes = archive.bytes
+  if (bytes.length < 8 || new String(bytes, 0, 8, StandardCharsets.US_ASCII) != '!<arch>\n') {
+    return false
+  }
+
+  String symbols = new String(bytes, StandardCharsets.ISO_8859_1)
+  for (String symbol : [
+      'FPDF_InitLibraryWithConfig',
+      'FPDF_DestroyLibrary',
+      'FPDFText_LoadPage',
+      'FPDFPage_New'
+  ]) {
+    if (!symbols.contains(symbol)) {
+      return false
+    }
+  }
+
+  boolean hasElfObject = false
+  boolean hasExpectedMachine = false
+  int memberOffset = 8
+  while (memberOffset <= bytes.length - 60) {
+    String memberSizeText = new String(bytes, memberOffset + 48, 10, StandardCharsets.US_ASCII).trim()
+    long memberSize
+    try {
+      memberSize = Long.parseLong(memberSizeText)
+    } catch (NumberFormatException ignored) {
+      return false
+    }
+
+    int memberDataOffset = memberOffset + 60
+    if (memberDataOffset + 20 <= bytes.length &&
+        (bytes[memberDataOffset] & 0xff) == 0x7f &&
+        (bytes[memberDataOffset + 1] & 0xff) == 0x45 &&
+        (bytes[memberDataOffset + 2] & 0xff) == 0x4c &&
+        (bytes[memberDataOffset + 3] & 0xff) == 0x46) {
+      hasElfObject = true
+      int machine = ((bytes[memberDataOffset + 19] & 0xff) << 8) |
+          (bytes[memberDataOffset + 18] & 0xff)
+      if ((artifact.expectedElfMachine == 'AARCH64' && machine == 0x00b7) ||
+          (artifact.expectedElfMachine == 'X86_64' && machine == 0x003e)) {
+        hasExpectedMachine = true
+      }
+    }
+
+    memberOffset = memberDataOffset + memberSize
+    if ((memberOffset & 1) != 0) {
+      memberOffset++
+    }
+  }
+
+  return hasElfObject && hasExpectedMachine
+}
+
+def downloadPdfiumAsset = { String url, File target ->
+  target.parentFile.mkdirs()
+  HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection()
+  connection.setConnectTimeout(30_000)
+  connection.setReadTimeout(120_000)
+  connection.setInstanceFollowRedirects(true)
+  connection.setRequestProperty('User-Agent', 'react-native-inksign-pdf-pdfium-fetcher')
+  try {
+    if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+      throw new GradleException("PDFium download failed (${connection.responseCode}): ${url}")
+    }
+    connection.inputStream.withCloseable { input ->
+      target.withOutputStream { output ->
+        byte[] buffer = new byte[1024 * 1024]
+        int read
+        while ((read = input.read(buffer)) != -1) {
+          output.write(buffer, 0, read)
+        }
+      }
+    }
+  } finally {
+    connection.disconnect()
+  }
+}
+
+def ensurePdfiumStatic = tasks.register('ensurePdfiumStatic') {
+  inputs.file(new File(pdfiumRoot, 'manifest.json'))
+  outputs.files(pdfiumAndroidArchives)
+  outputs.upToDateWhen {
+    pdfiumAndroidArchives.every { archive ->
+      def abi = archive.parentFile.name
+      def artifact = pdfiumAndroidArtifacts[abi]
+      artifact != null && assertStaticArchive(archive, artifact)
+    }
+  }
+
+  doLast {
+    if (pdfiumAndroidArchives.every { archive ->
+      def artifact = pdfiumAndroidArtifacts[archive.parentFile.name]
+      artifact != null && assertStaticArchive(archive, artifact)
+    }) {
+      logger.lifecycle('PDFium static Android archives are already present; skipping download')
+      return
+    }
+
+    if (!pdfiumStaticRelease?.tag || !pdfiumStaticRelease?.androidAsset ||
+        !pdfiumStaticRelease?.androidAssetSha256 || !pdfiumStaticRelease?.checksumsAsset ||
+        !pdfiumStaticRelease?.checksumsAssetSha256) {
+      throw new GradleException('PDFium static release metadata is incomplete')
+    }
+
+    def releaseBase = "${pdfiumStaticRelease.repository}/releases/download/${pdfiumStaticRelease.tag}"
+    def assetName = pdfiumStaticRelease.androidAsset.toString()
+    def checksumName = pdfiumStaticRelease.checksumsAsset.toString()
+    def downloadDir = file("${buildDir}/pdfium-download")
+    delete(downloadDir)
+    downloadDir.mkdirs()
+
+    def archive = new File(downloadDir, assetName)
+    def checksums = new File(downloadDir, checksumName)
+    downloadPdfiumAsset("${releaseBase}/${assetName}", archive)
+    downloadPdfiumAsset("${releaseBase}/${checksumName}", checksums)
+
+    def checksumsSha256 = sha256File(checksums)
+    if (checksumsSha256 != pdfiumStaticRelease.checksumsAssetSha256.toString().toLowerCase()) {
+      throw new GradleException("PDFium checksum-list mismatch: expected ${pdfiumStaticRelease.checksumsAssetSha256}, got ${checksumsSha256}")
+    }
+
+    def expectedSha256 = pdfiumStaticRelease.androidAssetSha256.toString().toLowerCase()
+    def actualSha256 = sha256File(archive)
+    if (expectedSha256 != actualSha256) {
+      throw new GradleException("PDFium archive checksum mismatch for ${assetName}: expected ${expectedSha256}, got ${actualSha256}")
+    }
+
+    def checksumLine = checksums.getText('UTF-8').readLines().find { line ->
+      line.trim().endsWith("  ${assetName}") || line.trim().endsWith(" *${assetName}")
+    }
+    if (!checksumLine) {
+      throw new GradleException("PDFium checksum entry not found for ${assetName}")
+    }
+    def listedSha256 = checksumLine.trim().split(/\s+/)[0].toLowerCase()
+    if (listedSha256 != expectedSha256) {
+      throw new GradleException("PDFium checksum-list entry mismatch for ${assetName}: expected ${expectedSha256}, got ${listedSha256}")
+    }
+
+    def extracted = new File(downloadDir, 'extracted')
+    copy {
+      from zipTree(archive)
+      into extracted
+    }
+
+    def extractedArchives = [
+      new File(extracted, 'android/arm64-v8a-libpdfium.a'),
+      new File(extracted, 'android/x86_64-libpdfium.a')
+    ]
+    if (!extractedArchives.every { it.isFile() }) {
+      throw new GradleException("PDFium archive does not contain both Android static archives: ${archive}")
+    }
+    pdfiumAndroidArchives.eachWithIndex { destination, index ->
+      destination.parentFile.mkdirs()
+      copy {
+        from extractedArchives[index]
+        into destination.parentFile
+        rename { destination.name }
+      }
+      def artifact = pdfiumAndroidArtifacts[destination.parentFile.name]
+      if (!assertStaticArchive(destination, artifact)) {
+        throw new GradleException("Extracted PDFium archive failed static validation: ${destination}")
+      }
+    }
+    logger.lifecycle("Downloaded and verified PDFium static Android archives from ${releaseBase}")
+  }
+}
+
+tasks.configureEach { task ->
+  if (task.name.startsWith('configureCMake') ||
+      task.name.startsWith('buildCMake') ||
+      task.name.contains('ExternalNativeBuild')) {
+    task.dependsOn(ensurePdfiumStatic)
+  }
+}
+
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get('reactNativeArchitectures')
+  return value ? value.split(',') : ['arm64-v8a', 'x86_64']
+}
+
+def reactNativeReleaseArchitectures() {
+  def value = rootProject.getProperties().get('reactNativeReleaseArchitectures')
+  return value ? value.split(',') : ['arm64-v8a']
+}
+
+def getExtOrIntegerDefault(name) {
+  return rootProject.ext.has(name)
+    ? rootProject.ext.get(name)
+    : project.properties["ReactNativeInkSignPdf_${name}"].toInteger()
+}
+
+android {
+  namespace = 'com.margelo.nitro.inksignpdf'
+  ndkVersion = rootProject.ext.ndkVersion
+  compileSdkVersion = getExtOrIntegerDefault('compileSdkVersion')
+  compileSdkExtension = 18
+
+  buildFeatures {
+    buildConfig = true
+    prefab = true
+  }
+
+  packagingOptions {
+    jniLibs {
+      pickFirsts += [
+        '**/libc++_shared.so',
+        '**/libfbjni.so',
+        '**/libjsi.so',
+        '**/libreactnative.so'
+      ]
+    }
+  }
+
+  defaultConfig {
+    minSdkVersion getExtOrIntegerDefault('minSdkVersion')
+    targetSdkVersion getExtOrIntegerDefault('targetSdkVersion')
+    testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    ndk {
+      abiFilters(*reactNativeArchitectures())
+    }
+    externalNativeBuild {
+      cmake {
+        cppFlags '-std=c++20 -frtti -fexceptions -Wall -Wextra'
+        arguments '-DANDROID_STL=c++_shared', '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
+        abiFilters(*reactNativeArchitectures())
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      ndk {
+        abiFilters(*reactNativeReleaseArchitectures())
+      }
+    }
+  }
+
+  androidResources {
+    noCompress += ['pdf']
+  }
+
+  externalNativeBuild {
+    cmake { path 'CMakeLists.txt' }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+
+  kotlinOptions {
+    jvmTarget = '17'
+  }
+}
+
+def configuredPdfiumAndroidNdk = android.ndkVersion?.toString()
+if (configuredPdfiumAndroidNdk != requiredPdfiumAndroidNdk) {
+  throw new GradleException(
+    "PDFium static Android archives require NDK ${requiredPdfiumAndroidNdk}; " +
+    "the consuming project is configured for ${configuredPdfiumAndroidNdk ?: 'unspecified'}"
+  )
+}
+
+androidComponents {
+  onVariants(selector().withBuildType('debug')) { variant ->
+    variant.externalNativeBuild.abiFilters.set(reactNativeArchitectures() as Set)
+  }
+  onVariants(selector().withBuildType('release')) { variant ->
+    variant.externalNativeBuild.abiFilters.set(reactNativeReleaseArchitectures() as Set)
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+  implementation project(':react-native-nitro-modules')
+  implementation 'androidx.core:core-ktx:1.13.1'
+  implementation 'androidx.graphics:graphics-core:1.0.4'
+  implementation 'androidx.input:input-motionprediction:1.0.0'
+  testImplementation 'junit:junit:4.13.2'
+  androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+  androidTestImplementation 'androidx.test:runner:1.6.2'
+  androidTestImplementation 'com.facebook.fbjni:fbjni:0.7.0'
+}
