@@ -2,7 +2,7 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Implemented; Android/iOS characterization pending on platform hosts
 
 ## Objective
 

@@ -22,6 +22,7 @@ Pod::Spec.new do |s|
 
   s.test_spec 'LifecycleTests' do |test_spec|
     test_spec.source_files = 'ios-tests/**/*.swift'
+    test_spec.resources = 'tools/testdata/pdf-font-overlay/**/*'
     test_spec.frameworks = ['UIKit', 'PDFKit', 'PencilKit', 'XCTest']
   end
 
