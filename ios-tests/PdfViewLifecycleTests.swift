@@ -6,6 +6,71 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class PdfViewLifecycleTests: XCTestCase {
+  func testOverlayProviderRetainsContainerAndStableCanvasAccessor() {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.window.isHidden = true }
+
+    XCTAssertTrue(fixture.view.overlayProvider.canvasView === fixture.view.canvasView)
+    XCTAssertTrue(
+      fixture.view.overlayProvider.pdfView(fixture.view.documentView,
+                                           overlayViewFor: fixture.pages[0]) ===
+        fixture.view.overlayProvider.overlayView)
+    XCTAssertTrue(fixture.view.overlayProvider.overlayView.subviews.first ===
+                  fixture.view.overlayProvider.overlayView.compatibilityTextView)
+    XCTAssertTrue(fixture.view.overlayProvider.overlayView.subviews.last ===
+                  fixture.view.canvasView)
+  }
+
+  func testCompatibilityOverlayInstallsActiveRunsAndRejectsStaleDetach() {
+    let run = makeCompatibilityRun(text: "שלום")
+    let fixture = makeFixture(pageCount: 2,
+                              compatibilityTextRunsByPage: [[run], []])
+    defer { fixture.window.isHidden = true }
+
+    fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[0])
+    XCTAssertEqual(fixture.view.overlayProvider.overlayView.compatibilityTextView.runs, [run])
+
+    fixture.view.overlayDidEndDisplaying(fixture.view.canvasView, for: fixture.pages[1])
+    XCTAssertEqual(fixture.view.overlayProvider.overlayView.compatibilityTextView.runs, [run])
+
+    fixture.view.overlayDidEndDisplaying(fixture.view.canvasView, for: fixture.pages[0])
+    XCTAssertTrue(fixture.view.overlayProvider.overlayView.compatibilityTextView.runs.isEmpty)
+  }
+
+  func testCompatibilityOverlayClearsOnReplacementAndDisposal() {
+    let run = makeCompatibilityRun(text: "שלום")
+    let fixture = makeFixture(pageCount: 1,
+                              compatibilityTextRunsByPage: [[run]])
+    defer { fixture.window.isHidden = true }
+    fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[0])
+
+    fixture.view.beginLoad("", zoom: nil, focus: nil, fitToPage: true,
+                           promise: Promise<PageInfo>())
+    XCTAssertTrue(fixture.view.overlayProvider.overlayView.compatibilityTextView.runs.isEmpty)
+
+    let disposalFixture = makeFixture(pageCount: 1,
+                                      compatibilityTextRunsByPage: [[run]])
+    defer { disposalFixture.window.isHidden = true }
+    disposalFixture.view.overlayDidDisplay(disposalFixture.view.canvasView,
+                                           for: disposalFixture.pages[0])
+    disposalFixture.view.dispose()
+    XCTAssertTrue(disposalFixture.view.overlayProvider.overlayView.compatibilityTextView.runs.isEmpty)
+  }
+
+  func testPreviewRequestCapturesTargetCompatibilityRuns() {
+    let run = makeCompatibilityRun(text: "שלום")
+    let fixture = makeFixture(pageCount: 2,
+                              compatibilityTextRunsByPage: [[], [run]])
+    defer { fixture.window.isHidden = true }
+
+    fixture.view.pageTurnLifecycle.cancelUncommittedTurn()
+    fixture.view.pageTurnLifecycle.stableContextChanged()
+    guard let request = renderingRequest(.left, in: fixture.view) else {
+      return XCTFail("expected a target preview request")
+    }
+    XCTAssertEqual(request.compatibilityTextRuns, [run])
+  }
+
   func testOpenReadinessRequiresTheSameConditionsAsViewportCommands() {
     var readiness = ViewportReadiness(
       documentReady: true,
@@ -1048,7 +1113,8 @@ final class PdfViewLifecycleTests: XCTestCase {
 
   private func makeFixture(
     pageCount: Int = 2,
-    activePageIndex: Int = 0
+    activePageIndex: Int = 0,
+    compatibilityTextRunsByPage: [[InkSignPdfCompatibilityTextRun]] = []
   ) -> (view: PdfView, window: UIWindow, pages: [PDFPage],
         previewScheduler: TestPreviewScheduler,
         animationFactory: TestAnimationDriverFactory) {
@@ -1065,7 +1131,10 @@ final class PdfViewLifecycleTests: XCTestCase {
       InkSignPdfPageState(index: index,
                           page: page,
                           geometry: PageGeometry(mediaBox: page.bounds(for: .mediaBox),
-                                                 rotation: page.rotation))
+                                                 rotation: page.rotation),
+                          compatibilityTextRuns: compatibilityTextRunsByPage.indices.contains(index)
+                            ? compatibilityTextRunsByPage[index]
+                            : [])
     }
     let sourceURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("InkSignPdfLifecycle-\(UUID().uuidString).pdf")
@@ -1163,6 +1232,16 @@ private func makeCenteredTextAnnotation(
                                   bounds: CGRect(x: x, y: y,
                                                  width: size.width, height: size.height),
                                   fontSize: fontSize)
+}
+
+private func makeCompatibilityRun(text: String) -> InkSignPdfCompatibilityTextRun {
+  InkSignPdfCompatibilityTextRun(
+    text: text,
+    bounds: CGRect(x: 40, y: 60, width: 80, height: 20),
+    fontSize: 18,
+    color: .black,
+    fontStyle: .init(bold: false, italic: false),
+    direction: .rightToLeft)
 }
 
 private final class TestPreviewScheduler: InkSignPdfPageTurnPreviewScheduler {

@@ -213,9 +213,13 @@ extension PdfView {
         guard geometry.isValid else {
           self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
         }
+        let compatibilityTextRuns = InkSignPdfCompatibilityTextExtractor.extract(
+          from: loadedPage,
+          geometry: geometry)
         loadedPages.append(InkSignPdfPageState(index: index,
                                                 page: loadedPage,
-                                                geometry: geometry))
+                                                geometry: geometry,
+                                                compatibilityTextRuns: compatibilityTextRuns))
       }
       DispatchQueue.main.async { [weak self] in
         guard let self, !self.disposed, self.generation == token,

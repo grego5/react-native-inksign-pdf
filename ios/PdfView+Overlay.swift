@@ -41,6 +41,7 @@ extension PdfView {
     attachedOverlayPage = page
     _ = tryApplyPendingOpenViewport()
     refreshOverlayTransform(overlay, for: page)
+    installCompatibilityText(overlay, for: page)
     textInteractionOverlay.syncContent()
     if let pendingPageSwitchID { finishPageSwitchIfReady(requestID: pendingPageSwitchID) }
     _ = tryCompletePendingOpen()
@@ -52,6 +53,7 @@ extension PdfView {
     textInteractionOverlay.finishForLifecycle()
     cancelActiveStroke()
     pageTurnLifecycle.overlayDetached()
+    overlayProvider.overlayView.compatibilityTextView.clear()
     invalidateOverlayTransformCache()
   }
 
@@ -60,6 +62,7 @@ extension PdfView {
           attachedOverlayPage === page, isSupportedPage(page) else { return }
     _ = tryApplyPendingOpenViewport()
     refreshOverlayTransform(overlay, for: page)
+    installCompatibilityText(overlay, for: page)
     if let pendingPageSwitchID { finishPageSwitchIfReady(requestID: pendingPageSwitchID) }
     _ = tryCompletePendingOpen()
     pageTurnLifecycle.stableContextChanged()
@@ -120,5 +123,20 @@ extension PdfView {
     overlayTransformBounds = .zero
     overlayTransformMediaBox = .zero
     pageToOverlayTransform = nil
+    overlayProvider.overlayView.compatibilityTextView.clear()
+  }
+
+  private func installCompatibilityText(_ overlay: InkCanvasView, for page: PDFPage) {
+    guard !disposed, overlay === canvasView, attachedOverlayPage === page,
+          let state = documentState,
+          state.activePage.page === page,
+          let transform = pageToOverlayTransform else {
+      overlayProvider.overlayView.compatibilityTextView.clear()
+      return
+    }
+    overlayProvider.overlayView.compatibilityTextView.install(
+      runs: state.activePage.compatibilityTextRuns,
+      pageSize: state.activePage.geometry.mediaBox.size,
+      pageToOverlayTransform: transform)
   }
 }

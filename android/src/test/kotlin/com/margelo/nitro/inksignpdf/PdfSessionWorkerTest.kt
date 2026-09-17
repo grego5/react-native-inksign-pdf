@@ -68,6 +68,41 @@ class PdfSessionWorkerTest {
   }
 
   @Test
+  fun staleGenerationCannotPublishTilesFromThePreviousSession() {
+    val opener = RecordingSessionOpener()
+    val worker = PdfSessionWorker(opener = opener)
+    try {
+      val opened = CountDownLatch(1)
+      worker.replace("old.pdf", generation = 1L) {
+        assertTrue(it.isSuccess)
+        opened.countDown()
+      }
+      assertTrue(opened.await(5L, TimeUnit.SECONDS))
+
+      val replacement = CountDownLatch(1)
+      worker.replace("new.pdf", generation = 2L) {
+        assertTrue(it.isSuccess)
+        replacement.countDown()
+      }
+      val staleResult = AtomicReference<Result<List<PdfTile>>>()
+      val staleCompleted = CountDownLatch(1)
+      worker.renderTiles(1L, 1L, listOf(testTileRequest(pageIndex = 0))) {
+        staleResult.set(it)
+        staleCompleted.countDown()
+      }
+
+      assertTrue(replacement.await(5L, TimeUnit.SECONDS))
+      assertTrue(staleCompleted.await(5L, TimeUnit.SECONDS))
+      assertEquals(
+        "operation_cancelled",
+        (staleResult.get().exceptionOrNull() as PdfSessionException).code,
+      )
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
   fun mixedPageTileBatchIsRejected() {
     val info = PdfSessionInfo(
       sourcePath = "multi-page.pdf",

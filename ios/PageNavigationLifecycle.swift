@@ -784,6 +784,7 @@ final class InkSignPdfPageTurnLifecycle {
       key: key,
       sourceURL: state.sourceURL,
       drawingData: target.history.content.drawing.dataRepresentation(),
+      compatibilityTextRuns: target.compatibilityTextRuns,
       textAnnotations: target.history.content.textAnnotations,
       size: layout.frame.size,
       frame: layout.frame)

@@ -112,15 +112,23 @@ internal object TextLayoutSpec {
   fun explicitLines(text: String): List<String> =
     text.split("\n", ignoreCase = false, limit = Int.MAX_VALUE)
 
-  fun createPaint(fontSize: Double, color: Int = Color.BLACK): TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-    this.typeface = TextLayoutSpec.typeface
+  fun createPaint(
+    fontSize: Double,
+    color: Int = Color.BLACK,
+    typeface: Typeface = TextLayoutSpec.typeface,
+  ): TextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+    this.typeface = typeface
     textSize = fontSize.toFloat()
     this.color = color
   }
 
-  fun measure(text: String, fontSize: Double): TextIntrinsicSize {
+  fun measure(
+    text: String,
+    fontSize: Double,
+    typeface: Typeface = TextLayoutSpec.typeface,
+  ): TextIntrinsicSize {
     require(fontSize.isFinite() && fontSize > 0.0)
-    val paint = createPaint(fontSize)
+    val paint = createPaint(fontSize, typeface = typeface)
     val lines = explicitLines(text)
     val width = lines.maxOfOrNull { line ->
       paint.measureText(line.trimEnd('\r')).toDouble()
