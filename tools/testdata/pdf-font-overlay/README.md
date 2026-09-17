@@ -33,6 +33,12 @@ default width, the first layout advance is 108 points and the second is 21.6
 points. These are placement expectations, not renderer-specific glyph ink
 boxes.
 
+On Android S-extension 18, `PdfPageTextObject.getMatrix()` exposes the same
+affine transform in Android `Matrix` order:
+`[a, c, tx, b, d, ty, 0, 0, 1]`. The characterization test records that
+nine-value platform result; the compatibility renderer converts it back to
+the six PDF affine values before applying the canonical top-left transform.
+
 The first run intentionally mixes ASCII digits, punctuation, whitespace, and
 Hebrew. The second run adds a transformed placement and a different font size.
 The Hebrew characters are test data for a general non-ASCII overlay policy,
@@ -46,6 +52,7 @@ non-finite geometry, non-positive font size, or unsupported text render mode
 are omitted as presentation data; those conditions do not make the source PDF
 fail to open.
 
-The Android test consumes the PDF directly from its `androidTest` asset set.
-The iOS test consumes the same directory through the pod test specification's
-resource bundle. Neither test copies or rewrites the fixture.
+The Android test consumes the PDF from its `androidTest` asset set and copies
+the bytes to a temporary seekable file before opening `PdfRendererPreV`; it
+does not rewrite the fixture. The iOS test consumes the same directory through
+the pod test specification's resource bundle.

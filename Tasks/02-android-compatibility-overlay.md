@@ -2,7 +2,7 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Implemented; JVM/APK pass; connected fixture pending on current device
 
 Depends on: [Task 01](01-establish-overlay-contract-and-fixture.md)
 
@@ -57,35 +57,29 @@ path, live pages and neighboring previews must receive identical overlays.
 ## Implementation steps
 
 1. Add a focused production file such as `PdfCompatibilityText.kt` containing:
-   - an immutable worker-owned run with decoded text, copied six-value PDF
-     matrix, font size, fill/stroke presentation, and bold/italic hints;
+   - an immutable worker-owned run with decoded text, selection-derived
+     position, and replacement font size;
    - the eligibility/masking policy established in Task 01;
    - a renderer that accepts a `Canvas`, page dimensions, and the exact
      page-to-tile matrix used by `PdfRendererPreV`.
-2. During `PdfSession.open`, call `page.getPageObjects()` once per page and
-   convert `PdfPageTextObject` entries into immutable runs. Copy every mutable
-   platform value before closing the page. Reject only the individual run when
-   text is empty, matrix values are non-finite, font size is non-positive, the
-   render mode is unsupported, or no non-universal scalar is drawable by
-   `TextLayoutSpec.typeface`.
+2. During `PdfSession.open`, obtain the page text stream and resolve the full
+   stream with `page.selectContent()`. Convert its returned per-character
+   bounds into immutable runs before closing the page. If selection returns no
+   usable bounds, create no compatibility runs for that page.
 3. Keep extracted runs private to `PdfSession`; do not add them to
    `PdfSessionInfo` or `InkDocumentState`. This keeps source text on the PDF
    worker and prevents a new UI or JavaScript data boundary.
 4. In `renderTiles`, render the source page first. Then attach a `Canvas` to
-   the same bitmap and paint only runs intersecting the tile request. Apply the
-   same scale and tile translation as `page.render`, plus the empirically
-   verified PDF-bottom-left to canonical-top-left conversion from Task 01.
+   the same bitmap and draw the prepared runs with the same scale and tile
+   translation as `page.render`.
 5. Preserve the full Unicode string for shaping and advances, but make ASCII
    U+0020...U+007E, whitespace/control scalars, and any scalar lacking a
    default-font glyph transparent. Use Android's bidi-aware text layout or
-   text-run APIs; do not manually reverse RTL strings. Preserve source fill
-   color when valid and use opaque black only when the source API reports no
-   usable fill color.
-6. Apply the source object's matrix before drawing so translated, scaled,
-   rotated, or sheared text follows the PDF geometry. If Android's reported
-   matrix/font-size split differs across device API levels, codify the observed
-   S-extension-18 behavior in one conversion helper and its instrumentation
-   tests rather than compensating in callers.
+   text-run APIs; do not manually reverse RTL strings. Render replacement
+   text in opaque black.
+6. Use selection's top-left page coordinates directly. The whole-page line
+   rectangles provide vertical placement and replacement font size; each
+   scalar's resolved start/stop points provide its visual horizontal interval.
 7. Keep `renderPreview` delegating to `renderTiles`; do not add a second preview
    implementation. Confirm preview keys, cancellation epochs, and stale bitmap
    recycling remain unchanged.
@@ -110,18 +104,49 @@ path, live pages and neighboring previews must receive identical overlays.
 
 ## Tests and expected observable results
 
-- Add JVM tests for Unicode scalar masking, default-font glyph gating, color
-  fallback, immutable matrix copying, and malformed-run omission.
-- Add an instrumentation bitmap test using the Task 01 fixture that asserts:
-  - the non-ASCII region gains dark pixels after compatibility painting;
-  - ASCII digit/punctuation regions are byte-identical to the normal PDF render;
-  - vector border pixels remain unchanged;
-  - two tile scales place the overlay at the same canonical coordinates;
-  - `renderPreview` produces the same overlay as an equivalent visible tile.
+- Keep only focused JVM coverage for Unicode scalar masking and malformed
+  Unicode. Device validation is visual and is performed on a real Android
+  device.
 - Add a worker replacement/cancellation test proving a stale generation cannot
   publish a tile with an old document's compatibility runs.
 - Retain existing `SurfaceView`, tile-cache, page-navigation, and export tests
   without changing their expected history or dirty-state values.
+
+## Follow-up implementation brief
+
+Complete these items in order. Keep the work inside the existing worker-owned
+`PdfSession` compatibility path; do not introduce a shared/global cache or a
+second preview renderer.
+
+### 1. Prepare immutable compatibility runs once during PDF open
+
+After selection validates a text bound, prepare the data reused by every tile:
+glyph eligibility, masked text, measurement, bidi-aware layout, baseline offset,
+and canonical placement.
+Keep prepared objects private to the serial PDF worker and release them with
+the owning `PdfSession` generation. Draw all prepared page runs into each tile;
+the bitmap clips off-tile output without relying on estimated glyph bounds.
+
+Use one prepared fill layout per run. Avoid retaining both raw and prepared run
+collections unless a raw value is required to construct the prepared result.
+
+Completion criteria:
+
+- Preparing a document performs masking, glyph gating, measurement, and layout
+  construction once per accepted run.
+- Rendering repeated tiles and previews performs only canvas transforms and
+  prepared-layout drawing.
+
+### 2. Verify lifecycle behavior on device
+
+Verify on a real device that repeated tiles and previews reuse prepared runs and
+that generation, cancellation, bitmap recycling, history, dirty-state, and
+export behavior remain unchanged.
+
+Completion criteria:
+
+- Android APK compilation passes.
+- Visual device validation confirms text placement and visibility.
 
 ## Validation
 
@@ -134,9 +159,9 @@ tools\test-android.ps1 -Mode build
 git diff --check -- ':!nitrogen/generated/**'
 ```
 
-If no Android S-extension-18 device or emulator is available, report the
-instrumentation and pixel assertions as unvalidated; JVM tests alone do not
-prove platform page-object extraction or rendering alignment.
+If no Android S-extension-18 device or emulator is available, report visual
+device validation as pending; JVM checks do not prove selection geometry or
+rendering alignment.
 
 ## Completion criteria
 

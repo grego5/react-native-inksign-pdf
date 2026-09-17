@@ -5,7 +5,9 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.graphics.pdf.RenderParams
+import android.graphics.pdf.models.selection.SelectionBoundary
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutorService
@@ -91,9 +93,11 @@ internal class PdfSession private constructor(
   private val sourceDescriptor: ParcelFileDescriptor,
   private val renderer: PdfRendererPreV,
   override val info: PdfSessionInfo,
+  private val compatibilityTextRuns: List<List<PdfPreparedCompatibilityTextRun>>,
 ) : PdfSessionResource {
   private val renderTransform = Matrix()
   private val renderParams = RenderParams.Builder(PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY).build()
+  private val compatibilityDrawLogged = BooleanArray(info.pageCount)
   private var closed = false
 
   override fun close() {
@@ -127,6 +131,38 @@ internal class PdfSession private constructor(
             renderTransform.setScale(request.scale.toFloat(), request.scale.toFloat())
             renderTransform.postTranslate(-request.leftPx.toFloat(), -request.topPx.toFloat())
             page.render(bitmap, null, renderTransform, renderParams)
+            val logCompatibilityDraw = BuildConfig.DEBUG && !compatibilityDrawLogged[pageIndex]
+            val beforeOverlayPixels = if (logCompatibilityDraw) {
+              IntArray(bitmap.width * bitmap.height).also { pixels ->
+                bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+              }
+            } else {
+              null
+            }
+            PdfCompatibilityTextRenderer.draw(
+              canvas = android.graphics.Canvas(bitmap),
+              request = request,
+              runs = compatibilityTextRuns[pageIndex],
+            )
+            if (logCompatibilityDraw) {
+              compatibilityDrawLogged[pageIndex] = true
+              val changedPixels = beforeOverlayPixels?.let { before ->
+                val after = IntArray(before.size)
+                bitmap.getPixels(after, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+                after.indices.count { index -> after[index] != before[index] }
+              } ?: 0
+              val runSummary = compatibilityTextRuns[pageIndex]
+                .take(4)
+                .joinToString(separator = ";") { it.debugSummary() }
+              Log.d(
+                "InkSignPdf",
+                "Compatibility text first draw: page=$pageIndex " +
+                  "runs=${compatibilityTextRuns[pageIndex].size} " +
+                  "tile=${request.leftPx},${request.topPx},${request.widthPx}x${request.heightPx} " +
+                  "scale=${request.scale} changedPixels=$changedPixels " +
+                  "clip=0,0,${bitmap.width},${bitmap.height} runSummary=$runSummary",
+              )
+            }
             rendered += PdfTile(request, bitmap)
           } catch (error: Throwable) {
             bitmap.recycle()
@@ -203,6 +239,7 @@ internal class PdfSession private constructor(
         }
 
         val pages = ArrayList<PdfPageDimensions>(openedRenderer.pageCount)
+        val compatibilityRuns = ArrayList<List<PdfPreparedCompatibilityTextRun>>(openedRenderer.pageCount)
         (0 until openedRenderer.pageCount).forEach { pageIndex ->
           openedRenderer.openPage(pageIndex).use { page ->
             val width = page.width.toDouble()
@@ -215,13 +252,44 @@ internal class PdfSession private constructor(
             }
             val dimensions = PdfPageDimensions(width, height)
             pages += dimensions
+            val textContents = page.getTextContents()
+            val textStream = textContents.joinToString(separator = "") { it.text }
+            val selection = resolveCompatibilitySelection(page, textStream)
+            val extraction = PdfCompatibilityTextExtractor.extract(
+              lineBounds = selection.lineBounds,
+              selections = selection.scalarSelections,
+            )
+            compatibilityRuns += extraction.runs
+            if (BuildConfig.DEBUG) {
+              val textContentSummary = textContents.take(4).joinToString(separator = ";") { content ->
+                "bounds=${content.bounds.size},codePoints=${compatibilityCodePointSummary(content.text)}"
+              }
+              val selectionSummary = if (textStream.isNotEmpty()) {
+                "lineRects=${selection.lineBounds.size},scalars=${selection.scalarSelections.size}"
+              } else {
+                "not_attempted"
+              }
+              Log.d(
+                "InkSignPdf",
+                "Compatibility text extraction: page=$pageIndex " +
+                  "accepted=${extraction.runs.size} " +
+                  "skippedUniversal=${extraction.skippedUniversalCount} " +
+                  "missingGlyph=${extraction.missingGlyphCount} " +
+                  "missingBoundary=${extraction.missingBoundaryCount} " +
+                  "unmatchedLine=${extraction.unmatchedLineCount} " +
+                  "geometryFailures=${extraction.geometryFailureCount} " +
+                  "textContents=${textContents.size} " +
+                  "textContentSamples=${textContentSummary.ifEmpty { "none" }} " +
+                  "selection=$selectionSummary",
+              )
+            }
           }
         }
-
         return PdfSession(
           sourceDescriptor = descriptor,
           renderer = openedRenderer,
           info = PdfSessionInfo(source.path, pages, generation),
+          compatibilityTextRuns = compatibilityRuns.toList(),
         )
       } catch (error: PdfSessionException) {
         closeFailedPdfResources(renderer, descriptor)
@@ -244,6 +312,61 @@ internal class PdfSession private constructor(
     }
 
   }
+}
+
+private data class PdfCompatibilitySelection(
+  val lineBounds: List<android.graphics.RectF>,
+  val scalarSelections: List<PdfCompatibilityScalarSelection>,
+)
+
+private fun resolveCompatibilitySelection(
+  page: PdfRendererPreV.Page,
+  textStream: String,
+): PdfCompatibilitySelection {
+  if (textStream.isEmpty()) {
+    return PdfCompatibilitySelection(emptyList(), emptyList())
+  }
+
+  val lineBounds = try {
+    page.selectContent(
+      SelectionBoundary(0),
+      SelectionBoundary(textStream.length),
+    )?.selectedTextContents.orEmpty()
+      .flatMap { content -> content.bounds }
+      .map { android.graphics.RectF(it) }
+  } catch (_: RuntimeException) {
+    emptyList()
+  }
+
+  val scalars = decodePdfScalars(textStream).orEmpty()
+  val selections = ArrayList<PdfCompatibilityScalarSelection>(scalars.size)
+  var index = 0
+  scalars.forEach { scalar ->
+    val nextIndex = index + scalar.text.length
+    if (isCompatibilityTransparentScalar(scalar.codePoint)) {
+      selections += PdfCompatibilityScalarSelection(scalar, null, null)
+    } else {
+      val resolved = try {
+        page.selectContent(
+          SelectionBoundary(index),
+          SelectionBoundary(nextIndex),
+        )
+      } catch (_: RuntimeException) {
+        null
+      }
+      selections += PdfCompatibilityScalarSelection(
+        scalar = scalar,
+        start = resolved?.start?.point?.toCompatibilityPoint(),
+        stop = resolved?.stop?.point?.toCompatibilityPoint(),
+      )
+    }
+    index = nextIndex
+  }
+  return PdfCompatibilitySelection(lineBounds, selections)
+}
+
+private fun android.graphics.Point.toCompatibilityPoint(): PdfCompatibilityPoint {
+  return PdfCompatibilityPoint(x.toFloat(), y.toFloat())
 }
 
 /** Closes a partially opened PDF without closing a descriptor twice. */

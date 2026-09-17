@@ -2,6 +2,19 @@
 
 ## Completed rendering
 
+- At PDF-session open, the PDF worker resolves one whole-page selection for
+  line rectangles, then resolves each non-universal scalar through
+  `selectContent()` and copies its start/stop points. These selection points
+  and line rectangles are already top-left page coordinates: line geometry
+  supplies vertical placement and replacement size, while the boundary-point
+  interval supplies horizontal placement and optional advance fitting. The
+  overlay uses the platform default typeface, skips ASCII/whitespace/control
+  scalars and unavailable glyphs, and prepares immutable layouts once. Each
+  display tile applies its tile transform and draws the prepared layouts after
+  `PdfRendererPreV`; page-turn previews delegate to the same tile renderer.
+  Runs are generation-bound worker state and never enter history, callbacks, or
+  export. If selection returns no usable line or boundary geometry, no
+  compatibility run is created for that scalar.
 - After a real mutation, copy the borrowed flattened cubic segments and
   contour records into immutable contour values.
 - The frame codec reuses owner-local segment objects, contour records, and
