@@ -37,6 +37,7 @@
     "cpp/modeling/VelocityWidthModel.hpp",
     "cpp/upstream",
     "third_party",
+    "tools/fetch-pdfium-ios.mjs",
     "CMakeLists.txt",
     "THIRD_PARTY_NOTICES.md",
     "ios",
@@ -51,7 +52,9 @@
   "scripts": {
     "nitrogen": "nitrogen",
     "build": "bob build",
+    "postinstall": "node tools/fetch-pdfium-ios.mjs",
     "test:stroke:fast": "node tools/test-stroke-replay-fast.mjs",
+    "verify:pdfium": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-pdfium.ps1",
     "check:artifact-parity": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-managed-artifact-parity.ps1",
     "verify:change": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-change.ps1"
   },
@@ -94,4 +97,3 @@
     "node": ">=20"
   }
 }
-

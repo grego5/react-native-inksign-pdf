@@ -5,6 +5,9 @@ import com.facebook.soloader.nativeloader.SystemDelegate
 import com.margelo.nitro.JNIOnLoad
 
 internal object NativeTestRuntime {
+  @JvmStatic
+  external fun pdfiumSmokeNative(): Boolean
+
   fun initialize() {
     if (!NativeLoader.isInitialized()) {
       NativeLoader.init(SystemDelegate())
