@@ -1,38 +1,36 @@
-# Display-only PDF text compatibility overlay
+# Shared PDFium compatibility-text geometry
 
-Plan a native compatibility layer for source-PDF text whose font program is
-unavailable to the platform renderer. The layer decodes text through the
-platform PDF APIs, draws only non-universal Unicode glyphs with the platform
-default font, and leaves universal ASCII glyphs transparent so existing
-numbers and punctuation remain visible without duplication.
+Replace the Android selection and iOS PDFKit compatibility-text geometry
+heuristics with one lazy shared C++20 extractor backed by a pinned PDFium
+revision. Native platform renderers continue to draw the source PDF, while
+Android Canvas and iOS Core Text draw only replacement glyph clusters from
+immutable positioned-character snapshots.
 
-The overlay is presentation-only. It must not enter page history, dirty state,
-undo/redo, JavaScript callbacks, or `finalize()` output. The source PDF remains
-read-only and unchanged.
+Compatibility text remains presentation-only. It never enters history, dirty
+state, callbacks, the public Nitro API, or finalized PDFs.
 
 ## Constraints
 
-- Preserve the existing native-only PDF and geometry boundaries; add no public
-  Nitro API and do not edit generated Nitrogen output.
-- Extract PDF text off the UI/main thread and publish only immutable,
-  generation-bound presentation data.
-- Use canonical media-box-relative page coordinates with a top-left origin at
-  platform presentation boundaries.
-- Draw compatibility text below committed ink and user-created text.
-- Do not attempt font-embedding detection in this first version. Contiguous
-  drawable non-ASCII text is reconstructed as shaped compatibility runs;
-  already visible ASCII remains source-PDF content and is not overpainted.
-- Unsupported or malformed extracted runs are omitted without making an
-  otherwise readable PDF fail to open.
-- Page-turn previews must match the live page presentation.
-- Export continues to consume the original source PDF plus committed user
-  content only.
+- Keep `PdfRendererPreV` on Android and PDFKit/Core Graphics on iOS as the base
+  page renderers.
+- Keep all PDFium handles inside a thread-confined shared native session.
+- Extract pages lazily on the existing serial PDF workers and retain only a
+  bounded immutable page cache.
+- Normalize origins, bounds, vectors, and matrices into the repository's
+  media-box-relative, top-left, Y-down canonical coordinates.
+- Shape replacement clusters with platform fonts without paragraph relayout.
+- Retain current platform heuristic providers only during migration; stop
+  extending their geometry logic.
+- Prefer focused structural tests and real-device visual acceptance; do not add
+  pixel-perfect screenshot tests.
 
-## Tasks
+## Task order
 
-1. [Establish the overlay contract and deterministic fixture](Tasks/01-establish-overlay-contract-and-fixture.md)
-2. [Render compatibility text in Android tiles and previews](Tasks/02-android-compatibility-overlay.md)
-3. [Render compatibility text in the iOS page overlay and previews](Tasks/03-ios-compatibility-overlay.md)
-4. [Lock export isolation, documentation, and device acceptance](Tasks/04-integration-validation-and-documentation.md)
-   - [02a — Extract grouped compatibility spans and usable geometry](Tasks/02a-android-grouped-compatibility-extraction.md)
-   - [02b — Render and validate shaped compatibility spans](Tasks/02b-android-shaped-compatibility-rendering.md)
+1. [Pin and package PDFium for Android and iOS](Tasks/01-package-pdfium.md)
+2. [Create the shared PDFium document session and positioned-text model](Tasks/02-shared-pdfium-session-and-model.md)
+3. [Extract canonical character geometry and bounded diagnostics](Tasks/03-canonical-text-extraction.md)
+4. [Connect lazy shared geometry to the Android PDF session](Tasks/04-android-pdfium-geometry-bridge.md)
+5. [Render positioned replacement clusters on Android](Tasks/05-android-positioned-cluster-rendering.md)
+6. [Connect lazy shared geometry to the iOS document lifecycle](Tasks/06-ios-pdfium-geometry-bridge.md)
+7. [Render positioned replacement clusters on iOS](Tasks/07-ios-positioned-cluster-rendering.md)
+8. [Retire heuristic providers and complete device acceptance](Tasks/08-retire-heuristics-and-validate.md)
