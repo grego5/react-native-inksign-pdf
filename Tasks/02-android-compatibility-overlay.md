@@ -114,39 +114,11 @@ path, live pages and neighboring previews must receive identical overlays.
 
 ## Follow-up implementation brief
 
-Complete these items in order. Keep the work inside the existing worker-owned
-`PdfSession` compatibility path; do not introduce a shared/global cache or a
-second preview renderer.
-
-### 1. Prepare immutable compatibility runs once during PDF open
-
-After selection validates a text bound, prepare the data reused by every tile:
-glyph eligibility, masked text, measurement, bidi-aware layout, baseline offset,
-and canonical placement.
-Keep prepared objects private to the serial PDF worker and release them with
-the owning `PdfSession` generation. Draw all prepared page runs into each tile;
-the bitmap clips off-tile output without relying on estimated glyph bounds.
-
-Use one prepared fill layout per run. Avoid retaining both raw and prepared run
-collections unless a raw value is required to construct the prepared result.
-
-Completion criteria:
-
-- Preparing a document performs masking, glyph gating, measurement, and layout
-  construction once per accepted run.
-- Rendering repeated tiles and previews performs only canvas transforms and
-  prepared-layout drawing.
-
-### 2. Verify lifecycle behavior on device
-
-Verify on a real device that repeated tiles and previews reuse prepared runs and
-that generation, cancellation, bitmap recycling, history, dirty-state, and
-export behavior remain unchanged.
-
-Completion criteria:
-
-- Android APK compilation passes.
-- Visual device validation confirms text placement and visibility.
+Real-device validation showed that scalar-level selection geometry produces
+tiny, unshaped, and poorly positioned Hebrew glyphs. The corrective work is
+tracked separately in [Task 02a](02a-android-grouped-compatibility-extraction.md)
+and [Task 02b](02b-android-shaped-compatibility-rendering.md). Do not extend the
+scalar-layout approach described above.
 
 ## Validation
 

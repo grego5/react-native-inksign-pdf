@@ -19,9 +19,9 @@ read-only and unchanged.
 - Use canonical media-box-relative page coordinates with a top-left origin at
   platform presentation boundaries.
 - Draw compatibility text below committed ink and user-created text.
-- Do not attempt font-embedding detection in this first version. A run is a
-  candidate when it contains a drawable non-ASCII Unicode scalar; ASCII and
-  whitespace retain advance but are painted transparently.
+- Do not attempt font-embedding detection in this first version. Contiguous
+  drawable non-ASCII text is reconstructed as shaped compatibility runs;
+  already visible ASCII remains source-PDF content and is not overpainted.
 - Unsupported or malformed extracted runs are omitted without making an
   otherwise readable PDF fail to open.
 - Page-turn previews must match the live page presentation.
@@ -34,3 +34,5 @@ read-only and unchanged.
 2. [Render compatibility text in Android tiles and previews](Tasks/02-android-compatibility-overlay.md)
 3. [Render compatibility text in the iOS page overlay and previews](Tasks/03-ios-compatibility-overlay.md)
 4. [Lock export isolation, documentation, and device acceptance](Tasks/04-integration-validation-and-documentation.md)
+   - [02a — Extract grouped compatibility spans and usable geometry](Tasks/02a-android-grouped-compatibility-extraction.md)
+   - [02b — Render and validate shaped compatibility spans](Tasks/02b-android-shaped-compatibility-rendering.md)

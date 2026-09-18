@@ -7,7 +7,9 @@
   `selectContent()` and copies its start/stop points. These selection points
   and line rectangles are already top-left page coordinates: line geometry
   supplies vertical placement and replacement size, while the boundary-point
-  interval supplies horizontal placement and optional advance fitting. The
+  interval supplies horizontal placement and advance fitting when its width is
+  plausible; quantized or unusably narrow intervals keep the default-font
+  advance. The
   overlay uses the platform default typeface, skips ASCII/whitespace/control
   scalars and unavailable glyphs, and prepares immutable layouts once. Each
   display tile applies its tile transform and draws the prepared layouts after

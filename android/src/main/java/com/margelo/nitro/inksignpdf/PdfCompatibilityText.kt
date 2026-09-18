@@ -65,13 +65,19 @@ internal data class PdfCompatibilityTextRun(
       .setTextDirection(TextLayoutSpec.directionHeuristic(text))
       .build()
 
-    val horizontalScale = if (sourceAdvance.isFinite() && sourceAdvance > 0f &&
+    val measuredToSourceScale = if (sourceAdvance.isFinite() && sourceAdvance > 0f &&
       measuredWidth.isFinite() && measuredWidth > 0f
     ) {
       sourceAdvance / measuredWidth
     } else {
-      1f
+      Float.NaN
     }
+    // SelectionBoundary exposes integer points on the platform API. Very
+    // narrow intervals are quantized and would visibly crush a glyph when
+    // fitted independently; keep the default-font advance in that case.
+    val horizontalScale = measuredToSourceScale.takeIf {
+      it.isFinite() && it in 0.65f..1.5f
+    } ?: 1f
     return PdfPreparedCompatibilityTextRun(
       canvasMatrix = CanvasTextMatrix(
         a = horizontalScale,
