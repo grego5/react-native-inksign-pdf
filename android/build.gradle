@@ -1,7 +1,127 @@
+import groovy.json.JsonSlurper
+import java.net.HttpURLConnection
+import java.security.MessageDigest
+
 apply plugin: 'com.android.library'
 apply plugin: 'org.jetbrains.kotlin.android'
 
 apply from: '../nitrogen/generated/android/ReactNativeInkSignPdf+autolinking.gradle'
+
+def pdfiumRoot = file('../third_party/pdfium')
+def pdfiumAndroidRoot = file("${pdfiumRoot}/android")
+def pdfiumManifest = new JsonSlurper().parse(new File(pdfiumRoot, 'manifest.json'))
+def pdfiumStaticRelease = pdfiumManifest.distribution.staticRelease
+def pdfiumAndroidArchives = [
+  new File(pdfiumAndroidRoot, 'arm64-v8a/libpdfium.a'),
+  new File(pdfiumAndroidRoot, 'x86_64/libpdfium.a')
+]
+
+def sha256File = { File input ->
+  def digest = MessageDigest.getInstance('SHA-256')
+  input.withInputStream { stream ->
+    byte[] buffer = new byte[1024 * 1024]
+    int read
+    while ((read = stream.read(buffer)) != -1) {
+      digest.update(buffer, 0, read)
+    }
+  }
+  digest.digest().collect { byteValue -> String.format('%02x', byteValue & 0xff) }.join()
+}
+
+def downloadPdfiumAsset = { String url, File target ->
+  target.parentFile.mkdirs()
+  HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection()
+  connection.setConnectTimeout(30_000)
+  connection.setReadTimeout(120_000)
+  connection.setInstanceFollowRedirects(true)
+  connection.setRequestProperty('User-Agent', 'react-native-inksign-pdf-pdfium-fetcher')
+  try {
+    if (connection.responseCode != HttpURLConnection.HTTP_OK) {
+      throw new GradleException("PDFium download failed (${connection.responseCode}): ${url}")
+    }
+    connection.inputStream.withCloseable { input ->
+      target.withOutputStream { output ->
+        byte[] buffer = new byte[1024 * 1024]
+        int read
+        while ((read = input.read(buffer)) != -1) {
+          output.write(buffer, 0, read)
+        }
+      }
+    }
+  } finally {
+    connection.disconnect()
+  }
+}
+
+def ensurePdfiumStatic = tasks.register('ensurePdfiumStatic') {
+  outputs.upToDateWhen { pdfiumAndroidArchives.every { it.isFile() } }
+
+  doLast {
+    if (pdfiumAndroidArchives.every { it.isFile() }) {
+      logger.lifecycle('PDFium static Android archives are already present; skipping download')
+      return
+    }
+
+    if (!pdfiumStaticRelease?.tag || !pdfiumStaticRelease?.androidAsset || !pdfiumStaticRelease?.checksumsAsset) {
+      throw new GradleException('PDFium static release metadata is incomplete')
+    }
+
+    def releaseBase = "${pdfiumStaticRelease.repository}/releases/download/${pdfiumStaticRelease.tag}"
+    def assetName = pdfiumStaticRelease.androidAsset.toString()
+    def checksumName = pdfiumStaticRelease.checksumsAsset.toString()
+    def downloadDir = file("${buildDir}/pdfium-download")
+    delete(downloadDir)
+    downloadDir.mkdirs()
+
+    def archive = new File(downloadDir, assetName)
+    def checksums = new File(downloadDir, checksumName)
+    downloadPdfiumAsset("${releaseBase}/${assetName}", archive)
+    downloadPdfiumAsset("${releaseBase}/${checksumName}", checksums)
+
+    def checksumLine = checksums.getText('UTF-8').readLines().find { line ->
+      line.trim().endsWith("  ${assetName}") || line.trim().endsWith(" *${assetName}")
+    }
+    if (!checksumLine) {
+      throw new GradleException("PDFium checksum entry not found for ${assetName}")
+    }
+    def expectedSha256 = checksumLine.trim().split(/\s+/)[0].toLowerCase()
+    def actualSha256 = sha256File(archive)
+    if (expectedSha256 != actualSha256) {
+      throw new GradleException("PDFium checksum mismatch for ${assetName}: expected ${expectedSha256}, got ${actualSha256}")
+    }
+
+    def extracted = new File(downloadDir, 'extracted')
+    copy {
+      from zipTree(archive)
+      into extracted
+    }
+
+    def extractedArchives = [
+      new File(extracted, 'android/arm64-v8a-libpdfium.a'),
+      new File(extracted, 'android/x86_64-libpdfium.a')
+    ]
+    if (!extractedArchives.every { it.isFile() }) {
+      throw new GradleException("PDFium archive does not contain both Android static archives: ${archive}")
+    }
+    pdfiumAndroidArchives.eachWithIndex { destination, index ->
+      destination.parentFile.mkdirs()
+      copy {
+        from extractedArchives[index]
+        into destination.parentFile
+        rename { destination.name }
+      }
+    }
+    logger.lifecycle("Downloaded and verified PDFium static Android archives from ${releaseBase}")
+  }
+}
+
+tasks.configureEach { task ->
+  if (task.name.startsWith('configureCMake') ||
+      task.name.startsWith('buildCMake') ||
+      task.name.contains('ExternalNativeBuild')) {
+    task.dependsOn(ensurePdfiumStatic)
+  }
+}
 
 def reactNativeArchitectures() {
   def value = rootProject.getProperties().get('reactNativeArchitectures')

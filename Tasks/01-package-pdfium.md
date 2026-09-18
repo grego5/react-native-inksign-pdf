@@ -2,13 +2,15 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Complete for Android; iOS experimental/WIP
 
 ## Objective
 
 Establish one reproducible, pinned PDFium distribution that exposes the public
 C API to the repository's Android and iOS native targets, with documented
-revision, provenance, license, architectures, and binary-size impact.
+revision, provenance, license, architectures, and binary-size impact. Android
+is validated as a static final-link dependency; iOS remains explicitly
+experimental until macOS/Xcode validation is available.
 
 ## Non-goals
 
@@ -26,9 +28,11 @@ revision, provenance, license, architectures, and binary-size impact.
 
 ## Current behavior and invariants
 
-- The repository has no PDFium dependency.
+- PDFium is pinned and packaged under `third_party/pdfium`.
 - Android builds one `ReactNativeInkSignPdf` shared library for configured React
-  Native ABIs. iOS source is packaged through CocoaPods.
+  Native ABIs and final-links the static Android PDFium archive for each ABI.
+  iOS source is packaged through CocoaPods with the existing experimental
+  dynamic XCFramework.
 - Existing third-party source and notices must remain reproducible; generated
   Nitrogen files are never edited manually.
 
@@ -41,9 +45,9 @@ revision, provenance, license, architectures, and binary-size impact.
    candidates and the reason briefly in a version manifest.
 2. Pin the selected PDFium commit and artifact checksum. Do not track an
    unversioned `latest` binary or depend on separate unrelated Android/iOS wrappers.
-3. Integrate headers and native libraries into Android CMake/Gradle and iOS
-   CocoaPods packaging. Limit Android to configured ABIs and include device plus
-   simulator slices required by the iOS development setup.
+3. Integrate headers and static Android archives into CMake/Gradle and retain
+   the current dynamic iOS CocoaPods package as experimental. Limit Android to
+   configured ABIs and document the unvalidated iOS slices.
 4. Add the PDFium BSD license and third-party notice to the package.
 5. Add one native smoke target per platform that initializes PDFium, destroys
    its library context, and links the required text APIs.
@@ -59,19 +63,40 @@ revision, provenance, license, architectures, and binary-size impact.
 
 ## Tests and validation
 
-- Build the Android debug APK and PDFium native smoke target.
+- Build the Android debug APK and run the final-module PDFium instrumentation
+  smoke test on a connected device.
 - Build the pod or iOS test host when macOS/Xcode is available.
-- Verify artifact checksums and required architecture slices.
+- Verify static archive magic/type, required symbols, architecture members,
+  package contents, checksums, and required headers.
 - Run `git diff --check -- ':!nitrogen/generated/**'`.
 - If iOS infrastructure is unavailable, report the exact unvalidated slices and command.
 
 ## Completion criteria
 
-- One pinned revision supplies both platforms.
-- Required public C APIs link successfully.
+- One pinned revision supplies both platforms' headers and provenance.
+- Android's required public C APIs link successfully into the final module and
+  initialize/destroy successfully on a connected device.
+- iOS packaging is present but remains marked experimental and unvalidated.
 - Provenance, license, checksums, architectures, and size deltas are recorded.
 - No runtime PDF behavior changes.
 
+## Delivered
+
+- Pinned PDFium `154.0.8021.0` and the exact upstream commit in
+  `third_party/pdfium/manifest.json`.
+- Configured release-hosted Android `arm64-v8a` and `x86_64` static
+  `libpdfium.a` archives; Android has no separately packaged `libpdfium.so`.
+- Final-linked the Android smoke code into `ReactNativeInkSignPdf` and added a
+  connected instrumentation test that executes PDFium initialization and
+  destruction.
+- Removed the checked-in iOS dynamic framework slices; the GitHub macOS
+  workflow now builds and publishes the static device and simulator slices
+  without requiring a local Mac. The PDFKit fallback remains in place until
+  the static artifact is integrated and runtime-validated.
+- Added private public-C headers, CocoaPods/CMake/Gradle integration, licenses,
+  provenance, checksums, static-archive/symbol/architecture/package checks,
+  measured size impact, and release-asset download support for large binaries.
+
 ## Proposed commit title
 
-`build(native): package pinned pdfium`
+`build(native): make android pdfium static`
