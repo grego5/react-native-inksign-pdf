@@ -87,4 +87,59 @@ class PdfCompatibilityTextTest {
     assertEquals(listOf("א", "ב"), explicit?.textParts)
   }
 
+  @Test
+  fun onePointSelectionMatchesContainingLineByHorizontalOverlap() {
+    val lines = listOf(
+      PdfCompatibilityTextLine(
+        source = PdfCompatibilityTextLineSource.TEXT_CONTENTS,
+        index = 0,
+        bounds = rect(0f, 20f, 100f, 30f),
+      ),
+      PdfCompatibilityTextLine(
+        source = PdfCompatibilityTextLineSource.TEXT_CONTENTS,
+        index = 1,
+        bounds = rect(120f, 20f, 240f, 30f),
+      ),
+    )
+
+    val match = matchCompatibilityTextLine(rect(150f, 25f, 151f, 26f), lines)
+
+    assertEquals(1, match?.index)
+  }
+
+  @Test
+  fun horizontalOverlapWinsBeforeVerticalCenterDistance() {
+    val lines = listOf(
+      PdfCompatibilityTextLine(
+        source = PdfCompatibilityTextLineSource.TEXT_CONTENTS,
+        index = 0,
+        bounds = rect(0f, 20f, 108f, 30f),
+      ),
+      PdfCompatibilityTextLine(
+        source = PdfCompatibilityTextLineSource.TEXT_CONTENTS,
+        index = 1,
+        bounds = rect(102f, 22f, 200f, 32f),
+      ),
+    )
+
+    val match = matchCompatibilityTextLine(rect(105f, 25f, 115f, 26f), lines)
+
+    assertEquals(1, match?.index)
+  }
+
+  @Test
+  fun missingLineAllowsOnlyUsableStandaloneFallback() {
+    val lines = listOf(
+      PdfCompatibilityTextLine(
+        source = PdfCompatibilityTextLineSource.TEXT_CONTENTS,
+        index = 0,
+        bounds = rect(0f, 20f, 100f, 30f),
+      ),
+    )
+
+    assertNull(matchCompatibilityTextLine(rect(150f, 35f, 160f, 36f), lines))
+    assertTrue(isUsableCompatibilityStandaloneBounds(rect(150f, 25f, 160f, 30f)))
+    assertFalse(isUsableCompatibilityStandaloneBounds(rect(150f, 25f, 160f, 26f)))
+  }
+
 }

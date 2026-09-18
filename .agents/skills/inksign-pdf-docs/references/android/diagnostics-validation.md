@@ -32,10 +32,11 @@ and preparing the Android compatibility-text overlay. Capture them with:
 adb logcat -s InkSignPdfMap:D '*:S'
 ```
 
-The records identify page text objects, candidate UTF-16 ranges and code
-points, selected-content exactness, capped source rectangles, vertical cluster
+The records identify page text objects, page line rectangles and their source,
+candidate UTF-16 ranges and code points, selected-content exactness, capped
+source rectangles, line matches, final combined rectangles, vertical cluster
 members and unions, preparation metrics, and the final disposition. They do
-not log document text. Pages emit at most 256 candidate/page-content records
+not log document text. Pages emit at most 256 candidate/content/line records
 and 32 rectangles per logged candidate/content record; truncation is explicit.
 The map is diagnostic only and must not change selection, merging, shaping, or
 rendering behavior.

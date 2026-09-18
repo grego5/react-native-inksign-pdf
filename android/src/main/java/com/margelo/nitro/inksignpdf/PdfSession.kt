@@ -17,6 +17,7 @@ import java.util.concurrent.ThreadFactory
 private const val compatibilityMapCandidateLimit = 256
 private const val compatibilityMapRectangleLimit = 32
 private const val compatibilityMapPageContentLimit = 256
+private const val compatibilityMapLineLimit = 256
 
 /** Point dimensions reported by one page of an opened source PDF. */
 internal data class PdfPageDimensions(
@@ -254,6 +255,9 @@ internal class PdfSession private constructor(
         var mapTotalUnusableGeometry = 0
         var mapTotalPreparationFailures = 0
         var mapTotalScaleRejections = 0
+        var mapTotalMatchedLines = 0
+        var mapTotalStandaloneFallbacks = 0
+        var mapTotalUnmatchedCandidates = 0
         (0 until openedRenderer.pageCount).forEach { pageIndex ->
           openedRenderer.openPage(pageIndex).use { page ->
             val width = page.width.toDouble()
@@ -268,40 +272,52 @@ internal class PdfSession private constructor(
             pages += dimensions
             val textContents = page.getTextContents()
             val textStream = textContents.joinToString(separator = "") { it.text }
+            val lineGeometry = collectCompatibilityTextLines(page, textContents, textStream)
             if (BuildConfig.DEBUG) {
               PdfCompatibilityMapLogger.log(
                 "page=$pageIndex stage=page width=$width height=$height " +
                   "textContents=${textContents.size}",
               )
               textContents.take(compatibilityMapPageContentLimit).forEachIndexed { contentIndex, content ->
-                val rectangles = content.bounds
-                  .take(compatibilityMapRectangleLimit)
-                  .mapIndexed { rectangleIndex, bounds ->
-                    "$rectangleIndex:${formatCompatibilityRect(android.graphics.RectF(bounds))}"
-                  }
-                val omittedRectangles = (content.bounds.size - rectangles.size).coerceAtLeast(0)
                 PdfCompatibilityMapLogger.log(
-                  "page=$pageIndex stage=pageContent index=$contentIndex " +
-                    "codePoints=${formatCompatibilityCodePoints(content.text)} " +
+                  "page=$pageIndex stage=pageContentHeader index=$contentIndex " +
+                    "codePointSummary=${formatCompatibilityCodePointSummary(content.text)} " +
                     "characterCount=${decodePdfScalars(content.text)?.size ?: -1} " +
-                    "utf16Length=${content.text.length} rectangles=$rectangles " +
-                    "rectanglesTruncated=${omittedRectangles > 0} " +
-                    "omittedRectangles=$omittedRectangles",
+                    "utf16Length=${content.text.length} lineRectangles=${content.bounds.size}",
                 )
               }
               if (textContents.size > compatibilityMapPageContentLimit) {
                 PdfCompatibilityMapLogger.log(
                   "page=$pageIndex stage=pageContentTruncation " +
                     "emitted=$compatibilityMapPageContentLimit " +
-                    "omitted=${textContents.size - compatibilityMapPageContentLimit}",
+                  "omitted=${textContents.size - compatibilityMapPageContentLimit}",
                 )
               }
+              lineGeometry.lines.take(compatibilityMapLineLimit).forEach { line ->
+                PdfCompatibilityMapLogger.log(
+                  "page=$pageIndex stage=pageLine source=${line.source.name.lowercase()} " +
+                    "index=${line.index} rect=${formatCompatibilityRect(line.bounds)}",
+                )
+              }
+              if (lineGeometry.lines.size > compatibilityMapLineLimit) {
+                PdfCompatibilityMapLogger.log(
+                  "page=$pageIndex stage=pageLineTruncation " +
+                    "emitted=$compatibilityMapLineLimit " +
+                    "omitted=${lineGeometry.lines.size - compatibilityMapLineLimit}",
+                )
+              }
+              PdfCompatibilityMapLogger.log(
+                "page=$pageIndex stage=pageLineSource " +
+                  "source=${lineGeometry.source?.name?.lowercase() ?: "none"} " +
+                  "count=${lineGeometry.lines.size}",
+              )
             }
             val selection = resolveCompatibilitySelection(
               page = page,
               textStream = textStream,
               pageIndex = pageIndex,
               dimensions = dimensions,
+              lines = lineGeometry.lines,
             )
             val extraction = PdfCompatibilityTextExtractor.extract(
               candidateCount = selection.candidateCount,
@@ -319,11 +335,27 @@ internal class PdfSession private constructor(
             mapTotalUnusableGeometry += extraction.rejectedUnusableGeometryCount
             mapTotalPreparationFailures += extraction.preparationRejectionCount
             mapTotalScaleRejections += extraction.scaleRejectionCount
+            mapTotalMatchedLines += extraction.matchedLineCount
+            mapTotalStandaloneFallbacks += extraction.standaloneFallbackCount
+            mapTotalUnmatchedCandidates += extraction.unmatchedCandidateCount
             if (BuildConfig.DEBUG) {
               extraction.diagnostics
                 .filter { it.candidateIndex in 0 until compatibilityMapCandidateLimit }
                 .forEach { diagnostic ->
                   val geometry = diagnostic.geometry
+                  diagnostic.rectangles.forEach { rectangle ->
+                    val matchedLine = rectangle.matchedLine
+                    PdfCompatibilityMapLogger.log(
+                      "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
+                        "stage=geometry rectangle=${rectangle.index} " +
+                        "selection=${formatCompatibilityRect(rectangle.selectionBounds)} " +
+                        "matchedLineSource=${matchedLine?.source?.name?.lowercase() ?: "none"} " +
+                        "matchedLineIndex=${matchedLine?.index ?: -1} " +
+                        "matchedLine=${matchedLine?.let { formatCompatibilityRect(it.bounds) } ?: "none"} " +
+                        "standaloneFallback=${rectangle.standaloneFallback} " +
+                        "final=${rectangle.finalBounds?.let { formatCompatibilityRect(it) } ?: "none"}",
+                    )
+                  }
                   if (geometry != null) {
                     geometry.clusters.forEachIndexed { clusterIndex, cluster ->
                       PdfCompatibilityMapLogger.log(
@@ -391,8 +423,11 @@ internal class PdfSession private constructor(
                   "mergedFragments=${extraction.mergedFragmentCount} " +
                   "ambiguousMultiline=${extraction.rejectedMultiLineMappingCount} " +
                   "unusableGeometry=${extraction.rejectedUnusableGeometryCount} " +
-                  "preparationFailures=${extraction.preparationRejectionCount} " +
-                  "scaleRejections=${extraction.scaleRejectionCount}",
+                      "preparationFailures=${extraction.preparationRejectionCount} " +
+                  "scaleRejections=${extraction.scaleRejectionCount} " +
+                  "matchedLines=${extraction.matchedLineCount} " +
+                  "standaloneFallbacks=${extraction.standaloneFallbackCount} " +
+                  "unmatchedCandidates=${extraction.unmatchedCandidateCount}",
               )
             }
           }
@@ -408,7 +443,10 @@ internal class PdfSession private constructor(
               "ambiguousMultiline=$mapTotalAmbiguousMultiline " +
               "unusableGeometry=$mapTotalUnusableGeometry " +
               "preparationFailures=$mapTotalPreparationFailures " +
-              "scaleRejections=$mapTotalScaleRejections",
+              "scaleRejections=$mapTotalScaleRejections " +
+              "matchedLines=$mapTotalMatchedLines " +
+              "standaloneFallbacks=$mapTotalStandaloneFallbacks " +
+              "unmatchedCandidates=$mapTotalUnmatchedCandidates",
           )
         }
         return PdfSession(
@@ -446,11 +484,72 @@ private data class PdfCompatibilitySelection(
   val rejectedGeometryCount: Int,
 )
 
+private data class PdfCompatibilityLineGeometry(
+  val source: PdfCompatibilityTextLineSource?,
+  val lines: List<PdfCompatibilityTextLine>,
+)
+
+private fun collectCompatibilityTextLines(
+  page: PdfRendererPreV.Page,
+  textContents: List<android.graphics.pdf.content.PdfPageTextContent>,
+  textStream: String,
+): PdfCompatibilityLineGeometry {
+  val contentLines = ArrayList<PdfCompatibilityTextLine>()
+  textContents.forEach { content ->
+    content.bounds.forEach { bounds ->
+      val copiedBounds = android.graphics.RectF(bounds)
+      if (isUsableCompatibilityLineBounds(copiedBounds)) {
+        contentLines += PdfCompatibilityTextLine(
+          source = PdfCompatibilityTextLineSource.TEXT_CONTENTS,
+          index = contentLines.size,
+          bounds = copiedBounds,
+        )
+      }
+    }
+  }
+  if (contentLines.isNotEmpty()) {
+    return PdfCompatibilityLineGeometry(
+      source = PdfCompatibilityTextLineSource.TEXT_CONTENTS,
+      lines = contentLines.toList(),
+    )
+  }
+  if (textStream.isEmpty()) {
+    return PdfCompatibilityLineGeometry(source = null, lines = emptyList())
+  }
+  val wholePageContents = try {
+    page.selectContent(
+      SelectionBoundary(0),
+      SelectionBoundary(textStream.length),
+    )?.selectedTextContents.orEmpty()
+  } catch (_: RuntimeException) {
+    emptyList()
+  }
+  val selectedLines = ArrayList<PdfCompatibilityTextLine>()
+  wholePageContents.forEach { content ->
+    content.bounds.forEach { bounds ->
+      val copiedBounds = android.graphics.RectF(bounds)
+      if (isUsableCompatibilityLineBounds(copiedBounds)) {
+        selectedLines += PdfCompatibilityTextLine(
+          source = PdfCompatibilityTextLineSource.WHOLE_PAGE_SELECTION,
+          index = selectedLines.size,
+          bounds = copiedBounds,
+        )
+      }
+    }
+  }
+  return PdfCompatibilityLineGeometry(
+    source = if (selectedLines.isEmpty()) null else
+      PdfCompatibilityTextLineSource.WHOLE_PAGE_SELECTION,
+    lines = selectedLines.toList(),
+  )
+}
+
 private fun resolveCompatibilitySelection(
   page: PdfRendererPreV.Page,
   textStream: String,
   pageIndex: Int,
   dimensions: PdfPageDimensions,
+  lines: List<PdfCompatibilityTextLine>,
 ): PdfCompatibilitySelection {
   if (textStream.isEmpty()) {
     return PdfCompatibilitySelection(0, emptyList(), 0)
@@ -538,6 +637,9 @@ private fun resolveCompatibilitySelection(
         text = selectedText,
         bounds = selectedBounds,
         candidateIndex = candidateIndex,
+        lineMatches = selectedBounds.map { bounds ->
+          matchCompatibilityTextLine(bounds, lines)
+        },
       )
     } else {
       rejectedGeometryCount += 1
