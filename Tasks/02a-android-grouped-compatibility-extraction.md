@@ -2,7 +2,7 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Implemented; focused Android JVM/APK validation passed
 
 Depends on: [Task 02](02-android-compatibility-overlay.md)
 

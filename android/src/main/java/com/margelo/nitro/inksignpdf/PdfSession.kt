@@ -256,30 +256,24 @@ internal class PdfSession private constructor(
             val textStream = textContents.joinToString(separator = "") { it.text }
             val selection = resolveCompatibilitySelection(page, textStream)
             val extraction = PdfCompatibilityTextExtractor.extract(
-              lineBounds = selection.lineBounds,
-              selections = selection.scalarSelections,
+              candidateCount = selection.candidateCount,
+              spans = selection.spans,
+              initialRejectedGeometryCount = selection.rejectedGeometryCount,
             )
             compatibilityRuns += extraction.runs
             if (BuildConfig.DEBUG) {
-              val textContentSummary = textContents.take(4).joinToString(separator = ";") { content ->
-                "bounds=${content.bounds.size},codePoints=${compatibilityCodePointSummary(content.text)}"
-              }
               val selectionSummary = if (textStream.isNotEmpty()) {
-                "lineRects=${selection.lineBounds.size},scalars=${selection.scalarSelections.size}"
+                "candidateSpans=${selection.candidateCount},selectedSpans=${selection.spans.size}"
               } else {
                 "not_attempted"
               }
               Log.d(
                 "InkSignPdf",
                 "Compatibility text extraction: page=$pageIndex " +
-                  "accepted=${extraction.runs.size} " +
-                  "skippedUniversal=${extraction.skippedUniversalCount} " +
-                  "missingGlyph=${extraction.missingGlyphCount} " +
-                  "missingBoundary=${extraction.missingBoundaryCount} " +
-                  "unmatchedLine=${extraction.unmatchedLineCount} " +
-                  "geometryFailures=${extraction.geometryFailureCount} " +
+                  "candidates=${extraction.candidateCount} " +
+                  "acceptedGroupedRuns=${extraction.acceptedGroupedRunCount} " +
+                  "rejectedGeometry=${extraction.rejectedGeometryCount} " +
                   "textContents=${textContents.size} " +
-                  "textContentSamples=${textContentSummary.ifEmpty { "none" }} " +
                   "selection=$selectionSummary",
               )
             }
@@ -315,8 +309,9 @@ internal class PdfSession private constructor(
 }
 
 private data class PdfCompatibilitySelection(
-  val lineBounds: List<android.graphics.RectF>,
-  val scalarSelections: List<PdfCompatibilityScalarSelection>,
+  val candidateCount: Int,
+  val spans: List<PdfCompatibilityTextSpan>,
+  val rejectedGeometryCount: Int,
 )
 
 private fun resolveCompatibilitySelection(
@@ -324,49 +319,38 @@ private fun resolveCompatibilitySelection(
   textStream: String,
 ): PdfCompatibilitySelection {
   if (textStream.isEmpty()) {
-    return PdfCompatibilitySelection(emptyList(), emptyList())
+    return PdfCompatibilitySelection(0, emptyList(), 0)
   }
 
-  val lineBounds = try {
-    page.selectContent(
-      SelectionBoundary(0),
-      SelectionBoundary(textStream.length),
-    )?.selectedTextContents.orEmpty()
-      .flatMap { content -> content.bounds }
-      .map { android.graphics.RectF(it) }
-  } catch (_: RuntimeException) {
-    emptyList()
-  }
-
-  val scalars = decodePdfScalars(textStream).orEmpty()
-  val selections = ArrayList<PdfCompatibilityScalarSelection>(scalars.size)
-  var index = 0
-  scalars.forEach { scalar ->
-    val nextIndex = index + scalar.text.length
-    if (isCompatibilityTransparentScalar(scalar.codePoint)) {
-      selections += PdfCompatibilityScalarSelection(scalar, null, null)
-    } else {
-      val resolved = try {
-        page.selectContent(
-          SelectionBoundary(index),
-          SelectionBoundary(nextIndex),
-        )
-      } catch (_: RuntimeException) {
-        null
-      }
-      selections += PdfCompatibilityScalarSelection(
-        scalar = scalar,
-        start = resolved?.start?.point?.toCompatibilityPoint(),
-        stop = resolved?.stop?.point?.toCompatibilityPoint(),
-      )
+  val candidates = groupCompatibilityTextCandidates(textStream)
+  val spans = ArrayList<PdfCompatibilityTextSpan>()
+  var rejectedGeometryCount = 0
+  candidates.forEach { candidate ->
+    val selectedContents = try {
+      page.selectContent(
+        SelectionBoundary(candidate.start),
+        SelectionBoundary(candidate.end),
+      )?.selectedTextContents.orEmpty()
+    } catch (_: RuntimeException) {
+      emptyList()
     }
-    index = nextIndex
+    if (selectedContents.isEmpty()) {
+      rejectedGeometryCount += 1
+      return@forEach
+    }
+    var copiedSpan = false
+    selectedContents.forEach { content ->
+      val text = content.text
+      val bounds = content.bounds
+        .map { android.graphics.RectF(it) }
+      if (text.isNotEmpty() && bounds.isNotEmpty()) {
+        spans += PdfCompatibilityTextSpan(text = text, bounds = bounds)
+        copiedSpan = true
+      }
+    }
+    if (!copiedSpan) rejectedGeometryCount += 1
   }
-  return PdfCompatibilitySelection(lineBounds, selections)
-}
-
-private fun android.graphics.Point.toCompatibilityPoint(): PdfCompatibilityPoint {
-  return PdfCompatibilityPoint(x.toFloat(), y.toFloat())
+  return PdfCompatibilitySelection(candidates.size, spans.toList(), rejectedGeometryCount)
 }
 
 /** Closes a partially opened PDF without closing a descriptor twice. */

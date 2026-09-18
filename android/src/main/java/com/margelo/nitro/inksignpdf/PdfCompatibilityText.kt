@@ -1,25 +1,31 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.RectF
+import android.graphics.Typeface
+import android.text.SpannableString
 import android.text.StaticLayout
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import kotlin.math.ceil
 import kotlin.math.max
-import kotlin.math.min
 
-/** A copied selection boundary point in the page's top-left coordinate space. */
-internal data class PdfCompatibilityPoint(
-  val x: Float,
-  val y: Float,
-)
+private val compatibilityTypeface = Typeface.DEFAULT
+private const val minimumCompatibilityHorizontalScale = 0.5f
+private const val maximumCompatibilityHorizontalScale = 2.0f
 
-/** The scalar and the resolved visual interval returned by Android selection. */
-internal data class PdfCompatibilityScalarSelection(
-  val scalar: PdfUnicodeScalar,
-  val start: PdfCompatibilityPoint?,
-  val stop: PdfCompatibilityPoint?,
-)
+/** A copied logical text span selected from one worker-owned PDF page. */
+internal data class PdfCompatibilityTextSpan(
+  val text: String,
+  val bounds: List<RectF>,
+) {
+  init {
+    require(text.isNotEmpty())
+    require(bounds.isNotEmpty())
+  }
+}
 
 /** The affine transform from page coordinates to the prepared layout. */
 internal data class CanvasTextMatrix(
@@ -30,30 +36,45 @@ internal data class CanvasTextMatrix(
   val tx: Float,
   val ty: Float,
 ) {
+  private val androidMatrix = Matrix().apply {
+    setValues(floatArrayOf(
+      a, c, tx,
+      b, d, ty,
+      0f, 0f, 1f,
+    ))
+  }
+
   fun toAndroidMatrix(): Matrix {
-    return Matrix().apply {
-      setValues(floatArrayOf(
-        a, c, tx,
-        b, d, ty,
-        0f, 0f, 1f,
-      ))
-    }
+    return androidMatrix
   }
 }
 
 internal data class PdfCompatibilityTextRun(
   val text: String,
-  val sourceLeft: Float,
-  val sourceTop: Float,
-  val sourceAdvance: Float,
-  val fontSize: Float,
+  val bounds: RectF,
 ) {
-  fun prepare(): PdfPreparedCompatibilityTextRun {
-    val paint = TextLayoutSpec.createPaint(fontSize.toDouble())
+  fun prepare(): PdfPreparedCompatibilityTextRun? {
+    val sourceLeft = bounds.left
+    val sourceTop = bounds.top
+    val sourceBottom = bounds.bottom
+    val sourceAdvance = bounds.width()
+    val sourceHeight = bounds.height()
+    val probePaint = TextLayoutSpec.createPaint(1.0, typeface = compatibilityTypeface)
+    val probeMetrics = probePaint.fontMetrics
+    val probeMetricHeight = probeMetrics.descent - probeMetrics.ascent
+    if (!sourceHeight.isFinite() || sourceHeight <= 0f ||
+      !probeMetricHeight.isFinite() || probeMetricHeight <= 0f
+    ) return null
+
+    val fontSize = sourceHeight / probeMetricHeight
+    if (!fontSize.isFinite() || fontSize <= 0f) return null
+    val paint = TextLayoutSpec.createPaint(fontSize.toDouble(), typeface = compatibilityTypeface)
     val measuredWidth = paint.measureText(text)
+    if (!measuredWidth.isFinite() || measuredWidth <= 0f) return null
     val layoutWidth = max(1, ceil(measuredWidth).toInt())
+    val layoutText = compatibilityLayoutText(text, paint)
     val layout = StaticLayout.Builder.obtain(
-      text,
+      layoutText,
       0,
       text.length,
       paint,
@@ -65,33 +86,29 @@ internal data class PdfCompatibilityTextRun(
       .setTextDirection(TextLayoutSpec.directionHeuristic(text))
       .build()
 
-    val measuredToSourceScale = if (sourceAdvance.isFinite() && sourceAdvance > 0f &&
-      measuredWidth.isFinite() && measuredWidth > 0f
-    ) {
-      sourceAdvance / measuredWidth
-    } else {
-      Float.NaN
-    }
-    // SelectionBoundary exposes integer points on the platform API. Very
-    // narrow intervals are quantized and would visibly crush a glyph when
-    // fitted independently; keep the default-font advance in that case.
-    val horizontalScale = measuredToSourceScale.takeIf {
-      it.isFinite() && it in 0.65f..1.5f
-    } ?: 1f
+    val horizontalScale = sourceAdvance / measuredWidth
+    if (!horizontalScale.isFinite() ||
+      horizontalScale !in minimumCompatibilityHorizontalScale..maximumCompatibilityHorizontalScale
+    ) return null
+    if (layout.lineCount != 1) return null
+    val baseline = sourceTop + layout.getLineBaseline(0)
     return PdfPreparedCompatibilityTextRun(
       canvasMatrix = CanvasTextMatrix(
         a = horizontalScale,
         b = 0f,
         c = 0f,
         d = 1f,
-        // SelectionBoundary points are already top-left page coordinates.
+        // PdfPageTextContent bounds are already top-left page coordinates.
         tx = sourceLeft,
         ty = sourceTop,
       ),
       layout = layout,
       sourceLeft = sourceLeft,
       sourceRight = sourceLeft + sourceAdvance,
-      lineHeight = fontSize,
+      sourceTop = sourceTop,
+      sourceBottom = sourceBottom,
+      fontSize = fontSize,
+      baseline = baseline,
     )
   }
 }
@@ -102,7 +119,10 @@ internal class PdfPreparedCompatibilityTextRun internal constructor(
   private val layout: StaticLayout,
   private val sourceLeft: Float,
   private val sourceRight: Float,
-  private val lineHeight: Float,
+  private val sourceTop: Float,
+  private val sourceBottom: Float,
+  private val fontSize: Float,
+  private val baseline: Float,
 ) {
   fun draw(canvas: Canvas) {
     canvas.save()
@@ -111,132 +131,101 @@ internal class PdfPreparedCompatibilityTextRun internal constructor(
     canvas.restore()
   }
 
+  fun intersects(left: Float, top: Float, right: Float, bottom: Float): Boolean {
+    return sourceLeft < right && sourceRight > left &&
+      sourceTop < bottom && sourceBottom > top
+  }
+
   fun debugSummary(): String {
-    return "interval=$sourceLeft..$sourceRight lineHeight=$lineHeight " +
+    return "rect=$sourceLeft,$sourceTop,$sourceRight,$sourceBottom " +
+      "textSize=$fontSize baseline=$baseline " +
       "matrix=${canvasMatrix.a},${canvasMatrix.b},${canvasMatrix.c},${canvasMatrix.d}," +
       "${canvasMatrix.tx},${canvasMatrix.ty} layout=${layout.width}x${layout.height}"
   }
 }
 
+private fun compatibilityLayoutText(
+  text: String,
+  paint: android.text.TextPaint,
+): CharSequence {
+  val styled = SpannableString(text)
+  val scalars = decodePdfScalars(text) ?: return styled
+  var offset = 0
+  scalars.forEach { scalar ->
+    val end = offset + scalar.text.length
+    if (isCompatibilityTransparentScalar(scalar.codePoint) || !paint.hasGlyph(scalar.text)) {
+      styled.setSpan(
+        ForegroundColorSpan(Color.TRANSPARENT),
+        offset,
+        end,
+        Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+      )
+    }
+    offset = end
+  }
+  return styled
+}
+
 internal data class PdfCompatibilityTextExtraction(
   val runs: List<PdfPreparedCompatibilityTextRun>,
-  val skippedUniversalCount: Int,
-  val missingGlyphCount: Int,
-  val missingBoundaryCount: Int,
-  val unmatchedLineCount: Int,
+  val candidateCount: Int,
+  val rejectedGeometryCount: Int,
 ) {
-  val geometryFailureCount: Int
-    get() = missingBoundaryCount + unmatchedLineCount
+  val acceptedGroupedRunCount: Int
+    get() = runs.size
 }
 
 internal object PdfCompatibilityTextExtractor {
   fun extract(
-    lineBounds: List<RectF>,
-    selections: List<PdfCompatibilityScalarSelection>,
+    candidateCount: Int,
+    spans: List<PdfCompatibilityTextSpan>,
+    initialRejectedGeometryCount: Int = 0,
   ): PdfCompatibilityTextExtraction {
     val runs = ArrayList<PdfPreparedCompatibilityTextRun>()
-    var skippedUniversalCount = 0
-    var missingGlyphCount = 0
-    var missingBoundaryCount = 0
-    var unmatchedLineCount = 0
-
-    val copiedLines = lineBounds
-      .filter(::isUsableCompatibilityBounds)
-      .map { RectF(it) }
-    selections.forEach { selection ->
-      val scalar = selection.scalar
-      if (isCompatibilityTransparentScalar(scalar.codePoint)) {
-        skippedUniversalCount += 1
+    var rejectedGeometryCount = initialRejectedGeometryCount
+    spans.forEach { span ->
+      val copiedBounds = span.bounds
+        .filter(::isUsableCompatibilityBounds)
+        .map { RectF(it) }
+      if (copiedBounds.isEmpty()) {
+        rejectedGeometryCount += 1
         return@forEach
       }
-
-      val start = selection.start
-      val stop = selection.stop
-      if (start == null || stop == null ||
-        !isFiniteCompatibilityPoint(start) || !isFiniteCompatibilityPoint(stop)
-      ) {
-        missingBoundaryCount += 1
+      val textParts = splitCompatibilitySpanText(span.text, copiedBounds.size)
+      if (textParts == null || textParts.size != copiedBounds.size) {
+        rejectedGeometryCount += 1
         return@forEach
       }
-
-      val line = findContainingLine(copiedLines, start, stop)
-      if (line == null) {
-        unmatchedLineCount += 1
-        return@forEach
+      copiedBounds.zip(textParts).forEach { (bounds, text) ->
+        if (text.isEmpty()) {
+          rejectedGeometryCount += 1
+          return@forEach
+        }
+        val prepared = PdfCompatibilityTextRun(text = text, bounds = bounds).prepare()
+        if (prepared == null) rejectedGeometryCount += 1 else runs += prepared
       }
-
-      val fontSize = line.height()
-      val paint = TextLayoutSpec.createPaint(fontSize.toDouble())
-      if (!paint.hasGlyph(scalar.text)) {
-        missingGlyphCount += 1
-        return@forEach
-      }
-
-      val left = min(start.x, stop.x)
-      val right = max(start.x, stop.x)
-      if (!left.isFinite() || !right.isFinite() || !fontSize.isFinite() || fontSize <= 0f) {
-        unmatchedLineCount += 1
-        return@forEach
-      }
-      runs += PdfCompatibilityTextRun(
-        text = scalar.text,
-        sourceLeft = left,
-        sourceTop = line.top,
-        sourceAdvance = right - left,
-        fontSize = fontSize,
-      ).prepare()
     }
     return PdfCompatibilityTextExtraction(
       runs = runs.toList(),
-      skippedUniversalCount = skippedUniversalCount,
-      missingGlyphCount = missingGlyphCount,
-      missingBoundaryCount = missingBoundaryCount,
-      unmatchedLineCount = unmatchedLineCount,
+      candidateCount = candidateCount,
+      rejectedGeometryCount = rejectedGeometryCount,
     )
   }
-}
-
-private fun findContainingLine(
-  lines: List<RectF>,
-  start: PdfCompatibilityPoint,
-  stop: PdfCompatibilityPoint,
-): RectF? {
-  val midpointY = (start.y + stop.y) * 0.5f
-  return lines
-    .filter { line ->
-      containsY(line, start.y) || containsY(line, stop.y) ||
-        containsPoint(line, start) || containsPoint(line, stop)
-    }
-    .minByOrNull { line ->
-      kotlin.math.abs((line.top + line.bottom) * 0.5f - midpointY)
-    }
-}
-
-private fun containsY(line: RectF, y: Float): Boolean {
-  return y >= line.top && y <= line.bottom
-}
-
-private fun containsPoint(line: RectF, point: PdfCompatibilityPoint): Boolean {
-  return point.x >= line.left && point.x <= line.right && containsY(line, point.y)
-}
-
-private fun isFiniteCompatibilityPoint(point: PdfCompatibilityPoint): Boolean {
-  return point.x.isFinite() && point.y.isFinite()
 }
 
 private fun isUsableCompatibilityBounds(bounds: RectF): Boolean {
   return bounds.left.isFinite() && bounds.top.isFinite() &&
     bounds.right.isFinite() && bounds.bottom.isFinite() &&
-    bounds.width() > 0f && bounds.height() > 0f
+    bounds.width() > 1f && bounds.height() > 1f
 }
 
-internal fun compatibilityCodePointSummary(text: String): String {
-  return decodePdfScalars(text)
-    ?.asSequence()
-    ?.filterNot { isCompatibilityTransparentScalar(it.codePoint) }
-    ?.take(12)
-    ?.joinToString(separator = ",") { "U+${it.codePoint.toString(16).uppercase()}" }
-    .orEmpty()
+private fun splitCompatibilitySpanText(text: String, partCount: Int): List<String>? {
+  if (partCount <= 0) return null
+  if (partCount == 1) return listOf(text)
+
+  val lines = text.split('\n')
+  if (lines.size == partCount && lines.all { it.isNotEmpty() }) return lines
+  return null
 }
 
 internal object PdfCompatibilityTextRenderer {
@@ -253,15 +242,27 @@ internal object PdfCompatibilityTextRenderer {
         0f, 0f, 1f,
       ))
     }
+    val pageLeft = request.leftPx.toFloat() / request.scale.toFloat()
+    val pageTop = request.topPx.toFloat() / request.scale.toFloat()
+    val pageRight = (request.leftPx + request.widthPx).toFloat() / request.scale.toFloat()
+    val pageBottom = (request.topPx + request.heightPx).toFloat() / request.scale.toFloat()
     canvas.save()
     canvas.concat(tileMatrix)
-    runs.forEach { run -> run.draw(canvas) }
+    runs.forEach { run ->
+      if (run.intersects(pageLeft, pageTop, pageRight, pageBottom)) run.draw(canvas)
+    }
     canvas.restore()
   }
 }
 
 internal data class PdfUnicodeScalar(
   val codePoint: Int,
+  val text: String,
+)
+
+internal data class PdfCompatibilityTextCandidate(
+  val start: Int,
+  val end: Int,
   val text: String,
 )
 
@@ -293,6 +294,80 @@ internal fun isCompatibilityTransparentScalar(codePoint: Int): Boolean {
     codePoint in 0x7F..0x9F ||
     Character.isWhitespace(codePoint) ||
     Character.isSpaceChar(codePoint)
+}
+
+internal fun groupCompatibilityTextCandidates(
+  text: String,
+  hasGlyph: ((String) -> Boolean)? = null,
+): List<PdfCompatibilityTextCandidate> {
+  val scalars = decodePdfScalars(text) ?: return emptyList()
+  if (scalars.isEmpty()) return emptyList()
+  val glyphPaint = if (hasGlyph == null) TextLayoutSpec.createPaint(16.0) else null
+
+  val offsets = IntArray(scalars.size + 1)
+  var offset = 0
+  scalars.forEachIndexed { index, scalar ->
+    offsets[index] = offset
+    offset += scalar.text.length
+  }
+  offsets[scalars.size] = offset
+
+  fun isCandidate(index: Int): Boolean {
+    val scalar = scalars[index]
+    return scalar.codePoint > 0x9F &&
+      !isCompatibilityTransparentScalar(scalar.codePoint) &&
+      (hasGlyph?.invoke(scalar.text) ?: glyphPaint!!.hasGlyph(scalar.text))
+  }
+
+  val candidates = BooleanArray(scalars.size) { index -> isCandidate(index) }
+  val grouped = ArrayList<PdfCompatibilityTextCandidate>()
+  var index = 0
+  while (index < scalars.size) {
+    if (!candidates[index]) {
+      index += 1
+      continue
+    }
+
+    val startIndex = index
+    var endIndex = index + 1
+    index += 1
+    while (index < scalars.size) {
+      if (candidates[index]) {
+        endIndex = index + 1
+        index += 1
+        continue
+      }
+      if (isCompatibilitySpanJoiner(scalars[index].codePoint) &&
+        index + 1 < scalars.size && candidates[index + 1]
+      ) {
+        endIndex = index + 2
+        index += 2
+        continue
+      }
+      break
+    }
+    grouped += PdfCompatibilityTextCandidate(
+      start = offsets[startIndex],
+      end = offsets[endIndex],
+      text = text.substring(offsets[startIndex], offsets[endIndex]),
+    )
+  }
+  return grouped
+}
+
+private fun isCompatibilitySpanJoiner(codePoint: Int): Boolean {
+  if (codePoint == '\n'.code || codePoint == '\r'.code) return false
+  if (Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)) return true
+  return when (Character.getType(codePoint)) {
+    Character.CONNECTOR_PUNCTUATION.toInt(),
+    Character.DASH_PUNCTUATION.toInt(),
+    Character.END_PUNCTUATION.toInt(),
+    Character.FINAL_QUOTE_PUNCTUATION.toInt(),
+    Character.INITIAL_QUOTE_PUNCTUATION.toInt(),
+    Character.OTHER_PUNCTUATION.toInt(),
+    Character.START_PUNCTUATION.toInt() -> true
+    else -> false
+  }
 }
 
 internal fun hasPaintableCompatibilityScalar(

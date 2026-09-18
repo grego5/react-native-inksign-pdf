@@ -2,7 +2,7 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Implemented; focused Android JVM/APK validation passed; device visual validation pending
 
 Depends on: [Task 02a](02a-android-grouped-compatibility-extraction.md)
 

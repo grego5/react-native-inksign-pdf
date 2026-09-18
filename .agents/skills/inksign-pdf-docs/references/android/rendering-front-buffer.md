@@ -2,21 +2,27 @@
 
 ## Completed rendering
 
-- At PDF-session open, the PDF worker resolves one whole-page selection for
-  line rectangles, then resolves each non-universal scalar through
-  `selectContent()` and copies its start/stop points. These selection points
-  and line rectangles are already top-left page coordinates: line geometry
-  supplies vertical placement and replacement size, while the boundary-point
-  interval supplies horizontal placement and advance fitting when its width is
-  plausible; quantized or unusably narrow intervals keep the default-font
-  advance. The
-  overlay uses the platform default typeface, skips ASCII/whitespace/control
-  scalars and unavailable glyphs, and prepares immutable layouts once. Each
-  display tile applies its tile transform and draws the prepared layouts after
-  `PdfRendererPreV`; page-turn previews delegate to the same tile renderer.
-  Runs are generation-bound worker state and never enter history, callbacks, or
-  export. If selection returns no usable line or boundary geometry, no
-  compatibility run is created for that scalar.
+- At PDF-session open, the PDF worker groups adjacent drawable non-ASCII
+  scalars, preserving only internal whitespace and punctuation, then calls
+  `selectContent()` once per grouped span. It copies the selected text and
+  `PdfPageTextContent` rectangles before closing the page. These rectangles are
+  already top-left page coordinates and provide both placement and replacement
+  size; no font size or advance is derived from integer selection boundary
+  points. A selection that contains multiple rectangles is split only when
+  explicit line breaks map each text portion to one rectangle; ambiguous
+  rectangle-to-text mappings are omitted. Each accepted run is shaped once
+  with Android's default sans-serif fallback and platform bidi direction. Its
+  text size is fitted from the selected rectangle's height and font metrics,
+  its baseline is derived from the same metrics, and horizontal fitting is
+  accepted only within a bounded scale range. ASCII, whitespace, control, and
+  unavailable scalars remain in the shaping context but are painted
+  transparent, so existing source Latin, numbers, punctuation, and borders are
+  not doubled. Each display tile applies its tile transform and draws
+  intersecting prepared layouts after `PdfRendererPreV`; page-turn previews
+  delegate to the same tile renderer. Runs retain their prepared transforms,
+  are generation-bound worker state, and never enter history, callbacks, or
+  export. Malformed, unresolved, or unusably scaled selected geometry is
+  omitted without failing PDF open.
 - After a real mutation, copy the borrowed flattened cubic segments and
   contour records into immutable contour values.
 - The frame codec reuses owner-local segment objects, contour records, and
