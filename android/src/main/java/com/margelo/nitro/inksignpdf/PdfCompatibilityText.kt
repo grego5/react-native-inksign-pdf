@@ -9,6 +9,8 @@ import android.text.SpannableString
 import android.text.StaticLayout
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
+import android.util.Log
+import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -21,6 +23,7 @@ private const val maximumCompatibilityHorizontalScale = 2.0f
 internal data class PdfCompatibilityTextSpan(
   val text: String,
   val bounds: List<RectF>,
+  val candidateIndex: Int = -1,
 ) {
   init {
     require(text.isNotEmpty())
@@ -72,6 +75,8 @@ internal data class PdfCompatibilityTextRun(
     ) return PdfCompatibilityTextPreparationResult(
       run = null,
       rejection = PdfCompatibilityTextPreparationRejection.PREPARATION,
+      sourceWidth = sourceAdvance,
+      sourceHeight = sourceHeight,
     )
 
     val fontSize = sourceHeight / probeMetricHeight
@@ -79,6 +84,9 @@ internal data class PdfCompatibilityTextRun(
       return PdfCompatibilityTextPreparationResult(
         run = null,
         rejection = PdfCompatibilityTextPreparationRejection.PREPARATION,
+        sourceWidth = sourceAdvance,
+        sourceHeight = sourceHeight,
+        fontSize = fontSize,
       )
     }
     val paint = TextLayoutSpec.createPaint(fontSize.toDouble(), typeface = compatibilityTypeface)
@@ -87,6 +95,10 @@ internal data class PdfCompatibilityTextRun(
       return PdfCompatibilityTextPreparationResult(
         run = null,
         rejection = PdfCompatibilityTextPreparationRejection.PREPARATION,
+        sourceWidth = sourceAdvance,
+        sourceHeight = sourceHeight,
+        fontSize = fontSize,
+        measuredWidth = measuredWidth,
       )
     }
     val layoutWidth = max(1, ceil(measuredWidth).toInt())
@@ -111,12 +123,26 @@ internal data class PdfCompatibilityTextRun(
       return PdfCompatibilityTextPreparationResult(
         run = null,
         rejection = PdfCompatibilityTextPreparationRejection.SCALE,
+        sourceWidth = sourceAdvance,
+        sourceHeight = sourceHeight,
+        fontSize = fontSize,
+        measuredWidth = measuredWidth,
+        horizontalScale = horizontalScale,
+        layoutWidth = layout.width,
+        layoutHeight = layout.height,
       )
     }
     if (layout.lineCount != 1) {
       return PdfCompatibilityTextPreparationResult(
         run = null,
         rejection = PdfCompatibilityTextPreparationRejection.PREPARATION,
+        sourceWidth = sourceAdvance,
+        sourceHeight = sourceHeight,
+        fontSize = fontSize,
+        measuredWidth = measuredWidth,
+        horizontalScale = horizontalScale,
+        layoutWidth = layout.width,
+        layoutHeight = layout.height,
       )
     }
     val baseline = sourceTop + layout.getLineBaseline(0)
@@ -139,6 +165,14 @@ internal data class PdfCompatibilityTextRun(
         fontSize = fontSize,
         baseline = baseline,
       ),
+      measuredWidth = measuredWidth,
+      sourceWidth = sourceAdvance,
+      sourceHeight = sourceHeight,
+      fontSize = fontSize,
+      horizontalScale = horizontalScale,
+      baseline = baseline,
+      layoutWidth = layout.width,
+      layoutHeight = layout.height,
     )
   }
 }
@@ -151,6 +185,14 @@ internal enum class PdfCompatibilityTextPreparationRejection {
 internal data class PdfCompatibilityTextPreparationResult(
   val run: PdfPreparedCompatibilityTextRun?,
   val rejection: PdfCompatibilityTextPreparationRejection? = null,
+  val measuredWidth: Float? = null,
+  val sourceWidth: Float? = null,
+  val sourceHeight: Float? = null,
+  val fontSize: Float? = null,
+  val horizontalScale: Float? = null,
+  val baseline: Float? = null,
+  val layoutWidth: Int? = null,
+  val layoutHeight: Int? = null,
 )
 
 /** Prepared presentation reused by every tile and preview in one session. */
@@ -217,10 +259,31 @@ internal data class PdfCompatibilityTextExtraction(
   val rejectedUnusableGeometryCount: Int,
   val preparationRejectionCount: Int,
   val scaleRejectionCount: Int,
+  val diagnostics: List<PdfCompatibilityTextCandidateDiagnostic>,
 ) {
   val acceptedGroupedRunCount: Int
     get() = runs.size
 }
+
+internal enum class PdfCompatibilityTextDisposition {
+  ACCEPTED,
+  UNUSABLE_GEOMETRY,
+  AMBIGUOUS_MULTILINE,
+  PREPARATION_FAILURE,
+  HORIZONTAL_SCALE_REJECTION,
+}
+
+internal data class PdfCompatibilityTextGeometryCluster(
+  val memberIndexes: List<Int>,
+  val bounds: RectF,
+)
+
+internal data class PdfCompatibilityTextCandidateDiagnostic(
+  val candidateIndex: Int,
+  val geometry: PdfCompatibilityTextGeometry?,
+  val disposition: PdfCompatibilityTextDisposition,
+  val preparations: List<PdfCompatibilityTextPreparationResult>,
+)
 
 internal object PdfCompatibilityTextExtractor {
   fun extract(
@@ -237,12 +300,19 @@ internal object PdfCompatibilityTextExtractor {
     var rejectedUnusableGeometryCount = 0
     var preparationRejectionCount = 0
     var scaleRejectionCount = 0
-    spans.forEach { span ->
+    val diagnostics = ArrayList<PdfCompatibilityTextCandidateDiagnostic>()
+    spans.forEach spanLoop@ { span ->
       val geometry = mergeCompatibilityTextFragments(span.text, span.bounds)
       if (geometry == null) {
         rejectedGeometryCount += 1
         rejectedUnusableGeometryCount += 1
-        return@forEach
+        diagnostics += PdfCompatibilityTextCandidateDiagnostic(
+          candidateIndex = span.candidateIndex,
+          geometry = null,
+          disposition = PdfCompatibilityTextDisposition.UNUSABLE_GEOMETRY,
+          preparations = emptyList(),
+        )
+        return@spanLoop
       }
       if (geometry.fragmentCount == 1) singleRectangleSpanCount += 1
       if (geometry.mergedSameLine) {
@@ -252,16 +322,24 @@ internal object PdfCompatibilityTextExtractor {
       if (geometry.textParts == null || geometry.textParts.size != geometry.bounds.size) {
         rejectedGeometryCount += 1
         rejectedMultiLineMappingCount += 1
-        return@forEach
+        diagnostics += PdfCompatibilityTextCandidateDiagnostic(
+          candidateIndex = span.candidateIndex,
+          geometry = geometry,
+          disposition = PdfCompatibilityTextDisposition.AMBIGUOUS_MULTILINE,
+          preparations = emptyList(),
+        )
+        return@spanLoop
       }
-      geometry.bounds.zip(geometry.textParts).forEach { (bounds, text) ->
+      val preparations = ArrayList<PdfCompatibilityTextPreparationResult>(geometry.bounds.size)
+      geometry.bounds.zip(geometry.textParts).forEach partLoop@ { (bounds, text) ->
         if (text.isEmpty()) {
           rejectedGeometryCount += 1
           rejectedMultiLineMappingCount += 1
-          return@forEach
+          return@partLoop
         }
         val preparation = PdfCompatibilityTextRun(text = text, bounds = bounds)
           .prepareWithDiagnostics()
+        preparations += preparation
         if (preparation.run == null) {
           rejectedGeometryCount += 1
           when (preparation.rejection) {
@@ -273,6 +351,19 @@ internal object PdfCompatibilityTextExtractor {
           runs += preparation.run
         }
       }
+      val disposition = when {
+        preparations.any {
+          it.rejection == PdfCompatibilityTextPreparationRejection.SCALE
+        } -> PdfCompatibilityTextDisposition.HORIZONTAL_SCALE_REJECTION
+        preparations.any { it.run == null } -> PdfCompatibilityTextDisposition.PREPARATION_FAILURE
+        else -> PdfCompatibilityTextDisposition.ACCEPTED
+      }
+      diagnostics += PdfCompatibilityTextCandidateDiagnostic(
+        candidateIndex = span.candidateIndex,
+        geometry = geometry,
+        disposition = disposition,
+        preparations = preparations.toList(),
+      )
     }
     return PdfCompatibilityTextExtraction(
       runs = runs.toList(),
@@ -285,6 +376,7 @@ internal object PdfCompatibilityTextExtractor {
       rejectedUnusableGeometryCount = rejectedUnusableGeometryCount,
       preparationRejectionCount = preparationRejectionCount,
       scaleRejectionCount = scaleRejectionCount,
+      diagnostics = diagnostics.toList(),
     )
   }
 }
@@ -294,6 +386,7 @@ internal data class PdfCompatibilityTextGeometry(
   val textParts: List<String>?,
   val fragmentCount: Int,
   val mergedSameLine: Boolean,
+  val clusters: List<PdfCompatibilityTextGeometryCluster>,
 )
 
 internal fun mergeCompatibilityTextFragments(
@@ -301,27 +394,30 @@ internal fun mergeCompatibilityTextFragments(
   bounds: List<RectF>,
 ): PdfCompatibilityTextGeometry? {
   if (bounds.isEmpty()) return null
-  val copiedBounds = bounds.map { bound ->
-    RectF().apply {
-      left = bound.left
-      top = bound.top
-      right = bound.right
-      bottom = bound.bottom
-    }
+  val copiedBounds = bounds.mapIndexed { index, bound ->
+    PdfCompatibilityIndexedBounds(
+      index = index,
+      bounds = RectF().apply {
+        left = bound.left
+        top = bound.top
+        right = bound.right
+        bottom = bound.bottom
+      },
+    )
   }
-  if (copiedBounds.any { !isUsableCompatibilityBounds(it) }) return null
+  if (copiedBounds.any { !isUsableCompatibilityBounds(it.bounds) }) return null
 
-  val clusters = ArrayList<MutableList<RectF>>()
+  val clusters = ArrayList<MutableList<PdfCompatibilityIndexedBounds>>()
   copiedBounds
-    .sortedWith(compareBy<RectF> { it.top }.thenBy { it.left })
+    .sortedWith(compareBy<PdfCompatibilityIndexedBounds> { it.bounds.top }.thenBy { it.bounds.left })
     .forEach { bound ->
       val overlapping = clusters.filter { cluster ->
-        verticalOverlap(clusterBounds(cluster), bound)
+        verticalOverlap(clusterBounds(cluster), bound.bounds)
       }
       if (overlapping.isEmpty()) {
         clusters += arrayListOf(bound)
       } else {
-        val mergedCluster = arrayListOf<RectF>()
+        val mergedCluster = arrayListOf<PdfCompatibilityIndexedBounds>()
         overlapping.forEach { cluster ->
           mergedCluster += cluster
           clusters.remove(cluster)
@@ -332,10 +428,16 @@ internal fun mergeCompatibilityTextFragments(
     }
 
   val orderedClusters = clusters.sortedWith(
-    compareBy<List<RectF>> { clusterBounds(it).top }
+    compareBy<List<PdfCompatibilityIndexedBounds>> { clusterBounds(it).top }
       .thenBy { clusterBounds(it).left },
   )
   val unionBounds = orderedClusters.map { cluster -> unionCompatibilityBounds(cluster) }
+  val geometryClusters = orderedClusters.map { cluster ->
+    PdfCompatibilityTextGeometryCluster(
+      memberIndexes = cluster.map { it.index }.sorted(),
+      bounds = unionCompatibilityBounds(cluster),
+    )
+  }
   val textParts = if (unionBounds.size == 1) {
     listOf(text)
   } else {
@@ -346,10 +448,16 @@ internal fun mergeCompatibilityTextFragments(
     textParts = textParts,
     fragmentCount = copiedBounds.size,
     mergedSameLine = unionBounds.size == 1 && copiedBounds.size > 1,
+    clusters = geometryClusters,
   )
 }
 
-private fun clusterBounds(cluster: List<RectF>): RectF {
+private data class PdfCompatibilityIndexedBounds(
+  val index: Int,
+  val bounds: RectF,
+)
+
+private fun clusterBounds(cluster: List<PdfCompatibilityIndexedBounds>): RectF {
   return unionCompatibilityBounds(cluster)
 }
 
@@ -357,13 +465,14 @@ private fun verticalOverlap(first: RectF, second: RectF): Boolean {
   return max(first.top, second.top) < min(first.bottom, second.bottom)
 }
 
-private fun unionCompatibilityBounds(bounds: List<RectF>): RectF {
-  val first = bounds.first()
+private fun unionCompatibilityBounds(bounds: List<PdfCompatibilityIndexedBounds>): RectF {
+  val first = bounds.first().bounds
   var left = first.left
   var top = first.top
   var right = first.right
   var bottom = first.bottom
-  bounds.drop(1).forEach { bound ->
+  bounds.drop(1).forEach { indexed ->
+    val bound = indexed.bounds
     left = min(left, bound.left)
     top = min(top, bound.top)
     right = max(right, bound.right)
@@ -390,6 +499,25 @@ private fun splitCompatibilitySpanText(text: String, partCount: Int): List<Strin
   val lines = text.split('\n').map { it.removeSuffix("\r") }
   if (lines.size == partCount && lines.all { it.isNotEmpty() }) return lines
   return null
+}
+
+internal fun formatCompatibilityCodePoints(text: String): String {
+  val scalars = decodePdfScalars(text) ?: return "invalid"
+  return scalars.joinToString(prefix = "[", postfix = "]", separator = ",") {
+    "U+${it.codePoint.toString(16).uppercase(Locale.ROOT)}"
+  }
+}
+
+internal fun formatCompatibilityRect(bounds: RectF): String {
+  return "[${bounds.left},${bounds.top},${bounds.right},${bounds.bottom}]"
+}
+
+internal object PdfCompatibilityMapLogger {
+  private const val tag = "InkSignPdfMap"
+
+  fun log(message: String) {
+    if (BuildConfig.DEBUG) Log.d(tag, message)
+  }
 }
 
 internal object PdfCompatibilityTextRenderer {

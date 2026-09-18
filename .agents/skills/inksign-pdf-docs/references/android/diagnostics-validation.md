@@ -23,6 +23,23 @@
   debug startup scavenging removes stale recordings, while release builds do
   not classify or remove them.
 
+### Compatibility text geometry map
+
+Debug builds emit bounded, one-line `InkSignPdfMap` records while opening a PDF
+and preparing the Android compatibility-text overlay. Capture them with:
+
+```powershell
+adb logcat -s InkSignPdfMap:D '*:S'
+```
+
+The records identify page text objects, candidate UTF-16 ranges and code
+points, selected-content exactness, capped source rectangles, vertical cluster
+members and unions, preparation metrics, and the final disposition. They do
+not log document text. Pages emit at most 256 candidate/page-content records
+and 32 rectangles per logged candidate/content record; truncation is explicit.
+The map is diagnostic only and must not change selection, merging, shaping, or
+rendering behavior.
+
 ## Unified trace report
 
 ```powershell
