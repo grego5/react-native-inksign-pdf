@@ -258,6 +258,9 @@ internal class PdfSession private constructor(
         var mapTotalMatchedLines = 0
         var mapTotalStandaloneFallbacks = 0
         var mapTotalUnmatchedCandidates = 0
+        var mapTotalNewlineOrControlTerminations = 0
+        var mapTotalUnrelatedTextTerminations = 0
+        var mapTotalTrailingBridgeTerminations = 0
         (0 until openedRenderer.pageCount).forEach { pageIndex ->
           openedRenderer.openPage(pageIndex).use { page ->
             val width = page.width.toDouble()
@@ -339,11 +342,25 @@ internal class PdfSession private constructor(
             mapTotalMatchedLines += extraction.matchedLineCount
             mapTotalStandaloneFallbacks += extraction.standaloneFallbackCount
             mapTotalUnmatchedCandidates += extraction.unmatchedCandidateCount
+            mapTotalNewlineOrControlTerminations += selection.newlineOrControlTerminations
+            mapTotalUnrelatedTextTerminations += selection.unrelatedTextTerminations
+            mapTotalTrailingBridgeTerminations += selection.trailingBridgeTerminations
             if (BuildConfig.DEBUG) {
               extraction.diagnostics
                 .filter { it.candidateIndex in 0 until compatibilityMapCandidateLimit }
                 .forEach { diagnostic ->
                   val geometry = diagnostic.geometry
+                  if (geometry != null) {
+                    PdfCompatibilityMapLogger.log(
+                      "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
+                        "stage=logicalRun utf16Range=${diagnostic.utf16Start}-${diagnostic.utf16End} " +
+                        "codePoints=${formatCompatibilityCodePoints(diagnostic.text.orEmpty())} " +
+                        "selectionUnion=${geometry.selectionLeft},${geometry.selectionRight} " +
+                        "boundaryInterval=${geometry.boundaryLeft ?: "none"}," +
+                        "${geometry.boundaryRight ?: "none"} " +
+                        "fullSpan=${geometry.fullSpanLeft},${geometry.fullSpanRight}",
+                    )
+                  }
                   diagnostic.rectangles.forEach { rectangle ->
                     val matchedLine = rectangle.matchedLine
                     PdfCompatibilityMapLogger.log(
@@ -412,6 +429,9 @@ internal class PdfSession private constructor(
                   "unusableGeometryRejections=${extraction.rejectedUnusableGeometryCount} " +
                   "preparationRejections=${extraction.preparationRejectionCount} " +
                   "scaleRejections=${extraction.scaleRejectionCount} " +
+                  "groupingNewlineOrControl=${selection.newlineOrControlTerminations} " +
+                  "groupingUnrelatedText=${selection.unrelatedTextTerminations} " +
+                  "groupingTrailingBridge=${selection.trailingBridgeTerminations} " +
                   "textContents=${textContents.size} " +
                   "selection=$selectionSummary",
               )
@@ -425,8 +445,11 @@ internal class PdfSession private constructor(
                   "ambiguousMultiline=${extraction.rejectedMultiLineMappingCount} " +
                   "unusableGeometry=${extraction.rejectedUnusableGeometryCount} " +
                       "preparationFailures=${extraction.preparationRejectionCount} " +
-                  "scaleRejections=${extraction.scaleRejectionCount} " +
-                  "matchedLines=${extraction.matchedLineCount} " +
+                "scaleRejections=${extraction.scaleRejectionCount} " +
+                "groupingNewlineOrControl=${selection.newlineOrControlTerminations} " +
+                "groupingUnrelatedText=${selection.unrelatedTextTerminations} " +
+                "groupingTrailingBridge=${selection.trailingBridgeTerminations} " +
+                "matchedLines=${extraction.matchedLineCount} " +
                   "standaloneFallbacks=${extraction.standaloneFallbackCount} " +
                   "unmatchedCandidates=${extraction.unmatchedCandidateCount}",
               )
@@ -445,6 +468,9 @@ internal class PdfSession private constructor(
               "unusableGeometry=$mapTotalUnusableGeometry " +
               "preparationFailures=$mapTotalPreparationFailures " +
               "scaleRejections=$mapTotalScaleRejections " +
+              "groupingNewlineOrControl=$mapTotalNewlineOrControlTerminations " +
+              "groupingUnrelatedText=$mapTotalUnrelatedTextTerminations " +
+              "groupingTrailingBridge=$mapTotalTrailingBridgeTerminations " +
               "matchedLines=$mapTotalMatchedLines " +
               "standaloneFallbacks=$mapTotalStandaloneFallbacks " +
               "unmatchedCandidates=$mapTotalUnmatchedCandidates",
@@ -483,6 +509,9 @@ private data class PdfCompatibilitySelection(
   val candidateCount: Int,
   val spans: List<PdfCompatibilityTextSpan>,
   val rejectedGeometryCount: Int,
+  val newlineOrControlTerminations: Int = 0,
+  val unrelatedTextTerminations: Int = 0,
+  val trailingBridgeTerminations: Int = 0,
 )
 
 private data class PdfCompatibilityLineGeometry(
@@ -556,7 +585,15 @@ private fun resolveCompatibilitySelection(
     return PdfCompatibilitySelection(0, emptyList(), 0)
   }
 
-  val candidates = groupCompatibilityTextCandidates(textStream)
+  val groupingDiagnostics = if (BuildConfig.DEBUG) {
+    PdfCompatibilityTextGroupingDiagnostics()
+  } else {
+    null
+  }
+  val candidates = groupCompatibilityTextCandidates(
+    text = textStream,
+    diagnostics = groupingDiagnostics,
+  )
   val spans = ArrayList<PdfCompatibilityTextSpan>()
   var rejectedGeometryCount = 0
   candidates.forEachIndexed candidateLoop@ { candidateIndex, candidate ->
@@ -573,15 +610,18 @@ private fun resolveCompatibilitySelection(
       )
     }
     var selectionFailed = false
-    val selectedContents = try {
+    val pageSelection = try {
       page.selectContent(
         SelectionBoundary(candidate.start),
         SelectionBoundary(candidate.end),
-      )?.selectedTextContents.orEmpty()
+      )
     } catch (_: RuntimeException) {
       selectionFailed = true
-      emptyList()
+      null
     }
+    val selectedContents = pageSelection?.selectedTextContents.orEmpty()
+    val selectionStartX = pageSelection?.start?.point?.x?.toFloat()
+    val selectionStopX = pageSelection?.stop?.point?.x?.toFloat()
     val selectedText = buildString {
       selectedContents.forEach { append(it.text) }
     }
@@ -589,8 +629,10 @@ private fun resolveCompatibilitySelection(
       PdfCompatibilityMapLogger.log(
         "page=$pageIndex candidate=$candidateIndex stage=selection " +
           "selectionFailed=$selectionFailed selectedEntries=${selectedContents.size} " +
-          "exactTextMatch=${selectedText == candidate.text} " +
-          "codePoints=${formatCompatibilityCodePoints(selectedText)} " +
+            "exactTextMatch=${selectedText == candidate.text} " +
+            "boundaryStartX=${selectionStartX ?: "none"} " +
+            "boundaryStopX=${selectionStopX ?: "none"} " +
+            "codePoints=${formatCompatibilityCodePoints(selectedText)} " +
           "characterCount=${decodePdfScalars(selectedText)?.size ?: -1} " +
           "utf16Length=${selectedText.length}",
       )
@@ -641,6 +683,10 @@ private fun resolveCompatibilitySelection(
         lineMatches = selectedBounds.map { bounds ->
           matchCompatibilityTextLine(bounds, lines)
         },
+        utf16Start = candidate.start,
+        utf16End = candidate.end,
+        selectionStartX = selectionStartX,
+        selectionStopX = selectionStopX,
       )
     } else {
       rejectedGeometryCount += 1
@@ -652,7 +698,14 @@ private fun resolveCompatibilitySelection(
       }
     }
   }
-  return PdfCompatibilitySelection(candidates.size, spans.toList(), rejectedGeometryCount)
+  return PdfCompatibilitySelection(
+    candidateCount = candidates.size,
+    spans = spans.toList(),
+    rejectedGeometryCount = rejectedGeometryCount,
+    newlineOrControlTerminations = groupingDiagnostics?.newlineOrControlTerminations ?: 0,
+    unrelatedTextTerminations = groupingDiagnostics?.unrelatedTextTerminations ?: 0,
+    trailingBridgeTerminations = groupingDiagnostics?.trailingBridgeTerminations ?: 0,
+  )
 }
 
 /** Closes a partially opened PDF without closing a descriptor twice. */

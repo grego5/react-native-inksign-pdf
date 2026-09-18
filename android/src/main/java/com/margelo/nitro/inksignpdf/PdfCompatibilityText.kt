@@ -36,6 +36,10 @@ internal data class PdfCompatibilityTextSpan(
   val bounds: List<RectF>,
   val candidateIndex: Int = -1,
   val lineMatches: List<PdfCompatibilityTextLine?> = emptyList(),
+  val utf16Start: Int = -1,
+  val utf16End: Int = -1,
+  val selectionStartX: Float? = null,
+  val selectionStopX: Float? = null,
 ) {
   init {
     require(text.isNotEmpty())
@@ -325,6 +329,9 @@ internal data class PdfCompatibilityTextCandidateDiagnostic(
   val disposition: PdfCompatibilityTextDisposition,
   val rectangles: List<PdfCompatibilityTextRectangleDiagnostic>,
   val preparations: List<PdfCompatibilityTextPreparationResult>,
+  val utf16Start: Int = -1,
+  val utf16End: Int = -1,
+  val text: String? = null,
 )
 
 internal object PdfCompatibilityTextExtractor {
@@ -394,12 +401,17 @@ internal object PdfCompatibilityTextExtractor {
             )
           },
           preparations = emptyList(),
+          utf16Start = span.utf16Start,
+          utf16End = span.utf16End,
+          text = span.text,
         ))
         return@spanLoop
       }
       val geometry = mergeCompatibilityTextFragments(
         text = span.text,
         bounds = resolvedBounds,
+        selectionStartX = span.selectionStartX,
+        selectionStopX = span.selectionStopX,
         includeDiagnostics = collectDiagnostics,
       )
       if (geometry == null) {
@@ -419,6 +431,9 @@ internal object PdfCompatibilityTextExtractor {
             )
           },
           preparations = emptyList(),
+          utf16Start = span.utf16Start,
+          utf16End = span.utf16End,
+          text = span.text,
         ))
         return@spanLoop
       }
@@ -436,6 +451,9 @@ internal object PdfCompatibilityTextExtractor {
           disposition = PdfCompatibilityTextDisposition.AMBIGUOUS_MULTILINE,
           rectangles = emptyList(),
           preparations = emptyList(),
+          utf16Start = span.utf16Start,
+          utf16End = span.utf16End,
+          text = span.text,
         ))
         return@spanLoop
       }
@@ -495,6 +513,9 @@ internal object PdfCompatibilityTextExtractor {
             )
           },
           preparations = preparations.orEmpty(),
+          utf16Start = span.utf16Start,
+          utf16End = span.utf16End,
+          text = span.text,
         ))
       }
     }
@@ -523,11 +544,25 @@ internal data class PdfCompatibilityTextGeometry(
   val fragmentCount: Int,
   val mergedSameLine: Boolean,
   val clusters: List<PdfCompatibilityTextGeometryCluster>,
+  val selectionLeft: Float,
+  val selectionRight: Float,
+  val boundaryLeft: Float?,
+  val boundaryRight: Float?,
+  val fullSpanLeft: Float,
+  val fullSpanRight: Float,
+)
+
+internal data class PdfCompatibilityTextGroupingDiagnostics(
+  var newlineOrControlTerminations: Int = 0,
+  var unrelatedTextTerminations: Int = 0,
+  var trailingBridgeTerminations: Int = 0,
 )
 
 internal fun mergeCompatibilityTextFragments(
   text: String,
   bounds: List<RectF>,
+  selectionStartX: Float? = null,
+  selectionStopX: Float? = null,
   includeDiagnostics: Boolean = BuildConfig.DEBUG,
 ): PdfCompatibilityTextGeometry? {
   if (bounds.isEmpty()) return null
@@ -569,6 +604,24 @@ internal fun mergeCompatibilityTextFragments(
       .thenBy { clusterBounds(it).left },
   )
   val unionBounds = orderedClusters.map { cluster -> unionCompatibilityBounds(cluster) }
+  val selectionLeft = copiedBounds.minOf { it.bounds.left }
+  val selectionRight = copiedBounds.maxOf { it.bounds.right }
+  val boundaryXs = listOfNotNull(selectionStartX, selectionStopX)
+    .filter { it.isFinite() }
+  val boundaryLeft = boundaryXs.minOrNull()
+  val boundaryRight = boundaryXs.maxOrNull()
+  val fullSpanLeft = min(selectionLeft, boundaryLeft ?: selectionLeft)
+  val fullSpanRight = max(selectionRight, boundaryRight ?: selectionRight)
+  val finalBounds = if (unionBounds.size == 1) {
+    listOf(RectF().apply {
+      this.left = fullSpanLeft
+      this.top = unionBounds.single().top
+      this.right = fullSpanRight
+      this.bottom = unionBounds.single().bottom
+    })
+  } else {
+    unionBounds
+  }
   val geometryClusters = if (includeDiagnostics) {
     orderedClusters.map { cluster ->
       PdfCompatibilityTextGeometryCluster(
@@ -585,11 +638,17 @@ internal fun mergeCompatibilityTextFragments(
     splitCompatibilitySpanText(text, unionBounds.size)
   }
   return PdfCompatibilityTextGeometry(
-    bounds = unionBounds,
+    bounds = finalBounds,
     textParts = textParts,
     fragmentCount = copiedBounds.size,
     mergedSameLine = unionBounds.size == 1 && copiedBounds.size > 1,
     clusters = geometryClusters,
+    selectionLeft = selectionLeft,
+    selectionRight = selectionRight,
+    boundaryLeft = boundaryLeft,
+    boundaryRight = boundaryRight,
+    fullSpanLeft = fullSpanLeft,
+    fullSpanRight = fullSpanRight,
   )
 }
 
@@ -784,6 +843,7 @@ internal fun isCompatibilityTransparentScalar(codePoint: Int): Boolean {
 
 internal fun groupCompatibilityTextCandidates(
   text: String,
+  diagnostics: PdfCompatibilityTextGroupingDiagnostics? = null,
   hasGlyph: ((String) -> Boolean)? = null,
 ): List<PdfCompatibilityTextCandidate> {
   val scalars = decodePdfScalars(text) ?: return emptyList()
@@ -823,14 +883,31 @@ internal fun groupCompatibilityTextCandidates(
         index += 1
         continue
       }
-      if (isCompatibilitySpanJoiner(scalars[index].codePoint) &&
-        index + 1 < scalars.size && candidates[index + 1]
-      ) {
-        endIndex = index + 2
-        index += 2
-        continue
+      val bridgeStart = index
+      while (index < scalars.size && isCompatibilityBridge(scalars[index].codePoint)) {
+        index += 1
       }
-      break
+      if (index == bridgeStart) {
+        diagnostics?.let { it.unrelatedTextTerminations += 1 }
+        break
+      }
+      if (index >= scalars.size) {
+        diagnostics?.let { it.trailingBridgeTerminations += 1 }
+        break
+      }
+      val nextCodePoint = scalars[index].codePoint
+      if (nextCodePoint == '\n'.code || nextCodePoint == '\r'.code ||
+        nextCodePoint <= 0x1F || nextCodePoint in 0x7F..0x9F
+      ) {
+        diagnostics?.let { it.newlineOrControlTerminations += 1 }
+        break
+      }
+      if (!candidates[index]) {
+        diagnostics?.let { it.unrelatedTextTerminations += 1 }
+        break
+      }
+      endIndex = index + 1
+      index += 1
     }
     grouped += PdfCompatibilityTextCandidate(
       start = offsets[startIndex],
@@ -841,8 +918,10 @@ internal fun groupCompatibilityTextCandidates(
   return grouped
 }
 
-private fun isCompatibilitySpanJoiner(codePoint: Int): Boolean {
+private fun isCompatibilityBridge(codePoint: Int): Boolean {
   if (codePoint == '\n'.code || codePoint == '\r'.code) return false
+  if (codePoint <= 0x1F || codePoint in 0x7F..0x9F) return false
+  if (codePoint in 0x20..0x7E) return true
   if (Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)) return true
   return when (Character.getType(codePoint)) {
     Character.CONNECTOR_PUNCTUATION.toInt(),

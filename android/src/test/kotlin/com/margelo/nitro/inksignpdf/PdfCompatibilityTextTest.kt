@@ -32,14 +32,41 @@ class PdfCompatibilityTextTest {
   }
 
   @Test
-  fun groupedCandidatesKeepOnlyInternalWhitespaceAndPunctuation() {
+  fun groupedCandidatesPreserveInternalAsciiAndPunctuation() {
     val candidates = groupCompatibilityTextCandidates("א ב,ג A ד") { scalar ->
       scalar in setOf("א", "ב", "ג", "ד")
     }
 
-    assertEquals(listOf("א ב,ג", "ד"), candidates.map { it.text })
+    assertEquals(listOf("א ב,ג A ד"), candidates.map { it.text })
     assertEquals(0, candidates.first().start)
-    assertEquals(5, candidates.first().end)
+    assertEquals("א ב,ג A ד".length, candidates.first().end)
+  }
+
+  @Test
+  fun groupedCandidatesPreserveMultipleBridgesBetweenHebrewScalars() {
+    val candidates = groupCompatibilityTextCandidates("ש\"  ח מע\"מ 123א") { scalar ->
+      scalar in setOf("ש", "ח", "מ", "ע", "א")
+    }
+
+    assertEquals(listOf("ש\"  ח מע\"מ 123א"), candidates.map { it.text })
+  }
+
+  @Test
+  fun groupedCandidatesStopAtNewlineAndControlCharacters() {
+    val candidates = groupCompatibilityTextCandidates("א  ב\nג\u0001 ד") { scalar ->
+      scalar in setOf("א", "ב", "ג", "ד")
+    }
+
+    assertEquals(listOf("א  ב", "ג", "ד"), candidates.map { it.text })
+  }
+
+  @Test
+  fun groupedCandidatesExcludeLeadingAndTrailingBridges() {
+    val candidates = groupCompatibilityTextCandidates(" A  א  B ") { scalar ->
+      scalar == "א"
+    }
+
+    assertEquals(listOf("א"), candidates.map { it.text })
   }
 
   @Test
@@ -58,17 +85,25 @@ class PdfCompatibilityTextTest {
         rect(10f, 21f, 25f, 29f),
         rect(24f, 20f, 42f, 30f),
       ),
+      selectionStartX = 8f,
+      selectionStopX = 60f,
     )
 
     assertTrue(geometry?.mergedSameLine == true)
     assertEquals(3, geometry?.fragmentCount)
     assertEquals(1, geometry?.bounds?.size)
     geometry?.bounds?.single()?.let { merged ->
-      assertEquals(10f, merged.left)
+      assertEquals(8f, merged.left)
       assertEquals(20f, merged.top)
-      assertEquals(55f, merged.right)
+      assertEquals(60f, merged.right)
       assertEquals(30f, merged.bottom)
     } ?: error("Expected one merged rectangle")
+    assertEquals(10f, geometry?.selectionLeft)
+    assertEquals(55f, geometry?.selectionRight)
+    assertEquals(8f, geometry?.boundaryLeft)
+    assertEquals(60f, geometry?.boundaryRight)
+    assertEquals(8f, geometry?.fullSpanLeft)
+    assertEquals(60f, geometry?.fullSpanRight)
     assertEquals(listOf("אבג"), geometry?.textParts)
   }
 

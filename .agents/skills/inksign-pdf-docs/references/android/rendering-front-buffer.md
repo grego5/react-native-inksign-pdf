@@ -3,10 +3,13 @@
 ## Completed rendering
 
 - At PDF-session open, the PDF worker groups adjacent drawable non-ASCII
-  scalars, preserving only internal whitespace and punctuation, then calls
-  `selectContent()` once per grouped span. It copies the selected text and
-  candidate rectangles before closing the page. Candidate selection rectangles
-  are already top-left page coordinates and supply only the replacement X
+  scalars, preserving internal printable ASCII, whitespace, and punctuation
+  only when another drawable scalar follows on the same logical run. Newlines,
+  controls, unsupported non-ASCII text, and trailing bridges terminate a run.
+  It then calls `selectContent()` once per grouped span and copies the selected
+  text, rectangles, and resolved boundary points before closing the page.
+  Candidate selection rectangles and boundary points are already top-left page
+  coordinates; their complete horizontal union supplies the replacement X
   interval and source advance. The worker collects page-line rectangles from
   `getTextContents()` and falls back to one whole-page selection when needed.
   A candidate line match requires positive horizontal overlap and a candidate
