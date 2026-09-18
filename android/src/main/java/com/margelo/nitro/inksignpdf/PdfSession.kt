@@ -273,6 +273,13 @@ internal class PdfSession private constructor(
                   "candidates=${extraction.candidateCount} " +
                   "acceptedGroupedRuns=${extraction.acceptedGroupedRunCount} " +
                   "rejectedGeometry=${extraction.rejectedGeometryCount} " +
+                  "singleRectangleSpans=${extraction.singleRectangleSpanCount} " +
+                  "mergedSameLineSpans=${extraction.mergedSameLineSpanCount} " +
+                  "mergedFragments=${extraction.mergedFragmentCount} " +
+                  "rejectedMultiLineMappings=${extraction.rejectedMultiLineMappingCount} " +
+                  "unusableGeometryRejections=${extraction.rejectedUnusableGeometryCount} " +
+                  "preparationRejections=${extraction.preparationRejectionCount} " +
+                  "scaleRejections=${extraction.scaleRejectionCount} " +
                   "textContents=${textContents.size} " +
                   "selection=$selectionSummary",
               )
@@ -338,17 +345,17 @@ private fun resolveCompatibilitySelection(
       rejectedGeometryCount += 1
       return@forEach
     }
-    var copiedSpan = false
-    selectedContents.forEach { content ->
-      val text = content.text
-      val bounds = content.bounds
-        .map { android.graphics.RectF(it) }
-      if (text.isNotEmpty() && bounds.isNotEmpty()) {
-        spans += PdfCompatibilityTextSpan(text = text, bounds = bounds)
-        copiedSpan = true
-      }
+    val selectedText = buildString {
+      selectedContents.forEach { append(it.text) }
     }
-    if (!copiedSpan) rejectedGeometryCount += 1
+    val selectedBounds = selectedContents.flatMap { content ->
+      content.bounds.map { android.graphics.RectF(it) }
+    }
+    if (selectedText.isNotEmpty() && selectedBounds.isNotEmpty()) {
+      spans += PdfCompatibilityTextSpan(text = selectedText, bounds = selectedBounds)
+    } else {
+      rejectedGeometryCount += 1
+    }
   }
   return PdfCompatibilitySelection(candidates.size, spans.toList(), rejectedGeometryCount)
 }
