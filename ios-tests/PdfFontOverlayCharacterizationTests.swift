@@ -1,10 +1,52 @@
 import Foundation
+import CoreGraphics
+import CoreText
 import PDFKit
 import XCTest
 
 @testable import ReactNativeInkSignPdf
 
 final class PdfFontOverlayCharacterizationTests: XCTestCase {
+  func testCompatibilityRunMasksUniversalScalarsWithoutChangingText() throws {
+    let run = InkSignPdfCompatibilityTextRun(
+      text: "A שלום",
+      bounds: CGRect(x: 10, y: 20, width: 80, height: 20),
+      fontSize: 18,
+      color: .black,
+      fontStyle: .init(bold: false, italic: false),
+      direction: .rightToLeft)
+    let attributed = run.makeAttributedString()
+
+    XCTAssertEqual(attributed.string, "A שלום")
+    let asciiColor = try XCTUnwrap(
+      attributed.attribute(NSAttributedString.Key(kCTForegroundColorAttributeName as String),
+                           at: 0,
+                           effectiveRange: nil) as? CGColor)
+    let hebrewColor = try XCTUnwrap(
+      attributed.attribute(NSAttributedString.Key(kCTForegroundColorAttributeName as String),
+                           at: 2,
+                           effectiveRange: nil) as? CGColor)
+    XCTAssertEqual(asciiColor.alpha, 0, accuracy: 0.001)
+    XCTAssertGreaterThan(hebrewColor.alpha, 0)
+  }
+
+  func testCompatibilityExtractionProducesCanonicalRunsForFixture() throws {
+    let bundle = Bundle(for: PdfFontOverlayCharacterizationTests.self)
+    let fixtureURL = try XCTUnwrap(
+      bundle.url(forResource: "nonembedded-identity-text", withExtension: "pdf"))
+    let document = try XCTUnwrap(PDFDocument(url: fixtureURL))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
+
+    let runs = InkSignPdfCompatibilityTextExtractor.extract(from: page, geometry: geometry)
+
+    XCTAssertTrue(runs.contains { $0.text.contains("שלום") })
+    XCTAssertTrue(runs.allSatisfy {
+      $0.fontSize > 0 && $0.bounds.minX >= 0 && $0.bounds.minY >= 0 &&
+        $0.bounds.maxX <= geometry.mediaBox.width && $0.bounds.maxY <= geometry.mediaBox.height
+    })
+  }
+
   func testPDFKitRecoversUnicodeAndFinitePlacementFromUnembeddedIdentityFont() throws {
     let bundle = Bundle(for: PdfFontOverlayCharacterizationTests.self)
     let fixtureURL = try XCTUnwrap(

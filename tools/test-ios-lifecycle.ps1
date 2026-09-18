@@ -20,6 +20,7 @@ $historyPath = Join-Path $root "ios\History.swift"
 $textStatePath = Join-Path $root "ios\TextState.swift"
 $textInteractionPath = Join-Path $root "ios\TextInteraction.swift"
 $textRenderingPath = Join-Path $root "ios\TextRendering.swift"
+$compatibilityTextPath = Join-Path $root "ios\CompatibilityText.swift"
 $exportPath = Join-Path $root "ios\PdfView+Export.swift"
 $policyPath = Join-Path $root "ios\CacheArtifacts.swift"
 $startupPath = Join-Path $root "ios\ReactNativeInkSignPdfStartup.m"
@@ -38,6 +39,7 @@ $history = Get-Content -LiteralPath $historyPath -Raw
 $textState = Get-Content -LiteralPath $textStatePath -Raw
 $textInteraction = Get-Content -LiteralPath $textInteractionPath -Raw
 $textRendering = Get-Content -LiteralPath $textRenderingPath -Raw
+$compatibilityText = Get-Content -LiteralPath $compatibilityTextPath -Raw
 $export = Get-Content -LiteralPath $exportPath -Raw
 $policy = Get-Content -LiteralPath $policyPath -Raw
 $startup = Get-Content -LiteralPath $startupPath -Raw
@@ -123,6 +125,12 @@ Assert-Contains $textRendering 'drawForPDF' 'iOS export text rendering has a wor
 Assert-Contains $textRendering 'canonicalToPDFTransform' 'iOS text export uses canonical PDF coordinates'
 Assert-Contains $textRendering 'format\.opaque = false' 'iOS text fallback is transparent'
 Assert-Contains $textRendering 'exportPixelsPerPageUnit' 'iOS text fallback has fixed canonical resolution'
+Assert-Contains $compatibilityText 'struct InkSignPdfCompatibilityTextRun' 'iOS compatibility text uses immutable runs'
+Assert-Contains $compatibilityText 'isTransparentScalar' 'iOS compatibility text masks universal scalars'
+Assert-Contains $compatibilityText 'CTFontCreateForString' 'iOS compatibility text resolves system fallback fonts'
+Assert-Contains $compatibilityText 'enum InkSignPdfCompatibilityTextExtractor' 'iOS compatibility text has a PDFKit extractor'
+Assert-Contains $compatibilityText 'page.characterBounds' 'iOS compatibility text captures PDFKit geometry'
+Assert-Contains $compatibilityText 'drawForPreview' 'iOS compatibility text has a worker-safe preview renderer'
 Assert-Contains $textState 'InkSignPdfTextRenderer\.intrinsicSize' 'iOS committed and transient text share renderer metrics'
 Assert-Contains $view 'var defaultTextFontSize: Double\?' 'iOS text font prop is stored'
 Assert-Contains $view 'var onStateChange: \(\(StateChangeEvent\) -> Void\)\?' 'iOS coarse interaction state callback exists'
@@ -265,6 +273,7 @@ Assert-Contains $preview 'format\.scale = max\(request\.key\.density, 1\)' 'prev
 Assert-Contains $preview 'getDrawingTransform' 'preview maps the rotated media box explicitly'
 Assert-Contains $preview 'canonicalToPDF' 'preview maps canonical zero-origin ink explicitly'
 Assert-Contains $preview 'InkSignPdfTextRenderer\.drawForPreview' 'preview draws committed text without UI presentation'
+Assert-Contains $preview 'request\.compatibilityTextRuns' 'preview draws the immutable compatibility snapshot'
 Assert-Contains $preview 'context\.cgContext\.drawPDFPage\(pageRef\)' 'preview draws the worker-owned PDF page through CGContext'
 Assert-NotContains $preview 'pageRef\.draw\(' 'preview avoids the invalid inverse PDF drawing call'
 Assert-NotContains $preview 'pixelSize|size\.width \* scale|size\.height \* scale' 'preview does not multiply logical size before renderer scale'
@@ -272,6 +281,8 @@ Assert-Contains $view 'weak var attachedOverlayPage: PDFPage\?' 'overlay attachm
 Assert-Contains $document 'attachedOverlayPage = page' 'only display callback records overlay owner'
 Assert-Contains $document 'attachedOverlayPage === state\.activePage\.page' 'page switch readiness requires target overlay identity'
 Assert-Contains $document 'attachedOverlayPage === page' 'overlay refresh and detach use page identity'
+Assert-Contains $overlay 'final class InkSignPdfPageOverlayView' 'overlay owns a retained compatibility/text container'
+Assert-Contains $overlay 'compatibilityTextView' 'overlay layers compatibility text below the canvas'
 Assert-NotContains $document 'canvasView\.superview != nil' 'overlay superview is not readiness authority'
 Assert-NotContains $document 'let startPoint: CGPoint' 'edge gesture has no unused start point'
 $displayIndex = $document.IndexOf('attachedOverlayPage = page')

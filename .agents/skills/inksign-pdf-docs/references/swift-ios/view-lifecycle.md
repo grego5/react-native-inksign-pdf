@@ -19,11 +19,14 @@
 ## View hierarchy and readiness
 
 - PDFView is the clipped document/navigation container. A retained page-overlay
-  provider supplies one transparent PKCanvasView for the active page; the
-  provider is retained because PDFView.pageOverlayViewProvider is weak.
-- Install the provider before the document. It returns the retained canvas only
-  for the active page, and PDFKit may detach/re-attach it during layout without
-  changing committed history.
+  provider supplies one transparent container for the active page; the
+  container layers a noninteractive compatibility-text view below the stable
+  PKCanvasView. The provider is retained because
+  PDFView.pageOverlayViewProvider is weak.
+- Install the provider before the document. It returns the retained container
+  only for the active page, and PDFKit may detach/re-attach it during layout
+  without changing committed history. `PdfView.canvasView` remains the stable
+  PencilKit accessor; text editing remains a child of that canvas.
 - willDisplayOverlayView records the attached PDFPage. Transform refresh,
   drawing installation, and page-switch completion require that page to equal
   the active page; stale detaches cannot clear a newer attachment.
@@ -61,6 +64,11 @@
   direction, and physical direction. A committed handoff retains the selected
   snapshot until the live target overlay is ready; layout churn and detachment
   cannot replace it.
+
+- Each page also retains immutable compatibility-text display metadata extracted
+  on `loadQueue`. It is installed only for the matching active page and
+  generation, cleared on detach/replacement/disposal, and is excluded from
+  history, revisions, dirty state, and export.
 
 ## Disposal
 

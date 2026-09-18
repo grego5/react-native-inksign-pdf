@@ -103,10 +103,40 @@ final class InkCanvasView: PKCanvasView {
   }
 }
 
+/// PDFKit retains the page overlay container for presentation. Compatibility
+/// text is a noninteractive back layer; PencilKit and the existing text editor
+/// remain owned by the stable canvas accessor.
+final class InkSignPdfPageOverlayView: UIView {
+  let compatibilityTextView = InkSignPdfCompatibilityTextView()
+  let canvasView = InkCanvasView()
+
+  override init(frame: CGRect) {
+    super.init(frame: frame)
+    backgroundColor = .clear
+    isOpaque = false
+    compatibilityTextView.frame = bounds
+    compatibilityTextView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    canvasView.frame = bounds
+    canvasView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    addSubview(compatibilityTextView)
+    addSubview(canvasView)
+  }
+
+  required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    let hit = super.hitTest(point, with: event)
+    if hit === self || hit === compatibilityTextView { return nil }
+    return hit
+  }
+}
+
 /// Retained because PDFView.pageOverlayViewProvider is weak.
 final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
   weak var owner: PdfView?
-  let canvasView = InkCanvasView()
+  let overlayView = InkSignPdfPageOverlayView()
+
+  var canvasView: InkCanvasView { overlayView.canvasView }
 
   override init() {
     super.init()
@@ -115,16 +145,16 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
 
   func pdfView(_: PDFView, overlayViewFor page: PDFPage) -> UIView? {
     guard let owner, owner.isSupportedPage(page) else { return nil }
-    return canvasView
+    return overlayView
   }
 
   func pdfView(_: PDFView, willDisplayOverlayView overlayView: UIView, for page: PDFPage) {
-    guard let owner, overlayView === canvasView else { return }
+    guard let owner, overlayView === self.overlayView else { return }
     owner.overlayDidDisplay(canvasView, for: page)
   }
 
   func pdfView(_: PDFView, willEndDisplayingOverlayView overlayView: UIView, for page: PDFPage) {
-    guard let owner, overlayView === canvasView else { return }
+    guard let owner, overlayView === self.overlayView else { return }
     owner.overlayDidEndDisplaying(canvasView, for: page)
   }
 }

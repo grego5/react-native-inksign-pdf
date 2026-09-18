@@ -2,7 +2,7 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Implemented; macOS/Xcode and device pixel validation pending
 
 Depends on: [Task 01](01-establish-overlay-contract-and-fixture.md)
 

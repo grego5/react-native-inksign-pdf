@@ -31,6 +31,7 @@ struct InkSignPdfPageTurnPreviewRequest {
   let key: InkSignPdfPageTurnPreviewKey
   let sourceURL: URL
   let drawingData: Data
+  let compatibilityTextRuns: [InkSignPdfCompatibilityTextRun]
   let textAnnotations: [InkSignPdfTextAnnotation]
   let size: CGSize
   let frame: CGRect
@@ -88,6 +89,13 @@ final class InkSignPdfPageTurnPreviewView: UIView {
       context.cgContext.concatenate(pdfToPreview)
       context.cgContext.drawPDFPage(pageRef)
       context.cgContext.restoreGState()
+
+      _ = InkSignPdfCompatibilityTextRenderer.drawForPreview(
+        request.compatibilityTextRuns,
+        pageSize: mediaBox.size,
+        mediaBox: mediaBox,
+        pdfToPreview: pdfToPreview,
+        in: context.cgContext)
 
       // Canonical ink is zero-origin, top-left page space. Move it into the
       // PDF media box and flip it before applying the same page presentation.

@@ -30,10 +30,18 @@ final class InkSignPdfPageState {
 
   var contentRevision: UInt64 { history.revision }
 
-  init(index: Int, page: PDFPage, geometry: PageGeometry) {
+  /// Immutable display metadata extracted during load; intentionally outside
+  /// history, revisions, and export snapshots.
+  let compatibilityTextRuns: [InkSignPdfCompatibilityTextRun]
+
+  init(index: Int,
+       page: PDFPage,
+       geometry: PageGeometry,
+       compatibilityTextRuns: [InkSignPdfCompatibilityTextRun] = []) {
     self.index = index
     self.page = page
     self.geometry = geometry
+    self.compatibilityTextRuns = compatibilityTextRuns
   }
 }
 

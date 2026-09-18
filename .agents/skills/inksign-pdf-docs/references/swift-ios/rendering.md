@@ -23,6 +23,14 @@
   explicit-line layout uses one top-left canonical coordinate convention and
   natural Unicode/bidirectional shaping. Preview and export never include the
   transient editor or selection outline.
+- PDFKit compatibility text is extracted once during document loading into
+  immutable page-local runs outside content history. A noninteractive overlay
+  view renders those runs beneath PencilKit using the validated
+  `pageToOverlayTransform`; page-turn preview requests carry the same runs and
+  render them between the source PDF and committed markup. Universal
+  ASCII/control scalars remain transparent, while non-ASCII scalars are drawn
+  only when the iOS system font reports a glyph. Compatibility runs never enter
+  export or content revisions.
 - Android retains the page-space contour and replaceable-prediction renderer
   described by the shared stroke-engine references.
 
