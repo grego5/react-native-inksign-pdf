@@ -5,22 +5,27 @@
 - At PDF-session open, the PDF worker groups adjacent drawable non-ASCII
   scalars, preserving only internal whitespace and punctuation, then calls
   `selectContent()` once per grouped span. It copies the selected text and
-  `PdfPageTextContent` rectangles before closing the page. These rectangles are
-  already top-left page coordinates and provide both placement and replacement
-  size; no font size or advance is derived from integer selection boundary
-  points. Vertically overlapping fragments from one selected span are clustered
-  and unioned into one visual-line rectangle, preserving the complete text for
-  one bidi-shaped run. Multiple line clusters are accepted only when explicit
-  newline text maps each text portion to one cluster; ambiguous mappings are
-  omitted. Each accepted run is shaped once with Android's default sans-serif
-  fallback and platform bidi direction. Its text size is fitted from the
-  selected rectangle's height and font metrics, its baseline is derived from
-  the same metrics, and horizontal fitting is accepted only within a bounded
-  scale range. ASCII, whitespace, control, and unavailable scalars remain in
-  the shaping context but are painted transparent, so existing source Latin,
-  numbers, punctuation, and borders are not doubled. Each display tile applies
-  its tile transform and draws intersecting prepared layouts after
-  `PdfRendererPreV`; page-turn previews delegate to the same tile renderer.
+  candidate rectangles before closing the page. Candidate selection rectangles
+  are already top-left page coordinates and supply only the replacement X
+  interval and source advance. The worker collects page-line rectangles from
+  `getTextContents()` and falls back to one whole-page selection when needed.
+  A candidate line match requires positive horizontal overlap and a candidate
+  center-Y contained by the line with one point of tolerance; overlap, vertical
+  center distance, and stable line index determine the match. The matched line
+  supplies Y, height, font size, and baseline while the candidate supplies
+  left/right. A candidate rectangle with usable height may stand alone when no
+  line matches. Vertically overlapping fragments from one selected span are
+  clustered and unioned into one visual-line rectangle, preserving the complete
+  text for one bidi-shaped run. Multiple line clusters are accepted only when
+  explicit newline text maps each text portion to one cluster; ambiguous
+  mappings are omitted. Each accepted run is shaped once with Android's default
+  sans-serif fallback and platform bidi direction. Horizontal fitting is
+  accepted only within a bounded scale range. ASCII, whitespace, control, and
+  unavailable scalars remain in the shaping context but are painted transparent,
+  so existing source Latin, numbers, punctuation, and borders are not doubled.
+  Each display tile applies its tile transform and draws intersecting prepared
+  layouts after `PdfRendererPreV`; page-turn previews delegate to the same tile
+  renderer.
   Runs retain their prepared transforms, are generation-bound worker state, and
   never enter history, callbacks, or export. Malformed, unresolved, multi-line
   ambiguous, or unusably scaled selected geometry is omitted without failing

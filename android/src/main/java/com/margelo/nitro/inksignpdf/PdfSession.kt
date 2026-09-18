@@ -323,6 +323,7 @@ internal class PdfSession private constructor(
               candidateCount = selection.candidateCount,
               spans = selection.spans,
               initialRejectedGeometryCount = selection.rejectedGeometryCount,
+              collectDiagnostics = BuildConfig.DEBUG,
             )
             compatibilityRuns += extraction.runs
             mapTotalCandidates += extraction.candidateCount
@@ -369,13 +370,13 @@ internal class PdfSession private constructor(
                     PdfCompatibilityMapLogger.log(
                       "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
                         "stage=preparation part=$partIndex " +
-                        "measuredWidth=${preparation.measuredWidth} " +
-                        "sourceWidth=${preparation.sourceWidth} " +
-                        "sourceHeight=${preparation.sourceHeight} " +
-                        "fontSize=${preparation.fontSize} " +
-                        "horizontalScale=${preparation.horizontalScale} " +
-                        "baseline=${preparation.baseline} " +
-                        "layout=${preparation.layoutWidth}x${preparation.layoutHeight} " +
+                        "measuredWidth=${preparation.details?.measuredWidth} " +
+                        "sourceWidth=${preparation.details?.sourceWidth} " +
+                        "sourceHeight=${preparation.details?.sourceHeight} " +
+                        "fontSize=${preparation.details?.fontSize} " +
+                        "horizontalScale=${preparation.details?.horizontalScale} " +
+                        "baseline=${preparation.details?.baseline} " +
+                        "layout=${preparation.details?.layoutWidth}x${preparation.details?.layoutHeight} " +
                         "rejection=${preparation.rejection}",
                     )
                   }

@@ -137,6 +137,7 @@ class PdfCompatibilityTextTest {
       ),
     )
 
+    assertNull(matchCompatibilityTextLine(rect(150f, 25f, 160f, 26f), lines))
     assertNull(matchCompatibilityTextLine(rect(150f, 35f, 160f, 36f), lines))
     assertTrue(isUsableCompatibilityStandaloneBounds(rect(150f, 25f, 160f, 30f)))
     assertFalse(isUsableCompatibilityStandaloneBounds(rect(150f, 25f, 160f, 26f)))
