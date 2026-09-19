@@ -40,12 +40,21 @@ stored state or the JavaScript boundary.
   receives PDF bytes, points, or per-frame geometry.
 - Native layers own PDF sessions, viewport/input conversion, text and ink
   presentation, page-local history, and export. Android uses the shared C++
-  page-space outline engine; iOS uses PDFKit/PencilKit.
+  page-space outline engine; iOS uses PDFKit/PencilKit. The shared PDFium
+  session is a move-only, byte-backed C++ owner whose process-wide library
+  lease is released only after the last document closes. PDFium calls and
+  document destruction remain confined to the creating serial worker; page
+  and text-page handles are temporary extraction scopes and never enter a
+  returned snapshot.
 - UI state and callbacks are main/UI-thread-owned. PDF parsing, tile rendering,
   and export run on serial workers. The C++ engine is synchronous, caller-owned,
   and independent of UIKit, Android, and React Native.
 - Android and iOS text-field hints are immutable placement metadata. They stay
   outside content, history, dirty state, previews, export, and JavaScript.
+- Shared positioned-text snapshots use repository-owned value types in
+  canonical page coordinates. A result envelope carries only the platform
+  generation, page index, and an immutable detached page snapshot; it does not
+  carry PDFium handles, pointers, or platform containers.
 
 ## Public contract
 

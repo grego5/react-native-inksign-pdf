@@ -35,6 +35,7 @@
     "cpp/modeling/SignatureBrushTipModeler.hpp",
     "cpp/modeling/VelocityWidthModel.cpp",
     "cpp/modeling/VelocityWidthModel.hpp",
+    "cpp/pdfium",
     "cpp/upstream",
     "third_party",
     "tools/fetch-pdfium-ios.mjs",

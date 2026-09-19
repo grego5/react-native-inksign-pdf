@@ -39,7 +39,8 @@ $suiteTests = @{
         "CommittedCenterlineTests",
         "ContactLifecycleTests",
         "VelocityWidthModelTests",
-        "FrameTransportTests"
+        "FrameTransportTests",
+        "PositionedTextModelTests"
     )
 }
 
@@ -59,7 +60,8 @@ $allTests = @(
     "UpstreamGeometryTests",
     "UpstreamPolicyTests",
     "UpstreamOutputTests",
-    "FrameTransportTests"
+    "FrameTransportTests",
+    "PositionedTextModelTests"
 )
 
 function Stop-Runner([string]$Message, [int]$Code = 2) {

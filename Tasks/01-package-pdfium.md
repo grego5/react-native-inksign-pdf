@@ -28,7 +28,10 @@ experimental until macOS/Xcode validation is available.
 
 ## Current behavior and invariants
 
-- PDFium is pinned and packaged under `third_party/pdfium`.
+- PDFium headers, licenses, and provenance are tracked under
+  `third_party/pdfium`; downloaded Android archives are staged under the
+  ignored `android/build/pdfium` directory and the iOS XCFramework under
+  ignored `ios/build`.
 - Android builds one `ReactNativeInkSignPdf` shared library for configured React
   Native ABIs and final-links the static Android PDFium archive for each ABI.
   iOS source is packaged through CocoaPods with the release-hosted static
@@ -68,6 +71,11 @@ experimental until macOS/Xcode validation is available.
 - Build the pod or iOS test host when macOS/Xcode is available.
 - Verify static archive magic/type, required symbols, architecture members,
   package contents, checksums, and required headers.
+- `npm run verify:pdfium` performs metadata-only verification and reports
+  `SKIP` when downloaded binaries are unavailable; use
+  `tools\verify-pdfium.ps1 -Mode local -Platform android` (or `ios`) to
+  require installed build artifacts, and `-Mode release -ArchiveDirectory`
+  to verify pinned release archives and their extracted contents.
 - Run `git diff --check -- ':!nitrogen/generated/**'`.
 - If iOS infrastructure is unavailable, report the exact unvalidated slices and command.
 

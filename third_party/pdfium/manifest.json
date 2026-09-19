@@ -26,73 +26,6 @@
     "staticBuildNote": "The repository workflow builds from the pinned upstream PDFium source using bblanchon/pdfium-binaries build tooling; only final release assets are distributed."
   },
   "distribution": {
-    "status": "legacy upstream artifact metadata retained for provenance and comparison; current consumers use staticRelease",
-    "repository": "https://github.com/bblanchon/pdfium-binaries",
-    "release": "chromium/8021",
-    "releaseCommit": "9dd99a8991bed3a2f37658a31bcd5b403800fd03",
-    "artifactBaseUrl": "https://github.com/bblanchon/pdfium-binaries/releases/download/chromium%2F8021/",
-    "artifacts": [
-      {
-        "file": "pdfium-android-arm64.tgz",
-        "sha256": "7d36c0ccbc436ec5ae0ba7ee4fff6c54d2766b7d9c4108b38b6a546a9a04ac8f",
-        "archiveBytes": 3357611,
-        "target": "android",
-        "abi": "arm64-v8a",
-        "buildType": "static",
-        "expectedElfMachine": "AARCH64",
-        "packagedLibrary": "android/arm64-v8a/libpdfium.a",
-        "packagedLibraryBytes": 43353282,
-        "packagedLibrarySha256": "f56953648681f8e8f58cd2762f6bdf0eef7be46c9b1133cdcaec2bcd111996a4"
-      },
-      {
-        "file": "pdfium-android-x64.tgz",
-        "sha256": "e90fc32f0bfcf398b9312d430abab1e202062bc78f97008b48ce468e5f907161",
-        "archiveBytes": 3466689,
-        "target": "android",
-        "abi": "x86_64",
-        "buildType": "static",
-        "expectedElfMachine": "X86_64",
-        "packagedLibrary": "android/x86_64/libpdfium.a",
-        "packagedLibraryBytes": 43171116,
-        "packagedLibrarySha256": "637878e9b8a7d14451d996cd8a62b8c6eb5d652e443468f39a4eeb4b3de9fe42"
-      },
-      {
-        "file": "pdfium-ios-device-arm64.tgz",
-        "sha256": "9832bdb08bd4522c0ae4c7cd8eebdedc14e2281fbef2a2450fde948ddd7c200d",
-        "archiveBytes": 3294880,
-        "target": "ios",
-        "slice": "ios-arm64",
-        "buildType": "shared",
-        "validation": "experimental-unvalidated",
-        "packagedLibrary": "ios/PDFium.xcframework/ios-arm64/PDFium.framework/PDFium",
-        "packagedLibraryBytes": 6868232,
-        "packagedLibrarySha256": "8ce62d91b531b5abf740270b18fc6c60af1120e9a7e28fff6a2242186b71e5ee"
-      },
-      {
-        "file": "pdfium-ios-simulator-arm64.tgz",
-        "sha256": "7420517cb81e7096b8c0fbb71a2a06c9e9f62ea323d75e492f0f1b212629044c",
-        "archiveBytes": 3388367,
-        "target": "ios",
-        "slice": "ios-arm64-simulator",
-        "buildType": "shared",
-        "validation": "experimental-unvalidated",
-        "packagedLibrary": "ios/PDFium.xcframework/ios-arm64-simulator/PDFium.framework/PDFium",
-        "packagedLibraryBytes": 7007088,
-        "packagedLibrarySha256": "44a1dbb980b0f24f7c17cc62df90c68535761ef3c45cff9065e2d4e481b49427"
-      },
-      {
-        "file": "pdfium-ios-simulator-x64.tgz",
-        "sha256": "f5f4b887af8f2a4a5a4ad54dc76c53f992546e4e2aaf0eda5b632b278489dbdd",
-        "archiveBytes": 3536319,
-        "target": "ios",
-        "slice": "ios-x86_64-simulator",
-        "buildType": "shared",
-        "validation": "experimental-unvalidated",
-        "packagedLibrary": "ios/PDFium.xcframework/ios-x86_64-simulator/PDFium.framework/PDFium",
-        "packagedLibraryBytes": 7280552,
-        "packagedLibrarySha256": "b57dc4b3a5ef0f1c34a5575c9660ebe3a4c953c299d7aba0f99ad0f328a63f42"
-      }
-    ],
     "staticRelease": {
       "repository": "https://github.com/grego5/react-native-inksign-pdf",
       "tag": "pdfium-154.0.8021.0-static",
@@ -109,6 +42,46 @@
       "iosSlices": [
         "ios-arm64",
         "ios-arm64_x86_64-simulator"
+      ],
+      "artifacts": [
+        {
+          "target": "android",
+          "buildType": "static",
+          "abi": "arm64-v8a",
+          "architecture": "AARCH64",
+          "packagedLibrary": "android/build/pdfium/arm64-v8a/libpdfium.a",
+          "packagedLibraryBytes": 43380320,
+          "packagedLibrarySha256": "896350eb8b7c74c50fa730962a0294bbdb6c1fe478ff97827029c4493d7fcac1",
+          "expectedElfMachine": "AARCH64"
+        },
+        {
+          "target": "android",
+          "buildType": "static",
+          "abi": "x86_64",
+          "architecture": "X86_64",
+          "packagedLibrary": "android/build/pdfium/x86_64/libpdfium.a",
+          "packagedLibraryBytes": 43193790,
+          "packagedLibrarySha256": "f7bd6404f2bbfc7be45fe1ce2f47e93f62e80471b5e4262307b8255e5eb58e51",
+          "expectedElfMachine": "X86_64"
+        },
+        {
+          "target": "ios",
+          "buildType": "static",
+          "slice": "ios-arm64",
+          "architectures": ["arm64"],
+          "packagedLibrary": "ios/build/PDFium.xcframework/ios-arm64/PDFium.framework/PDFium",
+          "packagedLibraryBytes": 261153176,
+          "packagedLibrarySha256": "a5380bf5e962760d94b3d0c03106140b47ee0489e3adefeeb686b0e658313f63"
+        },
+        {
+          "target": "ios",
+          "buildType": "static",
+          "slice": "ios-arm64_x86_64-simulator",
+          "architectures": ["arm64", "x86_64"],
+          "packagedLibrary": "ios/build/PDFium.xcframework/ios-arm64_x86_64-simulator/PDFium.framework/PDFium",
+          "packagedLibraryBytes": 525814000,
+          "packagedLibrarySha256": "402dce298d061df91e77fc9c1764b77a242f2bc12dd1d4a43de46cfb0c70e420"
+        }
       ]
     }
   },
@@ -133,19 +106,20 @@
     "baseline": "No PDFium binary was present before this task; the incremental value is therefore the packaged library size. Android values are static archive sizes; iOS runtime validation remains experimental.",
     "androidReleaseAbi": {
       "abi": "arm64-v8a",
-      "incrementalBytes": 43353282
+      "incrementalBytes": 43380320
     },
     "androidX86_64": {
       "abi": "x86_64",
-      "incrementalBytes": 43171116
+      "incrementalBytes": 43193790
     },
     "iosDeviceSlice": {
       "slice": "ios-arm64",
-      "incrementalBytes": 6868232
+      "incrementalBytes": 261153176
     },
-    "simulatorSlices": {
-      "arm64Bytes": 7007088,
-      "x86_64Bytes": 7280552
+    "simulatorSlice": {
+      "slice": "ios-arm64_x86_64-simulator",
+      "architectures": ["arm64", "x86_64"],
+      "incrementalBytes": 525814000
     }
   }
 }

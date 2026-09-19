@@ -2,7 +2,7 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Complete
 
 Depends on: [Task 01](01-package-pdfium.md)
 
@@ -66,6 +66,18 @@ platform-neutral positioned-text value model without connecting it to UI code.
 - PDFium global/document/page ownership is explicit and leak-safe.
 - The normalized model has no platform or PDFium types.
 - Document construction does not extract page text.
+
+## Delivered
+
+- Added the shared C++20 PDFium library lease and move-only byte-backed
+  document session under `cpp/pdfium`.
+- Added scoped page/text-page ownership for lazy page inspection, plus worker
+  thread checks and serialized PDFium calls.
+- Added immutable platform-neutral positioned-character/page snapshots and the
+  generation/page result envelope.
+- Added host value-model coverage and Android native lifecycle coverage for
+  invalid input, repeated sessions, page inspection, invalid pages, and
+  deterministic close order.
 
 ## Proposed commit title
 

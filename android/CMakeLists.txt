@@ -11,7 +11,7 @@ else()
 endif()
 
 set(PDFIUM_ROOT "${CMAKE_CURRENT_LIST_DIR}/../third_party/pdfium")
-set(PDFIUM_LIBRARY "${PDFIUM_ROOT}/android/${ANDROID_ABI}/libpdfium.a")
+set(PDFIUM_LIBRARY "${CMAKE_CURRENT_LIST_DIR}/build/pdfium/${ANDROID_ABI}/libpdfium.a")
 if(NOT EXISTS "${PDFIUM_LIBRARY}")
   message(FATAL_ERROR
     "PDFium is not packaged for Android ABI ${ANDROID_ABI}: ${PDFIUM_LIBRARY}")
@@ -42,7 +42,10 @@ target_compile_features(UpstreamStrokeGeometry PUBLIC cxx_std_20)
 add_library(ReactNativeInkSignPdf SHARED
   src/main/cpp/cpp-adapter.cpp
   src/main/cpp/pdfium_smoke.cpp
+  src/main/cpp/pdfium_session_smoke.cpp
   src/main/cpp/StrokeEngine.cpp
+  ../cpp/pdfium/PdfiumDocumentSession.cpp
+  ../cpp/pdfium/PositionedTextModel.cpp
   ../cpp/StrokeEngine.cpp
   ../cpp/engine/StrokeEngineInternal.cpp
   ../cpp/engine/StrokeEngineProcessing.cpp

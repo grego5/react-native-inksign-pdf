@@ -7,8 +7,9 @@ exact revision and build provenance.
 
 The native binaries are not committed to Git. They are published as checksummed
 assets in the `pdfium-154.0.8021.0-static` GitHub Release and downloaded when
-needed. The manifest records the release assets, checksums, architectures, and
-size measurements.
+needed into the ignored `android/build/pdfium` and `ios/build` directories. The
+manifest records the release assets, checksums, architectures, and size
+measurements.
 
 Android uses static `libpdfium.a` archives that are final-linked into the native
 module. No separate `libpdfium.so` is packaged. iOS uses the release-hosted

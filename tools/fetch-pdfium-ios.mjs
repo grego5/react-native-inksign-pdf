@@ -8,8 +8,7 @@ import https from 'node:https'
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const manifestPath = path.join(packageRoot, 'third_party', 'pdfium', 'manifest.json')
-const xcframeworkPath = path.join(packageRoot, 'third_party', 'pdfium', 'ios', 'PDFium.xcframework')
-const required = process.env.INKSIGN_PDFIUM_IOS_STATIC_REQUIRED === '1'
+const xcframeworkPath = path.join(packageRoot, 'ios', 'build', 'PDFium.xcframework')
 
 if (process.platform !== 'darwin') {
   process.exit(0)
@@ -17,20 +16,45 @@ if (process.platform !== 'darwin') {
 
 function hasStaticArchive(filePath) {
   try {
-    const magic = fs.readFileSync(filePath).subarray(0, 8).toString('ascii')
-    return magic === '!<arch>\n'
+    const bytes = fs.readFileSync(filePath)
+    if (bytes.subarray(0, 8).toString('ascii') === '!<arch>\n') {
+      return true
+    }
+    if (bytes.length < 8) {
+      return false
+    }
+
+    const magic = bytes.readUInt32BE(0)
+    const is64Bit = magic === 0xcafebabf || magic === 0xbfbafeca
+    const isSwapped = magic === 0xbebafeca || magic === 0xbfbafeca
+    if (!is64Bit && magic !== 0xcafebabe && magic !== 0xbebafeca) {
+      return false
+    }
+
+    const readUInt32 = isSwapped
+      ? (offset) => bytes.readUInt32LE(offset)
+      : (offset) => bytes.readUInt32BE(offset)
+    const readOffset = is64Bit
+      ? (offset) => Number(isSwapped ? bytes.readBigUInt64LE(offset) : bytes.readBigUInt64BE(offset))
+      : readUInt32
+    const architectureCount = readUInt32(4)
+    const recordSize = is64Bit ? 32 : 20
+    if (architectureCount === 0 || 8 + architectureCount * recordSize > bytes.length) {
+      return false
+    }
+
+    for (let index = 0; index < architectureCount; index += 1) {
+      const recordOffset = 8 + index * recordSize
+      const sliceOffset = readOffset(recordOffset + 8)
+      if (!Number.isSafeInteger(sliceOffset) || sliceOffset < 0 || sliceOffset + 8 > bytes.length ||
+          bytes.subarray(sliceOffset, sliceOffset + 8).toString('ascii') !== '!<arch>\n') {
+        return false
+      }
+    }
+    return true
   } catch {
     return false
   }
-}
-
-function isStaticXCFramework() {
-  return [
-    'ios-arm64',
-    'ios-arm64_x86_64-simulator',
-  ].every((slice) => hasStaticArchive(
-    path.join(xcframeworkPath, slice, 'PDFium.framework', 'PDFium'),
-  ))
 }
 
 function download(url, destination, redirectCount = 0) {
@@ -64,6 +88,30 @@ function sha256(filePath) {
   return digest.digest('hex')
 }
 
+function assertPinnedAsset(filePath, expectedSha256, expectedBytes, label) {
+  const actualSha256 = sha256(filePath)
+  if (actualSha256 !== expectedSha256?.toLowerCase()) {
+    throw new Error(`PDFium ${label} checksum mismatch: expected ${expectedSha256 ?? 'missing'}, got ${actualSha256}`)
+  }
+  if (expectedBytes != null && fs.statSync(filePath).size !== expectedBytes) {
+    throw new Error(`PDFium ${label} size mismatch: expected ${expectedBytes}, got ${fs.statSync(filePath).size}`)
+  }
+}
+
+function isStaticXCFramework(artifacts) {
+  return artifacts.every((artifact) => {
+    const relativePath = artifact.packagedLibrary.replace(/^ios\/build\/PDFium\.xcframework[\\/]/, '')
+    const binaryPath = path.join(xcframeworkPath, relativePath)
+    try {
+      return hasStaticArchive(binaryPath) &&
+        fs.statSync(binaryPath).size === artifact.packagedLibraryBytes &&
+        sha256(binaryPath) === artifact.packagedLibrarySha256.toLowerCase()
+    } catch {
+      return false
+    }
+  })
+}
+
 function checksumFor(checksumText, assetName) {
   const line = checksumText.split(/\r?\n/).find((candidate) => {
     const trimmed = candidate.trim()
@@ -73,14 +121,18 @@ function checksumFor(checksumText, assetName) {
 }
 
 async function main() {
-  if (isStaticXCFramework()) {
-    return
-  }
-
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
   const release = manifest.distribution?.staticRelease
-  if (!release?.repository || !release?.tag || !release?.iosAsset || !release?.checksumsAsset) {
+  if (!release?.repository || !release?.tag || !release?.iosAsset || !release?.iosAssetSha256 ||
+      !release?.iosAssetBytes || !release?.checksumsAsset || !release?.checksumsAssetSha256) {
     throw new Error('PDFium static iOS release metadata is incomplete')
+  }
+  const iosArtifacts = release.artifacts?.filter((artifact) => artifact.target === 'ios' && artifact.buildType === 'static') ?? []
+  if (iosArtifacts.length === 0) {
+    throw new Error('PDFium static iOS artifact metadata is incomplete')
+  }
+  if (isStaticXCFramework(iosArtifacts)) {
+    return
   }
 
   const baseUrl = `${release.repository}/releases/download/${release.tag}`
@@ -93,43 +145,41 @@ async function main() {
   await download(`${baseUrl}/${release.iosAsset}`, archivePath)
   await download(`${baseUrl}/${release.checksumsAsset}`, checksumPath)
 
-  const expected = checksumFor(fs.readFileSync(checksumPath, 'utf8'), release.iosAsset)
-  const actual = sha256(archivePath)
-  if (!expected || expected !== actual) {
-    throw new Error(`PDFium iOS checksum mismatch: expected ${expected ?? 'missing'}, got ${actual}`)
+  assertPinnedAsset(checksumPath, release.checksumsAssetSha256, release.checksumsAssetBytes, 'checksum-list')
+  assertPinnedAsset(archivePath, release.iosAssetSha256, release.iosAssetBytes, 'iOS archive')
+
+  const listedSha256 = checksumFor(fs.readFileSync(checksumPath, 'utf8'), release.iosAsset)
+  if (listedSha256 !== release.iosAssetSha256.toLowerCase()) {
+    throw new Error(`PDFium checksum-list entry mismatch: expected ${release.iosAssetSha256}, got ${listedSha256 ?? 'missing'}`)
   }
 
   execFileSync('tar', ['-xzf', archivePath, '-C', extractedPath], { stdio: 'inherit' })
   const downloadedXCFramework = path.join(extractedPath, 'PDFium.xcframework')
-  if (!isStaticXCFrameworkAt(downloadedXCFramework)) {
+  if (!isStaticXCFrameworkAt(downloadedXCFramework, iosArtifacts)) {
     throw new Error('Downloaded PDFium XCFramework is not static or is missing a requested slice')
   }
 
-  const dynamicBackup = path.join(path.dirname(xcframeworkPath), 'PDFium.dynamic.xcframework')
-  if (fs.existsSync(xcframeworkPath) && !fs.existsSync(dynamicBackup)) {
-    fs.renameSync(xcframeworkPath, dynamicBackup)
-  } else {
-    fs.rmSync(xcframeworkPath, { recursive: true, force: true })
-  }
+  fs.rmSync(xcframeworkPath, { recursive: true, force: true })
+  fs.mkdirSync(path.dirname(xcframeworkPath), { recursive: true })
   fs.renameSync(downloadedXCFramework, xcframeworkPath)
   console.log(`Installed static PDFium iOS XCFramework from ${baseUrl}/${release.iosAsset}`)
 }
 
-function isStaticXCFrameworkAt(root) {
-  return [
-    'ios-arm64',
-    'ios-arm64_x86_64-simulator',
-  ].every((slice) => hasStaticArchive(
-    path.join(root, slice, 'PDFium.framework', 'PDFium'),
-  ))
+function isStaticXCFrameworkAt(root, artifacts) {
+  return artifacts.every((artifact) => {
+    const relativePath = artifact.packagedLibrary.replace(/^ios\/build\/PDFium\.xcframework[\\/]/, '')
+    const binaryPath = path.join(root, relativePath)
+    try {
+      return hasStaticArchive(binaryPath) &&
+        fs.statSync(binaryPath).size === artifact.packagedLibraryBytes &&
+        sha256(binaryPath) === artifact.packagedLibrarySha256.toLowerCase()
+    } catch {
+      return false
+    }
+  })
 }
 
 main().catch((error) => {
-  if (required) {
-    console.error(error)
-    process.exitCode = 1
-  } else {
-    console.warn(`PDFium static iOS download skipped: ${error.message}`)
-    console.warn('The experimental dynamic XCFramework remains in use.')
-  }
+  console.error(`PDFium static iOS installation failed: ${error.message}`)
+  process.exitCode = 1
 })

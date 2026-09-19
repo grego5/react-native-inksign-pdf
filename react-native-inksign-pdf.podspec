@@ -11,12 +11,14 @@ Pod::Spec.new do |s|
   s.author       = { 'grego5' => 'maintainers@example.invalid' }
   s.platforms    = { :ios => '18.0' }
   s.source       = { :git => 'https://github.com/grego5/react-native-inksign-pdf.git', :tag => s.version.to_s }
-  s.source_files = ['ios/**/*.{h,m,mm,swift}']
-  s.vendored_frameworks = 'third_party/pdfium/ios/PDFium.xcframework'
-  s.preserve_paths = ['third_party/pdfium/include/**/*', 'third_party/pdfium/ios/PDFium.xcframework/**/*']
+  s.source_files = ['ios/**/*.{h,m,mm,swift}', 'cpp/pdfium/**/*.{h,cpp}']
+  s.vendored_frameworks = 'ios/build/PDFium.xcframework'
+  s.preserve_paths = ['third_party/pdfium/include/**/*', 'ios/build/PDFium.xcframework/**/*']
   s.private_header_files = 'third_party/pdfium/include/**/*.h'
   s.pod_target_xcconfig = {
-    'HEADER_SEARCH_PATHS' => '$(inherited) "$(PODS_TARGET_SRCROOT)/third_party/pdfium/include"'
+    'HEADER_SEARCH_PATHS' => '$(inherited) "$(PODS_TARGET_SRCROOT)/third_party/pdfium/include"',
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++20',
+    'CLANG_CXX_LIBRARY' => 'libc++'
   }
   s.requires_arc = true
   s.frameworks   = ['UIKit', 'PDFKit', 'PencilKit', 'QuartzCore', 'CoreGraphics']

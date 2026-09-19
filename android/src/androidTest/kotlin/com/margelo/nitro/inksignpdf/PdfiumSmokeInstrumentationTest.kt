@@ -19,4 +19,9 @@ class PdfiumSmokeInstrumentationTest {
   fun finalNativeModuleInitializesAndDestroysPdfium() {
     assertTrue(NativeTestRuntime.pdfiumSmokeNative())
   }
+
+  @Test
+  fun sharedSessionOwnsBytesAndTemporaryPageHandles() {
+    assertTrue(NativeTestRuntime.pdfiumSessionLifecycleNative())
+  }
 }

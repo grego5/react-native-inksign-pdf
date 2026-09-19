@@ -165,6 +165,12 @@ add_executable(FrameTransportTests
 target_link_libraries(FrameTransportTests PRIVATE StrokeReplay)
 target_compile_definitions(FrameTransportTests PRIVATE
   NSE_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_executable(PositionedTextModelTests
+  cpp/tests/pdfium/PositionedTextModel.test.cpp
+  cpp/pdfium/PositionedTextModel.cpp)
+target_include_directories(PositionedTextModelTests PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
 enable_testing()
 add_test(NAME StrokeEngineTests COMMAND StrokeEngineTests)
 add_test(NAME StrokeBatchTests COMMAND StrokeBatchTests)
@@ -182,3 +188,4 @@ add_test(NAME UpstreamGeometryTests COMMAND UpstreamGeometryTests)
 add_test(NAME UpstreamPolicyTests COMMAND UpstreamPolicyTests)
 add_test(NAME UpstreamOutputTests COMMAND UpstreamOutputTests)
 add_test(NAME FrameTransportTests COMMAND FrameTransportTests)
+add_test(NAME PositionedTextModelTests COMMAND PositionedTextModelTests)

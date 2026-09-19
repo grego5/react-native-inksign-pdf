@@ -8,6 +8,9 @@ internal object NativeTestRuntime {
   @JvmStatic
   external fun pdfiumSmokeNative(): Boolean
 
+  @JvmStatic
+  external fun pdfiumSessionLifecycleNative(): Boolean
+
   fun initialize() {
     if (!NativeLoader.isInitialized()) {
       NativeLoader.init(SystemDelegate())
