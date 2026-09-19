@@ -55,6 +55,16 @@ stored state or the JavaScript boundary.
   canonical page coordinates. A result envelope carries only the platform
   generation, page index, and an immutable detached page snapshot; it does not
   carry PDFium handles, pointers, or platform containers.
+- PDFium text extraction is lazy per page on the session's serial worker.
+  Character boxes, origins, and all matrix corners are converted from the
+  media box's PDF user space to media-box-relative top-left coordinates before
+  publication. Optional color, font, render-mode, and displacement values stay
+  absent or unknown when PDFium cannot provide them; page/text-page handles are
+  always closed before a snapshot is returned.
+- A positioned-character matrix is PDFium's effective text transform with its
+  page-space output converted to canonical coordinates. Character origins are
+  separate per-character positions; the matrix translation need not equal an
+  individual origin.
 
 ## Public contract
 

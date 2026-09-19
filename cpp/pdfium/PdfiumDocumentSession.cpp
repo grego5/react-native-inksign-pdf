@@ -1,10 +1,16 @@
 #include "pdfium/PdfiumDocumentSession.hpp"
 
+#include <fpdf_edit.h>
 #include <fpdf_text.h>
+#include <fpdf_transformpage.h>
 #include <fpdfview.h>
 
+#include <algorithm>
+#include <array>
 #include <cassert>
+#include <cmath>
 #include <limits>
+#include <unordered_map>
 #include <mutex>
 #include <thread>
 #include <utility>
@@ -52,6 +58,110 @@ class ScopedTextPage final {
  private:
   FPDF_TEXTPAGE page_ = nullptr;
 };
+
+bool isFinitePoint(const Point& point) {
+  return std::isfinite(point.x) && std::isfinite(point.y);
+}
+
+bool isFiniteMatrix(const AffineMatrix& matrix) {
+  return std::isfinite(matrix.a) && std::isfinite(matrix.b) &&
+      std::isfinite(matrix.c) && std::isfinite(matrix.d) &&
+      std::isfinite(matrix.e) && std::isfinite(matrix.f);
+}
+
+Point toCanonical(Point point, double mediaLeft, double mediaTop) {
+  return {point.x - mediaLeft, mediaTop - point.y};
+}
+
+// PDFium's effective text matrix has page-space output. Convert only that
+// output; per-character origins are separate and may differ from its offset.
+AffineMatrix toCanonicalMatrix(const FS_MATRIX& matrix,
+                               double mediaLeft,
+                               double mediaTop) {
+  return {
+      static_cast<double>(matrix.a),
+      -static_cast<double>(matrix.b),
+      static_cast<double>(matrix.c),
+      -static_cast<double>(matrix.d),
+      static_cast<double>(matrix.e) - mediaLeft,
+      mediaTop - static_cast<double>(matrix.f)};
+}
+
+Rect toCanonicalBounds(double left,
+                       double bottom,
+                       double right,
+                       double top,
+                       double mediaLeft,
+                       double mediaTop) {
+  const std::array<Point, 4> corners = {
+      toCanonical({left, bottom}, mediaLeft, mediaTop),
+      toCanonical({left, top}, mediaLeft, mediaTop),
+      toCanonical({right, bottom}, mediaLeft, mediaTop),
+      toCanonical({right, top}, mediaLeft, mediaTop),
+  };
+  Rect bounds{
+      std::numeric_limits<double>::infinity(),
+      std::numeric_limits<double>::infinity(),
+      -std::numeric_limits<double>::infinity(),
+      -std::numeric_limits<double>::infinity(),
+  };
+  for (const Point corner : corners) {
+    bounds.left = std::min(bounds.left, corner.x);
+    bounds.top = std::min(bounds.top, corner.y);
+    bounds.right = std::max(bounds.right, corner.x);
+    bounds.bottom = std::max(bounds.bottom, corner.y);
+  }
+  return bounds;
+}
+
+std::optional<RgbaColor> getColor(FPDF_TEXTPAGE textPage,
+                                  int index,
+                                  bool fill) {
+  unsigned int red = 0;
+  unsigned int green = 0;
+  unsigned int blue = 0;
+  unsigned int alpha = 0;
+  const FPDF_BOOL valid = fill
+      ? FPDFText_GetFillColor(
+            textPage, index, &red, &green, &blue, &alpha)
+      : FPDFText_GetStrokeColor(
+            textPage, index, &red, &green, &blue, &alpha);
+  if (!valid) return std::nullopt;
+  return RgbaColor{
+      static_cast<std::uint8_t>(std::min(red, 255U)),
+      static_cast<std::uint8_t>(std::min(green, 255U)),
+      static_cast<std::uint8_t>(std::min(blue, 255U)),
+      static_cast<std::uint8_t>(std::min(alpha, 255U)),
+  };
+}
+
+bool compatibleMatrices(const AffineMatrix& first,
+                        const AffineMatrix& second) {
+  constexpr double kTolerance = 1e-4;
+  return std::abs(first.a - second.a) <= kTolerance &&
+      std::abs(first.b - second.b) <= kTolerance &&
+      std::abs(first.c - second.c) <= kTolerance &&
+      std::abs(first.d - second.d) <= kTolerance;
+}
+
+bool plausibleSameLine(const PositionedCharacter& current,
+                       const PositionedCharacter& next) {
+  const double baselineLength =
+      std::hypot(current.matrix.a, current.matrix.b);
+  if (!(baselineLength > 1e-9)) return false;
+
+  const double deltaX = next.origin.x - current.origin.x;
+  const double deltaY = next.origin.y - current.origin.y;
+  const double baselineX = current.matrix.a / baselineLength;
+  const double baselineY = current.matrix.b / baselineLength;
+  const double along = deltaX * baselineX + deltaY * baselineY;
+  const double across = std::abs(deltaX * baselineY - deltaY * baselineX);
+  const double scale = std::max({1.0, std::abs(current.fontSize),
+                                 std::abs(next.fontSize)});
+  const double distance = std::hypot(deltaX, deltaY);
+  return std::isfinite(distance) && distance <= scale * 16.0 &&
+      along >= -scale * 0.5 && across <= scale * 1.5;
+}
 
 }  // namespace
 
@@ -273,6 +383,196 @@ PdfiumError PdfiumDocumentSession::inspectPage(
   }
   metadata = {pageIndex, width, height, textCount};
   return {};
+}
+
+PdfiumPageExtractionResult PdfiumDocumentSession::extractPage(
+    std::size_t pageIndex) const {
+  PdfiumPageExtractionResult result;
+  if (!impl_) {
+    result.error = {PdfiumErrorCode::Closed,
+                    "PDFium document session is closed"};
+    return result;
+  }
+  if (!ownsWorkerThread()) {
+    assert(false && "PDFium session used outside its creating worker");
+    result.error = {PdfiumErrorCode::WrongThread,
+                    "PDFium session must stay on its creating worker"};
+    return result;
+  }
+  if (pageIndex >= impl_->pageCount) {
+    result.error = {PdfiumErrorCode::InvalidPageIndex,
+                    "PDFium page index is outside the document"};
+    return result;
+  }
+
+  auto& state = libraryState();
+  std::lock_guard apiLock(state.apiMutex);
+  ScopedPage page(FPDF_LoadPage(impl_->document, static_cast<int>(pageIndex)));
+  if (page.get() == nullptr) {
+    const auto error = FPDF_GetLastError();
+    result.error = {PdfiumErrorCode::PageOpenFailed,
+                    "FPDF_LoadPage failed (PDFium error " +
+                        std::to_string(error) + ")"};
+    return result;
+  }
+  ScopedTextPage textPage(FPDFText_LoadPage(page.get()));
+  if (textPage.get() == nullptr) {
+    const auto error = FPDF_GetLastError();
+    result.error = {PdfiumErrorCode::TextPageOpenFailed,
+                    "FPDFText_LoadPage failed (PDFium error " +
+                        std::to_string(error) + ")"};
+    return result;
+  }
+  const int textCount = FPDFText_CountChars(textPage.get());
+  if (textCount < 0) {
+    const auto error = FPDF_GetLastError();
+    result.error = {PdfiumErrorCode::TextCountFailed,
+                    "FPDFText_CountChars failed (PDFium error " +
+                        std::to_string(error) + ")"};
+    return result;
+  }
+
+  float mediaLeft = 0.0F;
+  float mediaBottom = 0.0F;
+  float mediaRight = 0.0F;
+  float mediaTop = 0.0F;
+  if (!FPDFPage_GetMediaBox(page.get(), &mediaLeft, &mediaBottom,
+                            &mediaRight, &mediaTop) ||
+      !(mediaRight > mediaLeft) || !(mediaTop > mediaBottom)) {
+    result.error = {PdfiumErrorCode::PageBoxFailed,
+                    "FPDFPage_GetMediaBox returned an invalid media box"};
+    return result;
+  }
+
+  std::vector<PositionedCharacter> characters;
+  characters.reserve(static_cast<std::size_t>(textCount));
+  std::unordered_map<FPDF_PAGEOBJECT, std::uint32_t> objectOrdinals;
+  std::uint32_t nextOrdinal = 1;
+  for (int index = 0; index < textCount; ++index) {
+    PositionedCharacter character;
+    character.sourceIndex = index;
+    character.unicode = FPDFText_GetUnicode(textPage.get(), index);
+
+    const int generated = FPDFText_IsGenerated(textPage.get(), index);
+    character.generated = generated > 0;
+    const int mapError = FPDFText_HasUnicodeMapError(textPage.get(), index);
+    character.unicodeMapError = mapError > 0;
+
+    const FPDF_PAGEOBJECT textObject =
+        FPDFText_GetTextObject(textPage.get(), index);
+    if (textObject != nullptr) {
+      const auto [it, inserted] = objectOrdinals.emplace(
+          textObject, nextOrdinal);
+      if (inserted) ++nextOrdinal;
+      character.textObjectOrdinal = it->second;
+    }
+
+    std::array<char, 256> fontName{};
+    int fontFlags = 0;
+    const unsigned long fontLength = FPDFText_GetFontInfo(
+        textPage.get(), index, fontName.data(), fontName.size(), &fontFlags);
+    if (fontLength > 0 && fontLength <= fontName.size()) {
+      const std::size_t nameLength =
+          fontName[fontLength - 1] == '\0' ? fontLength - 1 : fontLength;
+      character.font.family.assign(fontName.data(), nameLength);
+      character.font.flags = fontFlags;
+    }
+    character.font.weight = FPDFText_GetFontWeight(textPage.get(), index);
+    character.fontSize = FPDFText_GetFontSize(textPage.get(), index);
+    if (!std::isfinite(character.fontSize)) character.fontSize = 0.0;
+
+    character.fillColor = getColor(textPage.get(), index, true);
+    character.strokeColor = getColor(textPage.get(), index, false);
+
+    if (textObject != nullptr &&
+        FPDFPageObj_GetType(textObject) == FPDF_PAGEOBJ_TEXT) {
+      const auto renderMode = FPDFTextObj_GetTextRenderMode(textObject);
+      if (renderMode >= FPDF_TEXTRENDERMODE_UNKNOWN &&
+          renderMode <= FPDF_TEXTRENDERMODE_CLIP) {
+        character.renderMode = static_cast<TextRenderMode>(renderMode);
+      }
+    }
+
+    double originX = 0.0;
+    double originY = 0.0;
+    FS_MATRIX matrix{};
+    if (!FPDFText_GetCharOrigin(textPage.get(), index, &originX, &originY) ||
+        !FPDFText_GetMatrix(textPage.get(), index, &matrix)) {
+      result.error = {PdfiumErrorCode::CharacterExtractionFailed,
+                      "PDFium character geometry is unavailable at index " +
+                          std::to_string(index)};
+      return result;
+    }
+    character.origin = toCanonical(
+        {originX, originY}, mediaLeft, mediaTop);
+    character.matrix = toCanonicalMatrix(matrix, mediaLeft, mediaTop);
+    if (!isFinitePoint(character.origin) ||
+        !isFiniteMatrix(character.matrix)) {
+      result.error = {PdfiumErrorCode::CharacterExtractionFailed,
+                      "PDFium character geometry is non-finite at index " +
+                          std::to_string(index)};
+      return result;
+    }
+    double left = 0.0;
+    double right = 0.0;
+    double bottom = 0.0;
+    double top = 0.0;
+    FS_RECTF looseBounds{};
+    const bool hasCharBounds = FPDFText_GetCharBox(
+        textPage.get(), index, &left, &right, &bottom, &top) != 0;
+    if (!hasCharBounds) {
+      if (!FPDFText_GetLooseCharBox(textPage.get(), index, &looseBounds)) {
+        result.error = {
+            PdfiumErrorCode::CharacterExtractionFailed,
+            "PDFium character bounds are unavailable at index " +
+                std::to_string(index)};
+        return result;
+      }
+      left = looseBounds.left;
+      right = looseBounds.right;
+      bottom = looseBounds.bottom;
+      top = looseBounds.top;
+    }
+    // PDFium returns character boxes in page user space. Apply the page
+    // transform once; the effective character matrix is stored separately.
+    character.bounds = toCanonicalBounds(left, bottom, right, top,
+                                         mediaLeft, mediaTop);
+    if (!isFinitePoint(Point{character.bounds.left, character.bounds.top}) ||
+        !isFinitePoint(
+            Point{character.bounds.right, character.bounds.bottom})) {
+      result.error = {PdfiumErrorCode::CharacterExtractionFailed,
+                      "PDFium character bounds are non-finite at index " +
+                          std::to_string(index)};
+      return result;
+    }
+    characters.push_back(std::move(character));
+  }
+
+  for (std::size_t index = 0; index + 1 < characters.size(); ++index) {
+    auto& current = characters[index];
+    const auto& next = characters[index + 1];
+    if (current.generated || next.generated || current.unicodeMapError ||
+        next.unicodeMapError || current.textObjectOrdinal == 0 ||
+        current.textObjectOrdinal != next.textObjectOrdinal ||
+        !compatibleMatrices(current.matrix, next.matrix) ||
+        !plausibleSameLine(current, next)) {
+      continue;
+    }
+    current.nextDisplacement = {
+        next.origin.x - current.origin.x,
+        next.origin.y - current.origin.y,
+    };
+  }
+
+  result.page = std::make_shared<const PositionedPage>(
+      static_cast<std::int32_t>(pageIndex),
+      Rect{0.0,
+           0.0,
+           static_cast<double>(mediaRight - mediaLeft),
+           static_cast<double>(mediaTop - mediaBottom)},
+      std::move(characters));
+  result.error = {};
+  return result;
 }
 
 PdfiumError PdfiumDocumentSession::close() noexcept {

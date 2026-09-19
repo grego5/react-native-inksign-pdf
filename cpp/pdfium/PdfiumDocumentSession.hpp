@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "pdfium/PositionedTextModel.hpp"
+
 namespace margelo::nitro::inksignpdf::pdfium {
 
 enum class PdfiumErrorCode : std::uint8_t {
@@ -19,6 +21,8 @@ enum class PdfiumErrorCode : std::uint8_t {
   PageOpenFailed,
   TextPageOpenFailed,
   TextCountFailed,
+  PageBoxFailed,
+  CharacterExtractionFailed,
 };
 
 struct PdfiumError final {
@@ -62,6 +66,14 @@ struct PdfiumOpenResult final {
   explicit operator bool() const { return ok(); }
 };
 
+struct PdfiumPageExtractionResult final {
+  PositionedPageSnapshot page;
+  PdfiumError error;
+
+  bool ok() const { return page != nullptr && error.ok(); }
+  explicit operator bool() const { return ok(); }
+};
+
 /**
  * A move-only PDFium document owner. All methods and destruction are required
  * to stay on the serial worker thread that created the session.
@@ -80,6 +92,7 @@ class PdfiumDocumentSession final {
   std::size_t pageCount() const;
   PdfiumError inspectPage(std::size_t pageIndex,
                           PdfiumPageMetadata& metadata) const;
+  PdfiumPageExtractionResult extractPage(std::size_t pageIndex) const;
   PdfiumError close() noexcept;
 
  private:

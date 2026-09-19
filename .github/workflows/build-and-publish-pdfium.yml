@@ -15,6 +15,7 @@ env:
   PDFIUM_WORKFLOW_REV: 9dd99a8991bed3a2f37658a31bcd5b403800fd03
   PDFIUM_UPSTREAM_BRANCH: chromium/8021
   PDFIUM_VERSION: 154.0.8021.0
+  PDFIUM_ANDROID_NDK: 30.0.16138531
   PDFIUM_RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
@@ -161,7 +162,7 @@ jobs:
           yes | "$sdkmanager_path" --sdk_root="$sdk_root" --licenses >/dev/null || true
           "$sdkmanager_path" --sdk_root="$sdk_root" \
             "platform-tools" \
-            "ndk;29.0.14206865"
+            "ndk;${PDFIUM_ANDROID_NDK}"
 
       - name: Initialize PDFium build environment
         working-directory: .pdfium-binaries
@@ -180,7 +181,7 @@ jobs:
           PDFium_VERSION: ${{ env.PDFIUM_VERSION }}
         run: |
           set -euxo pipefail
-          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/29.0.14206865"
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$PDFIUM_ANDROID_NDK"
           export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
           export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
           if [ ! -f depot_tools/gclient ]; then
@@ -207,7 +208,7 @@ jobs:
           test -f staging/lib/libpdfium.a
           file staging/lib/libpdfium.a
           ar -t staging/lib/libpdfium.a > "$RUNNER_TEMP/pdfium-members.txt"
-          llvm_nm="$ANDROID_SDK_ROOT/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          llvm_nm="$ANDROID_SDK_ROOT/ndk/$PDFIUM_ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
           test -x "$llvm_nm"
           "$llvm_nm" staging/lib/libpdfium.a > "$RUNNER_TEMP/pdfium-symbols.txt"
           grep -q '\.o$' "$RUNNER_TEMP/pdfium-members.txt"

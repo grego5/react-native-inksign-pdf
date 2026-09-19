@@ -11,6 +11,7 @@ apply from: '../nitrogen/generated/android/ReactNativeInkSignPdf+autolinking.gra
 def pdfiumRoot = file('../third_party/pdfium')
 def pdfiumAndroidRoot = file("${buildDir}/pdfium")
 def pdfiumManifest = new JsonSlurper().parse(new File(pdfiumRoot, 'manifest.json'))
+def requiredPdfiumAndroidNdk = pdfiumManifest.buildWorkflow.androidNdk.toString()
 def pdfiumStaticRelease = pdfiumManifest.distribution.staticRelease
 def pdfiumAndroidArtifacts = pdfiumStaticRelease.artifacts.findAll { artifact ->
   artifact.target == 'android' && artifact.buildType == 'static'
@@ -301,6 +302,14 @@ android {
   kotlinOptions {
     jvmTarget = '17'
   }
+}
+
+def configuredPdfiumAndroidNdk = android.ndkVersion?.toString()
+if (configuredPdfiumAndroidNdk != requiredPdfiumAndroidNdk) {
+  throw new GradleException(
+    "PDFium static Android archives require NDK ${requiredPdfiumAndroidNdk}; " +
+    "the consuming project is configured for ${configuredPdfiumAndroidNdk ?: 'unspecified'}"
+  )
 }
 
 androidComponents {

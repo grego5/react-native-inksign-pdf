@@ -45,6 +45,7 @@ add_library(ReactNativeInkSignPdf SHARED
   src/main/cpp/pdfium_session_smoke.cpp
   src/main/cpp/StrokeEngine.cpp
   ../cpp/pdfium/PdfiumDocumentSession.cpp
+  ../cpp/pdfium/PositionedTextDiagnostics.cpp
   ../cpp/pdfium/PositionedTextModel.cpp
   ../cpp/StrokeEngine.cpp
   ../cpp/engine/StrokeEngineInternal.cpp

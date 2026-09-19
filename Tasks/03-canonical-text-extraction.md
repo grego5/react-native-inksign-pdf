@@ -2,7 +2,7 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Complete
 
 Depends on: [Task 02](02-shared-pdfium-session-and-model.md)
 
@@ -69,6 +69,29 @@ character snapshots and provide a safe diagnostic dump for geometry comparison.
 - The supplied fixture yields plausible character origins, transforms, and styles.
 - Rotated/skewed synthetic text remains consistent after conversion.
 - Returned pages contain no live PDFium resources.
+
+## Delivered
+
+- Added lazy `PdfiumDocumentSession::extractPage()` with scoped page and
+  text-page ownership, stable stream-order records, page-local object
+  ordinals, and detached immutable snapshots.
+- Added media-box-relative top-left conversion for page bounds, character
+  origins, bounds, and effective matrices. Character bounds use
+  `FPDFText_GetLooseCharBox` only when `FPDFText_GetCharBox` is unavailable.
+- Converted only the effective matrix's page-space output to canonical
+  coordinates. Per-character origins are stored separately because PDFium can
+  reuse one effective matrix across characters with different origins.
+- Preserved PDFium uncertainty in optional colors, font metadata, render mode,
+  and next-character displacement; displacement is emitted only across
+  compatible non-generated same-line records from one text object.
+- Added a bounded debug diagnostic dump that prints code points and geometry
+  without emitting unrestricted document text, plus host coverage for its
+  truncation behavior and Android PDFium smoke coverage for zero-offset,
+  rotated, transformed, and nonzero-media-box extraction.
+
+Validation: Android debug native compilation and final linking pass with the
+pinned NDK `30.0.16138531`; `:app:assembleDebug` completes for `arm64-v8a` and
+`x86_64`. `git diff --check` passes.
 
 ## Proposed commit title
 

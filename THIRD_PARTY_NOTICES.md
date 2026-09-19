@@ -30,7 +30,7 @@ checksums, architecture slices, and measured sizes are recorded in
 The Android build uses static `libpdfium.a` archives generated from the pinned
 `bblanchon/pdfium-binaries` workflow with `build_type=static`,
 `pdf_is_complete_lib = true`, `use_custom_libcxx = false`, and Android NDK
-`29.0.14206865`; their provenance, checksums, and sizes are in the manifest.
+`30.0.16138531`; their provenance, checksums, and sizes are in the manifest.
 The large static Android and iOS binaries are published as checksummed GitHub
 Release assets, which Gradle and the macOS npm postinstall fetcher consume.
 No PDFium binaries are checked in. Archive structure and symbols are validated

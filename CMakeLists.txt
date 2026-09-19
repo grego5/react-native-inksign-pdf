@@ -168,7 +168,8 @@ target_compile_definitions(FrameTransportTests PRIVATE
 
 add_executable(PositionedTextModelTests
   cpp/tests/pdfium/PositionedTextModel.test.cpp
-  cpp/pdfium/PositionedTextModel.cpp)
+  cpp/pdfium/PositionedTextModel.cpp
+  cpp/pdfium/PositionedTextDiagnostics.cpp)
 target_include_directories(PositionedTextModelTests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/cpp)
 enable_testing()

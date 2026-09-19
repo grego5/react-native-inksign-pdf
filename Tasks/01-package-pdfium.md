@@ -94,6 +94,9 @@ experimental until macOS/Xcode validation is available.
   `third_party/pdfium/manifest.json`.
 - Configured release-hosted Android `arm64-v8a` and `x86_64` static
   `libpdfium.a` archives; Android has no separately packaged `libpdfium.so`.
+- Pinned Android native linking to NDK `30.0.16138531`, which exports the
+  libc++ ABI required by the static PDFium archives, and added an early Gradle
+  compatibility check for consuming projects.
 - Final-linked the Android smoke code into `ReactNativeInkSignPdf` and added a
   connected instrumentation test that executes PDFium initialization and
   destruction.
