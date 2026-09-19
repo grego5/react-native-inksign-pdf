@@ -2,7 +2,7 @@
 
 [Back to plan index](../TASKS.md)
 
-Status: Planned
+Status: Complete
 
 Depends on: [Task 03](03-canonical-text-extraction.md)
 
@@ -66,6 +66,30 @@ replacing the existing overlay renderer.
 - Android retrieves shared geometry lazily for the active page.
 - Long-document open cost excludes total-document text extraction.
 - Existing visual behavior remains available during migration.
+
+## Delivered
+
+- Added a worker-owned `PdfiumGeometrySession` JNI facade. Native PDFium page
+  and text handles stay on the worker; one bounded binary copy is decoded into
+  immutable Kotlin values containing PDFium-provided character fields.
+- Open now reads one source-byte snapshot for the shared session while keeping
+  an independently owned `PdfRendererPreV` descriptor. Opening remains
+  successful when PDFium geometry is unavailable.
+- Replaced eager all-page compatibility extraction with a fixed-capacity,
+  three-page worker LRU. The active page is prepared before tile/preview work,
+  and immediate neighbors warm shared geometry only after the active request is
+  queued; legacy fallback runs remain active-page demand-loaded.
+- Generation envelopes reject stale preparation and prefetch work. Session
+  replacement, cancellation, and disposal close native resources and clear
+  geometry/fallback cache state.
+- The existing heuristic compatibility renderer remains the presentation path
+  during migration. Its page-local runs are lazy and cached; unavailable shared
+  geometry falls back without failing PDF open or tile rendering.
+- Added JVM coverage for LRU behavior and worker prefetch, plus connected
+  coverage for the Kotlin/JNI/PDFium copied geometry payload.
+
+Validation: Android JVM tests, debug APK build, focused native geometry suite,
+focused connected PDFium smoke tests, and `git diff --check` pass.
 
 ## Proposed commit title
 

@@ -18,6 +18,7 @@ private const val compatibilityMapCandidateLimit = 256
 private const val compatibilityMapRectangleLimit = 32
 private const val compatibilityMapPageContentLimit = 256
 private const val compatibilityMapLineLimit = 256
+internal const val pdfCompatibilityPageCacheCapacity = 3
 
 /** Point dimensions reported by one page of an opened source PDF. */
 internal data class PdfPageDimensions(
@@ -56,6 +57,15 @@ internal class PdfSessionException(
 internal interface PdfSessionResource : AutoCloseable {
   val info: PdfSessionInfo
 
+  /** Prepares shared geometry and the legacy fallback for an active page. */
+  fun prepareCompatibility(request: PdfCompatibilityPageRequest): PdfCompatibilityPageResult
+
+  /** Warms only shared geometry for a neighbor page; it never prepares fallback runs. */
+  fun prepareSharedGeometry(request: PdfCompatibilityPageRequest): PdfCompatibilityPageResult
+
+  /** Clears generation-local geometry and fallback data on the owning worker. */
+  fun clearCompatibility() = Unit
+
   /** Transfers the returned bitmaps to the caller; the worker no longer owns them. */
   fun renderTiles(
     requests: List<PdfTileRequest>,
@@ -89,6 +99,25 @@ internal fun interface PdfSessionOpener {
   fun open(path: String, generation: Long): PdfSessionResource
 }
 
+internal data class PdfCompatibilityPageRequest(
+  val generation: Long,
+  val pageIndex: Int,
+)
+
+internal data class PdfCompatibilityPageResult(
+  val request: PdfCompatibilityPageRequest,
+  val sharedGeometry: PdfiumPageGeometry?,
+  val fallbackRuns: List<PdfPreparedCompatibilityTextRun>,
+  val sharedGeometryFailure: Boolean,
+)
+
+private class PdfCompatibilityPageData(
+  val sharedGeometry: PdfiumPageGeometry?,
+  val sharedGeometryFailure: Boolean,
+) {
+  var fallbackRuns: List<PdfPreparedCompatibilityTextRun>? = null
+}
+
 /**
  * The owned Android PDF document session. The renderer owns the descriptor
  * after construction; close still explicitly closes the descriptor after the
@@ -96,14 +125,59 @@ internal fun interface PdfSessionOpener {
  */
 internal class PdfSession private constructor(
   private val sourceDescriptor: ParcelFileDescriptor,
+  private val immutableSource: File,
   private val renderer: PdfRendererPreV,
   override val info: PdfSessionInfo,
-  private val compatibilityTextRuns: List<List<PdfPreparedCompatibilityTextRun>>,
+  private val pdfiumSession: PdfiumGeometrySession?,
 ) : PdfSessionResource {
   private val renderTransform = Matrix()
   private val renderParams = RenderParams.Builder(PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY).build()
   private val compatibilityDrawLogged = BooleanArray(info.pageCount)
+  private val compatibilityPages = PdfPageLruCache<Int, PdfCompatibilityPageData>(
+    pdfCompatibilityPageCacheCapacity,
+  )
   private var closed = false
+
+  override fun prepareCompatibility(
+    request: PdfCompatibilityPageRequest,
+  ): PdfCompatibilityPageResult {
+    if (request.generation != info.generation || request.pageIndex !in 0 until info.pageCount) {
+      return PdfCompatibilityPageResult(request, null, emptyList(), sharedGeometryFailure = true)
+    }
+    val data = compatibilityPages.getOrLoad(request.pageIndex) {
+      loadSharedGeometry(request.pageIndex)
+    }
+    val fallbackRuns = data.fallbackRuns ?: loadFallbackRuns(request.pageIndex).also {
+      data.fallbackRuns = it
+    }
+    return PdfCompatibilityPageResult(
+      request = request,
+      sharedGeometry = data.sharedGeometry,
+      fallbackRuns = fallbackRuns,
+      sharedGeometryFailure = data.sharedGeometryFailure,
+    )
+  }
+
+  override fun prepareSharedGeometry(
+    request: PdfCompatibilityPageRequest,
+  ): PdfCompatibilityPageResult {
+    if (request.generation != info.generation || request.pageIndex !in 0 until info.pageCount) {
+      return PdfCompatibilityPageResult(request, null, emptyList(), sharedGeometryFailure = true)
+    }
+    val data = compatibilityPages.getOrLoad(request.pageIndex) {
+      loadSharedGeometry(request.pageIndex)
+    }
+    return PdfCompatibilityPageResult(
+      request = request,
+      sharedGeometry = data.sharedGeometry,
+      fallbackRuns = emptyList(),
+      sharedGeometryFailure = data.sharedGeometryFailure,
+    )
+  }
+
+  override fun clearCompatibility() {
+    compatibilityPages.clear()
+  }
 
   override fun close() {
     if (closed) return
@@ -111,7 +185,16 @@ internal class PdfSession private constructor(
     try {
       renderer.close()
     } finally {
-      sourceDescriptor.close()
+      try {
+        pdfiumSession?.close()
+      } finally {
+        compatibilityPages.clear()
+        try {
+          sourceDescriptor.close()
+        } finally {
+          immutableSource.delete()
+        }
+      }
     }
   }
 
@@ -122,6 +205,9 @@ internal class PdfSession private constructor(
     validatePdfTileBatch(info, requests)
     if (requests.isEmpty()) return emptyList()
     val pageIndex = requests.first().key.pageIndex
+    val compatibility = prepareCompatibility(
+      PdfCompatibilityPageRequest(info.generation, pageIndex),
+    )
     val rendered = ArrayList<PdfTile>(requests.size)
     try {
       renderer.openPage(pageIndex).use { page ->
@@ -147,7 +233,7 @@ internal class PdfSession private constructor(
             PdfCompatibilityTextRenderer.draw(
               canvas = android.graphics.Canvas(bitmap),
               request = request,
-              runs = compatibilityTextRuns[pageIndex],
+              runs = compatibility.fallbackRuns,
             )
             if (logCompatibilityDraw) {
               compatibilityDrawLogged[pageIndex] = true
@@ -156,13 +242,13 @@ internal class PdfSession private constructor(
                 bitmap.getPixels(after, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
                 after.indices.count { index -> after[index] != before[index] }
               } ?: 0
-              val runSummary = compatibilityTextRuns[pageIndex]
+              val runSummary = compatibility.fallbackRuns
                 .take(4)
                 .joinToString(separator = ";") { it.debugSummary() }
               Log.d(
                 "InkSignPdf",
                 "Compatibility text first draw: page=$pageIndex " +
-                  "runs=${compatibilityTextRuns[pageIndex].size} " +
+                  "runs=${compatibility.fallbackRuns.size} " +
                   "tile=${request.leftPx},${request.topPx},${request.widthPx}x${request.heightPx} " +
                   "scale=${request.scale} changedPixels=$changedPixels " +
                   "clip=0,0,${bitmap.width},${bitmap.height} runSummary=$runSummary",
@@ -188,6 +274,96 @@ internal class PdfSession private constructor(
   ): PdfTile {
     val rendered = renderTiles(listOf(request), beforeRender)
     return checkNotNull(rendered.singleOrNull())
+  }
+
+  private fun loadSharedGeometry(pageIndex: Int): PdfCompatibilityPageData {
+    var sharedGeometry: PdfiumPageGeometry? = null
+    var sharedGeometryFailure = false
+    if (pdfiumSession != null) {
+      try {
+        sharedGeometry = pdfiumSession.extractPage(pageIndex)
+      } catch (error: Throwable) {
+        sharedGeometryFailure = true
+        if (BuildConfig.DEBUG) {
+          Log.d(
+            "InkSignPdf",
+            "Shared PDFium geometry unavailable: page=$pageIndex " +
+              "code=${(error as? PdfSessionException)?.code ?: "native_error"}",
+          )
+        }
+      }
+    } else {
+      sharedGeometryFailure = true
+    }
+
+    return PdfCompatibilityPageData(sharedGeometry, sharedGeometryFailure)
+  }
+
+  private fun loadFallbackRuns(pageIndex: Int): List<PdfPreparedCompatibilityTextRun> {
+    return try {
+      extractCompatibilityRuns(pageIndex)
+    } catch (error: Throwable) {
+      if (BuildConfig.DEBUG) {
+        Log.d(
+          "InkSignPdf",
+          "Heuristic compatibility extraction failed: page=$pageIndex " +
+            "code=${(error as? PdfSessionException)?.code ?: "renderer_error"}",
+        )
+      }
+      emptyList()
+    }
+  }
+
+  private fun extractCompatibilityRuns(pageIndex: Int): List<PdfPreparedCompatibilityTextRun> {
+    return renderer.openPage(pageIndex).use { page ->
+      val dimensions = PdfPageDimensions(page.width.toDouble(), page.height.toDouble())
+      if (dimensions.width <= 0.0 || dimensions.height <= 0.0) return@use emptyList()
+      val textContents = page.getTextContents()
+      val textStream = textContents.joinToString(separator = "") { it.text }
+      val lineGeometry = collectCompatibilityTextLines(page, textContents, textStream)
+      val selection = resolveCompatibilitySelection(
+        page = page,
+        textStream = textStream,
+        pageIndex = pageIndex,
+        dimensions = dimensions,
+        lines = lineGeometry.lines,
+      )
+      val extraction = PdfCompatibilityTextExtractor.extract(
+        candidateCount = selection.candidateCount,
+        spans = selection.spans,
+        initialRejectedGeometryCount = selection.rejectedGeometryCount,
+        collectDiagnostics = BuildConfig.DEBUG,
+      )
+      if (BuildConfig.DEBUG) {
+        extraction.diagnostics
+          .filter { it.candidateIndex in 0 until compatibilityMapCandidateLimit }
+          .forEach { diagnostic ->
+            PdfCompatibilityMapLogger.log(
+              "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
+                "stage=disposition disposition=${diagnostic.disposition.name.lowercase()} " +
+                "fragmentCount=${diagnostic.geometry?.fragmentCount ?: 0} " +
+                "clusterCount=${diagnostic.geometry?.clusters?.size ?: 0}",
+            )
+          }
+        if (selection.candidateCount > compatibilityMapCandidateLimit) {
+          PdfCompatibilityMapLogger.log(
+            "page=$pageIndex stage=candidateTruncation " +
+              "emitted=$compatibilityMapCandidateLimit " +
+              "omitted=${selection.candidateCount - compatibilityMapCandidateLimit}",
+          )
+        }
+        Log.d(
+          "InkSignPdf",
+          "Compatibility text extraction: page=$pageIndex " +
+            "candidates=${extraction.candidateCount} " +
+            "acceptedGroupedRuns=${extraction.acceptedGroupedRunCount} " +
+            "rejectedGeometry=${extraction.rejectedGeometryCount} " +
+            "preparationRejections=${extraction.preparationRejectionCount} " +
+            "selection=${selection.spans.size}",
+        )
+      }
+      extraction.runs
+    }
   }
 
   companion object : PdfSessionOpener {
@@ -216,15 +392,56 @@ internal class PdfSession private constructor(
         )
       }
 
-      val descriptor = try {
-        ParcelFileDescriptor.open(source, ParcelFileDescriptor.MODE_READ_ONLY)
+      val sourceBytes = try {
+        source.readBytes()
+      } catch (error: IOException) {
+        throw PdfSessionException(
+          "invalid_source_path",
+          "Unable to read the PDF bytes",
+          error,
+        )
       } catch (error: SecurityException) {
+        throw PdfSessionException(
+          "invalid_source_path",
+          "Unable to read the PDF bytes",
+          error,
+        )
+      }
+
+      val immutableSource = try {
+        val snapshot = File.createTempFile("inksign-pdf-session-", ".pdf")
+        try {
+          snapshot.outputStream().use { output -> output.write(sourceBytes) }
+          snapshot
+        } catch (error: Throwable) {
+          snapshot.delete()
+          throw error
+        }
+      } catch (error: IOException) {
+        throw PdfSessionException(
+          "invalid_source_path",
+          "Unable to create an immutable PDF snapshot",
+          error,
+        )
+      } catch (error: SecurityException) {
+        throw PdfSessionException(
+          "invalid_source_path",
+          "Unable to create an immutable PDF snapshot",
+          error,
+        )
+      }
+
+      val descriptor = try {
+        ParcelFileDescriptor.open(immutableSource, ParcelFileDescriptor.MODE_READ_ONLY)
+      } catch (error: SecurityException) {
+        immutableSource.delete()
         throw PdfSessionException(
           "invalid_source_path",
           "Unable to read the PDF",
           error,
         )
       } catch (error: IOException) {
+        immutableSource.delete()
         throw PdfSessionException(
           "invalid_source_path",
           "Unable to open the PDF",
@@ -233,6 +450,7 @@ internal class PdfSession private constructor(
       }
 
       var renderer: PdfRendererPreV? = null
+      var pdfiumSession: PdfiumGeometrySession? = null
       try {
         val openedRenderer = PdfRendererPreV(descriptor)
         renderer = openedRenderer
@@ -244,23 +462,6 @@ internal class PdfSession private constructor(
         }
 
         val pages = ArrayList<PdfPageDimensions>(openedRenderer.pageCount)
-        val compatibilityRuns = ArrayList<List<PdfPreparedCompatibilityTextRun>>(openedRenderer.pageCount)
-        var mapTotalCandidates = 0
-        var mapTotalAccepted = 0
-        var mapTotalRejectedGeometry = 0
-        var mapTotalSingleRectangle = 0
-        var mapTotalMergedSameLine = 0
-        var mapTotalMergedFragments = 0
-        var mapTotalAmbiguousMultiline = 0
-        var mapTotalUnusableGeometry = 0
-        var mapTotalPreparationFailures = 0
-        var mapTotalScaleRejections = 0
-        var mapTotalMatchedLines = 0
-        var mapTotalStandaloneFallbacks = 0
-        var mapTotalUnmatchedCandidates = 0
-        var mapTotalNewlineOrControlTerminations = 0
-        var mapTotalUnrelatedTextTerminations = 0
-        var mapTotalTrailingBridgeTerminations = 0
         (0 until openedRenderer.pageCount).forEach { pageIndex ->
           openedRenderer.openPage(pageIndex).use { page ->
             val width = page.width.toDouble()
@@ -273,227 +474,48 @@ internal class PdfSession private constructor(
             }
             val dimensions = PdfPageDimensions(width, height)
             pages += dimensions
-            val textContents = page.getTextContents()
-            val textStream = textContents.joinToString(separator = "") { it.text }
-            val lineGeometry = collectCompatibilityTextLines(page, textContents, textStream)
-            if (BuildConfig.DEBUG) {
-              PdfCompatibilityMapLogger.log(
-                "page=$pageIndex stage=page width=$width height=$height " +
-                  "textContents=${textContents.size}",
-              )
-              textContents.take(compatibilityMapPageContentLimit).forEachIndexed { contentIndex, content ->
-                PdfCompatibilityMapLogger.log(
-                  "page=$pageIndex stage=pageContentHeader index=$contentIndex " +
-                    "codePointSummary=${formatCompatibilityCodePointSummary(content.text)} " +
-                    "characterCount=${decodePdfScalars(content.text)?.size ?: -1} " +
-                    "utf16Length=${content.text.length} lineRectangles=${content.bounds.size}",
-                )
-              }
-              if (textContents.size > compatibilityMapPageContentLimit) {
-                PdfCompatibilityMapLogger.log(
-                  "page=$pageIndex stage=pageContentTruncation " +
-                    "emitted=$compatibilityMapPageContentLimit " +
-                  "omitted=${textContents.size - compatibilityMapPageContentLimit}",
-                )
-              }
-              lineGeometry.lines.take(compatibilityMapLineLimit).forEach { line ->
-                PdfCompatibilityMapLogger.log(
-                  "page=$pageIndex stage=pageLine source=${line.source.name.lowercase()} " +
-                    "index=${line.index} rect=${formatCompatibilityRect(line.bounds)}",
-                )
-              }
-              if (lineGeometry.lines.size > compatibilityMapLineLimit) {
-                PdfCompatibilityMapLogger.log(
-                  "page=$pageIndex stage=pageLineTruncation " +
-                    "emitted=$compatibilityMapLineLimit " +
-                    "omitted=${lineGeometry.lines.size - compatibilityMapLineLimit}",
-                )
-              }
-              PdfCompatibilityMapLogger.log(
-                "page=$pageIndex stage=pageLineSource " +
-                  "source=${lineGeometry.source?.name?.lowercase() ?: "none"} " +
-                  "count=${lineGeometry.lines.size}",
-              )
-            }
-            val selection = resolveCompatibilitySelection(
-              page = page,
-              textStream = textStream,
-              pageIndex = pageIndex,
-              dimensions = dimensions,
-              lines = lineGeometry.lines,
-            )
-            val extraction = PdfCompatibilityTextExtractor.extract(
-              candidateCount = selection.candidateCount,
-              spans = selection.spans,
-              initialRejectedGeometryCount = selection.rejectedGeometryCount,
-              collectDiagnostics = BuildConfig.DEBUG,
-            )
-            compatibilityRuns += extraction.runs
-            mapTotalCandidates += extraction.candidateCount
-            mapTotalAccepted += extraction.acceptedGroupedRunCount
-            mapTotalRejectedGeometry += extraction.rejectedGeometryCount
-            mapTotalSingleRectangle += extraction.singleRectangleSpanCount
-            mapTotalMergedSameLine += extraction.mergedSameLineSpanCount
-            mapTotalMergedFragments += extraction.mergedFragmentCount
-            mapTotalAmbiguousMultiline += extraction.rejectedMultiLineMappingCount
-            mapTotalUnusableGeometry += extraction.rejectedUnusableGeometryCount
-            mapTotalPreparationFailures += extraction.preparationRejectionCount
-            mapTotalScaleRejections += extraction.scaleRejectionCount
-            mapTotalMatchedLines += extraction.matchedLineCount
-            mapTotalStandaloneFallbacks += extraction.standaloneFallbackCount
-            mapTotalUnmatchedCandidates += extraction.unmatchedCandidateCount
-            mapTotalNewlineOrControlTerminations += selection.newlineOrControlTerminations
-            mapTotalUnrelatedTextTerminations += selection.unrelatedTextTerminations
-            mapTotalTrailingBridgeTerminations += selection.trailingBridgeTerminations
-            if (BuildConfig.DEBUG) {
-              extraction.diagnostics
-                .filter { it.candidateIndex in 0 until compatibilityMapCandidateLimit }
-                .forEach { diagnostic ->
-                  val geometry = diagnostic.geometry
-                  if (geometry != null) {
-                    PdfCompatibilityMapLogger.log(
-                      "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
-                        "stage=logicalRun utf16Range=${diagnostic.utf16Start}-${diagnostic.utf16End} " +
-                        "codePoints=${formatCompatibilityCodePoints(diagnostic.text.orEmpty())} " +
-                        "selectionUnion=${geometry.selectionLeft},${geometry.selectionRight} " +
-                        "boundaryInterval=${geometry.boundaryLeft ?: "none"}," +
-                        "${geometry.boundaryRight ?: "none"} " +
-                        "fullSpan=${geometry.fullSpanLeft},${geometry.fullSpanRight}",
-                    )
-                  }
-                  diagnostic.rectangles.forEach { rectangle ->
-                    val matchedLine = rectangle.matchedLine
-                    PdfCompatibilityMapLogger.log(
-                      "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
-                        "stage=geometry rectangle=${rectangle.index} " +
-                        "selection=${formatCompatibilityRect(rectangle.selectionBounds)} " +
-                        "matchedLineSource=${matchedLine?.source?.name?.lowercase() ?: "none"} " +
-                        "matchedLineIndex=${matchedLine?.index ?: -1} " +
-                        "matchedLine=${matchedLine?.let { formatCompatibilityRect(it.bounds) } ?: "none"} " +
-                        "standaloneFallback=${rectangle.standaloneFallback} " +
-                        "final=${rectangle.finalBounds?.let { formatCompatibilityRect(it) } ?: "none"}",
-                    )
-                  }
-                  if (geometry != null) {
-                    geometry.clusters.forEachIndexed { clusterIndex, cluster ->
-                      PdfCompatibilityMapLogger.log(
-                        "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
-                          "stage=cluster index=$clusterIndex members=${cluster.memberIndexes} " +
-                          "union=${formatCompatibilityRect(cluster.bounds)}",
-                      )
-                    }
-                  }
-                  diagnostic.preparations.forEachIndexed { partIndex, preparation ->
-                    PdfCompatibilityMapLogger.log(
-                      "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
-                        "stage=preparation part=$partIndex " +
-                        "measuredWidth=${preparation.details?.measuredWidth} " +
-                        "sourceWidth=${preparation.details?.sourceWidth} " +
-                        "sourceHeight=${preparation.details?.sourceHeight} " +
-                        "fontSize=${preparation.details?.fontSize} " +
-                        "horizontalScale=${preparation.details?.horizontalScale} " +
-                        "baseline=${preparation.details?.baseline} " +
-                        "layout=${preparation.details?.layoutWidth}x${preparation.details?.layoutHeight} " +
-                        "rejection=${preparation.rejection}",
-                    )
-                  }
-                  PdfCompatibilityMapLogger.log(
-                    "page=$pageIndex candidate=${diagnostic.candidateIndex} " +
-                      "stage=disposition disposition=${diagnostic.disposition.name.lowercase()} " +
-                      "fragmentCount=${geometry?.fragmentCount ?: 0} " +
-                      "clusterCount=${geometry?.clusters?.size ?: 0}",
-                  )
-                }
-              if (selection.candidateCount > compatibilityMapCandidateLimit) {
-                PdfCompatibilityMapLogger.log(
-                  "page=$pageIndex stage=candidateTruncation " +
-                    "emitted=$compatibilityMapCandidateLimit " +
-                    "omitted=${selection.candidateCount - compatibilityMapCandidateLimit}",
-                )
-              }
-              val selectionSummary = if (textStream.isNotEmpty()) {
-                "candidateSpans=${selection.candidateCount},selectedSpans=${selection.spans.size}"
-              } else {
-                "not_attempted"
-              }
-              Log.d(
-                "InkSignPdf",
-                "Compatibility text extraction: page=$pageIndex " +
-                  "candidates=${extraction.candidateCount} " +
-                  "acceptedGroupedRuns=${extraction.acceptedGroupedRunCount} " +
-                  "rejectedGeometry=${extraction.rejectedGeometryCount} " +
-                  "singleRectangleSpans=${extraction.singleRectangleSpanCount} " +
-                  "mergedSameLineSpans=${extraction.mergedSameLineSpanCount} " +
-                  "mergedFragments=${extraction.mergedFragmentCount} " +
-                  "rejectedMultiLineMappings=${extraction.rejectedMultiLineMappingCount} " +
-                  "unusableGeometryRejections=${extraction.rejectedUnusableGeometryCount} " +
-                  "preparationRejections=${extraction.preparationRejectionCount} " +
-                  "scaleRejections=${extraction.scaleRejectionCount} " +
-                  "groupingNewlineOrControl=${selection.newlineOrControlTerminations} " +
-                  "groupingUnrelatedText=${selection.unrelatedTextTerminations} " +
-                  "groupingTrailingBridge=${selection.trailingBridgeTerminations} " +
-                  "textContents=${textContents.size} " +
-                  "selection=$selectionSummary",
-              )
-              PdfCompatibilityMapLogger.log(
-                "page=$pageIndex stage=totals candidates=${extraction.candidateCount} " +
-                  "accepted=${extraction.acceptedGroupedRunCount} " +
-                  "rejectedGeometry=${extraction.rejectedGeometryCount} " +
-                  "singleRectangle=${extraction.singleRectangleSpanCount} " +
-                  "mergedSameLine=${extraction.mergedSameLineSpanCount} " +
-                  "mergedFragments=${extraction.mergedFragmentCount} " +
-                  "ambiguousMultiline=${extraction.rejectedMultiLineMappingCount} " +
-                  "unusableGeometry=${extraction.rejectedUnusableGeometryCount} " +
-                      "preparationFailures=${extraction.preparationRejectionCount} " +
-                "scaleRejections=${extraction.scaleRejectionCount} " +
-                "groupingNewlineOrControl=${selection.newlineOrControlTerminations} " +
-                "groupingUnrelatedText=${selection.unrelatedTextTerminations} " +
-                "groupingTrailingBridge=${selection.trailingBridgeTerminations} " +
-                "matchedLines=${extraction.matchedLineCount} " +
-                  "standaloneFallbacks=${extraction.standaloneFallbackCount} " +
-                  "unmatchedCandidates=${extraction.unmatchedCandidateCount}",
-              )
-            }
           }
         }
-        if (BuildConfig.DEBUG) {
-          PdfCompatibilityMapLogger.log(
-            "page=all stage=totals pages=${openedRenderer.pageCount} " +
-              "candidates=$mapTotalCandidates accepted=$mapTotalAccepted " +
-              "rejectedGeometry=$mapTotalRejectedGeometry " +
-              "singleRectangle=$mapTotalSingleRectangle " +
-              "mergedSameLine=$mapTotalMergedSameLine " +
-              "mergedFragments=$mapTotalMergedFragments " +
-              "ambiguousMultiline=$mapTotalAmbiguousMultiline " +
-              "unusableGeometry=$mapTotalUnusableGeometry " +
-              "preparationFailures=$mapTotalPreparationFailures " +
-              "scaleRejections=$mapTotalScaleRejections " +
-              "groupingNewlineOrControl=$mapTotalNewlineOrControlTerminations " +
-              "groupingUnrelatedText=$mapTotalUnrelatedTextTerminations " +
-              "groupingTrailingBridge=$mapTotalTrailingBridgeTerminations " +
-              "matchedLines=$mapTotalMatchedLines " +
-              "standaloneFallbacks=$mapTotalStandaloneFallbacks " +
-              "unmatchedCandidates=$mapTotalUnmatchedCandidates",
-          )
+        pdfiumSession = try {
+          val nativeSession = PdfiumGeometrySession.open(sourceBytes)
+          if (nativeSession.pageCount != openedRenderer.pageCount) {
+            nativeSession.close()
+            null
+          } else {
+            nativeSession
+          }
+        } catch (error: Throwable) {
+          if (BuildConfig.DEBUG) {
+            Log.d(
+              "InkSignPdf",
+              "Shared PDFium session unavailable during open: " +
+                "code=${(error as? PdfSessionException)?.code ?: "native_error"}",
+            )
+          }
+          null
         }
         return PdfSession(
           sourceDescriptor = descriptor,
+          immutableSource = immutableSource,
           renderer = openedRenderer,
           info = PdfSessionInfo(source.path, pages, generation),
-          compatibilityTextRuns = compatibilityRuns.toList(),
+          pdfiumSession = pdfiumSession,
         )
       } catch (error: PdfSessionException) {
-        closeFailedPdfResources(renderer, descriptor)
+        pdfiumSession?.close()
+        closeFailedPdfResources(renderer, descriptor, immutableSource)
         throw error
       } catch (error: SecurityException) {
-        closeFailedPdfResources(renderer, descriptor)
+        pdfiumSession?.close()
+        closeFailedPdfResources(renderer, descriptor, immutableSource)
         throw PdfSessionException(
           "unsupported_pdf",
           "The PDF is protected or uses an unsupported security scheme",
           error,
         )
       } catch (error: Exception) {
-        closeFailedPdfResources(renderer, descriptor)
+        pdfiumSession?.close()
+        closeFailedPdfResources(renderer, descriptor, immutableSource)
         throw PdfSessionException(
           "pdf_load_failed",
           "Unable to load the PDF",
@@ -712,8 +734,13 @@ private fun resolveCompatibilitySelection(
 internal fun closeFailedPdfResources(
   renderer: PdfRendererPreV?,
   descriptor: ParcelFileDescriptor,
+  temporarySource: File? = null,
 ) {
-  if (renderer != null) renderer.close() else descriptor.close()
+  try {
+    if (renderer != null) renderer.close() else descriptor.close()
+  } finally {
+    temporarySource?.delete()
+  }
 }
 
 /**
@@ -772,13 +799,21 @@ internal class PdfSessionWorker(
       return
     }
     try {
-      executor.execute {
-        val result: Result<List<PdfTile>> = try {
-          if (isTileStale(generation, tileEpoch)) throw cancelled(generation)
-          val session = current ?: throw cancelled(generation)
-          Result.success(session.renderTiles(requests) {
+        executor.execute {
+          val result: Result<List<PdfTile>> = try {
             if (isTileStale(generation, tileEpoch)) throw cancelled(generation)
-          })
+            val session = current ?: throw cancelled(generation)
+            val pageIndex = requests.firstOrNull()?.key?.pageIndex
+            if (pageIndex != null) {
+              prepareCompatibilityOnWorker(session, generation, pageIndex)
+            }
+            Result.success(session.renderTiles(requests) {
+              if (isTileStale(generation, tileEpoch)) throw cancelled(generation)
+            }).also {
+              if (pageIndex != null) {
+                enqueueCompatibilityPrefetch(session, generation, pageIndex)
+              }
+            }
         } catch (error: Throwable) {
           Result.failure(error)
         }
@@ -804,6 +839,7 @@ internal class PdfSessionWorker(
         val result: Result<PdfTile> = try {
           if (isPreviewStale(generation, previewEpoch)) throw cancelled(generation)
           val session = current ?: throw cancelled(generation)
+          prepareCompatibilityOnWorker(session, generation, request.key.pageIndex)
           val tile = session.renderPreview(request) {
             if (isPreviewStale(generation, previewEpoch)) throw cancelled(generation)
           }
@@ -811,6 +847,7 @@ internal class PdfSessionWorker(
             tile.bitmap.recycle()
             throw cancelled(generation)
           }
+          enqueueCompatibilityPrefetch(session, generation, request.key.pageIndex)
           Result.success(tile)
         } catch (error: Throwable) {
           Result.failure(error)
@@ -840,6 +877,13 @@ internal class PdfSessionWorker(
         requestedTileEpoch = Long.MIN_VALUE
         requestedPreviewEpoch = Long.MIN_VALUE
       }
+    }
+    try {
+      executor.execute {
+        if (current?.info?.generation == generation) current?.clearCompatibility()
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      // Disposal already owns teardown; no cache survives the worker.
     }
   }
 
@@ -933,6 +977,50 @@ internal class PdfSessionWorker(
 
   private fun isPreviewStale(generation: Long, previewEpoch: Long): Boolean {
     return isStale(generation) || requestedPreviewEpoch != previewEpoch
+  }
+
+  private fun prepareCompatibilityOnWorker(
+    session: PdfSessionResource,
+    generation: Long,
+    pageIndex: Int,
+  ) {
+    if (isStale(generation)) throw cancelled(generation)
+    val request = PdfCompatibilityPageRequest(generation, pageIndex)
+    val result = session.prepareCompatibility(request)
+    if (result.request != request || isStale(generation)) throw cancelled(generation)
+  }
+
+  private fun prepareSharedGeometryOnWorker(
+    session: PdfSessionResource,
+    generation: Long,
+    pageIndex: Int,
+  ) {
+    if (isStale(generation)) throw cancelled(generation)
+    val request = PdfCompatibilityPageRequest(generation, pageIndex)
+    val result = session.prepareSharedGeometry(request)
+    if (result.request != request || isStale(generation)) throw cancelled(generation)
+  }
+
+  private fun enqueueCompatibilityPrefetch(
+    session: PdfSessionResource,
+    generation: Long,
+    activePageIndex: Int,
+  ) {
+    val neighbors = listOf(activePageIndex - 1, activePageIndex + 1)
+      .filter { it in 0 until session.info.pageCount }
+    if (neighbors.isEmpty()) return
+    try {
+      executor.execute {
+        if (isStale(generation) || current !== session) return@execute
+        neighbors.forEach { pageIndex ->
+          if (!isStale(generation)) {
+            prepareSharedGeometryOnWorker(session, generation, pageIndex)
+          }
+        }
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      // Disposal invalidates the generation and clears the current resource.
+    }
   }
 
   private fun closeCurrent() {

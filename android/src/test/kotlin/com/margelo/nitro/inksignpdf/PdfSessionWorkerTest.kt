@@ -68,6 +68,64 @@ class PdfSessionWorkerTest {
   }
 
   @Test
+  fun activePagePreparationPrefetchesImmediateNeighbors() {
+    val opener = RecordingSessionOpener(
+      pages = listOf(
+        PdfPageDimensions(300.0, 300.0),
+        PdfPageDimensions(300.0, 300.0),
+        PdfPageDimensions(300.0, 300.0),
+      ),
+    )
+    val worker = PdfSessionWorker(opener = opener)
+    try {
+      val opened = CountDownLatch(1)
+      worker.replace("prefetch.pdf", generation = 1L) {
+        assertTrue(it.isSuccess)
+        opened.countDown()
+      }
+      assertTrue(opened.await(5L, TimeUnit.SECONDS))
+      worker.updateTileEpoch(generation = 1L, tileEpoch = 1L)
+
+      val rendered = CountDownLatch(1)
+      worker.renderTiles(
+        generation = 1L,
+        tileEpoch = 1L,
+        requests = listOf(testTileRequest(pageIndex = 1)),
+      ) {
+        assertTrue(it.isSuccess)
+        rendered.countDown()
+      }
+
+      assertTrue(rendered.await(5L, TimeUnit.SECONDS))
+      assertTrue(opener.resource.get().prefetchReady.await(5L, TimeUnit.SECONDS))
+      assertEquals(listOf(1, 0, 2), opener.resource.get().preparedPages)
+      assertEquals(listOf(1), opener.resource.get().fallbackPreparedPages)
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
+  fun cancellationClearsGenerationLocalCompatibilityCache() {
+    val opener = RecordingSessionOpener()
+    val worker = PdfSessionWorker(opener = opener)
+    try {
+      val opened = CountDownLatch(1)
+      worker.replace("cancel.pdf", generation = 1L) {
+        assertTrue(it.isSuccess)
+        opened.countDown()
+      }
+      assertTrue(opened.await(5L, TimeUnit.SECONDS))
+
+      worker.cancel(generation = 1L)
+
+      assertTrue(opener.resource.get().compatibilityCleared.await(5L, TimeUnit.SECONDS))
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
   fun staleGenerationCannotPublishTilesFromThePreviousSession() {
     val opener = RecordingSessionOpener()
     val worker = PdfSessionWorker(opener = opener)
@@ -319,9 +377,48 @@ class PdfSessionWorkerTest {
     var closed = false
       private set
     val closedSignal = CountDownLatch(1)
+    val prefetchReady = CountDownLatch(1)
+    val compatibilityCleared = CountDownLatch(1)
+    val preparedPages = java.util.Collections.synchronizedList(ArrayList<Int>())
+    val fallbackPreparedPages = java.util.Collections.synchronizedList(ArrayList<Int>())
     @Volatile
     var previewRenderCount = 0
       private set
+
+    override fun prepareCompatibility(
+      request: PdfCompatibilityPageRequest,
+    ): PdfCompatibilityPageResult {
+      fallbackPreparedPages += request.pageIndex
+      preparedPages += request.pageIndex
+      if (preparedPages.contains(0) && preparedPages.contains(2)) {
+        prefetchReady.countDown()
+      }
+      return PdfCompatibilityPageResult(
+        request = request,
+        sharedGeometry = null,
+        fallbackRuns = emptyList(),
+        sharedGeometryFailure = false,
+      )
+    }
+
+    override fun prepareSharedGeometry(
+      request: PdfCompatibilityPageRequest,
+    ): PdfCompatibilityPageResult {
+      preparedPages += request.pageIndex
+      if (preparedPages.contains(0) && preparedPages.contains(2)) {
+        prefetchReady.countDown()
+      }
+      return PdfCompatibilityPageResult(
+        request = request,
+        sharedGeometry = null,
+        fallbackRuns = emptyList(),
+        sharedGeometryFailure = false,
+      )
+    }
+
+    override fun clearCompatibility() {
+      compatibilityCleared.countDown()
+    }
 
     override fun renderTiles(
       requests: List<PdfTileRequest>,

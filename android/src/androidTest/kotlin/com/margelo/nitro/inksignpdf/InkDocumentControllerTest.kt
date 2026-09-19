@@ -507,6 +507,19 @@ class InkDocumentControllerTest {
     @Volatile private var renderStarted: CountDownLatch? = null
     @Volatile private var renderRelease: CountDownLatch? = null
 
+    override fun prepareCompatibility(
+      request: PdfCompatibilityPageRequest,
+    ): PdfCompatibilityPageResult = PdfCompatibilityPageResult(
+      request = request,
+      sharedGeometry = null,
+      fallbackRuns = emptyList(),
+      sharedGeometryFailure = true,
+    )
+
+    override fun prepareSharedGeometry(
+      request: PdfCompatibilityPageRequest,
+    ): PdfCompatibilityPageResult = prepareCompatibility(request)
+
     fun blockNextRender(): CountDownLatch {
       val started = CountDownLatch(1)
       renderStarted = started

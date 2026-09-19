@@ -1123,6 +1123,19 @@ class SurfaceViewTest {
           generation = generation,
         )
 
+        override fun prepareCompatibility(
+          request: PdfCompatibilityPageRequest,
+        ): PdfCompatibilityPageResult = PdfCompatibilityPageResult(
+          request = request,
+          sharedGeometry = null,
+          fallbackRuns = emptyList(),
+          sharedGeometryFailure = true,
+        )
+
+        override fun prepareSharedGeometry(
+          request: PdfCompatibilityPageRequest,
+        ): PdfCompatibilityPageResult = prepareCompatibility(request)
+
         override fun renderTiles(
           requests: List<PdfTileRequest>,
           beforeEach: () -> Unit,

@@ -8,7 +8,8 @@
   document generation. `InkDocumentController` owns viewport and tile state;
   `PageNavigationController` owns navigation and handoff state.
 - `TextInteractionOverlay` owns the temporary editor, text gestures, keyboard,
-  and one-shot placement. `PdfSessionWorker` owns PDF readers and worker work.
+  and one-shot placement. `PdfSessionWorker` owns PDF readers, the native
+  PDFium session, and a generation-local bounded geometry/fallback cache.
 - Worker results are accepted only when their document, page, and request
   identity are current.
 
@@ -30,6 +31,10 @@
   placement and clear stale editor/selection state before new state is installed.
 - Document replacement cancels active work, invalidates prior worker results,
   resets presentation, and installs only the current generation.
+- Android shared PDFium geometry is requested lazily for the active page and
+  immediate neighbors are prefetched on the same worker. A native extraction
+  failure leaves the source page usable through the existing heuristic
+  compatibility provider.
 - Disposal is UI-thread-owned and idempotent. It cancels input/navigation,
   invalidates the generation, clears callbacks/presentation, and closes worker
   resources.

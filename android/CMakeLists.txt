@@ -41,6 +41,7 @@ target_compile_features(UpstreamStrokeGeometry PUBLIC cxx_std_20)
 
 add_library(ReactNativeInkSignPdf SHARED
   src/main/cpp/cpp-adapter.cpp
+  src/main/cpp/pdfium_geometry_jni.cpp
   src/main/cpp/pdfium_smoke.cpp
   src/main/cpp/pdfium_session_smoke.cpp
   src/main/cpp/StrokeEngine.cpp

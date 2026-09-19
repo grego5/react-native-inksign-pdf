@@ -2,10 +2,11 @@
 
 ## Completed rendering
 
-The PDF worker prepares compatibility-text layouts from source PDF text only.
-Those layouts are presentation-only, generation-bound, and excluded from
-history, callbacks, and export. Ambiguous or unusable source geometry is
-omitted without failing PDF open.
+The PDF worker prepares shared PDFium positioned-text snapshots lazily and
+keeps the existing heuristic compatibility layouts as the presentation
+fallback during migration. Both are presentation-only, generation-bound, and
+excluded from history, callbacks, and export. Ambiguous or unusable source
+geometry is omitted without failing PDF open.
 The frame codec copies borrowed JNI data into immutable contour values, validates
 finite coordinates, source ranges, ordered offsets, and closed non-empty paths,
 then replaces the retained real snapshot transactionally.
@@ -28,4 +29,3 @@ ordinary `onDraw`.
 - Page switches cancel active input and handoff, then rebuild completed display
   from the target page's history. History remains page-local; dirty state spans
   the document.
-
