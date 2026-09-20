@@ -88,7 +88,7 @@ $checkDefinitions = [ordered]@{
 
 $pathRules = @(
     [pscustomobject]@{ Name = "generated"; Pattern = '^nitrogen/generated/'; Checks = @("diff_check"); Area = "generated" },
-    [pscustomobject]@{ Name = "native geometry"; Pattern = '^(cpp/upstream/|cpp/replay/|cpp/circular/|cpp/modeling/|cpp/input/|cpp/core/StrokeOutline|cpp/StrokeEngine|cpp/tests/(replay|upstream)/)'; Checks = @("native_geometry", "geometry_contract", "diff_check"); Area = "native-geometry" },
+    [pscustomobject]@{ Name = "native geometry"; Pattern = '^(cpp/upstream/|cpp/replay/|cpp/circular/|cpp/modeling/|cpp/input/|cpp/core/StrokeOutline|cpp/InkEngine|cpp/tests/(replay|upstream)/)'; Checks = @("native_geometry", "geometry_contract", "diff_check"); Area = "native-geometry" },
     [pscustomobject]@{ Name = "native C++"; Pattern = '^cpp/'; Checks = @("native_lifecycle", "diff_check"); Area = "native-cpp" },
     [pscustomobject]@{ Name = "Android instrumentation"; Pattern = '^android/src/androidTest/'; Checks = @("android_build", "diff_check"); Area = "android-instrumentation" },
     [pscustomobject]@{ Name = "Android native"; Pattern = '^android/src/(main/cpp|debug|release)/'; Checks = @("android_jvm", "android_build", "diff_check"); Area = "android-native" },

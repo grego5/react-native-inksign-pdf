@@ -28,8 +28,8 @@ internal class FrontBufferStrokeComposition {
 
     fun clear() = clearState()
 
-    fun applyCommittedFrame(frame: StrokeFrame, generation: Long = activeGeneration) {
-        require(frame.type == StrokeFrameCodec.COMMITTED_TYPE)
+    fun applyCommittedFrame(frame: InkStrokeFrame, generation: Long = activeGeneration) {
+        require(frame.type == InkStrokeFrameCodec.COMMITTED_TYPE)
         requireActiveGeneration(generation)
         require(frame.revision >= latestCommittedRevision) {
             "Committed frame revision moved backwards"
@@ -44,8 +44,8 @@ internal class FrontBufferStrokeComposition {
         currentMutableBounds = boundsFor(committedContours)
     }
 
-    fun applyPredictionFrame(frame: StrokeFrame, generation: Long = activeGeneration) {
-        require(frame.type == StrokeFrameCodec.PREDICTION_TYPE)
+    fun applyPredictionFrame(frame: InkStrokeFrame, generation: Long = activeGeneration) {
+        require(frame.type == InkStrokeFrameCodec.PREDICTION_TYPE)
         requireActiveGeneration(generation)
         predictionContours.clear()
         predictionContours.ensureCapacity(frame.contours.size)

@@ -43,7 +43,7 @@ ModeledPoint makeModeledPoint(
 
 template <typename T>
 void ensureScratchCapacity(std::vector<T>& scratch, std::size_t required,
-                           StrokeWorkStats* stats) {
+                           InkStrokeWorkStats* stats) {
   if (scratch.capacity() >= required) return;
   scratch.reserve(required);
   if (stats != nullptr) ++stats->scratchBufferGrowth;
@@ -52,7 +52,7 @@ void ensureScratchCapacity(std::vector<T>& scratch, std::size_t required,
 void styleStateSuffix(
     std::span<const ModeledPoint> points, std::size_t sourceIndexStart,
     const detail::SignatureStrokeStyle::Snapshot& style,
-    std::vector<StyledTipState>& result, StrokeWorkStats* stats) {
+    std::vector<StyledTipState>& result, InkStrokeWorkStats* stats) {
   result.clear();
   if (points.empty()) return;
   ensureScratchCapacity(result, points.size(), stats);
@@ -109,7 +109,7 @@ void materializeUpstreamStates(
 std::size_t taperSafeFixedCount(const std::vector<ModeledPoint>& points,
                                 std::size_t stablePrefix,
                                 double maximumDistance,
-                                StrokeWorkStats* stats) {
+                                InkStrokeWorkStats* stats) {
   const std::size_t immutableCount = std::min(stablePrefix, points.size());
   if (immutableCount == 0) return 0;
   if (stats != nullptr) ++stats->boundarySearches;
@@ -126,7 +126,7 @@ std::size_t taperSafeFixedCount(const std::vector<ModeledPoint>& points,
 
 }  // namespace
 
-SignatureBrushTipModeler::SignatureBrushTipModeler(const StrokeConfig& config)
+SignatureBrushTipModeler::SignatureBrushTipModeler(const InkStrokeConfig& config)
     : style_(config.minWidth * 0.5, config.maxWidth * 0.5,
              config.logicalDisplayUnitsPerPageUnit),
       velocityWidth_(style_), widthInitialSnapshot_(velocityWidth_.snapshot()),
@@ -151,22 +151,22 @@ void SignatureBrushTipModeler::reset() {
 
 SignatureBrushTipUpdate SignatureBrushTipModeler::update(
     SignatureBrushRealInput input,
-    StrokeWorkStats& workStats,
-    std::vector<StrokeDiagnosticSample>* diagnostics) {
+    InkStrokeWorkStats& workStats,
+    std::vector<InkStrokeDiagnosticSample>* diagnostics) {
   return processReal(input, false, workStats, diagnostics);
 }
 
 SignatureBrushTipUpdate SignatureBrushTipModeler::finish(
     SignatureBrushRealInput input,
-    StrokeWorkStats& workStats,
-    std::vector<StrokeDiagnosticSample>* diagnostics) {
+    InkStrokeWorkStats& workStats,
+    std::vector<InkStrokeDiagnosticSample>* diagnostics) {
   return processReal(input, true, workStats, diagnostics);
 }
 
 SignatureBrushTipUpdate SignatureBrushTipModeler::processReal(
     SignatureBrushRealInput input,
-    bool terminal, StrokeWorkStats& workStats,
-    std::vector<StrokeDiagnosticSample>* diagnostics) {
+    bool terminal, InkStrokeWorkStats& workStats,
+    std::vector<InkStrokeDiagnosticSample>* diagnostics) {
   if (std::isfinite(input.lastMovingSpeed) && input.lastMovingSpeed > 0.0)
     lastMovingRealSpeed_ = input.lastMovingSpeed;
   const auto modeledStart = processWidths(input, terminal, workStats, diagnostics);
@@ -210,8 +210,8 @@ SignatureBrushTipUpdate SignatureBrushTipModeler::splitUpdate(
 
 std::size_t SignatureBrushTipModeler::processWidths(
     SignatureBrushRealInput input,
-    bool terminal, StrokeWorkStats& workStats,
-    std::vector<StrokeDiagnosticSample>* diagnostics) {
+    bool terminal, InkStrokeWorkStats& workStats,
+    std::vector<InkStrokeDiagnosticSample>* diagnostics) {
   const std::size_t modeledStart = input.replacementStart;
   if (modeledStart > modeledPoints_.size())
     throw std::logic_error("modeled replacement start exceeds committed points");
@@ -238,15 +238,15 @@ std::size_t SignatureBrushTipModeler::processWidths(
     const auto& modeled = modeledInput.state;
     const double modeledTime = modeled.time + input.timeOffset;
     const auto event = terminal && index + 1 == input.states.size()
-        ? StrokeEventType::Up
-        : modeledPoints_.empty() ? StrokeEventType::Down : StrokeEventType::Move;
+        ? InkStrokeEventType::Up
+        : modeledPoints_.empty() ? InkStrokeEventType::Down : InkStrokeEventType::Move;
     const detail::NormalizedInput normalized = {
         .eventType = event, .position = modeled.position, .time = modeledTime,
         .stylus = {
             .pressure = modeled.pressure >= 0.0 ? std::optional<double>{modeled.pressure} : std::nullopt,
             .tilt = modeled.tilt >= 0.0 ? std::optional<double>{modeled.tilt} : std::nullopt,
             .orientation = modeled.orientation >= 0.0 ? std::optional<double>{modeled.orientation} : std::nullopt}};
-    const auto modified = event == StrokeEventType::Down
+    const auto modified = event == InkStrokeEventType::Down
         ? velocityWidth_.begin(normalized, modeled.velocity)
         : velocityWidth_.update(normalized, modeled.velocity);
     modeledPoints_.push_back(makeModeledPoint(
@@ -302,8 +302,8 @@ std::size_t SignatureBrushTipModeler::processWidths(
 }
 
 SignatureBrushTipUpdate SignatureBrushTipModeler::materialize(
-    std::size_t stableCount, StrokeWorkStats& workStats,
-    std::vector<StrokeDiagnosticSample>* diagnostics) {
+    std::size_t stableCount, InkStrokeWorkStats& workStats,
+    std::vector<InkStrokeDiagnosticSample>* diagnostics) {
   const auto& points = modeledPoints_;
   const auto styleSnapshot = this->styleSnapshot();
   const std::size_t modelStable = std::min(
@@ -350,7 +350,7 @@ SignatureBrushTipUpdate SignatureBrushTipModeler::materialize(
 
 SignatureBrushTipUpdate SignatureBrushTipModeler::predict(
     std::span<const CenterlineState> predicted,
-    std::vector<StrokeDiagnosticSample>* diagnostics) {
+    std::vector<InkStrokeDiagnosticSample>* diagnostics) {
   const auto& realPoints = modeledPoints_;
   if (realPoints.size() < submittedFixedCount_)
     throw std::logic_error("prediction real state range is invalid");
@@ -374,7 +374,7 @@ SignatureBrushTipUpdate SignatureBrushTipModeler::predict(
   const ModeledPoint* previous = realPoints.empty() ? nullptr : &realPoints.back();
   for (const auto& state : predicted) {
     const detail::NormalizedInput input = {
-        .eventType = StrokeEventType::Move, .position = state.position,
+        .eventType = InkStrokeEventType::Move, .position = state.position,
         .time = state.time,
         .stylus = {
             .pressure = state.pressure >= 0.0 ? std::optional<double>{state.pressure} : std::nullopt,

@@ -75,7 +75,7 @@ bool writeSvgArtifacts(const Result& result,
       centerline.clear();
       for (const auto& point : record.centerline) centerline.push_back(point.point);
     }
-    if (record.frameType == StrokeFrameType::Final)
+    if (record.frameType == InkStrokeFrameType::Final)
       for (const auto& contour : record.geometry)
         if (!contour.path.segments.empty()) outlines.push_back(contour);
   }
@@ -177,17 +177,17 @@ bool writeSvgArtifacts(const Result& result,
 
   if (!stages.geometry) return true;
   for (const Record& finalRecord : result.records) {
-    if (finalRecord.frameType != StrokeFrameType::Final ||
+    if (finalRecord.frameType != InkStrokeFrameType::Final ||
         finalRecord.stroke == 0)
       continue;
     const Record* firstMovingFrame = nullptr;
     const Record* lastNonterminalFrame = nullptr;
     for (const Record& record : result.records) {
       if (record.stroke != finalRecord.stroke || record.geometry.empty()) continue;
-      if (record.frameType != StrokeFrameType::Final &&
+      if (record.frameType != InkStrokeFrameType::Final &&
           firstMovingFrame == nullptr && hasRealMovingDiagnostic(record))
         firstMovingFrame = &record;
-      if (record.frameType != StrokeFrameType::Final &&
+      if (record.frameType != InkStrokeFrameType::Final &&
           hasRealMovingDiagnostic(record))
         lastNonterminalFrame = &record;
     }

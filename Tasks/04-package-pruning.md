@@ -16,7 +16,7 @@ binaries, and scripts required for Android PDFium and iOS pod installation.
 - Do not remove required PDFium headers, manifest data, licenses, or pinned
   binary validation.
 - Do not change iOS rendering architecture or make iOS consume the Android
-  stroke engine.
+  InkEngine.
 - Do not modify unrelated existing changes in the podspec or iOS cache policy.
 
 ## Read before editing
@@ -30,12 +30,12 @@ binaries, and scripts required for Android PDFium and iOS pod installation.
 - `ReactNativeInkSignPdf.podspec`: source files, PDFium framework, preserved
   paths, and pod integration.
 - `THIRD_PARTY_NOTICES.md`: required notices for retained and prebuilt code.
-- `Tasks/03-android-prebuilt-consumer.md`: `android/stroke-engine/<abi>/`
+- `Tasks/03-android-prebuilt-consumer.md`: `android/ink-engine/<abi>/`
   package layout expected by CMake.
 
 ## Current behavior and invariants
 
-- `package.json` publishes only the Android module, the staged stroke-engine
+- `package.json` publishes only the Android module, the staged ink-engine
   release directory, the PDFium package data, the iOS sources, and the
   generated Nitro output required by consumers.
 - Android and iOS PDFium support currently reads metadata from
@@ -49,7 +49,7 @@ binaries, and scripts required for Android PDFium and iOS pod installation.
 ## Implementation steps
 
 1. Define one stable package path for the per-ABI stroke archives, metadata,
-   and notices. `tools/stage-stroke-engine-package.mjs` retrieves the immutable
+   and notices. `tools/stage-ink-engine-package.mjs` retrieves the immutable
    release identified by tag, verifies its checksum list and source/NDK/API/ABI
    metadata, and copies the complete ABI set there before `npm pack`. It also
    accepts a downloaded release archive/checksum pair or an extracted release
@@ -64,7 +64,7 @@ binaries, and scripts required for Android PDFium and iOS pod installation.
    headers are included. The staging command is:
 
    ```powershell
-   npm run stage:stroke-engine -- --release-tag <tag> --release-archive <archive.zip> --checksums <SHA256SUMS> --force
+   npm run stage:ink-engine -- --release-tag <tag> --release-archive <archive.zip> --checksums <SHA256SUMS> --force
    ```
 4. Keep the repository’s full `third_party` tree for source builds and CI.
    Ensure the podspec and iOS postinstall still find PDFium after packing.

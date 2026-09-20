@@ -1,6 +1,6 @@
 #pragma once
 
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 
 #include <cstddef>
 #include <limits>

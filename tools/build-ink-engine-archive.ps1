@@ -35,7 +35,7 @@ if ([string]::IsNullOrWhiteSpace($ToolchainFile)) {
 
 $ToolchainFile = (Resolve-Path $ToolchainFile -ErrorAction Stop).Path
 if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
-    $BuildDirectory = Join-Path $repositoryRoot "build/stroke-engine-archive/$Abi"
+    $BuildDirectory = Join-Path $repositoryRoot "build/ink-engine-archive/$Abi"
 }
 if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $OutputDirectory = Join-Path $BuildDirectory "artifacts"
@@ -50,7 +50,7 @@ $archiveName = if ($EnablePerfettoTrace -eq "ON") {
 }
 
 $configureArguments = @(
-    "-S", (Join-Path $repositoryRoot "cmake/stroke-engine-archive"),
+    "-S", (Join-Path $repositoryRoot "cmake/ink-engine-archive"),
     "-B", $BuildDirectory,
     "-G", "Ninja",
     "-DCMAKE_TOOLCHAIN_FILE=$ToolchainFile",
@@ -58,9 +58,9 @@ $configureArguments = @(
     "-DANDROID_PLATFORM=android-24",
     "-DCMAKE_BUILD_TYPE=Release",
     "-DENABLE_PERFETTO_TRACE=$EnablePerfettoTrace",
-    "-DSTROKE_ENGINE_NDK_PATH=$NdkPath",
-    "-DSTROKE_ENGINE_ARCHIVE_OUTPUT_DIRECTORY=$OutputDirectory",
-    "-DSTROKE_ENGINE_ARCHIVE_NAME=$archiveName"
+    "-DINK_ENGINE_NDK_PATH=$NdkPath",
+    "-DINK_ENGINE_ARCHIVE_OUTPUT_DIRECTORY=$OutputDirectory",
+    "-DINK_ENGINE_ARCHIVE_NAME=$archiveName"
 )
 
 & $cmake @configureArguments
@@ -68,7 +68,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "Stroke archive CMake configure failed with exit code $LASTEXITCODE."
 }
 
-$buildTarget = if ($SmokeLink) { "StrokeEngineArchiveSmoke" } else { "StrokeEngineArchive" }
+$buildTarget = if ($SmokeLink) { "InkEngineArchiveSmoke" } else { "InkEngineArchive" }
 & $cmake --build $BuildDirectory --target $buildTarget --parallel
 if ($LASTEXITCODE -ne 0) {
     throw "Stroke archive build failed with exit code $LASTEXITCODE."

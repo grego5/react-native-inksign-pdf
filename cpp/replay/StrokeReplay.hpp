@@ -1,6 +1,6 @@
 #pragma once
 
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 #include "circular/StartupEnvelope.hpp"
 #include "replay/ContinuityDiagnostics.hpp"
 
@@ -16,8 +16,8 @@ enum class OperationType { Input, Cancel, Configure };
 
 struct Operation {
   OperationType type = OperationType::Input;
-  StrokeInput input;
-  StrokeConfig config;
+  InkStrokeInput input;
+  InkStrokeConfig config;
 };
 
 enum class Stage { Input, Centerline, Geometry };
@@ -65,17 +65,17 @@ struct Record {
   // One-based identity for the active completed stroke. Zero identifies
   // configuration/cancel records that do not belong to a stroke.
   std::size_t stroke = 0;
-  StrokeFrameType frameType = StrokeFrameType::Committed;
+  InkStrokeFrameType frameType = InkStrokeFrameType::Committed;
   std::uint64_t revision = 0;
   std::size_t committedPointCount = 0;
-  std::vector<StrokeInput> inputs;
+  std::vector<InkStrokeInput> inputs;
   std::vector<ModeledPoint> centerline;
-  std::vector<StrokeDiagnosticSample> diagnostics;
+  std::vector<InkStrokeDiagnosticSample> diagnostics;
   // These sections are reconstructed by replay from the actual modeled
   // centerline. They are measurement inputs, never a production geometry
   // or width policy.
   std::vector<startup::StartupSection> envelopeSections;
-  StrokeTerminalDiagnostic terminal;
+  InkStrokeTerminalDiagnostic terminal;
   StrokeContourCollection geometry;
   PublishedGeometryMetrics publishedGeometry;
   std::vector<ContinuityMetrics> continuity;
@@ -111,7 +111,7 @@ struct Result {
 bool parseOperation(std::string_view line, Operation& operation,
                     std::string& error);
 Result run(std::string name, const std::vector<Operation>& operations,
-           StageSelection stages = {}, StrokeConfig config = {},
+           StageSelection stages = {}, InkStrokeConfig config = {},
            ContinuityConfig continuity = {});
 BaselineMetrics measureBaseline(const Result& result);
 bool writeArtifacts(const Result& result, const std::filesystem::path& directory,

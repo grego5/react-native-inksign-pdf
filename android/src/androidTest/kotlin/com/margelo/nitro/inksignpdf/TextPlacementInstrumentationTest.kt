@@ -440,7 +440,7 @@ internal class TextPlacementInstrumentationTest {
         EmptyPdfResource(info.copy(generation = generation))
       },
     )
-    private val engine = StrokeEngine()
+    private val engine = InkEngine()
     lateinit var surface: SurfaceView
     val info = PdfSessionInfo(
       sourcePath = "text.pdf",

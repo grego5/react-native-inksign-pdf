@@ -97,14 +97,14 @@ function Resolve-Executable {
     if (-not [string]::IsNullOrWhiteSpace($Executable)) {
         $candidate = Resolve-RepositoryPath $Executable
         if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
-            Stop-ContractCheck "stroke_engine_cli executable not found at $candidate; build the native CLI first" 2
+            Stop-ContractCheck "ink_engine_cli executable not found at $candidate; build the native CLI first" 2
         }
         return $candidate
     }
     $executableName = if ([System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT) {
-        "stroke_engine_cli.exe"
+        "ink_engine_cli.exe"
     } else {
-        "stroke_engine_cli"
+        "ink_engine_cli"
     }
     $buildDirectory = if ($Config -eq "release") { "startup-release" } else { "startup-debug" }
     $candidates = @(
@@ -117,7 +117,7 @@ function Resolve-Executable {
             return (Resolve-Path -LiteralPath $candidate).Path
         }
     }
-    Stop-ContractCheck "stroke_engine_cli was not found; build it with: cmake --build build\$buildDirectory --target stroke_engine_cli --config $(if ($Config -eq 'release') { 'Release' } else { 'Debug' })" 2
+    Stop-ContractCheck "ink_engine_cli was not found; build it with: cmake --build build\$buildDirectory --target ink_engine_cli --config $(if ($Config -eq 'release') { 'Release' } else { 'Debug' })" 2
 }
 
 function Read-Manifest([string]$Path) {

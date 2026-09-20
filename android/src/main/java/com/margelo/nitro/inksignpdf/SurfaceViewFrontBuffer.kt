@@ -114,11 +114,11 @@ internal fun SurfaceView.cancelActiveStroke(
     activePointerId = SurfaceView.noPointer
     activeToolType = MotionEvent.TOOL_TYPE_UNKNOWN
     latestRealEventTimeMillis = null
-    strokeEngine.cancel()
+    inkEngine.cancel()
     traceRecorder.cancel()
     clearActivePresentation()
   } else {
-    if (cancelEngineWhenIdle) strokeEngine.cancel()
+    if (cancelEngineWhenIdle) inkEngine.cancel()
   }
   invalidateFrontBufferPresentation()
   applyQueuedPen()

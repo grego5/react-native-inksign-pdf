@@ -11,10 +11,10 @@ retaining an explicit source-build path for repository development and tests.
 
 ## Non-goals
 
-- Do not alter the JNI adapter, Kotlin `StrokeEngine`, frame codec, or input
+- Do not alter the JNI adapter, Kotlin `InkEngine`, frame codec, or input
   batching protocol except where an include or link target must change.
 - Do not change PDFium download, validation, or lifecycle behavior.
-- Do not introduce a shared stroke-engine `.so` unless static linking proves
+- Do not introduce a shared ink-engine `.so` unless static linking proves
   impossible; the target design is one archive linked into the module `.so`.
 - Do not make a debug app depend on a tracing-enabled published archive. Local
   debug tracing uses explicit source mode or a separately requested profiling
@@ -24,20 +24,20 @@ retaining an explicit source-build path for repository development and tests.
 
 - `android/CMakeLists.txt`: `ReactNativeInkSignPdf`, PDFium imported target,
   current Google Ink subdirectories, and source file list.
-- `android/src/main/cpp/StrokeEngine.cpp`: JNI adapter calls into the C ABI and
+- `android/src/main/cpp/InkEngine.cpp`: JNI adapter calls into the C ABI and
   copies borrowed frame data.
-- `android/src/main/cpp/StrokeEngine.hpp`: JNI-facing declarations and include
+- `android/src/main/cpp/InkEngine.hpp`: JNI-facing declarations and include
   ownership.
 - `android/build.gradle`: ABI filters, `c++_shared`, CMake arguments, and NDK
   compatibility checks.
-- `cpp/StrokeEngineC.h`: public archive header and frame pointer lifetime.
+- `cpp/InkEngineC.h`: public archive header and frame pointer lifetime.
 - `Tasks/01-bundled-stroke-archive.md`: imported archive contract.
 
 ## Current behavior and invariants
 
 - Android CMake consumes one verified archive per ABI from
-  `android/stroke-engine/<abi>/` by default. Explicit source mode adds the
-  Google Ink and Abseil source directories and compiles the same stroke-engine
+  `android/ink-engine/<abi>/` by default. Explicit source mode adds the
+  Google Ink and Abseil source directories and compiles the same ink-engine
   implementation files into `ReactNativeInkSignPdf`.
 - The JNI adapter remains the only platform bridge for the engine. Java/Kotlin
   receives copied frame bytes, never archive-owned pointers.
@@ -52,7 +52,7 @@ retaining an explicit source-build path for repository development and tests.
    package consumers use the default. Never infer source mode from the presence
    or absence of `third_party` or an archive.
 2. Define an imported static target whose location is selected by `ANDROID_ABI`
-   under `android/stroke-engine/<abi>/`; the JNI adapter retains the local
+   under `android/ink-engine/<abi>/`; the JNI adapter retains the local
    include surface and the archive is linked through the C ABI.
 3. Remove from the prebuilt target every implementation source inventoried in
    Task 1 and the Google Ink/Abseil `add_subdirectory` calls. Keep JNI and
@@ -70,10 +70,10 @@ retaining an explicit source-build path for repository development and tests.
 
 ## Ownership and lifecycle rules
 
-- The archive is immutable implementation code. `JStrokeEngine` owns the
+- The archive is immutable implementation code. `JInkEngine` owns the
   opaque engine handle and destroys it exactly once.
 - Prebuilt mode is the default. Repository development and tests explicitly
-  opt into source mode with `ReactNativeInkSignPdf_useSourceStrokeEngine=true`;
+  opt into source mode with `ReactNativeInkSignPdf_useSourceInkEngine=true`;
   the example project enables that property for local builds.
 - Frame pointers remain valid only until the next mutating engine call; the
   adapter must continue copying them before mutation.
@@ -85,7 +85,7 @@ retaining an explicit source-build path for repository development and tests.
 
 - A packaged Android build links successfully for every supported ABI without
   Google Ink or Abseil source directories, or any source-mode fallback.
-- Existing `StrokeFrameCodec`, prediction, front-buffer, and instrumentation
+- Existing `InkStrokeFrameCodec`, prediction, front-buffer, and instrumentation
   tests pass unchanged.
 - Source mode still builds the native C++ tests and produces the same geometry
   fixtures as prebuilt mode.
@@ -112,4 +112,4 @@ toolchain and leave the GitHub artifact matrix as the release gate.
 - Repository source mode remains functional.
 - No high-frequency boundary, frame lifetime, or lifecycle invariant changes.
 
-Proposed commit title: `android: consume prebuilt stroke engine archive`
+Proposed commit title: `android: consume prebuilt InkEngine archive`

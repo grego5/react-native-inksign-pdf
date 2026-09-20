@@ -8,7 +8,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Kotlin owner for the shared C++ stroke engine.
+ * Kotlin owner for the shared C++ InkEngine.
  *
  * Pen configuration returns the C ABI status. Active mutations use the fused
  * mutation/frame operation so the borrowed native frame is decoded before the
@@ -17,12 +17,12 @@ import java.nio.ByteOrder
 @Keep
 @DoNotStrip
 @Suppress("KotlinJniMissingFunction")
-internal class StrokeEngine {
+internal class InkEngine {
   private val mHybridData: HybridData = initHybrid()
   private var closed = false
   private var frameBuffer = ByteBuffer.allocateDirect(INITIAL_FRAME_BYTES)
     .order(ByteOrder.nativeOrder())
-  private val decodedFrame = StrokeFrame()
+  private val decodedFrame = InkStrokeFrame()
 
   @FastNative
   private external fun initHybrid(): HybridData
@@ -91,7 +91,7 @@ internal class StrokeEngine {
     pressure: Double = -1.0,
     tilt: Double = -1.0,
     orientation: Double = -1.0,
-  ): StrokeFrame = mutateAndRead(
+  ): InkStrokeFrame = mutateAndRead(
     operation = OPERATION_BEGIN,
     x = x,
     y = y,
@@ -108,7 +108,7 @@ internal class StrokeEngine {
     pressure: Double = -1.0,
     tilt: Double = -1.0,
     orientation: Double = -1.0,
-  ): StrokeFrame = mutateAndRead(
+  ): InkStrokeFrame = mutateAndRead(
     operation = OPERATION_UPDATE,
     x = x,
     y = y,
@@ -125,7 +125,7 @@ internal class StrokeEngine {
     pressure: Double = -1.0,
     tilt: Double = -1.0,
     orientation: Double = -1.0,
-  ): StrokeFrame = mutateAndRead(
+  ): InkStrokeFrame = mutateAndRead(
     operation = OPERATION_END,
     x = x,
     y = y,
@@ -138,13 +138,13 @@ internal class StrokeEngine {
   internal fun mutateRealBatchAndRead(
     operation: Int,
     batch: RealInputBatch,
-  ): StrokeFrame {
+  ): InkStrokeFrame {
     checkOpen()
     require(batch.count in 1..RealInputBatch.MAX_INPUTS)
     return InkPerfetto.section("InkSign/JNI real batch mutate+frame") {
       batch.buffer.position(0)
       batch.buffer.limit(batch.count * REAL_INPUT_DOUBLES * Double.SIZE_BYTES)
-      var resultFrame: StrokeFrame? = null
+      var resultFrame: InkStrokeFrame? = null
       var mutationPending = true
       while (resultFrame == null) {
         val result = if (mutationPending) {
@@ -161,7 +161,7 @@ internal class StrokeEngine {
         when {
           result == COPY_SUCCESS -> {
             resultFrame = InkPerfetto.section("InkSign/frame decode") {
-              StrokeFrameCodec.decode(frameBuffer, decodedFrame)
+              InkStrokeFrameCodec.decode(frameBuffer, decodedFrame)
             }
           }
           result >= 0 -> {
@@ -169,9 +169,9 @@ internal class StrokeEngine {
               .order(ByteOrder.nativeOrder())
           }
           result <= MUTATION_ERROR_BASE -> {
-            throw StrokeMutationException(MUTATION_ERROR_BASE - result)
+            throw InkStrokeMutationException(MUTATION_ERROR_BASE - result)
           }
-          else -> throw StrokeEngineException(-result)
+          else -> throw InkEngineException(-result)
         }
       }
       resultFrame!!
@@ -181,13 +181,13 @@ internal class StrokeEngine {
   internal fun replacePredictedInputs(
     batch: PredictedInputBatch,
     currentTimeMillis: Double,
-  ): StrokeFrame {
+  ): InkStrokeFrame {
     checkOpen()
     require(batch.count in 0..PredictedInputBatch.MAX_INPUTS)
     return InkPerfetto.section("InkSign/JNI replace prediction") {
       batch.buffer.position(0)
       batch.buffer.limit(batch.count * PREDICTED_INPUT_DOUBLES * Double.SIZE_BYTES)
-      var resultFrame: StrokeFrame? = null
+      var resultFrame: InkStrokeFrame? = null
       var mutationPending = true
       while (resultFrame == null) {
         val result = if (mutationPending) {
@@ -204,7 +204,7 @@ internal class StrokeEngine {
         when {
           result == COPY_SUCCESS -> {
             resultFrame = InkPerfetto.section("InkSign/frame decode") {
-              StrokeFrameCodec.decode(frameBuffer, decodedFrame)
+              InkStrokeFrameCodec.decode(frameBuffer, decodedFrame)
             }
           }
           result >= 0 -> {
@@ -212,9 +212,9 @@ internal class StrokeEngine {
               .order(ByteOrder.nativeOrder())
           }
           result <= MUTATION_ERROR_BASE -> {
-            throw StrokePredictionException(MUTATION_ERROR_BASE - result)
+            throw InkStrokePredictionException(MUTATION_ERROR_BASE - result)
           }
-          else -> throw StrokeEngineException(-result)
+          else -> throw InkEngineException(-result)
         }
       }
       resultFrame!!
@@ -241,11 +241,11 @@ internal class StrokeEngine {
     pressure: Double,
     tilt: Double,
     orientation: Double,
-  ): StrokeFrame {
+  ): InkStrokeFrame {
     checkOpen()
     return InkPerfetto.section("InkSign/JNI mutate+frame") {
       var mutationPending = true
-      var resultFrame: StrokeFrame? = null
+      var resultFrame: InkStrokeFrame? = null
       while (resultFrame == null) {
         val result = if (mutationPending) {
           mutationPending = false
@@ -264,16 +264,16 @@ internal class StrokeEngine {
         }
         when {
           result == COPY_SUCCESS -> {
-            resultFrame = StrokeFrameCodec.decode(frameBuffer, decodedFrame)
+            resultFrame = InkStrokeFrameCodec.decode(frameBuffer, decodedFrame)
           }
           result >= 0 -> {
             frameBuffer = ByteBuffer.allocateDirect(nextFrameBufferCapacity(result))
               .order(ByteOrder.nativeOrder())
           }
           result <= MUTATION_ERROR_BASE -> {
-            throw StrokeMutationException(MUTATION_ERROR_BASE - result)
+            throw InkStrokeMutationException(MUTATION_ERROR_BASE - result)
           }
-          else -> throw StrokeEngineException(-result)
+          else -> throw InkEngineException(-result)
         }
       }
       resultFrame!!
@@ -281,7 +281,7 @@ internal class StrokeEngine {
   }
 
   private fun checkOpen() {
-    check(!closed) { "Stroke engine is closed" }
+    check(!closed) { "InkEngine is closed" }
   }
 
   private fun nextFrameBufferCapacity(required: Int): Int {
@@ -310,14 +310,14 @@ internal class StrokeEngine {
   }
 }
 
-internal class StrokeEngineException(
+internal class InkEngineException(
   val status: Int,
-) : IllegalStateException("Stroke engine frame copy failed with status $status")
+) : IllegalStateException("InkEngine frame copy failed with status $status")
 
-internal class StrokeMutationException(
+internal class InkStrokeMutationException(
   val status: Int,
-) : IllegalStateException("Stroke engine mutation failed with status $status")
+) : IllegalStateException("InkEngine mutation failed with status $status")
 
-internal class StrokePredictionException(
+internal class InkStrokePredictionException(
   val status: Int,
-) : IllegalStateException("Stroke engine prediction replacement failed with status $status")
+) : IllegalStateException("InkEngine prediction replacement failed with status $status")

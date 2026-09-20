@@ -24,7 +24,7 @@ import kotlin.math.max
 internal class SurfaceView(
   context: Context,
   internal val sessionWorker: PdfSessionWorker,
-  internal val strokeEngine: StrokeEngine,
+  internal val inkEngine: InkEngine,
   internal val traceRecorder: StrokeTraceRecorder = createStrokeTraceRecorder(),
   predictor: InputPredictor? = null,
   internal val lowLatencyInk: LowLatencyInkHost =

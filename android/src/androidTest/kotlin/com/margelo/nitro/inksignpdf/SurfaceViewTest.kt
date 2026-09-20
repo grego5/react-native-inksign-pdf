@@ -738,15 +738,15 @@ class SurfaceViewTest {
   }
 
   private fun assertNotInProgress(
-    engine: StrokeEngine,
+    engine: InkEngine,
     x: Double,
     y: Double,
     time: Double,
   ) {
-    val error = assertThrows(StrokeMutationException::class.java) {
+    val error = assertThrows(InkStrokeMutationException::class.java) {
       engine.updateAndRead(x, y, time)
     }
-    assertEquals(StrokeEngine.STATUS_NOT_IN_PROGRESS, error.status)
+    assertEquals(InkEngine.STATUS_NOT_IN_PROGRESS, error.status)
   }
 
   private fun downEvent(x: Float, y: Float, eventTime: Long): MotionEvent {
@@ -813,7 +813,7 @@ class SurfaceViewTest {
   ) {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val worker = PdfSessionWorker(opener = FakePdfSession)
-    val engine = StrokeEngine()
+    val engine = InkEngine()
     val predictor = RecordingPredictor()
     val frontBuffer = RecordingFrontBufferHost()
     val surface: SurfaceView

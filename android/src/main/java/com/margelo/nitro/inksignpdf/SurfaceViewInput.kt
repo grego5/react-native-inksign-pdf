@@ -41,13 +41,13 @@ private fun SurfaceView.beginStroke(event: MotionEvent) {
     documentController.logicalDisplayUnitsPerPageUnit() ?: return
   val pagePen = pen.inPageUnits(logicalDisplayUnitsPerPageUnit)
   val configured = try {
-    strokeEngine.configurePen(
+    inkEngine.configurePen(
       pagePen.minWidth,
       pagePen.maxWidth,
       pagePen.smoothing,
       logicalDisplayUnitsPerPageUnit,
-    ) == StrokeEngine.STATUS_OK
-  } catch (_: StrokeMutationException) {
+    ) == InkEngine.STATUS_OK
+  } catch (_: InkStrokeMutationException) {
     false
   }
   if (!configured) return
@@ -66,7 +66,7 @@ private fun SurfaceView.beginStroke(event: MotionEvent) {
   val sampleAltitude = InkMotionEventSamples.altitude(event, pointerIndex)
   val sampleOrientation = InkMotionEventSamples.orientation(event, pointerIndex)
   val status = try {
-    strokeEngine.beginAndRead(
+    inkEngine.beginAndRead(
       mappedPagePoint.x,
       mappedPagePoint.y,
       nativeTime,
@@ -74,7 +74,7 @@ private fun SurfaceView.beginStroke(event: MotionEvent) {
       sampleAltitude,
       sampleOrientation,
     )
-  } catch (_: StrokeMutationException) {
+  } catch (_: InkStrokeMutationException) {
     return
   }
   perfetto.marker("InkSign/real committed")
@@ -116,16 +116,16 @@ private fun SurfaceView.moveStroke(event: MotionEvent) {
     return
   }
   val frame = try {
-    strokeEngine.mutateRealBatchAndRead(
-      StrokeEngine.BATCH_OPERATION_UPDATE,
+    inkEngine.mutateRealBatchAndRead(
+      InkEngine.BATCH_OPERATION_UPDATE,
       realInputBatch,
     )
-  } catch (_: StrokeMutationException) {
+  } catch (_: InkStrokeMutationException) {
     cancelActiveStroke()
     return
   }
   recordRealBatch(frame, realInputBatch.count)
-  require(frame.type == StrokeFrameCodec.COMMITTED_TYPE) {
+  require(frame.type == InkStrokeFrameCodec.COMMITTED_TYPE) {
     "Move stroke mutation did not return a committed frame"
   }
   applyCommittedFrame(frame)
@@ -157,16 +157,16 @@ private fun SurfaceView.endStroke(event: MotionEvent) {
     return
   }
   val frame = try {
-    strokeEngine.mutateRealBatchAndRead(
-      StrokeEngine.BATCH_OPERATION_END,
+    inkEngine.mutateRealBatchAndRead(
+      InkEngine.BATCH_OPERATION_END,
       realInputBatch,
     )
-  } catch (_: StrokeMutationException) {
+  } catch (_: InkStrokeMutationException) {
     cancelActiveStroke()
     return
   }
   recordRealBatch(frame, realInputBatch.count)
-  require(frame.type == StrokeFrameCodec.FINAL_TYPE) {
+  require(frame.type == InkStrokeFrameCodec.FINAL_TYPE) {
     "Terminal stroke mutation did not return a final frame"
   }
   val shouldHandoff = presentationSequence > 0L
@@ -287,7 +287,7 @@ private fun SurfaceView.appendRealSample(
   }
 }
 
-private fun SurfaceView.recordRealBatch(frame: StrokeFrame, sampleCount: Int) {
+private fun SurfaceView.recordRealBatch(frame: InkStrokeFrame, sampleCount: Int) {
   rawRealSampleCount += sampleCount.toLong()
   realBatchCount += 1L
   realNativeMutationCount += 1L
@@ -304,7 +304,7 @@ private fun SurfaceView.recordRealBatch(frame: StrokeFrame, sampleCount: Int) {
   perfetto.marker("InkSign/real batch accepted")
 }
 
-private fun SurfaceView.applyCommittedFrame(frame: StrokeFrame) {
+private fun SurfaceView.applyCommittedFrame(frame: InkStrokeFrame) {
   InkPerfetto.section("InkSign/apply frame") {
     frontBufferComposition.applyCommittedFrame(frame, presentationGeneration)
   }

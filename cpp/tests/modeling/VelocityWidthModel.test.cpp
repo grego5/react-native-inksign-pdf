@@ -10,7 +10,7 @@ using namespace margelo::nitro::inksignpdf;
 using namespace margelo::nitro::inksignpdf::detail;
 
 namespace {
-NormalizedInput point(StrokeEventType event, double x, double time,
+NormalizedInput point(InkStrokeEventType event, double x, double time,
                       double y = 0.0) {
   return {.eventType = event, .position = {x, y}, .time = time};
 }
@@ -62,7 +62,7 @@ int main() {
              referenceTarget(minimum, maximum, 1920.0)));
 
   VelocityWidthModel model(style);
-  const auto first = model.begin(point(StrokeEventType::Down, 0.0, 10.0),
+  const auto first = model.begin(point(InkStrokeEventType::Down, 0.0, 10.0),
                                  {960.0, 0.0});
   CHECK(first.radius == minimum);
   CHECK(first.dtSeconds == 0.0);
@@ -88,7 +88,7 @@ int main() {
   // The response is exponential in traveled distance and independent of
   // event timing. One response distance completes 1 - exp(-1) of the gap.
   const auto oneResponseDistance = model.update(
-      point(StrokeEventType::Move, 24.0, 10.001), {9600.0, 0.0});
+      point(InkStrokeEventType::Move, 24.0, 10.001), {9600.0, 0.0});
   CHECK(near(oneResponseDistance.segmentDistance, 24.0));
   CHECK(near(oneResponseDistance.responseAlpha, -std::expm1(-1.0)));
   CHECK(near(oneResponseDistance.radius,
@@ -97,22 +97,22 @@ int main() {
 
   // Equal-target subdivision composes exactly by distance.
   VelocityWidthModel subdivided(style);
-  subdivided.begin(point(StrokeEventType::Down, 0.0, 0.0), {9600.0, 0.0});
-  subdivided.update(point(StrokeEventType::Move, 12.0, 1.0), {9600.0, 0.0});
+  subdivided.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {9600.0, 0.0});
+  subdivided.update(point(InkStrokeEventType::Move, 12.0, 1.0), {9600.0, 0.0});
   const auto twoHalfDistances = subdivided.update(
-      point(StrokeEventType::Move, 24.0, 100.0), {9600.0, 0.0});
+      point(InkStrokeEventType::Move, 24.0, 100.0), {9600.0, 0.0});
   CHECK(near(twoHalfDistances.radius, oneResponseDistance.radius));
 
   // Growth and contraction use the same exponential update with separate
   // response distances.
   VelocityWidthModel bounded(style);
-  bounded.begin(point(StrokeEventType::Down, 0.0, 0.0), {0.0, 0.0});
+  bounded.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {0.0, 0.0});
   const auto growth = bounded.update(
-      point(StrokeEventType::Move, 10.0, 0.1), {9600.0, 0.0});
+      point(InkStrokeEventType::Move, 10.0, 0.1), {9600.0, 0.0});
   CHECK(growth.radius > minimum);
   CHECK(near(growth.responseDistancePage, style.responseDistancePage()));
   const auto contraction = bounded.update(
-      point(StrokeEventType::Move, 20.0, 0.2), {0.0, 0.0});
+      point(InkStrokeEventType::Move, 20.0, 0.2), {0.0, 0.0});
   CHECK(contraction.radius < growth.radius);
   CHECK(near(contraction.responseDistancePage,
              style.responseDistancePage(true)));
@@ -122,15 +122,15 @@ int main() {
 
   // Zero travel cannot change radius, regardless of elapsed time.
   VelocityWidthModel noAllowance(style);
-  noAllowance.begin(point(StrokeEventType::Down, 0.0, 0.0), {9600.0, 0.0});
+  noAllowance.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {9600.0, 0.0});
   const auto zeroTravel = noAllowance.update(
-      point(StrokeEventType::Move, 0.0, 0.1), {9600.0, 0.0});
+      point(InkStrokeEventType::Move, 0.0, 0.1), {9600.0, 0.0});
   CHECK(zeroTravel.segmentDistance == 0.0);
   CHECK(zeroTravel.responseDistancePage == style.responseDistancePage());
   CHECK(zeroTravel.responseAlpha == 0.0);
   CHECK(zeroTravel.radius == minimum);
   const auto next = noAllowance.update(
-      point(StrokeEventType::Move, 24.0, 0.1), {9600.0, 0.0});
+      point(InkStrokeEventType::Move, 24.0, 0.1), {9600.0, 0.0});
   CHECK(near(next.responseAlpha, -std::expm1(-1.0)));
   CHECK(next.radius > zeroTravel.radius);
 
@@ -138,34 +138,34 @@ int main() {
   // either side leaves the factor at one. A high angular rate retains the
   // supplied periodic cosine behavior.
   VelocityWidthModel directions(style);
-  directions.begin(point(StrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
+  directions.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
   const auto straight = directions.update(
-      point(StrokeEventType::Move, 1.0, 0.1), {100.0, 0.0});
+      point(InkStrokeEventType::Move, 1.0, 0.1), {100.0, 0.0});
   CHECK(near(straight.turnFactor, 1.0));
   const auto changed = directions.update(
-      point(StrokeEventType::Move, 2.0, 0.2), {0.0, 100.0});
+      point(InkStrokeEventType::Move, 2.0, 0.2), {0.0, 100.0});
   CHECK(near(changed.turnFactor,
              referenceTurnFactor({100.0, 0.0}, {0.0, 100.0}, 0.1)));
   CHECK(changed.turnFactor < 1.0);
 
   VelocityWidthModel zeroPrevious(style);
-  zeroPrevious.begin(point(StrokeEventType::Down, 0.0, 0.0), {0.0, 0.0});
-  CHECK(zeroPrevious.update(point(StrokeEventType::Move, 1.0, 0.1),
+  zeroPrevious.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {0.0, 0.0});
+  CHECK(zeroPrevious.update(point(InkStrokeEventType::Move, 1.0, 0.1),
                             {100.0, 0.0}).turnFactor == 1.0);
   VelocityWidthModel zeroCurrent(style);
-  zeroCurrent.begin(point(StrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
-  CHECK(zeroCurrent.update(point(StrokeEventType::Move, 1.0, 0.1),
+  zeroCurrent.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
+  CHECK(zeroCurrent.update(point(InkStrokeEventType::Move, 1.0, 0.1),
                            {0.0, 0.0}).turnFactor == 1.0);
   VelocityWidthModel periodic(style);
-  periodic.begin(point(StrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
+  periodic.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
   const auto periodicTurn = periodic.update(
-      point(StrokeEventType::Move, 1.0, 1.0 / 180.0), {-100.0, 0.0});
+      point(InkStrokeEventType::Move, 1.0, 1.0 / 180.0), {-100.0, 0.0});
   CHECK(near(periodicTurn.turnFactor,
              referenceTurnFactor({100.0, 0.0}, {-100.0, 0.0}, 1.0 / 180.0)));
   CHECK(near(periodicTurn.turnFactor, 1.0));
   VelocityWidthModel tinyDt(style);
-  tinyDt.begin(point(StrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
-  const auto tiny = tinyDt.update(point(StrokeEventType::Move, 1.0, 1e-12),
+  tinyDt.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
+  const auto tiny = tinyDt.update(point(InkStrokeEventType::Move, 1.0, 1e-12),
                                   {0.0, 100.0});
   CHECK(near(tiny.turnFactor,
              referenceTurnFactor({100.0, 0.0}, {0.0, 100.0}, 1e-12)));
@@ -178,12 +178,12 @@ int main() {
   CHECK(near(displayStyle.responseDistancePage(), 24.0));
   VelocityWidthModel scaled(scaledStyle);
   VelocityWidthModel display(displayStyle);
-  scaled.begin(point(StrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
-  display.begin(point(StrokeEventType::Down, 0.0, 0.0), {200.0, 0.0});
+  scaled.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {100.0, 0.0});
+  display.begin(point(InkStrokeEventType::Down, 0.0, 0.0), {200.0, 0.0});
   const auto scaledResult = scaled.update(
-      point(StrokeEventType::Move, 5.0, 0.1), {100.0, 0.0});
+      point(InkStrokeEventType::Move, 5.0, 0.1), {100.0, 0.0});
   const auto displayResult = display.update(
-      point(StrokeEventType::Move, 10.0, 0.1), {200.0, 0.0});
+      point(InkStrokeEventType::Move, 10.0, 0.1), {200.0, 0.0});
   CHECK(near(scaledResult.responseAlpha, displayResult.responseAlpha));
   CHECK(near(scaledResult.radius * 2.0, displayResult.radius));
   CHECK(near(scaledResult.targetRadius * 2.0, displayResult.targetRadius));
@@ -195,22 +195,22 @@ int main() {
   VelocityWidthModel restoredBeforeBegin(style);
   restoredBeforeBegin.restore(initialSnapshot);
   const auto initial = uninitialized.begin(
-      point(StrokeEventType::Down, 0.0, 4.0), {100.0, 0.0});
+      point(InkStrokeEventType::Down, 0.0, 4.0), {100.0, 0.0});
   const auto restoredInitial = restoredBeforeBegin.begin(
-      point(StrokeEventType::Down, 0.0, 4.0), {100.0, 0.0});
+      point(InkStrokeEventType::Down, 0.0, 4.0), {100.0, 0.0});
   CHECK(near(initial.radius, restoredInitial.radius));
   CHECK(near(initial.targetRadius, restoredInitial.targetRadius));
 
   VelocityWidthModel checkpoint(style);
-  checkpoint.begin(point(StrokeEventType::Down, 0.0, 4.0), {100.0, 0.0});
-  checkpoint.update(point(StrokeEventType::Move, 1.0, 4.1), {100.0, 0.0});
+  checkpoint.begin(point(InkStrokeEventType::Down, 0.0, 4.0), {100.0, 0.0});
+  checkpoint.update(point(InkStrokeEventType::Move, 1.0, 4.1), {100.0, 0.0});
   const auto saved = checkpoint.snapshot();
   const auto direct = checkpoint.update(
-      point(StrokeEventType::Move, 2.0, 4.2), {0.0, 100.0});
+      point(InkStrokeEventType::Move, 2.0, 4.2), {0.0, 100.0});
   VelocityWidthModel restored(style);
   restored.restore(saved);
   const auto replayed = restored.update(
-      point(StrokeEventType::Move, 2.0, 4.2), {0.0, 100.0});
+      point(InkStrokeEventType::Move, 2.0, 4.2), {0.0, 100.0});
   CHECK(near(replayed.dtSeconds, direct.dtSeconds));
   CHECK(near(replayed.turnFactor, direct.turnFactor));
   CHECK(near(replayed.effectiveSpeedDisplay, direct.effectiveSpeedDisplay));
@@ -221,15 +221,15 @@ int main() {
 
   SignatureStrokeStyle fixedStyle(0.0, 0.0);
   VelocityWidthModel fixed(fixedStyle);
-  CHECK(fixed.begin(point(StrokeEventType::Down, 0.0, 0.0),
+  CHECK(fixed.begin(point(InkStrokeEventType::Down, 0.0, 0.0),
                     {960.0, 0.0}).radius == 0.0);
   const auto fixedMove = fixed.update(
-      point(StrokeEventType::Move, 100.0, 0.1), {0.0, 960.0});
+      point(InkStrokeEventType::Move, 100.0, 0.1), {0.0, 960.0});
   CHECK(fixedMove.radius == 0.0);
   CHECK(fixedMove.responseDistancePage == 0.0);
 
   checkpoint.cancel();
-  CHECK(checkpoint.begin(point(StrokeEventType::Down, 100.0, 9.0),
+  CHECK(checkpoint.begin(point(InkStrokeEventType::Down, 100.0, 9.0),
                          {1200.0, 0.0}).radius == minimum);
   return 0;
 }

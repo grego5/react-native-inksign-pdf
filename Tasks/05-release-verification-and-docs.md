@@ -6,7 +6,7 @@ Status: Planned
 
 ## Objective
 
-Prove that the packed npm artifact uses the bundled stroke engine, then update
+Prove that the packed npm artifact uses the bundled InkEngine, then update
 maintainer and user-facing documentation to describe the source/prebuilt split.
 
 ## Non-goals
@@ -24,7 +24,7 @@ maintainer and user-facing documentation to describe the source/prebuilt split.
   commands and documentation ownership.
 - `.agents/skills/inksign-pdf-docs/references/architecture.md`: current C++
   engine ownership, threading, and Android-only usage.
-- `.agents/skills/inksign-pdf-docs/references/stroke-engine/replay-validation.md`:
+- `.agents/skills/inksign-pdf-docs/references/ink-engine/replay-validation.md`:
   production replay and geometry invariants.
 - `README.md`: user-facing native dependency and platform documentation.
 - `tools/test-native.ps1`, `tools/test-android.ps1`, and
@@ -32,7 +32,7 @@ maintainer and user-facing documentation to describe the source/prebuilt split.
 
 ## Current behavior and invariants
 
-- Native replay uses the production stroke engine; it is not a second geometry
+- Native replay uses the production InkEngine; it is not a second geometry
   implementation.
 - The engine is synchronous, caller-owned, toolkit-neutral, and page-space.
 - Android uses the shared C++ outline engine; iOS uses PencilKit.
@@ -105,4 +105,4 @@ instead of substituting an unvalidated result.
 - Maintainer and user-facing documentation describe the final distribution
   behavior and validation boundaries.
 
-Proposed commit title: `docs: document prebuilt stroke engine distribution`
+Proposed commit title: `docs: document prebuilt InkEngine distribution`

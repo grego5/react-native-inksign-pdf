@@ -1,4 +1,4 @@
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -7,7 +7,7 @@
 #include <stdexcept>
 
 #include "core/PerfettoTrace.hpp"
-#include "engine/StrokeEngineInternal.hpp"
+#include "engine/InkEngineInternal.hpp"
 #include "input/CommittedCenterline.hpp"
 #include "input/InputNormalizer.hpp"
 #include "modeling/ContactLifecycle.hpp"
@@ -20,7 +20,7 @@ using SteadyClock = std::chrono::steady_clock;
 
 using Operation = detail::engine::Operation;
 
-bool validConfig(const StrokeConfig& config) noexcept {
+bool validConfig(const InkStrokeConfig& config) noexcept {
   return std::isfinite(config.minWidth) && std::isfinite(config.maxWidth) &&
          config.minWidth > 0.0 && config.maxWidth > 0.0 &&
          config.minWidth <= config.maxWidth &&
@@ -37,8 +37,8 @@ std::uint64_t elapsedNanos(SteadyClock::time_point start) {
           .count());
 }
 
-void clearFrame(StrokeFrame& output) {
-  output.type = StrokeFrameType::Committed;
+void clearFrame(InkStrokeFrame& output) {
+  output.type = InkStrokeFrameType::Committed;
   output.revision = 0;
   output.committedPointCount = 0;
   output.diagnostics = {};
@@ -47,59 +47,59 @@ void clearFrame(StrokeFrame& output) {
   output.contours.clear();
 }
 
-void prepareFrame(StrokeFrame& output) {
+void prepareFrame(InkStrokeFrame& output) {
   output.modeledPoints.reserve(256);
   output.contours.reserve(8);
 }
 
 }  // namespace
 
-StrokeEngine::StrokeEngine(StrokeConfig config)
+InkEngine::InkEngine(InkStrokeConfig config)
     : config_(validateConfig(config)), impl_(std::make_unique<Impl>(config_)) {}
 
-StrokeEngine::~StrokeEngine() = default;
-StrokeEngine::StrokeEngine(StrokeEngine&&) noexcept = default;
-StrokeEngine& StrokeEngine::operator=(StrokeEngine&&) noexcept = default;
+InkEngine::~InkEngine() = default;
+InkEngine::InkEngine(InkEngine&&) noexcept = default;
+InkEngine& InkEngine::operator=(InkEngine&&) noexcept = default;
 
-const std::vector<ModeledPoint>& StrokeEngine::modeledPoints() const {
+const std::vector<ModeledPoint>& InkEngine::modeledPoints() const {
   return impl_->brush.modeledPoints();
 }
 
-const std::vector<StrokeDiagnosticSample>& StrokeEngine::diagnosticSamples()
+const std::vector<InkStrokeDiagnosticSample>& InkEngine::diagnosticSamples()
     const noexcept {
   return impl_->diagnosticSamples;
 }
 
-void StrokeEngine::enableDiagnostics(bool enabled) {
+void InkEngine::enableDiagnostics(bool enabled) {
   if (inProgress())
     throw std::logic_error("diagnostics cannot change during a stroke");
   impl_->diagnosticsEnabled = enabled;
   if (!enabled) impl_->diagnosticSamples.clear();
 }
 
-bool StrokeEngine::inProgress() const { return impl_->contact.active(); }
+bool InkEngine::inProgress() const { return impl_->contact.active(); }
 
-const StrokeWorkStats& StrokeEngine::workStats() const noexcept {
+const InkStrokeWorkStats& InkEngine::workStats() const noexcept {
   return impl_->workStats;
 }
 
-void StrokeEngine::recordFrameFlatteningCapacityGrowth() noexcept {
+void InkEngine::recordFrameFlatteningCapacityGrowth() noexcept {
   ++impl_->workStats.frameFlatteningCapacityGrowth;
 }
 
-StrokeStatus StrokeEngine::setConfig(StrokeConfig config) {
+InkStrokeStatus InkEngine::setConfig(InkStrokeConfig config) {
   if (inProgress())
-    return {StrokeStatusCode::ReconfigureWhileInProgress,
+    return {InkStrokeStatusCode::ReconfigureWhileInProgress,
             "Stroke configuration cannot change while a stroke is active."};
   if (!validConfig(config))
-    return {StrokeStatusCode::InvalidInput,
+    return {InkStrokeStatusCode::InvalidInput,
             "stroke configuration contains an invalid value."};
   config_ = validateConfig(config);
   impl_ = std::make_unique<Impl>(config_);
-  return StrokeStatus::success();
+  return InkStrokeStatus::success();
 }
 
-StrokeConfig StrokeEngine::validateConfig(StrokeConfig config) {
+InkStrokeConfig InkEngine::validateConfig(InkStrokeConfig config) {
   if (!validConfig(config))
     throw std::invalid_argument(
         "stroke configuration contains an invalid value");
@@ -109,9 +109,9 @@ StrokeConfig StrokeEngine::validateConfig(StrokeConfig config) {
 namespace {
 
 template <typename ImplType>
-StrokeStatus applyRealInput(ImplType& impl, std::span<const StrokeInput> inputs,
+InkStrokeStatus applyRealInput(ImplType& impl, std::span<const InkStrokeInput> inputs,
                             Operation operation, bool terminal,
-                            StrokeFrame& output,
+                            InkStrokeFrame& output,
                             bool activateOnAcceptedMovement) {
   const auto modelStart = SteadyClock::now();
   detail::InputStatus inputStatus =
@@ -135,7 +135,7 @@ StrokeStatus applyRealInput(ImplType& impl, std::span<const StrokeInput> inputs,
     if (!acceptedMovement) {
       clearFrame(output);
       output.diagnostics = impl.diagnosticsSnapshot();
-      return StrokeStatus::success();
+      return InkStrokeStatus::success();
     }
     impl.contact.acceptMovement(impl.centerlineUpdate.acceptedInput.time);
   }
@@ -169,15 +169,15 @@ StrokeStatus applyRealInput(ImplType& impl, std::span<const StrokeInput> inputs,
   }
   impl.geometryDurationNanos = elapsedNanos(geometryStart);
   output.diagnostics = impl.diagnosticsSnapshot();
-  return StrokeStatus::success();
+  return InkStrokeStatus::success();
 }
 
 }  // namespace
 
-StrokeStatus StrokeEngine::begin(const StrokeInput& input,
-                                 StrokeFrame& output) {
+InkStrokeStatus InkEngine::begin(const InkStrokeInput& input,
+                                 InkStrokeFrame& output) {
   if (inProgress())
-    return {StrokeStatusCode::AlreadyInProgress, "A stroke is already active."};
+    return {InkStrokeStatusCode::AlreadyInProgress, "A stroke is already active."};
   impl_->reset();
   impl_->diagnosticSamples.clear();
   terminalDiagnostic_ = {};
@@ -195,25 +195,25 @@ StrokeStatus StrokeEngine::begin(const StrokeInput& input,
       0.01f, static_cast<float>(config_.logicalDisplayUnitsPerPageUnit));
   clearFrame(output);
   output.diagnostics = impl_->diagnosticsSnapshot();
-  return StrokeStatus::success();
+  return InkStrokeStatus::success();
 }
 
-StrokeStatus StrokeEngine::update(const StrokeInput& input,
-                                  StrokeFrame& output) {
-  return updateBatch(std::span<const StrokeInput>(&input, 1), output);
+InkStrokeStatus InkEngine::update(const InkStrokeInput& input,
+                                  InkStrokeFrame& output) {
+  return updateBatch(std::span<const InkStrokeInput>(&input, 1), output);
 }
 
-StrokeStatus StrokeEngine::end(const StrokeInput& input, StrokeFrame& output) {
-  return endBatch(std::span<const StrokeInput>(&input, 1), output);
+InkStrokeStatus InkEngine::end(const InkStrokeInput& input, InkStrokeFrame& output) {
+  return endBatch(std::span<const InkStrokeInput>(&input, 1), output);
 }
 
-StrokeStatus StrokeEngine::updateBatch(std::span<const StrokeInput> inputs,
-                                       StrokeFrame& output) {
+InkStrokeStatus InkEngine::updateBatch(std::span<const InkStrokeInput> inputs,
+                                       InkStrokeFrame& output) {
   return applyRealInput(*impl_, inputs, Operation::Update, false, output, true);
 }
 
-StrokeStatus StrokeEngine::endBatch(std::span<const StrokeInput> inputs,
-                                    StrokeFrame& output) {
+InkStrokeStatus InkEngine::endBatch(std::span<const InkStrokeInput> inputs,
+                                    InkStrokeFrame& output) {
   const bool batchHasMovement =
       impl_->contact.movementAccepted() ||
       (!impl_->centerline.points().empty() &&
@@ -228,7 +228,7 @@ StrokeStatus StrokeEngine::endBatch(std::span<const StrokeInput> inputs,
     if (!status.ok()) return detail::engine::fromInputStatus(status);
     const auto& start = impl_->centerline.points().front();
     detail::NormalizedInput tap = start;
-    tap.eventType = StrokeEventType::Down;
+    tap.eventType = InkStrokeEventType::Down;
     tap.time = impl_->centerlineUpdate.acceptedInput.time;
     const double radius = detail::durationSensitiveInitialRadius(
         impl_->contact.end(tap.time), impl_->brush.style().maximumRadius());
@@ -242,11 +242,11 @@ StrokeStatus StrokeEngine::endBatch(std::span<const StrokeInput> inputs,
     impl_->upstream.extend(tips.newFixedUpstreamStates,
                            tips.volatileUpstreamStates);
     clearFrame(output);
-    output.type = StrokeFrameType::Final;
+    output.type = InkStrokeFrameType::Final;
     output.committedPointCount = 1;
     output.modeledPoints = impl_->brush.modeledPoints();
     impl_->publishContours(output.committedPointCount, 0, output);
-    output.type = StrokeFrameType::Final;
+    output.type = InkStrokeFrameType::Final;
     output.diagnostics = impl_->diagnosticsSnapshot();
     if (impl_->diagnosticsEnabled)
       terminalDiagnostic_ = {
@@ -259,18 +259,18 @@ StrokeStatus StrokeEngine::endBatch(std::span<const StrokeInput> inputs,
           .taperedRadius = impl_->brush.modeledPoints().front().radius,
           .exactContact = true};
     impl_->reset();
-    return StrokeStatus::success();
+    return InkStrokeStatus::success();
   }
-  const StrokeStatus status =
+  const InkStrokeStatus status =
       applyRealInput(*impl_, inputs, Operation::End, true, output, true);
   if (!status.ok()) return status;
   const auto finalFrameStart = SteadyClock::now();
   clearFrame(output);
-  output.type = StrokeFrameType::Final;
+  output.type = InkStrokeFrameType::Final;
   output.committedPointCount = impl_->brush.modeledPoints().size();
   output.modeledPoints = impl_->brush.modeledPoints();
   impl_->publishContours(output.committedPointCount, 0, output);
-  output.type = StrokeFrameType::Final;
+  output.type = InkStrokeFrameType::Final;
   impl_->geometryDurationNanos += elapsedNanos(finalFrameStart);
   output.diagnostics = impl_->diagnosticsSnapshot();
   const auto styleSnapshot = impl_->brush.styleSnapshot();
@@ -298,14 +298,14 @@ StrokeStatus StrokeEngine::endBatch(std::span<const StrokeInput> inputs,
         .taperedRadius = terminalRadius,
         .exactContact = taper.active()};
   impl_->reset();
-  return StrokeStatus::success();
+  return InkStrokeStatus::success();
 }
 
-void StrokeEngine::cancel() { impl_->reset(); }
+void InkEngine::cancel() { impl_->reset(); }
 
-StrokeStatus StrokeEngine::replacePredictedInputs(
-    std::span<const StrokeInput> predictedInputs, double currentTime,
-    StrokePredictionFrame& output) {
+InkStrokeStatus InkEngine::replacePredictedInputs(
+    std::span<const InkStrokeInput> predictedInputs, double currentTime,
+    InkStrokePredictionFrame& output) {
   return impl_->replacePredictedInputs(predictedInputs, currentTime, output);
 }
 

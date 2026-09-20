@@ -1,6 +1,6 @@
-# Prebuilt stroke-engine distribution plan
+# Prebuilt ink-engine distribution plan
 
-This plan packages the Android C++ stroke engine and its Google Ink/Abseil
+This plan packages the Android C++ InkEngine and its Google Ink/Abseil
 dependencies as verified per-ABI static archives. The full source repository
 continues to build from source for native development and tests, while the
 published npm package consumes the prebuilt archives and omits unnecessary
@@ -8,14 +8,14 @@ third-party source copies.
 
 Constraints:
 
-- Keep `cpp/StrokeEngineC.h` as the consumer boundary and preserve API version 8.
+- Keep `cpp/InkEngineC.h` as the consumer boundary and preserve API version 8.
 - Do not change stroke geometry, prediction, ownership, threading, coordinates,
   or the Android frame protocol.
 - Keep PDFium packaging and iOS installation working; remove only third-party
   files that the published package no longer needs.
 - Release CI produces archives; packaging stages the verified release artifacts
   into the npm tarball before publication. Package consumers do not fetch or
-  compile the stroke engine at install time.
+  compile the InkEngine at install time.
 - Source mode is an explicit repository-development setting. Missing packaged
   archives are build errors, never a trigger for automatic source fallback.
 - Local debug source builds keep Perfetto/debug instrumentation available.

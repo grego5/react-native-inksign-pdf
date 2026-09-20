@@ -1,4 +1,4 @@
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 #include "tests/support/TestSupport.hpp"
 
 #include <cmath>
@@ -11,7 +11,7 @@ void checkSignatureBrushOwnership();
 
 namespace {
 
-StrokeInput input(StrokeEventType type, double x, double y, double time) {
+InkStrokeInput input(InkStrokeEventType type, double x, double y, double time) {
   return {.eventType = type, .position = {x, y}, .time = time, .pressure = 0.5};
 }
 
@@ -29,10 +29,10 @@ void checkWidthReplay(const std::vector<ModeledPoint>& actual,
   }
 }
 
-std::vector<StrokeInput> makeMoves(std::size_t count, double timeOffset = 0.0) {
-  std::vector<StrokeInput> result;
+std::vector<InkStrokeInput> makeMoves(std::size_t count, double timeOffset = 0.0) {
+  std::vector<InkStrokeInput> result;
   result.reserve(count + 1);
-  result.push_back(input(StrokeEventType::Down, 0.0, 0.0, timeOffset));
+  result.push_back(input(InkStrokeEventType::Down, 0.0, 0.0, timeOffset));
   for (std::size_t index = 1; index <= count; ++index) {
     const double time = timeOffset +
         (index == 20 ? 19.0 / 120.0 : index / 120.0);
@@ -41,13 +41,13 @@ std::vector<StrokeInput> makeMoves(std::size_t count, double timeOffset = 0.0) {
         ? index * 0.2
         : index < 64 ? 6.4 - (index - 32) * 0.45
                      : 2.0 + std::sin(index * 0.09) * 18.0;
-    result.push_back(input(StrokeEventType::Move, x, y, time));
+    result.push_back(input(InkStrokeEventType::Move, x, y, time));
   }
   return result;
 }
 
-void feedPrefix(StrokeEngine& engine, const std::vector<StrokeInput>& inputs,
-                std::size_t lastIndex, StrokeFrame& frame) {
+void feedPrefix(InkEngine& engine, const std::vector<InkStrokeInput>& inputs,
+                std::size_t lastIndex, InkStrokeFrame& frame) {
   CHECK(lastIndex < inputs.size());
   CHECK(engine.begin(inputs.front(), frame).ok());
   for (std::size_t index = 1; index <= lastIndex; ++index)
@@ -58,16 +58,16 @@ void feedPrefix(StrokeEngine& engine, const std::vector<StrokeInput>& inputs,
 
 int main() {
   checkSignatureBrushOwnership();
-  const StrokeConfig config{.minWidth = 2.0,
+  const InkStrokeConfig config{.minWidth = 2.0,
                              .maxWidth = 4.0,
                              .logicalDisplayUnitsPerPageUnit = 1.0,
                              .smoothing = 0.4};
   const auto inputs = makeMoves(192);
 
-  StrokeEngine incremental(config);
-  StrokeFrame frame;
+  InkEngine incremental(config);
+  InkStrokeFrame frame;
   CHECK(incremental.begin(inputs.front(), frame).ok());
-  StrokeWorkStats previousStats = incremental.workStats();
+  InkStrokeWorkStats previousStats = incremental.workStats();
   bool sawReplacement = false;
 
   for (std::size_t index = 1; index < inputs.size(); ++index) {
@@ -76,15 +76,15 @@ int main() {
         frame.modeledPointStart < incremental.modeledPoints().size())
       sawReplacement = true;
 
-    const StrokeWorkStats currentStats = incremental.workStats();
+    const InkStrokeWorkStats currentStats = incremental.workStats();
     CHECK(currentStats.widthPointsProcessed >=
           previousStats.widthPointsProcessed);
     CHECK(currentStats.widthPointsProcessed -
               previousStats.widthPointsProcessed <= 16);
     previousStats = currentStats;
 
-    StrokeEngine replay(config);
-    StrokeFrame replayFrame;
+    InkEngine replay(config);
+    InkStrokeFrame replayFrame;
     feedPrefix(replay, inputs, index, replayFrame);
     checkWidthReplay(incremental.modeledPoints(), replay.modeledPoints());
   }
@@ -93,31 +93,31 @@ int main() {
   CHECK(incremental.workStats().widthPointsProcessed <
         incremental.modeledPoints().size() * 16);
 
-  StrokeEngine reference(config);
-  StrokeFrame referenceFrame;
+  InkEngine reference(config);
+  InkStrokeFrame referenceFrame;
   feedPrefix(reference, inputs, inputs.size() - 1, referenceFrame);
-  const StrokeInput endInput = input(
-      StrokeEventType::Up, inputs.back().position.x, inputs.back().position.y,
+  const InkStrokeInput endInput = input(
+      InkStrokeEventType::Up, inputs.back().position.x, inputs.back().position.y,
       193.0 / 120.0);
   CHECK(incremental.end(endInput, frame).ok());
   CHECK(reference.end(endInput, referenceFrame).ok());
   checkWidthReplay(frame.modeledPoints, referenceFrame.modeledPoints);
 
-  StrokeEngine predicted(config);
-  StrokeEngine predictionReference(config);
+  InkEngine predicted(config);
+  InkEngine predictionReference(config);
   predicted.enableDiagnostics(true);
   predictionReference.enableDiagnostics(true);
-  StrokeFrame predictedFrame;
-  StrokeFrame predictionReferenceFrame;
+  InkStrokeFrame predictedFrame;
+  InkStrokeFrame predictionReferenceFrame;
   feedPrefix(predicted, inputs, 48, predictedFrame);
   feedPrefix(predictionReference, inputs, 48, predictionReferenceFrame);
   const auto beforePrediction = predicted.modeledPoints();
   const auto beforePredictionDiagnostics = predicted.diagnosticSamples();
-  const StrokeWorkStats beforePredictionStats = predicted.workStats();
-  StrokePredictionFrame prediction;
-  const std::vector<StrokeInput> predictedInputs{
-      input(StrokeEventType::Move, 35.0, 14.0, 50.0 / 120.0),
-      input(StrokeEventType::Move, 36.0, 15.0, 51.0 / 120.0)};
+  const InkStrokeWorkStats beforePredictionStats = predicted.workStats();
+  InkStrokePredictionFrame prediction;
+  const std::vector<InkStrokeInput> predictedInputs{
+      input(InkStrokeEventType::Move, 35.0, 14.0, 50.0 / 120.0),
+      input(InkStrokeEventType::Move, 36.0, 15.0, 51.0 / 120.0)};
   CHECK(predicted.replacePredictedInputs(predictedInputs, 52.0 / 120.0,
                                          prediction).ok());
   checkWidthReplay(predicted.modeledPoints(), beforePrediction);
@@ -143,28 +143,28 @@ int main() {
   // Centerline prediction states are converted back to the same absolute
   // clock used by real modeled states. A nonzero stroke origin must therefore
   // produce identical width recurrence values, not a second time offset.
-  const StrokeConfig clockConfig{.minWidth = 2.0,
+  const InkStrokeConfig clockConfig{.minWidth = 2.0,
                                  .maxWidth = 4.0,
                                  .logicalDisplayUnitsPerPageUnit = 1.0,
                                  .smoothing = 0.0};
-  StrokeEngine clock(clockConfig);
-  StrokeEngine shifted(clockConfig);
+  InkEngine clock(clockConfig);
+  InkEngine shifted(clockConfig);
   clock.enableDiagnostics(true);
   shifted.enableDiagnostics(true);
-  StrokeFrame clockFrame;
-  StrokeFrame shiftedFrame;
+  InkStrokeFrame clockFrame;
+  InkStrokeFrame shiftedFrame;
   const auto clockInputs = makeMoves(4);
   const auto shiftedInputs = makeMoves(4, 12.0);
   feedPrefix(clock, clockInputs, 4, clockFrame);
   feedPrefix(shifted, shiftedInputs, 4, shiftedFrame);
-  StrokePredictionFrame clockPrediction;
-  StrokePredictionFrame shiftedPrediction;
-  const std::vector<StrokeInput> clockPredictedInputs{
-      input(StrokeEventType::Move, 35.0, 14.0, 50.0 / 120.0),
-      input(StrokeEventType::Move, 36.0, 15.0, 51.0 / 120.0)};
-  const std::vector<StrokeInput> shiftedPredictedInputs{
-      input(StrokeEventType::Move, 35.0, 14.0, 12.0 + 50.0 / 120.0),
-      input(StrokeEventType::Move, 36.0, 15.0, 12.0 + 51.0 / 120.0)};
+  InkStrokePredictionFrame clockPrediction;
+  InkStrokePredictionFrame shiftedPrediction;
+  const std::vector<InkStrokeInput> clockPredictedInputs{
+      input(InkStrokeEventType::Move, 35.0, 14.0, 50.0 / 120.0),
+      input(InkStrokeEventType::Move, 36.0, 15.0, 51.0 / 120.0)};
+  const std::vector<InkStrokeInput> shiftedPredictedInputs{
+      input(InkStrokeEventType::Move, 35.0, 14.0, 12.0 + 50.0 / 120.0),
+      input(InkStrokeEventType::Move, 36.0, 15.0, 12.0 + 51.0 / 120.0)};
   CHECK(clock.replacePredictedInputs(clockPredictedInputs, 52.0 / 120.0,
                                      clockPrediction).ok());
   CHECK(shifted.replacePredictedInputs(
@@ -193,11 +193,11 @@ int main() {
                    predictionReference.modeledPoints());
 
   predicted.cancel();
-  StrokeFrame resetFrame;
+  InkStrokeFrame resetFrame;
   CHECK(predicted.begin(inputs.front(), resetFrame).ok());
   CHECK(predicted.update(inputs[1], resetFrame).ok());
-  StrokeEngine resetReference(config);
-  StrokeFrame resetReferenceFrame;
+  InkEngine resetReference(config);
+  InkStrokeFrame resetReferenceFrame;
   CHECK(resetReference.begin(inputs.front(), resetReferenceFrame).ok());
   CHECK(resetReference.update(inputs[1], resetReferenceFrame).ok());
   checkWidthReplay(predicted.modeledPoints(),

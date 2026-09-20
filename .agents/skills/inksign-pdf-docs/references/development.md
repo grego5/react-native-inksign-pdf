@@ -28,11 +28,11 @@
 Do not expand the v1 contract or introduce another stroke representation
 without first documenting the architectural decision in `architecture.md`.
 
-## Native stroke-engine artifacts
+## Native InkEngine artifacts
 
-The repository keeps the production stroke engine source-linked for desktop,
+The repository keeps the production InkEngine source-linked for desktop,
 native tests, and deliberate Android source builds. The Android archive
-producer is `tools/build-stroke-engine-archive.ps1`; it uses the Android NDK
+producer is `tools/build-ink-engine-archive.ps1`; it uses the Android NDK
 toolchain and emits one indexed static archive plus JSON metadata per ABI.
 The archive contains the C ABI engine, upstream adapters, Google Ink geometry,
 and the required Abseil object files. It does not contain JNI, PDFium, or
@@ -42,11 +42,11 @@ and the required Abseil object files. It does not contain JNI, PDFium, or
 trace scopes and counters out. A local debug source build may explicitly set
 `ENABLE_PERFETTO_TRACE=ON`; a trace-enabled archive is a separately named
 profiling artifact and is not the normal release artifact. The producer's
-`StrokeEngineArchiveSmoke` target verifies that the merged archive resolves
-through `StrokeEngineC.h`; `tools/verify-stroke-engine-archive.ps1` checks the
+`InkEngineArchiveSmoke` target verifies that the merged archive resolves
+through `InkEngineC.h`; `tools/verify-ink-engine-archive.ps1` checks the
 ABI, metadata, archive members, C ABI symbols, and normal-artifact trace rule.
 
-The manually triggered `.github/workflows/build-and-publish-stroke-engine.yml`
+The manually triggered `.github/workflows/build-and-publish-ink-engine.yml`
 workflow builds the supported Android release ABIs (`arm64-v8a` and
 `x86_64`) from a full checkout with NDK `27.1.12297006`. It runs source-linked
 native tests once, smoke-links and verifies every ABI, and refuses to reuse an
@@ -55,15 +55,15 @@ combined manifest, checksums, and Google Ink/Abseil notices. Profiling archives
 are never selected by this workflow.
 
 Android CMake consumes the packaged archives from
-`android/stroke-engine/<abi>/` by default. It validates the archive metadata,
+`android/ink-engine/<abi>/` by default. It validates the archive metadata,
 ABI, API version, expected NDK, byte size, SHA-256, and trace-disabled policy
 before linking the imported static target. Repository development and tests
 explicitly opt into source mode with
-`ReactNativeInkSignPdf_useSourceStrokeEngine=true`; source mode remains the
+`ReactNativeInkSignPdf_useSourceInkEngine=true`; source mode remains the
 only Android path that compiles Google Ink and Abseil from `third_party`.
-The package allowlist retains only `third_party/pdfium`; the verified stroke
-release is staged under `android/stroke-engine/<abi>/` with
-`npm run stage:stroke-engine` before packing. The staging command validates the
+The package allowlist retains only `third_party/pdfium`; the verified InkEngine
+release is staged under `android/ink-engine/<abi>/` with
+`npm run stage:ink-engine` before packing. The staging command validates the
 release tag, complete ABI set, metadata, checksums, notices, and licenses.
 
 ## Validation commands

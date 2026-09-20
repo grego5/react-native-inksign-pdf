@@ -12,7 +12,7 @@ def canonicalMainSources = files(
   '../../../android/src/main/java/com/margelo/nitro/inksignpdf/PageNavigationPolicy.kt',
   '../../../android/src/main/java/com/margelo/nitro/inksignpdf/CacheArtifactPolicy.kt',
   '../../../android/src/main/java/com/margelo/nitro/inksignpdf/TextLayout.kt',
-  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/StrokeFrameCodec.kt',
+  '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkStrokeFrameCodec.kt',
   '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkBounds.kt',
   '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkPathData.kt',
   '../../../android/src/main/java/com/margelo/nitro/inksignpdf/InkRenderer.kt',
@@ -27,7 +27,7 @@ def canonicalTestSources = files(
   '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/PageViewportTest.kt',
   '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/PdfTilesTest.kt',
   '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/PdfSessionWorkerTest.kt',
-  '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/StrokeFrameCodecTest.kt',
+  '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/InkStrokeFrameCodecTest.kt',
   '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/InkHistoryTest.kt',
   '../../../android/src/test/kotlin/com/margelo/nitro/inksignpdf/PenConfigurationTest.kt',
 )

@@ -7,7 +7,7 @@ Status: Complete
 ## Objective
 
 Add GitHub Actions coverage that builds, validates, and publishes the bundled
-stroke-engine archives from a full repository checkout.
+ink-engine archives from a full repository checkout.
 
 ## Non-goals
 
@@ -101,4 +101,4 @@ different NDK for release validation.
 - The artifact names, immutable release identity, and layout are ready for
   package staging and Android CMake consumption.
 
-Proposed commit title: `ci: publish verified stroke engine archives`
+Proposed commit title: `ci: publish verified InkEngine archives`

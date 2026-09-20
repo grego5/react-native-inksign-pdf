@@ -1,4 +1,4 @@
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 #include "fixtures/StrokeFixtures.hpp"
 #include "tests/support/FrameTransport.hpp"
 #include "tests/support/TestSupport.hpp"
@@ -9,15 +9,15 @@ using namespace margelo::nitro::inksignpdf;
 using namespace margelo::nitro::inksignpdf::detail;
 
 int main() {
-  StrokeEngine engine({.smoothing = 0.0});
-  StrokeFrame frame;
+  InkEngine engine({.smoothing = 0.0});
+  InkStrokeFrame frame;
   FrameTransport transport;
   std::uint64_t previousRevision = 0;
   const auto fixture = fixtures::all().front();
   for (const auto& input : fixture.inputs) {
-    const auto status = input.eventType == StrokeEventType::Down
+    const auto status = input.eventType == InkStrokeEventType::Down
         ? engine.begin(input, frame)
-        : input.eventType == StrokeEventType::Move
+        : input.eventType == InkStrokeEventType::Move
             ? engine.update(input, frame)
             : engine.end(input, frame);
     CHECK(status.ok());
@@ -25,8 +25,8 @@ int main() {
         ? transport.replaceFinal(frame.revision, frame.committedPointCount,
                                  frame.contours)
         : transport.replace(frame);
-    CHECK(view.type == (frame.isFinal() ? NSEStrokeFrameTypeFinal
-                                         : NSEStrokeFrameTypeCommitted));
+    CHECK(view.type == (frame.isFinal() ? InkEngineFrameTypeFinal
+                                         : InkEngineFrameTypeCommitted));
     CHECK(view.contourCount == frame.contours.size());
     for (std::size_t i = 0; i < view.contourCount; ++i) {
       CHECK(view.contours[i].segmentStart + view.contours[i].segmentCount <=
@@ -38,7 +38,7 @@ int main() {
   CHECK(frame.isFinal());
   const auto& final = transport.replaceFinal(
       previousRevision + 1, frame.committedPointCount, frame.contours);
-  CHECK(final.type == NSEStrokeFrameTypeFinal);
+  CHECK(final.type == InkEngineFrameTypeFinal);
   CHECK(final.contourCount == frame.contours.size());
   CHECK(final.segmentCount > 0);
   transport.clear();

@@ -9,7 +9,7 @@ import org.junit.Test
 class FrontBufferStrokeCompositionTest {
     @Test
     fun emptyPredictionRemainsHarmlessToComposition() {
-        val frame = StrokeFrameCodec.decode(emptyPredictionFrame())
+        val frame = InkStrokeFrameCodec.decode(emptyPredictionFrame())
         val composition = FrontBufferStrokeComposition()
         composition.reset(0L)
         composition.applyPredictionFrame(frame, 0L)
@@ -22,7 +22,7 @@ class FrontBufferStrokeCompositionTest {
         composition.reset(0L)
         composition.applyCommittedFrame(
             frame(
-                StrokeFrameCodec.COMMITTED_TYPE, 1L,
+                InkStrokeFrameCodec.COMMITTED_TYPE, 1L,
                 listOf(contour(0f, 10f), contour(20f, 30f))
             ),
             0L,
@@ -30,14 +30,14 @@ class FrontBufferStrokeCompositionTest {
         assertEquals(2, composition.retainedDiagnostics().committedContourCount)
 
         composition.applyCommittedFrame(
-            frame(StrokeFrameCodec.COMMITTED_TYPE, 2L, listOf(contour(40f, 50f))),
+            frame(InkStrokeFrameCodec.COMMITTED_TYPE, 2L, listOf(contour(40f, 50f))),
             0L,
         )
         assertEquals(1, composition.retainedDiagnostics().committedContourCount)
 
         val beforeEmpty = composition.frontBufferBounds()
         composition.applyCommittedFrame(
-            frame(StrokeFrameCodec.COMMITTED_TYPE, 3L, emptyList()),
+            frame(InkStrokeFrameCodec.COMMITTED_TYPE, 3L, emptyList()),
             0L,
         )
         assertEquals(0, composition.retainedDiagnostics().committedContourCount)
@@ -49,7 +49,7 @@ class FrontBufferStrokeCompositionTest {
 
         composition.applyCommittedFrame(
             frame(
-                StrokeFrameCodec.COMMITTED_TYPE, 4L,
+                InkStrokeFrameCodec.COMMITTED_TYPE, 4L,
                 listOf(contour(60f, 70f), contour(80f, 90f), contour(100f, 110f))
             ),
             0L,
@@ -69,7 +69,7 @@ class FrontBufferStrokeCompositionTest {
         composition.reset(0L)
         composition.applyCommittedFrame(
             frame(
-                StrokeFrameCodec.COMMITTED_TYPE,
+                InkStrokeFrameCodec.COMMITTED_TYPE,
                 1L,
                 listOf(contour(0f, 10f), contour(100f, 110f)),
             ),
@@ -85,7 +85,7 @@ class FrontBufferStrokeCompositionTest {
         val beforePredictionBounds = composition.frontBufferBounds()
         composition.applyPredictionFrame(
             frame(
-                StrokeFrameCodec.PREDICTION_TYPE,
+                InkStrokeFrameCodec.PREDICTION_TYPE,
                 2L,
                 listOf(contour(0f, 10f), contour(200f, 210f)),
             ),
@@ -103,7 +103,7 @@ class FrontBufferStrokeCompositionTest {
         val beforeRevisedPredictionBounds = composition.frontBufferBounds()
         composition.applyPredictionFrame(
             frame(
-                StrokeFrameCodec.PREDICTION_TYPE,
+                InkStrokeFrameCodec.PREDICTION_TYPE,
                 3L,
                 listOf(contour(0f, 10f), contour(220f, 230f)),
             ),
@@ -135,7 +135,7 @@ class FrontBufferStrokeCompositionTest {
         composition.reset(0L)
         composition.applyCommittedFrame(
             frame(
-                StrokeFrameCodec.COMMITTED_TYPE,
+                InkStrokeFrameCodec.COMMITTED_TYPE,
                 1L,
                 listOf(contour(100f, 110f)),
             ),
@@ -144,7 +144,7 @@ class FrontBufferStrokeCompositionTest {
         val beforePredictionBounds = composition.frontBufferBounds()
         composition.applyPredictionFrame(
             frame(
-                StrokeFrameCodec.PREDICTION_TYPE,
+                InkStrokeFrameCodec.PREDICTION_TYPE,
                 2L,
                 listOf(contour(1000f, 1010f)),
             ),
@@ -176,7 +176,7 @@ class FrontBufferStrokeCompositionTest {
         type: Int,
         revision: Long,
         contours: List<StrokeContour>,
-    ) = StrokeFrame().also {
+    ) = InkStrokeFrame().also {
         it.replace(type, revision, 0L, contours)
     }
 
@@ -204,13 +204,13 @@ class FrontBufferStrokeCompositionTest {
     }
 
     private fun emptyPredictionFrame() = ByteBuffer.allocateDirect(
-        StrokeFrameCodec.HEADER_BYTES,
+        InkStrokeFrameCodec.HEADER_BYTES,
     ).order(ByteOrder.nativeOrder()).apply {
         putInt(0x4E534546)
-        putInt(StrokeFrameCodec.VERSION)
-        putInt(StrokeFrameCodec.PREDICTION_TYPE)
+        putInt(InkStrokeFrameCodec.VERSION)
+        putInt(InkStrokeFrameCodec.PREDICTION_TYPE)
         putInt(0)
         repeat(4) { putLong(0L) }
-        while (position() < StrokeFrameCodec.HEADER_BYTES) put(0)
+        while (position() < InkStrokeFrameCodec.HEADER_BYTES) put(0)
     }
 }

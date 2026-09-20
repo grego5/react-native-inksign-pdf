@@ -7,7 +7,7 @@ Status: Complete
 ## Objective
 
 Produce one Android static archive per ABI containing every non-platform
-stroke-engine source currently compiled by `android/CMakeLists.txt`, its
+ink-engine source currently compiled by `android/CMakeLists.txt`, its
 upstream adapters, Google Ink geometry, and all required Abseil objects. The
 archive must be consumable through the existing C ABI without requiring Google
 Ink or Abseil source, headers, or separate archives in the consumer project.
@@ -24,12 +24,12 @@ Ink or Abseil source, headers, or separate archives in the consumer project.
 ## Read before editing
 
 - `CMakeLists.txt`: `UpstreamStrokeGeometry`, `UpstreamStrokeOutput`,
-  `StrokeEngine`, and native test targets.
+  `InkEngine`, and native test targets.
 - `android/CMakeLists.txt`: current Android source list and transitive native
   link dependencies.
-- `cpp/StrokeEngineC.h`: `NSE_STROKE_ENGINE_API_VERSION`, opaque handle,
+- `cpp/InkEngineC.h`: `INK_ENGINE_API_VERSION`, opaque handle,
   borrowed frame lifetime, and C data layout.
-- `.agents/skills/inksign-pdf-docs/references/stroke-engine/replay-validation.md`:
+- `.agents/skills/inksign-pdf-docs/references/ink-engine/replay-validation.md`:
   production-engine and replay-test invariants.
 - `.agents/skills/inksign-pdf-docs/references/development.md`: source-of-truth
   and native validation rules.
@@ -38,9 +38,9 @@ Ink or Abseil source, headers, or separate archives in the consumer project.
 
 - Desktop CMake builds Google Ink and Abseil from `third_party`, then builds
   the source targets and native tests.
-- Android CMake currently compiles the stroke engine and upstream adapter
+- Android CMake currently compiles the InkEngine and upstream adapter
   sources directly into `ReactNativeInkSignPdf`.
-- `StrokeEngineC.h` is the stable platform-facing boundary; returned frame
+- `InkEngineC.h` is the stable platform-facing boundary; returned frame
   pointers are borrowed until the next mutating call.
 - The engine is synchronous and caller-owned. It remains page-space and
   toolkit-neutral.
@@ -48,7 +48,7 @@ Ink or Abseil source, headers, or separate archives in the consumer project.
 ## Implementation steps
 
 1. Inventory the Android target's source list and classify each entry. Put
-   `cpp/StrokeEngine*`, `cpp/engine`, `cpp/input`, `cpp/modeling`, and
+   `cpp/InkEngine*`, `cpp/engine`, `cpp/input`, `cpp/modeling`, and
    `cpp/upstream` production implementations in the archive, plus Google Ink
    geometry and the Abseil objects they need. Leave `android/src/main/cpp`
    JNI/platform code and `cpp/pdfium` outside it. Reconcile this inventory
@@ -111,7 +111,7 @@ do not weaken the archive contract.
 ## Completion criteria
 
 - A local producer can create a self-contained archive for each supported ABI.
-- The archive links through `StrokeEngineC.h` without Google Ink/Abseil inputs.
+- The archive links through `InkEngineC.h` without Google Ink/Abseil inputs.
 - Source-based native tests remain available and pass.
 
-Proposed commit title: `build: bundle stroke engine native dependencies`
+Proposed commit title: `build: bundle InkEngine native dependencies`

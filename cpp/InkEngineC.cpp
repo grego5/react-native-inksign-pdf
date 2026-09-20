@@ -1,6 +1,6 @@
-#include "StrokeEngineC.h"
+#include "InkEngineC.h"
 
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 
 #include <array>
 #include <cmath>
@@ -8,12 +8,12 @@
 #include <utility>
 #include <vector>
 
-struct NSEStrokeEngine {
-  margelo::nitro::inksignpdf::StrokeEngine engine;
-  margelo::nitro::inksignpdf::StrokeFrame frame;
-  std::vector<NSEStrokeCubicSegment> segments;
-  std::vector<NSEStrokeCubicContourRecord> contours;
-  NSEStrokeFrameView view{};
+struct InkEngineOpaque {
+  margelo::nitro::inksignpdf::InkEngine engine;
+  margelo::nitro::inksignpdf::InkStrokeFrame frame;
+  std::vector<InkEngineCubicSegment> segments;
+  std::vector<InkEngineCubicContourRecord> contours;
+  InkEngineFrameView view{};
 };
 
 namespace {
@@ -21,16 +21,16 @@ namespace {
 using namespace margelo::nitro::inksignpdf;
 using TransportSegment = CubicSegment;
 
-static_assert(kStrokeEngineApiVersion == NSE_STROKE_ENGINE_API_VERSION);
-static_assert(sizeof(Vec2) == sizeof(NSEStrokePoint));
-static_assert(alignof(Vec2) == alignof(NSEStrokePoint));
+static_assert(kInkEngineApiVersion == INK_ENGINE_API_VERSION);
+static_assert(sizeof(Vec2) == sizeof(InkEnginePoint));
+static_assert(alignof(Vec2) == alignof(InkEnginePoint));
 static_assert(std::is_standard_layout_v<Vec2>);
-static_assert(std::is_standard_layout_v<NSEStrokePoint>);
-static_assert(sizeof(TransportSegment) == sizeof(NSEStrokeCubicSegment));
-static_assert(alignof(TransportSegment) == alignof(NSEStrokeCubicSegment));
+static_assert(std::is_standard_layout_v<InkEnginePoint>);
+static_assert(sizeof(TransportSegment) == sizeof(InkEngineCubicSegment));
+static_assert(alignof(TransportSegment) == alignof(InkEngineCubicSegment));
 static_assert(std::is_standard_layout_v<TransportSegment>);
 
-StrokeInput makeInput(StrokeEventType eventType, NSEStrokeInput input) noexcept {
+InkStrokeInput makeInput(InkStrokeEventType eventType, InkEngineInput input) noexcept {
   return {.eventType = eventType,
           .position = {input.x, input.y},
           .time = input.time,
@@ -39,9 +39,9 @@ StrokeInput makeInput(StrokeEventType eventType, NSEStrokeInput input) noexcept 
           .orientation = input.orientation};
 }
 
-void clearView(NSEStrokeFrameView& view) noexcept { view = {}; }
+void clearView(InkEngineFrameView& view) noexcept { view = {}; }
 
-void fillView(NSEStrokeEngine* engine) {
+void fillView(InkEngineOpaque* engine) {
   const auto& frame = engine->frame;
   engine->segments.clear();
   engine->contours.clear();
@@ -129,8 +129,8 @@ void fillView(NSEStrokeEngine* engine) {
 }
 
 template <typename Call>
-int32_t invoke(NSEStrokeEngineRef ref, const Call& call) noexcept {
-  if (ref == nullptr) return NSEStrokeStatusInvalidInput;
+int32_t invoke(InkEngineRef ref, const Call& call) noexcept {
+  if (ref == nullptr) return InkEngineStatusInvalidInput;
   try {
     const int32_t result = static_cast<int32_t>(call(ref).code);
     fillView(ref);
@@ -140,14 +140,14 @@ int32_t invoke(NSEStrokeEngineRef ref, const Call& call) noexcept {
     ref->segments.clear();
     ref->contours.clear();
     clearView(ref->view);
-    return NSEStrokeStatusException;
+    return InkEngineStatusException;
   }
 }
 
-void installPredictionFrame(NSEStrokeEngine* engine,
-                            StrokePredictionFrame prediction) {
+void installPredictionFrame(InkEngineOpaque* engine,
+                            InkStrokePredictionFrame prediction) {
   engine->frame = {};
-  engine->frame.type = StrokeFrameType::Prediction;
+  engine->frame.type = InkStrokeFrameType::Prediction;
   engine->frame.diagnostics = prediction.diagnostics;
   engine->frame.contours = std::move(prediction.contours);
   fillView(engine);
@@ -157,9 +157,9 @@ void installPredictionFrame(NSEStrokeEngine* engine,
 
 extern "C" {
 
-NSEStrokeEngineRef nse_stroke_engine_create(void) noexcept {
+InkEngineRef ink_engine_create(void) noexcept {
   try {
-    auto* engine = new NSEStrokeEngine();
+    auto* engine = new InkEngineOpaque();
     fillView(engine);
     return engine;
   } catch (...) {
@@ -167,9 +167,9 @@ NSEStrokeEngineRef nse_stroke_engine_create(void) noexcept {
   }
 }
 
-void nse_stroke_engine_destroy(NSEStrokeEngineRef engine) noexcept { delete engine; }
+void ink_engine_destroy(InkEngineRef engine) noexcept { delete engine; }
 
-int32_t nse_stroke_engine_configure_pen(NSEStrokeEngineRef engine,
+int32_t ink_engine_configure_pen(InkEngineRef engine,
                                         double min_width, double max_width,
                                         double smoothing,
                                         double logical_display_units_per_page_unit) noexcept {
@@ -177,8 +177,8 @@ int32_t nse_stroke_engine_configure_pen(NSEStrokeEngineRef engine,
       !std::isfinite(smoothing) || !std::isfinite(logical_display_units_per_page_unit) ||
       min_width <= 0.0 || max_width <= 0.0 || min_width > max_width ||
       smoothing < 0.0 || smoothing > 1.0 || logical_display_units_per_page_unit <= 0.0)
-    return NSEStrokeStatusInvalidInput;
-  return invoke(engine, [&](NSEStrokeEngine* value) {
+    return InkEngineStatusInvalidInput;
+  return invoke(engine, [&](InkEngineOpaque* value) {
     auto config = value->engine.config();
     config.minWidth = min_width;
     config.maxWidth = max_width;
@@ -188,66 +188,66 @@ int32_t nse_stroke_engine_configure_pen(NSEStrokeEngineRef engine,
   });
 }
 
-int32_t nse_stroke_engine_begin(NSEStrokeEngineRef engine, NSEStrokeInput input) noexcept {
-  return invoke(engine, [&](NSEStrokeEngine* value) {
-    return value->engine.begin(makeInput(StrokeEventType::Down, input), value->frame);
+int32_t ink_engine_begin(InkEngineRef engine, InkEngineInput input) noexcept {
+  return invoke(engine, [&](InkEngineOpaque* value) {
+    return value->engine.begin(makeInput(InkStrokeEventType::Down, input), value->frame);
   });
 }
 
-int32_t nse_stroke_engine_update(NSEStrokeEngineRef engine, NSEStrokeInput input) noexcept {
-  return nse_stroke_engine_mutate_batch(
-      engine, NSE_STROKE_BATCH_OPERATION_UPDATE, &input, 1u);
+int32_t ink_engine_update(InkEngineRef engine, InkEngineInput input) noexcept {
+  return ink_engine_mutate_batch(
+      engine, INK_ENGINE_BATCH_OPERATION_UPDATE, &input, 1u);
 }
 
-int32_t nse_stroke_engine_end(NSEStrokeEngineRef engine, NSEStrokeInput input) noexcept {
-  return nse_stroke_engine_mutate_batch(
-      engine, NSE_STROKE_BATCH_OPERATION_END, &input, 1u);
+int32_t ink_engine_end(InkEngineRef engine, InkEngineInput input) noexcept {
+  return ink_engine_mutate_batch(
+      engine, INK_ENGINE_BATCH_OPERATION_END, &input, 1u);
 }
 
-int32_t nse_stroke_engine_mutate_batch(
-    NSEStrokeEngineRef engine, uint32_t operation,
-    const NSEStrokeInput* inputs, size_t input_count) noexcept {
+int32_t ink_engine_mutate_batch(
+    InkEngineRef engine, uint32_t operation,
+    const InkEngineInput* inputs, size_t input_count) noexcept {
   if (engine == nullptr || inputs == nullptr || input_count == 0 ||
       input_count > kMaxRealInputBatch ||
-      (operation != NSE_STROKE_BATCH_OPERATION_UPDATE &&
-       operation != NSE_STROKE_BATCH_OPERATION_END)) {
-    return NSEStrokeStatusInvalidInput;
+      (operation != INK_ENGINE_BATCH_OPERATION_UPDATE &&
+       operation != INK_ENGINE_BATCH_OPERATION_END)) {
+    return InkEngineStatusInvalidInput;
   }
-  return invoke(engine, [&](NSEStrokeEngine* value) {
-    std::array<StrokeInput, kMaxRealInputBatch> converted;
+  return invoke(engine, [&](InkEngineOpaque* value) {
+    std::array<InkStrokeInput, kMaxRealInputBatch> converted;
     for (size_t index = 0; index < input_count; ++index) {
-      const StrokeEventType type = operation == NSE_STROKE_BATCH_OPERATION_END &&
+      const InkStrokeEventType type = operation == INK_ENGINE_BATCH_OPERATION_END &&
               index + 1 == input_count
-          ? StrokeEventType::Up
-          : StrokeEventType::Move;
+          ? InkStrokeEventType::Up
+          : InkStrokeEventType::Move;
       converted[index] = makeInput(type, inputs[index]);
     }
-    const std::span<const StrokeInput> batch(converted.data(), input_count);
-    return operation == NSE_STROKE_BATCH_OPERATION_END
+    const std::span<const InkStrokeInput> batch(converted.data(), input_count);
+    return operation == INK_ENGINE_BATCH_OPERATION_END
         ? value->engine.endBatch(batch, value->frame)
         : value->engine.updateBatch(batch, value->frame);
   });
 }
 
-int32_t nse_stroke_engine_replace_predicted_inputs(
-    NSEStrokeEngineRef engine, const NSEStrokeInput* inputs, size_t input_count,
+int32_t ink_engine_replace_predicted_inputs(
+    InkEngineRef engine, const InkEngineInput* inputs, size_t input_count,
     double current_time) noexcept {
-  if (engine == nullptr) return NSEStrokeStatusInvalidInput;
+  if (engine == nullptr) return InkEngineStatusInvalidInput;
   if ((input_count != 0 && inputs == nullptr) ||
       input_count > kMaxPredictedInputBatch) {
     engine->frame = {};
     engine->segments.clear();
     engine->contours.clear();
     clearView(engine->view);
-    return NSEStrokeStatusInvalidInput;
+    return InkEngineStatusInvalidInput;
   }
   try {
-    std::array<StrokeInput, kMaxPredictedInputBatch> predictedInputs;
+    std::array<InkStrokeInput, kMaxPredictedInputBatch> predictedInputs;
     for (size_t index = 0; index < input_count; ++index)
-      predictedInputs[index] = makeInput(StrokeEventType::Move, inputs[index]);
-    StrokePredictionFrame prediction;
+      predictedInputs[index] = makeInput(InkStrokeEventType::Move, inputs[index]);
+    InkStrokePredictionFrame prediction;
     const auto status = engine->engine.replacePredictedInputs(
-        std::span<const StrokeInput>(predictedInputs.data(), input_count),
+        std::span<const InkStrokeInput>(predictedInputs.data(), input_count),
         current_time, prediction);
     installPredictionFrame(engine, std::move(prediction));
     return static_cast<int32_t>(status.code);
@@ -256,11 +256,11 @@ int32_t nse_stroke_engine_replace_predicted_inputs(
     engine->segments.clear();
     engine->contours.clear();
     clearView(engine->view);
-    return NSEStrokeStatusException;
+    return InkEngineStatusException;
   }
 }
 
-void nse_stroke_engine_cancel(NSEStrokeEngineRef engine) noexcept {
+void ink_engine_cancel(InkEngineRef engine) noexcept {
   if (engine == nullptr) return;
   try {
     engine->engine.cancel();
@@ -273,7 +273,7 @@ void nse_stroke_engine_cancel(NSEStrokeEngineRef engine) noexcept {
   }
 }
 
-const NSEStrokeFrameView* nse_stroke_engine_frame(NSEStrokeEngineRef engine) noexcept {
+const InkEngineFrameView* ink_engine_frame(InkEngineRef engine) noexcept {
   return engine == nullptr ? nullptr : &engine->view;
 }
 

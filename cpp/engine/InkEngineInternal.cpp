@@ -1,31 +1,31 @@
-#include "engine/StrokeEngineInternal.hpp"
+#include "engine/InkEngineInternal.hpp"
 
 #include <cmath>
 
 namespace margelo::nitro::inksignpdf::detail::engine {
 
-detail::CommittedCenterlineConfig centerlineConfig(const StrokeConfig& config) {
+detail::CommittedCenterlineConfig centerlineConfig(const InkStrokeConfig& config) {
   return {.smoothing = config.smoothing};
 }
 
-StrokeStatus fromInputStatus(const detail::InputStatus& status) {
+InkStrokeStatus fromInputStatus(const detail::InputStatus& status) {
   using InputCode = detail::InputStatusCode;
   switch (status.code) {
-    case InputCode::Ok: return StrokeStatus::success();
+    case InputCode::Ok: return InkStrokeStatus::success();
     case InputCode::AlreadyInProgress:
-      return {StrokeStatusCode::AlreadyInProgress, status.message};
+      return {InkStrokeStatusCode::AlreadyInProgress, status.message};
     case InputCode::NotInProgress:
-      return {StrokeStatusCode::NotInProgress, status.message};
+      return {InkStrokeStatusCode::NotInProgress, status.message};
     case InputCode::InvalidEvent:
-      return {StrokeStatusCode::InvalidEvent, status.message};
+      return {InkStrokeStatusCode::InvalidEvent, status.message};
     case InputCode::InvalidValue:
-      return {StrokeStatusCode::InvalidInput, status.message};
+      return {InkStrokeStatusCode::InvalidInput, status.message};
     case InputCode::DuplicateInput:
-      return {StrokeStatusCode::DuplicateInput, status.message};
+      return {InkStrokeStatusCode::DuplicateInput, status.message};
     case InputCode::TimeWentBackwards:
-      return {StrokeStatusCode::TimeWentBackwards, status.message};
+      return {InkStrokeStatusCode::TimeWentBackwards, status.message};
   }
-  return {StrokeStatusCode::InvalidInput, status.message};
+  return {InkStrokeStatusCode::InvalidInput, status.message};
 }
 
 std::optional<Vec2> recentRealDirection(
@@ -44,13 +44,13 @@ std::optional<Vec2> recentRealDirection(
 }  // namespace margelo::nitro::inksignpdf::detail::engine
 
 namespace margelo::nitro::inksignpdf {
-StrokeEngine::Impl::Impl(const StrokeConfig& config)
+InkEngine::Impl::Impl(const InkStrokeConfig& config)
     : brush(config), centerline(detail::engine::centerlineConfig(config)) {
 }
 
-StrokePredictionDiagnostics StrokeEngine::Impl::diagnosticsSnapshot(
+InkStrokePredictionDiagnostics InkEngine::Impl::diagnosticsSnapshot(
     std::size_t predictedModeledInputCount) const {
-  StrokePredictionDiagnostics diagnostics;
+  InkStrokePredictionDiagnostics diagnostics;
   const auto& modelState = centerline.modelState();
   const auto& modeled = centerline.modeledInputs();
   diagnostics.queuedRealInputCount = centerline.realInputCount();
@@ -64,31 +64,31 @@ StrokePredictionDiagnostics StrokeEngine::Impl::diagnosticsSnapshot(
   diagnostics.modelDurationNanos = modelDurationNanos;
   diagnostics.geometryDurationNanos = geometryDurationNanos;
   if (const auto& latest = centerline.latestRealInput()) {
-    diagnostics.validityFlags |= StrokeDiagnosticLatestRealRaw;
+    diagnostics.validityFlags |= InkStrokeDiagnosticLatestRealRaw;
     diagnostics.latestRealRawInput = latest->position;
     diagnostics.latestRealRawTime = latest->time;
     diagnostics.realElapsedTime = latest->time - centerline.strokeStartTime();
     if (detail::engine::recentRealDirection(centerline.points()))
-      diagnostics.validityFlags |= StrokeDiagnosticDirection;
+      diagnostics.validityFlags |= InkStrokeDiagnosticDirection;
   }
   if (!modeled.empty())
     diagnostics.fullElapsedTime = modeled.back().state.time + centerline.strokeStartTime();
   if (modelState.stableInputCount > 0 && modelState.stableInputCount <= modeled.size()) {
     const auto& state = modeled[modelState.stableInputCount - 1].state;
-    diagnostics.validityFlags |= StrokeDiagnosticStableModeledTip;
+    diagnostics.validityFlags |= InkStrokeDiagnosticStableModeledTip;
     diagnostics.stableModeledTip = state.position;
     diagnostics.stableModeledTime = state.time + centerline.strokeStartTime();
   }
   if (modelState.realInputCount > 0 && modelState.realInputCount <= modeled.size()) {
     const auto& state = modeled[modelState.realInputCount - 1].state;
-    diagnostics.validityFlags |= StrokeDiagnosticRealModeledTip;
+    diagnostics.validityFlags |= InkStrokeDiagnosticRealModeledTip;
     diagnostics.realModeledTip = state.position;
     diagnostics.realModeledTime = state.time + centerline.strokeStartTime();
   }
   return diagnostics;
 }
 
-void StrokeEngine::Impl::reset() {
+void InkEngine::Impl::reset() {
   centerline.cancel();
   contact.reset();
   brush.reset();

@@ -17,13 +17,13 @@ std::optional<double> optionalValue(double value) {
 
 }  // namespace
 
-InputStatus InputNormalizer::begin(const StrokeInput& input,
+InputStatus InputNormalizer::begin(const InkStrokeInput& input,
                                    NormalizedInput& output) {
   if (inProgress_) {
     return {InputStatusCode::AlreadyInProgress,
             "A stroke is already in progress."};
   }
-  if (input.eventType != StrokeEventType::Down) {
+  if (input.eventType != InkStrokeEventType::Down) {
     return {InputStatusCode::InvalidEvent,
             "Stroke event does not match the current lifecycle."};
   }
@@ -38,26 +38,26 @@ InputStatus InputNormalizer::begin(const StrokeInput& input,
   return InputStatus::success();
 }
 
-InputStatus InputNormalizer::update(const StrokeInput& input,
+InputStatus InputNormalizer::update(const InkStrokeInput& input,
                                     NormalizedInput& output) {
   if (!inProgress_) {
     return {InputStatusCode::NotInProgress, "No stroke is in progress."};
   }
-  return accept(input, StrokeEventType::Move, output);
+  return accept(input, InkStrokeEventType::Move, output);
 }
 
-InputStatus InputNormalizer::end(const StrokeInput& input,
+InputStatus InputNormalizer::end(const InkStrokeInput& input,
                                  NormalizedInput& output) {
   if (!inProgress_) {
     return {InputStatusCode::NotInProgress, "No stroke is in progress."};
   }
-  const InputStatus status = accept(input, StrokeEventType::Up, output);
+  const InputStatus status = accept(input, InkStrokeEventType::Up, output);
   if (status.ok()) inProgress_ = false;
   return status;
 }
 
 InputStatus InputNormalizer::prepareBatch(
-    std::span<const StrokeInput> inputs, bool terminal,
+    std::span<const InkStrokeInput> inputs, bool terminal,
     std::vector<NormalizedInput>& output) const {
   if (!inProgress_) {
     return {InputStatusCode::NotInProgress, "No stroke is in progress."};
@@ -67,12 +67,12 @@ InputStatus InputNormalizer::prepareBatch(
   }
   output.clear();
   output.reserve(inputs.size());
-  std::optional<StrokeInput> previous = lastInput_;
+  std::optional<InkStrokeInput> previous = lastInput_;
   for (std::size_t index = 0; index < inputs.size(); ++index) {
-    const StrokeEventType expected = terminal && index + 1 == inputs.size()
-                                         ? StrokeEventType::Up
-                                         : StrokeEventType::Move;
-    const StrokeInput& input = inputs[index];
+    const InkStrokeEventType expected = terminal && index + 1 == inputs.size()
+                                         ? InkStrokeEventType::Up
+                                         : InkStrokeEventType::Move;
+    const InkStrokeInput& input = inputs[index];
     if (input.eventType != expected) {
       return {InputStatusCode::InvalidEvent,
               "Stroke event does not match the current lifecycle."};
@@ -95,7 +95,7 @@ InputStatus InputNormalizer::prepareBatch(
   return InputStatus::success();
 }
 
-void InputNormalizer::commitBatch(std::span<const StrokeInput> inputs,
+void InputNormalizer::commitBatch(std::span<const InkStrokeInput> inputs,
                                   bool terminal) {
   lastInput_ = inputs.back();
   if (terminal) inProgress_ = false;
@@ -106,8 +106,8 @@ void InputNormalizer::cancel() {
   lastInput_.reset();
 }
 
-InputStatus InputNormalizer::accept(const StrokeInput& input,
-                                    StrokeEventType expected,
+InputStatus InputNormalizer::accept(const InkStrokeInput& input,
+                                    InkStrokeEventType expected,
                                     NormalizedInput& output) {
   if (input.eventType != expected) {
     return {InputStatusCode::InvalidEvent,
@@ -133,7 +133,7 @@ InputStatus InputNormalizer::accept(const StrokeInput& input,
   return InputStatus::success();
 }
 
-InputStatus InputNormalizer::validateValues(const StrokeInput& input) {
+InputStatus InputNormalizer::validateValues(const InkStrokeInput& input) {
   if (!isFinite(input.position) || !isFinite(input.time) || input.time < 0.0 ||
       !validOptional(input.pressure) || !validOptional(input.tilt) ||
       !validOptional(input.orientation)) {
@@ -143,8 +143,8 @@ InputStatus InputNormalizer::validateValues(const StrokeInput& input) {
   return InputStatus::success();
 }
 
-bool InputNormalizer::isDuplicate(const StrokeInput& first,
-                                  const StrokeInput& second) {
+bool InputNormalizer::isDuplicate(const InkStrokeInput& first,
+                                  const InkStrokeInput& second) {
   return first.eventType == second.eventType && first.time == second.time &&
          first.position.x == second.position.x &&
          first.position.y == second.position.y &&
@@ -152,7 +152,7 @@ bool InputNormalizer::isDuplicate(const StrokeInput& first,
          first.orientation == second.orientation;
 }
 
-NormalizedInput InputNormalizer::normalizeInput(const StrokeInput& input) {
+NormalizedInput InputNormalizer::normalizeInput(const InkStrokeInput& input) {
   return {.eventType = input.eventType,
           .position = input.position,
           .time = input.time,

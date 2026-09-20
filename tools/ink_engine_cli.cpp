@@ -33,7 +33,7 @@ struct Options {
 };
 
 void usage() {
-  std::cerr << "Usage: stroke_engine_cli (--input FILE | --fixture NAME | --all) "
+  std::cerr << "Usage: ink_engine_cli (--input FILE | --fixture NAME | --all) "
                "[--stages input,centerline,geometry] [--out DIR] "
                "[--min-width NUMBER|recorded|current] "
                "[--max-width NUMBER|recorded|current] "
@@ -133,7 +133,7 @@ bool load(const std::filesystem::path& path, std::vector<replay::Operation>& ope
   return true;
 }
 
-void applyExplicitConfigValues(const Options& options, StrokeConfig& config) {
+void applyExplicitConfigValues(const Options& options, InkStrokeConfig& config) {
   if (options.minWidth.source == ConfigSource::Value)
     config.minWidth = options.minWidth.value;
   if (options.maxWidth.source == ConfigSource::Value)
@@ -151,8 +151,8 @@ bool usesRecordedConfig(const Options& options) {
       options.displayScale.source == ConfigSource::Recorded;
 }
 
-void applyRecordedConfig(const Options& options, const StrokeConfig& base,
-                         const StrokeConfig& recorded, StrokeConfig& target) {
+void applyRecordedConfig(const Options& options, const InkStrokeConfig& base,
+                         const InkStrokeConfig& recorded, InkStrokeConfig& target) {
   target = base;
   if (options.minWidth.source == ConfigSource::Recorded)
     target.minWidth = recorded.minWidth;
@@ -166,7 +166,7 @@ void applyRecordedConfig(const Options& options, const StrokeConfig& base,
 
 bool execute(const std::string& name, const std::vector<replay::Operation>& operations,
              const Options& options) {
-  StrokeConfig config;
+  InkStrokeConfig config;
   applyExplicitConfigValues(options, config);
   const bool recordedConfigRequested = usesRecordedConfig(options);
 
@@ -179,7 +179,7 @@ bool execute(const std::string& name, const std::vector<replay::Operation>& oper
     }
     auto effectiveOperation = operation;
     if (effectiveOperation.type == replay::OperationType::Configure) {
-      const StrokeConfig recordedConfig = effectiveOperation.config;
+      const InkStrokeConfig recordedConfig = effectiveOperation.config;
       applyRecordedConfig(options, config, recordedConfig,
                           effectiveOperation.config);
     }
@@ -199,7 +199,7 @@ bool execute(const std::string& name, const std::vector<replay::Operation>& oper
     const auto baseline = replay::measureBaseline(result);
     std::size_t unsupportedEnvelopeCount = 0;
     for (const auto& record : result.records)
-      if (record.frameType == StrokeFrameType::Final &&
+      if (record.frameType == InkStrokeFrameType::Final &&
           record.publishedGeometry.evaluated &&
           record.publishedGeometry.evidence.status ==
               startup::StartupEvidenceStatus::Unsupported)

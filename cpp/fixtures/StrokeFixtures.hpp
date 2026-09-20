@@ -1,6 +1,6 @@
 #pragma once
 
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 
 #include <string_view>
 #include <vector>
@@ -9,10 +9,10 @@ namespace margelo::nitro::inksignpdf::fixtures {
 
 struct Fixture {
   std::string_view name;
-  std::vector<StrokeInput> inputs;
+  std::vector<InkStrokeInput> inputs;
 };
 
-inline StrokeInput sample(StrokeEventType event, double time, double x,
+inline InkStrokeInput sample(InkStrokeEventType event, double time, double x,
                           double y, double pressure = -1.0) {
   return {.eventType = event,
           .position = {x, y},
@@ -21,7 +21,7 @@ inline StrokeInput sample(StrokeEventType event, double time, double x,
 }
 
 inline std::vector<Fixture> all() {
-  using Event = StrokeEventType;
+  using Event = InkStrokeEventType;
   return {
       {"signature",
        {sample(Event::Down, 0.000, 8, 40, 0.35),

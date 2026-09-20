@@ -29,17 +29,17 @@ class CommittedCenterline {
  public:
   explicit CommittedCenterline(CommittedCenterlineConfig config = {});
 
-  InputStatus begin(const StrokeInput& input, CommittedCenterlineUpdate& output);
-  InputStatus update(const StrokeInput& input, CommittedCenterlineUpdate& output);
-  InputStatus end(const StrokeInput& input, CommittedCenterlineUpdate& output);
-  InputStatus updateBatch(std::span<const StrokeInput> inputs,
+  InputStatus begin(const InkStrokeInput& input, CommittedCenterlineUpdate& output);
+  InputStatus update(const InkStrokeInput& input, CommittedCenterlineUpdate& output);
+  InputStatus end(const InkStrokeInput& input, CommittedCenterlineUpdate& output);
+  InputStatus updateBatch(std::span<const InkStrokeInput> inputs,
                           CommittedCenterlineUpdate& output);
-  InputStatus endBatch(std::span<const StrokeInput> inputs,
+  InputStatus endBatch(std::span<const InkStrokeInput> inputs,
                        CommittedCenterlineUpdate& output);
   void cancel();
 
   InputStatus replacePredictedInputs(
-      std::span<const StrokeInput> predictedInputs,
+      std::span<const InkStrokeInput> predictedInputs,
       double currentTime,
       CommittedCenterlineUpdate& output,
       std::size_t* acceptedInputCount = nullptr);
@@ -54,7 +54,7 @@ class CommittedCenterline {
   std::size_t realInputCount() const noexcept {
     return modeler_.realInputCount();
   }
-  const std::optional<StrokeInput>& latestRealInput() const noexcept {
+  const std::optional<InkStrokeInput>& latestRealInput() const noexcept {
     return latestRealInput_;
   }
   double strokeStartTime() const noexcept { return strokeStartTime_; }
@@ -72,10 +72,10 @@ class CommittedCenterline {
  private:
   enum class Operation { Begin, Update, End };
 
-  InputStatus process(const StrokeInput& input,
+  InputStatus process(const InkStrokeInput& input,
                       Operation operation,
                       CommittedCenterlineUpdate& output);
-  InputStatus processBatch(std::span<const StrokeInput> inputs,
+  InputStatus processBatch(std::span<const InkStrokeInput> inputs,
                            Operation operation,
                            CommittedCenterlineUpdate& output);
 
@@ -93,7 +93,7 @@ class CommittedCenterline {
   std::vector<CurrentInkRawInput> predictedRawScratch_;
   std::vector<CurrentInkModeledInput> predictedModeledScratch_;
   CurrentInkInputModeler predictionWorkspace_;
-  std::optional<StrokeInput> latestRealInput_;
+  std::optional<InkStrokeInput> latestRealInput_;
   // The next real replacement must begin at the stable prefix that the
   // caller has already received. Everything after that prefix remains
   // replaceable because smoothing may revise it on the next contact.

@@ -4,7 +4,7 @@
 - Displays loaded PDF as background. Including swipe/method pagination.
 - Renders document with PDFium binaries, mainly to support option to provide fallback font, since this option unavailable in platform native pdf libraries. For example Acrobat Reader can handle missing fonts, many other pdf viewers just render blank space instead.
 - Supports velocity-driven ink, text annotations, and histroy.
-- Android using custom c++ stroke engine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
+- Android using custom c++ InkEngine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
 - iOS basic compatibility using PencilKit, because I can't test similar low level implementation without mac. No web support.
 - Export changes to new PDF as vector path, preserving minimal size and high quality on Android, rasterized overlay as iOS fallback.
 

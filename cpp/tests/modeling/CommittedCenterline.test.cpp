@@ -52,13 +52,13 @@ void appendModeledStates(
     destination.push_back(source[index].state);
 }
 
-std::vector<NormalizedInput> run(const std::vector<StrokeInput>& inputs) {
+std::vector<NormalizedInput> run(const std::vector<InkStrokeInput>& inputs) {
   CommittedCenterline centerline;
   CommittedCenterlineUpdate update;
-  for (const StrokeInput& input : inputs) {
-    const InputStatus status = input.eventType == StrokeEventType::Down
+  for (const InkStrokeInput& input : inputs) {
+    const InputStatus status = input.eventType == InkStrokeEventType::Down
         ? centerline.begin(input, update)
-        : input.eventType == StrokeEventType::Move
+        : input.eventType == InkStrokeEventType::Move
             ? centerline.update(input, update)
             : centerline.end(input, update);
     CHECK(status.ok());
@@ -66,13 +66,13 @@ std::vector<NormalizedInput> run(const std::vector<StrokeInput>& inputs) {
   return centerline.points();
 }
 
-void checkDeterministic(const std::vector<StrokeInput>& inputs) {
+void checkDeterministic(const std::vector<InkStrokeInput>& inputs) {
   const auto first = run(inputs);
   const auto second = run(inputs);
   CHECK(!first.empty());
   CHECK(same(first, second));
-  CHECK(first.front().eventType == StrokeEventType::Down);
-  CHECK(first.back().eventType == StrokeEventType::Up);
+  CHECK(first.front().eventType == InkStrokeEventType::Down);
+  CHECK(first.back().eventType == InkStrokeEventType::Up);
 }
 
 }  // namespace
@@ -83,8 +83,8 @@ int main() {
   CommittedCenterlineUpdate output;
 
   CHECK(centerline.begin(
-      fixtures::sample(StrokeEventType::Down, 0.0, 0.0, 0.0), output).ok());
-  CHECK(output.acceptedInput.eventType == StrokeEventType::Down);
+      fixtures::sample(InkStrokeEventType::Down, 0.0, 0.0, 0.0), output).ok());
+  CHECK(output.acceptedInput.eventType == InkStrokeEventType::Down);
   CHECK(output.acceptedInput.position.x == 0.0);
   CHECK(output.acceptedInput.position.y == 0.0);
   CHECK(output.acceptedInput.time == 0.0);
@@ -94,18 +94,18 @@ int main() {
   CHECK(centerline.points().size() == 1);
 
   CHECK(centerline.update(
-      fixtures::sample(StrokeEventType::Move, 0.1, 0.5, 0.0), output).ok());
-  CHECK(output.acceptedInput.eventType == StrokeEventType::Move);
+      fixtures::sample(InkStrokeEventType::Move, 0.1, 0.5, 0.0), output).ok());
+  CHECK(output.acceptedInput.eventType == InkStrokeEventType::Move);
 
   CHECK(centerline.update(
-      fixtures::sample(StrokeEventType::Move, 0.2, 2.0, 0.0), output).ok());
-  CHECK(output.acceptedInput.eventType == StrokeEventType::Move);
+      fixtures::sample(InkStrokeEventType::Move, 0.2, 2.0, 0.0), output).ok());
+  CHECK(output.acceptedInput.eventType == InkStrokeEventType::Move);
   CHECK(centerline.points().size() >= 2);
   const auto accepted = centerline.points();
   const auto modeledBeforeRejected = centerline.modeledInputs();
   const auto updateBeforeRejected = output;
   CHECK(centerline.update(
-      fixtures::sample(StrokeEventType::Move, 0.1, 3.0, 0.0), output).code ==
+      fixtures::sample(InkStrokeEventType::Move, 0.1, 3.0, 0.0), output).code ==
       InputStatusCode::TimeWentBackwards);
   CHECK(same(centerline.points(), accepted));
   CHECK(centerline.modeledInputs().size() == modeledBeforeRejected.size());
@@ -118,21 +118,21 @@ int main() {
         updateBeforeRejected.modeledRealInputs.data());
 
   CHECK(centerline.update(
-      fixtures::sample(StrokeEventType::Move, 0.2, 2.0, 0.0), output).code ==
+      fixtures::sample(InkStrokeEventType::Move, 0.2, 2.0, 0.0), output).code ==
       InputStatusCode::DuplicateInput);
 
   CHECK(centerline.end(
-      fixtures::sample(StrokeEventType::Up, 0.3, 2.0, 0.0), output).ok());
-  CHECK(output.acceptedInput.eventType == StrokeEventType::Up);
-  CHECK(centerline.points().back().eventType == StrokeEventType::Up);
+      fixtures::sample(InkStrokeEventType::Up, 0.3, 2.0, 0.0), output).ok());
+  CHECK(output.acceptedInput.eventType == InkStrokeEventType::Up);
+  CHECK(centerline.points().back().eventType == InkStrokeEventType::Up);
 
   CommittedCenterlineConfig smoothedConfig;
   smoothedConfig.smoothing = 1.0;
   CommittedCenterline smoothed(smoothedConfig);
   CHECK(smoothed.begin(
-      fixtures::sample(StrokeEventType::Down, 0.0, 0.0, 0.0), output).ok());
+      fixtures::sample(InkStrokeEventType::Down, 0.0, 0.0, 0.0), output).ok());
   CHECK(smoothed.update(
-      fixtures::sample(StrokeEventType::Move, 0.01, 10.0, 0.0), output).ok());
+      fixtures::sample(InkStrokeEventType::Move, 0.01, 10.0, 0.0), output).ok());
   CHECK(output.modeledRealInputs.back().state.position.x == 10.0);
 
   // Each real update replaces the suffix after the stable prefix that was
@@ -168,7 +168,7 @@ int main() {
     }
   };
   CHECK(frontier.begin(
-      fixtures::sample(StrokeEventType::Down, 0.0, 0.0, 0.0), output).ok());
+      fixtures::sample(InkStrokeEventType::Down, 0.0, 0.0, 0.0), output).ok());
   reconstructedStates.clear();
   appendModeledStates(reconstructedStates, output.modeledRealInputs,
                       output.stableInputStart);
@@ -178,7 +178,7 @@ int main() {
   CHECK(output.stableInputCount == previouslyStable);
   for (int index = 1; index <= 12; ++index) {
     CHECK(frontier.update(
-        fixtures::sample(StrokeEventType::Move, index * 0.1,
+        fixtures::sample(InkStrokeEventType::Move, index * 0.1,
                          std::sin(index * 0.4), index * 0.01),
         output).ok());
     reconstructedStates.resize(output.stableInputStart);
@@ -198,8 +198,8 @@ int main() {
       reconstructedStates.begin(),
       reconstructedStates.begin() +
           static_cast<std::ptrdiff_t>(stableBeforePrediction));
-  const std::vector<StrokeInput> prediction{
-      fixtures::sample(StrokeEventType::Move, 1.3, 2.0, 0.2)};
+  const std::vector<InkStrokeInput> prediction{
+      fixtures::sample(InkStrokeEventType::Move, 1.3, 2.0, 0.2)};
   std::size_t acceptedPredictionCount = 0;
   CHECK(frontier.replacePredictedInputs(
       prediction, 1.25, output, &acceptedPredictionCount).ok());
@@ -251,7 +251,7 @@ int main() {
   centerline.cancel();
   CHECK(centerline.points().empty());
   CHECK(centerline.update(
-      fixtures::sample(StrokeEventType::Move, 0.4, 4.0, 0.0), output).code ==
+      fixtures::sample(InkStrokeEventType::Move, 0.4, 4.0, 0.0), output).code ==
       InputStatusCode::NotInProgress);
 
   for (const auto& fixture : fixtures::all()) {

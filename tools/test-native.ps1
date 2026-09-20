@@ -26,7 +26,7 @@ $vsDevCmdPath = if ($null -ne $vsInstallPath) {
 
 $suiteTests = @{
     geometry = @(
-        "StrokeEngineTests",
+        "InkEngineTests",
         "StrokeReplayTests",
         "UpstreamGeometryTests",
         "UpstreamOutputTests",
@@ -44,12 +44,12 @@ $suiteTests = @{
 }
 
 $allTests = @(
-    "StrokeEngineTests",
+    "InkEngineTests",
     "StrokeBatchTests",
     "StrokeFixtureTests",
     "StrokePerformanceTests",
     "StrokeCheckpointTests",
-    "StrokeEngineCTests",
+    "InkEngineCTests",
     "StrokeReplayTests",
     "InputNormalizerTests",
     "CurrentInkInputModelerTests",

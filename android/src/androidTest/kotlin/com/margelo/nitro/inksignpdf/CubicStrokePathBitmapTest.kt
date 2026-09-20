@@ -87,9 +87,9 @@ class CubicStrokePathBitmapTest {
     fun frontBufferContoursRenderAsIndependentFills() {
         val composition = FrontBufferStrokeComposition()
         composition.reset(0L)
-        composition.applyCommittedFrame(StrokeFrame().also {
+        composition.applyCommittedFrame(InkStrokeFrame().also {
             it.replace(
-                StrokeFrameCodec.COMMITTED_TYPE,
+                InkStrokeFrameCodec.COMMITTED_TYPE,
                 1L,
                 0L,
                 overlappingOppositeContours(),

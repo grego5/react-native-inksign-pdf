@@ -1,6 +1,6 @@
 #pragma once
 
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 #include "core/StrokePrimitives.hpp"
 #include "input/CurrentInkInputModeler.hpp"
 #include "ink/strokes/internal/brush_tip_state.h"
@@ -34,7 +34,7 @@ struct StyledTipState {
 struct SignatureBrushTipUpdate {
   // Borrows the complete width-derived real sequence (or the disposable
   // prediction sequence for predict()). The view is consumed synchronously by
-  // StrokeEngine before the next brush operation.
+  // InkEngine before the next brush operation.
   std::span<const ModeledPoint> modeledPoints;
   // These spans contain policy output in the representation consumed by
   // Google Ink's BrushTipExtruder.
@@ -51,7 +51,7 @@ struct SignatureBrushTipUpdate {
 // for prediction.
 class SignatureBrushTipModeler {
  public:
-  explicit SignatureBrushTipModeler(const StrokeConfig& config);
+  explicit SignatureBrushTipModeler(const InkStrokeConfig& config);
   SignatureBrushTipModeler(const SignatureBrushTipModeler&) = delete;
   SignatureBrushTipModeler& operator=(const SignatureBrushTipModeler&) = delete;
   SignatureBrushTipModeler(SignatureBrushTipModeler&&) = delete;
@@ -59,17 +59,17 @@ class SignatureBrushTipModeler {
 
   SignatureBrushTipUpdate update(
       SignatureBrushRealInput input,
-      StrokeWorkStats& workStats,
-      std::vector<StrokeDiagnosticSample>* diagnostics = nullptr);
+      InkStrokeWorkStats& workStats,
+      std::vector<InkStrokeDiagnosticSample>* diagnostics = nullptr);
   SignatureBrushTipUpdate finish(
       SignatureBrushRealInput input,
-      StrokeWorkStats& workStats,
-      std::vector<StrokeDiagnosticSample>* diagnostics = nullptr);
+      InkStrokeWorkStats& workStats,
+      std::vector<InkStrokeDiagnosticSample>* diagnostics = nullptr);
   SignatureBrushTipUpdate finishDot(
       const NormalizedInput& input, double radius);
   SignatureBrushTipUpdate predict(
       std::span<const CenterlineState> predicted,
-      std::vector<StrokeDiagnosticSample>* diagnostics = nullptr);
+      std::vector<InkStrokeDiagnosticSample>* diagnostics = nullptr);
   // Finish output must be consumed before reset; reset retains all capacities.
   void reset();
 
@@ -84,15 +84,15 @@ class SignatureBrushTipModeler {
  private:
   SignatureBrushTipUpdate processReal(
       SignatureBrushRealInput input,
-      bool terminal, StrokeWorkStats& workStats,
-      std::vector<StrokeDiagnosticSample>* diagnostics);
+      bool terminal, InkStrokeWorkStats& workStats,
+      std::vector<InkStrokeDiagnosticSample>* diagnostics);
   std::size_t processWidths(
       SignatureBrushRealInput input,
-      bool terminal, StrokeWorkStats& workStats,
-      std::vector<StrokeDiagnosticSample>* diagnostics);
+      bool terminal, InkStrokeWorkStats& workStats,
+      std::vector<InkStrokeDiagnosticSample>* diagnostics);
   SignatureBrushTipUpdate materialize(
-      std::size_t stableCount, StrokeWorkStats& workStats,
-      std::vector<StrokeDiagnosticSample>* diagnostics);
+      std::size_t stableCount, InkStrokeWorkStats& workStats,
+      std::vector<InkStrokeDiagnosticSample>* diagnostics);
   SignatureBrushTipUpdate splitUpdate(std::span<const ModeledPoint> points,
                                       std::size_t sourceStart,
                                       std::size_t upstreamSeam);

@@ -23,21 +23,21 @@ void FrameTransport::flatten(
   }
 }
 
-const NSEStrokeFrameView& FrameTransport::replace(const StrokeFrame& frame) {
-  replaceFrame(NSEStrokeFrameTypeCommitted, frame);
+const InkEngineFrameView& FrameTransport::replace(const InkStrokeFrame& frame) {
+  replaceFrame(InkEngineFrameTypeCommitted, frame);
   return view_;
 }
 
-void FrameTransport::replaceFrame(std::uint32_t type, const StrokeFrame& frame) {
+void FrameTransport::replaceFrame(std::uint32_t type, const InkStrokeFrame& frame) {
   flatten(frame.contours);
   refreshView(type, frame.revision, frame.committedPointCount);
 }
 
-const NSEStrokeFrameView& FrameTransport::replaceFinal(
+const InkEngineFrameView& FrameTransport::replaceFinal(
     std::uint64_t revision, std::size_t committedPointCount,
     StrokeContourCollection contours) {
   flatten(contours);
-  refreshView(NSEStrokeFrameTypeFinal, revision, committedPointCount);
+  refreshView(InkEngineFrameTypeFinal, revision, committedPointCount);
   return view_;
 }
 

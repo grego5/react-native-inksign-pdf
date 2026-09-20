@@ -1,4 +1,4 @@
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 
 #include <cstring>
 #include <array>
@@ -18,12 +18,12 @@ constexpr std::uint32_t kFrameVersion = 15;
 constexpr std::size_t kFrameHeaderBytes = 456;
 constexpr std::size_t kCubicSegmentBytes = sizeof(double) * 8 + sizeof(std::uint64_t) * 2;
 constexpr std::size_t kContourRecordBytes = sizeof(std::uint64_t) * 4 + sizeof(std::uint32_t) * 2;
-constexpr jint kInvalidFrameBuffer = -NSEStrokeStatusInvalidInput;
-constexpr jint kFrameSizeOverflow = -NSEStrokeStatusException;
+constexpr jint kInvalidFrameBuffer = -InkEngineStatusInvalidInput;
+constexpr jint kFrameSizeOverflow = -InkEngineStatusException;
 constexpr jint kMutationErrorBase = -1000;
 constexpr std::size_t kInputValueCount = 6;
 constexpr std::size_t kInputBytes = kInputValueCount * sizeof(double);
-constexpr std::size_t kMaxRealInputs = NSE_STROKE_MAX_REAL_INPUT_BATCH;
+constexpr std::size_t kMaxRealInputs = INK_ENGINE_MAX_REAL_INPUT_BATCH;
 
 struct InputValues {
   double x;
@@ -36,7 +36,7 @@ struct InputValues {
 
 constexpr double kMillisToSeconds = 0.001;
 
-NSEStrokeInput makeInput(const InputValues& values) noexcept {
+InkEngineInput makeInput(const InputValues& values) noexcept {
   return {.x = values.x,
           .y = values.y,
           .time = values.time * kMillisToSeconds,
@@ -61,7 +61,7 @@ bool checkedSegmentBytes(std::size_t count, std::size_t& result) {
 }
 
 bool checkedFrameBytes(
-    const NSEStrokeFrameView& frame,
+    const InkEngineFrameView& frame,
     std::size_t& result) {
   std::size_t segmentCount = 0;
   if (!checkedAdd(segmentCount, frame.segmentCount, segmentCount)) return false;
@@ -87,7 +87,7 @@ void writeValue(std::uint8_t*& cursor, Value value) noexcept {
 }
 
 void writeSegments(std::uint8_t*& cursor,
-                   const NSEStrokeCubicSegment* segments,
+                   const InkEngineCubicSegment* segments,
                    std::size_t count) noexcept {
   for (std::size_t index = 0; index < count; ++index) {
     const auto& segment = segments[index];
@@ -101,7 +101,7 @@ void writeSegments(std::uint8_t*& cursor,
 }
 
 void serializeFrame(
-    const NSEStrokeFrameView& frame,
+    const InkEngineFrameView& frame,
     std::uint8_t* destination) noexcept {
   std::uint8_t* cursor = destination;
   writeValue(cursor, kFrameMagic);
@@ -126,7 +126,7 @@ void serializeFrame(
   writeValue(cursor, diagnostics.realNormalizedSpeed);
   writeValue(cursor, diagnostics.predictedMovingSpeed);
   writeValue(cursor, diagnostics.predictedNormalizedSpeed);
-  const NSEStrokePoint points[] = {
+  const InkEnginePoint points[] = {
       {diagnostics.latestRealRawInput.x, diagnostics.latestRealRawInput.y},
       {diagnostics.latestPlatformPredictedRawInput.x,
        diagnostics.latestPlatformPredictedRawInput.y},
@@ -185,33 +185,33 @@ jint toJInt(std::size_t value) noexcept {
 
 }  // namespace
 
-JStrokeEngine::JStrokeEngine()
-    : engine_(nse_stroke_engine_create()) {
+JInkEngine::JInkEngine()
+    : engine_(ink_engine_create()) {
   if (engine_ == nullptr) throw std::bad_alloc();
 }
 
-JStrokeEngine::~JStrokeEngine() { close(); }
+JInkEngine::~JInkEngine() { close(); }
 
-jint JStrokeEngine::configurePen(
+jint JInkEngine::configurePen(
     jdouble minWidth,
     jdouble maxWidth,
     jdouble smoothing,
     jdouble logicalDisplayUnitsPerPageUnit) noexcept {
-  return nse_stroke_engine_configure_pen(
+  return ink_engine_configure_pen(
       engine_, minWidth, maxWidth, smoothing,
       logicalDisplayUnitsPerPageUnit);
 }
 
-void JStrokeEngine::cancel() noexcept {
-  nse_stroke_engine_cancel(engine_);
+void JInkEngine::cancel() noexcept {
+  ink_engine_cancel(engine_);
 }
 
 namespace {
 
 jint copyFrameImpl(
-    NSEStrokeEngineRef engine,
+    InkEngineRef engine,
     jni::alias_ref<jni::JByteBuffer> buffer) noexcept {
-  const auto* frame = nse_stroke_engine_frame(engine);
+  const auto* frame = ink_engine_frame(engine);
   if (frame == nullptr) return kInvalidFrameBuffer;
 
   std::size_t requiredBytes = 0;
@@ -234,13 +234,13 @@ jint copyFrameImpl(
 
 }  // namespace
 
-jint JStrokeEngine::copyFrame(
+jint JInkEngine::copyFrame(
     jni::alias_ref<jni::JByteBuffer> buffer) noexcept {
   ScopedPerfettoTrace trace("InkSign/C++ frame copy");
   return copyFrameImpl(engine_, buffer);
 }
 
-jint JStrokeEngine::mutateAndCopy(
+jint JInkEngine::mutateAndCopy(
     jint operation,
     jdouble x,
     jdouble y,
@@ -251,37 +251,37 @@ jint JStrokeEngine::mutateAndCopy(
     jni::alias_ref<jni::JByteBuffer> buffer) noexcept {
   ScopedPerfettoTrace trace("InkSign/C++ mutate+frame");
   const auto input = makeInput({x, y, time, pressure, tilt, orientation});
-  jint status = NSEStrokeStatusInvalidInput;
+  jint status = InkEngineStatusInvalidInput;
   switch (operation) {
     case 0:
-      status = nse_stroke_engine_begin(engine_, input);
+      status = ink_engine_begin(engine_, input);
       break;
     case 1:
-      status = nse_stroke_engine_update(engine_, input);
+      status = ink_engine_update(engine_, input);
       break;
     case 2:
-      status = nse_stroke_engine_end(engine_, input);
+      status = ink_engine_end(engine_, input);
       break;
     default:
-      return kMutationErrorBase - NSEStrokeStatusInvalidInput;
+      return kMutationErrorBase - InkEngineStatusInvalidInput;
   }
-  if (status != NSEStrokeStatusOk) {
+  if (status != InkEngineStatusOk) {
     return kMutationErrorBase - status;
   }
   ScopedPerfettoTrace frameTrace("InkSign/C++ frame copy");
   return copyFrameImpl(engine_, buffer);
 }
 
-jint JStrokeEngine::mutateBatchAndCopy(
+jint JInkEngine::mutateBatchAndCopy(
     jint operation,
     jni::alias_ref<jni::JByteBuffer> inputBuffer,
     jint inputCount,
     jni::alias_ref<jni::JByteBuffer> buffer) noexcept {
   ScopedPerfettoTrace trace("InkSign/C++ real batch mutation");
   if (inputCount <= 0 || static_cast<std::size_t>(inputCount) > kMaxRealInputs ||
-      (operation != NSE_STROKE_BATCH_OPERATION_UPDATE &&
-       operation != NSE_STROKE_BATCH_OPERATION_END) || inputBuffer == nullptr) {
-    return kMutationErrorBase - NSEStrokeStatusInvalidInput;
+      (operation != INK_ENGINE_BATCH_OPERATION_UPDATE &&
+       operation != INK_ENGINE_BATCH_OPERATION_END) || inputBuffer == nullptr) {
+    return kMutationErrorBase - InkEngineStatusInvalidInput;
   }
 
   auto* environment = jni::Environment::current();
@@ -291,10 +291,10 @@ jint JStrokeEngine::mutateBatchAndCopy(
   const auto requiredBytes = static_cast<std::size_t>(inputCount) * kInputBytes;
   if (capacity < 0 || source == nullptr ||
       static_cast<std::size_t>(capacity) < requiredBytes) {
-    return kMutationErrorBase - NSEStrokeStatusInvalidInput;
+    return kMutationErrorBase - InkEngineStatusInvalidInput;
   }
 
-  std::array<NSEStrokeInput, kMaxRealInputs> inputs{};
+  std::array<InkEngineInput, kMaxRealInputs> inputs{};
   for (std::size_t index = 0; index < static_cast<std::size_t>(inputCount);
        ++index) {
     InputValues values{};
@@ -308,15 +308,15 @@ jint JStrokeEngine::mutateBatchAndCopy(
     inputs[index] = makeInput(values);
   }
 
-  const auto status = nse_stroke_engine_mutate_batch(
+  const auto status = ink_engine_mutate_batch(
       engine_, static_cast<std::uint32_t>(operation), inputs.data(),
       static_cast<std::size_t>(inputCount));
-  if (status != NSEStrokeStatusOk) return kMutationErrorBase - status;
+  if (status != InkEngineStatusOk) return kMutationErrorBase - status;
   ScopedPerfettoTrace frameTrace("InkSign/C++ frame copy");
   return copyFrameImpl(engine_, buffer);
 }
 
-jint JStrokeEngine::replacePredictedInputs(
+jint JInkEngine::replacePredictedInputs(
     jni::alias_ref<jni::JByteBuffer> inputBuffer,
     jint inputCount,
     jdouble currentTime,
@@ -327,7 +327,7 @@ jint JStrokeEngine::replacePredictedInputs(
   constexpr std::size_t kMaxInputs = 64;
   if (inputCount < 0 || static_cast<std::size_t>(inputCount) > kMaxInputs ||
       inputBuffer == nullptr) {
-    return kMutationErrorBase - NSEStrokeStatusInvalidInput;
+    return kMutationErrorBase - InkEngineStatusInvalidInput;
   }
 
   auto* environment = jni::Environment::current();
@@ -337,10 +337,10 @@ jint JStrokeEngine::replacePredictedInputs(
   const auto requiredBytes = static_cast<std::size_t>(inputCount) * kInputBytes;
   if (capacity < 0 || source == nullptr ||
       static_cast<std::size_t>(capacity) < requiredBytes) {
-    return kMutationErrorBase - NSEStrokeStatusInvalidInput;
+    return kMutationErrorBase - InkEngineStatusInvalidInput;
   }
 
-  std::array<NSEStrokeInput, kMaxInputs> inputs{};
+  std::array<InkEngineInput, kMaxInputs> inputs{};
   for (std::size_t index = 0; index < static_cast<std::size_t>(inputCount);
        ++index) {
     InputValues values{};
@@ -359,37 +359,37 @@ jint JStrokeEngine::replacePredictedInputs(
     inputs[index] = makeInput(values);
   }
 
-  const auto status = nse_stroke_engine_replace_predicted_inputs(
+  const auto status = ink_engine_replace_predicted_inputs(
       engine_, inputs.data(), static_cast<std::size_t>(inputCount),
       currentTime * kMillisToSeconds);
-  if (status != NSEStrokeStatusOk) {
+  if (status != InkEngineStatusOk) {
     return kMutationErrorBase - status;
   }
   ScopedPerfettoTrace frameTrace("InkSign/C++ frame copy");
   return copyFrameImpl(engine_, buffer);
 }
 
-void JStrokeEngine::close() noexcept {
+void JInkEngine::close() noexcept {
   if (engine_ == nullptr) return;
-  nse_stroke_engine_destroy(engine_);
+  ink_engine_destroy(engine_);
   engine_ = nullptr;
 }
 
-void JStrokeEngine::registerNatives() {
+void JInkEngine::registerNatives() {
   registerHybrid({
-      makeNativeMethod("initHybrid", JStrokeEngine::initHybrid),
+      makeNativeMethod("initHybrid", JInkEngine::initHybrid),
       makeNativeMethod(
-          "configurePenNative", JStrokeEngine::configurePen),
-      makeNativeMethod("cancelNative", JStrokeEngine::cancel),
-      makeNativeMethod("copyFrameNative", JStrokeEngine::copyFrame),
+          "configurePenNative", JInkEngine::configurePen),
+      makeNativeMethod("cancelNative", JInkEngine::cancel),
+      makeNativeMethod("copyFrameNative", JInkEngine::copyFrame),
       makeNativeMethod(
-          "mutateAndCopyNative", JStrokeEngine::mutateAndCopy),
+          "mutateAndCopyNative", JInkEngine::mutateAndCopy),
       makeNativeMethod(
-          "mutateBatchAndCopyNative", JStrokeEngine::mutateBatchAndCopy),
+          "mutateBatchAndCopyNative", JInkEngine::mutateBatchAndCopy),
       makeNativeMethod(
           "replacePredictedInputsNative",
-          JStrokeEngine::replacePredictedInputs),
-      makeNativeMethod("closeNative", JStrokeEngine::close),
+          JInkEngine::replacePredictedInputs),
+      makeNativeMethod("closeNative", JInkEngine::close),
   });
 }
 

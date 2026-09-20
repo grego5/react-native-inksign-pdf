@@ -1,6 +1,6 @@
 #pragma once
 
-#include "StrokeEngineC.h"
+#include "InkEngineC.h"
 
 #include <fbjni/ByteBuffer.h>
 #include <fbjni/fbjni.h>
@@ -13,15 +13,15 @@ namespace margelo::nitro::inksignpdf {
 using namespace facebook;
 
 /**
- * Handwritten fbjni owner for the Android stroke-engine path.
+ * Handwritten fbjni owner for the Android ink-engine path.
  *
  * The Kotlin object owns this C++ instance through HybridData. Engine frames
  * are copied into a caller-owned direct ByteBuffer before the next mutation.
  */
-class JStrokeEngine final : public jni::HybridClass<JStrokeEngine> {
+class JInkEngine final : public jni::HybridClass<JInkEngine> {
  public:
   static constexpr auto kJavaDescriptor =
-      "Lcom/margelo/nitro/inksignpdf/StrokeEngine;";
+      "Lcom/margelo/nitro/inksignpdf/InkEngine;";
 
   static jni::local_ref<jhybriddata> initHybrid(
       jni::alias_ref<jhybridobject>) {
@@ -56,16 +56,16 @@ class JStrokeEngine final : public jni::HybridClass<JStrokeEngine> {
       jni::alias_ref<jni::JByteBuffer> buffer) noexcept;
   void close() noexcept;
 
-  ~JStrokeEngine() override;
+  ~JInkEngine() override;
 
   static void registerNatives();
 
  private:
   friend HybridBase;
 
-  JStrokeEngine();
+  JInkEngine();
 
-  NSEStrokeEngineRef engine_ = nullptr;
+  InkEngineRef engine_ = nullptr;
 };
 
 }  // namespace margelo::nitro::inksignpdf

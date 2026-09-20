@@ -1,12 +1,12 @@
-# Production stroke-engine sources shared by desktop, Android source builds,
+# Production ink-engine sources shared by desktop, Android source builds,
 # and the Android bundled-archive producer. Keep platform/JNI and PDFium code
 # out of this inventory.
-set(INKSIGN_STROKE_ENGINE_SOURCES
-  ${CMAKE_CURRENT_LIST_DIR}/StrokeEngine.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/engine/StrokeEngineInternal.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/engine/StrokeEngineProcessing.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/engine/StrokeEnginePrediction.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/StrokeEngineC.cpp
+set(INKSIGN_INK_ENGINE_SOURCES
+  ${CMAKE_CURRENT_LIST_DIR}/InkEngine.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/engine/InkEngineInternal.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/engine/InkEngineProcessing.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/engine/InkEnginePrediction.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/InkEngineC.cpp
   ${CMAKE_CURRENT_LIST_DIR}/input/CommittedCenterline.cpp
   ${CMAKE_CURRENT_LIST_DIR}/input/CurrentInkInputModeler.cpp
   ${CMAKE_CURRENT_LIST_DIR}/modeling/ContactLifecycle.cpp

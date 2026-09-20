@@ -1,6 +1,6 @@
 #pragma once
 
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 
 #include "input/CommittedCenterline.hpp"
 #include "modeling/ContactLifecycle.hpp"
@@ -20,9 +20,9 @@ namespace detail::engine {
 
 enum class Operation { Update, End };
 
-detail::CommittedCenterlineConfig centerlineConfig(const StrokeConfig& config);
+detail::CommittedCenterlineConfig centerlineConfig(const InkStrokeConfig& config);
 
-StrokeStatus fromInputStatus(const detail::InputStatus& status);
+InkStrokeStatus fromInputStatus(const detail::InputStatus& status);
 
 std::optional<Vec2> recentRealDirection(
     const std::vector<detail::NormalizedInput>& points);
@@ -30,29 +30,29 @@ std::optional<Vec2> recentRealDirection(
 
 }  // namespace detail::engine
 
-struct StrokeEngine::Impl {
-  explicit Impl(const StrokeConfig& config);
+struct InkEngine::Impl {
+  explicit Impl(const InkStrokeConfig& config);
 
   detail::SignatureBrushTipModeler brush;
   detail::CommittedCenterline centerline;
   detail::ContactLifecycle contact;
   UpstreamStrokeGeometry upstream;
   detail::CommittedCenterlineUpdate centerlineUpdate;
-  std::vector<StrokeDiagnosticSample> diagnosticSamples;
+  std::vector<InkStrokeDiagnosticSample> diagnosticSamples;
   bool diagnosticsEnabled = false;
   std::uint64_t revision = 0;
-  StrokeWorkStats workStats;
+  InkStrokeWorkStats workStats;
   std::uint64_t modelDurationNanos = 0;
   std::uint64_t geometryDurationNanos = 0;
 
-  StrokePredictionDiagnostics diagnosticsSnapshot(
+  InkStrokePredictionDiagnostics diagnosticsSnapshot(
       std::size_t predictedModeledInputCount = 0) const;
   void reset();
-  StrokeStatus replacePredictedInputs(
-      std::span<const StrokeInput> predictedInputs, double currentTime,
-      StrokePredictionFrame& output);
+  InkStrokeStatus replacePredictedInputs(
+      std::span<const InkStrokeInput> predictedInputs, double currentTime,
+      InkStrokePredictionFrame& output);
   void publishContours(std::size_t committedPointCount,
-                       std::size_t modeledPointStart, StrokeFrame& output);
+                       std::size_t modeledPointStart, InkStrokeFrame& output);
 };
 
 }  // namespace margelo::nitro::inksignpdf

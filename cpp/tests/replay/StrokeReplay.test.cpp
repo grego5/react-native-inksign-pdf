@@ -88,21 +88,21 @@ struct EngineSnapshot {
 };
 
 EngineSnapshot replayEngine(const fixtures::Fixture& fixture, bool diagnostics) {
-  StrokeConfig config;
+  InkStrokeConfig config;
   config.smoothing = 0.0;
-  StrokeEngine engine(config);
+  InkEngine engine(config);
   engine.enableDiagnostics(diagnostics);
-  StrokeFrame frame;
+  InkStrokeFrame frame;
   EngineSnapshot snapshot;
   for (std::size_t index = 0; index < fixture.inputs.size(); ++index) {
     const auto& input = fixture.inputs[index];
-    const StrokeStatus status = input.eventType == StrokeEventType::Down
+    const InkStrokeStatus status = input.eventType == InkStrokeEventType::Down
         ? engine.begin(input, frame)
-        : input.eventType == StrokeEventType::Move
+        : input.eventType == InkStrokeEventType::Move
             ? engine.update(input, frame)
             : engine.end(input, frame);
     CHECK(status.ok());
-    if (input.eventType == StrokeEventType::Up) {
+    if (input.eventType == InkStrokeEventType::Up) {
       snapshot.centerline = frame.modeledPoints;
       snapshot.geometry = frame.contours;
     }
@@ -215,13 +215,13 @@ int main() {
       CHECK(same(withoutDiagnostics.centerline[index], withDiagnostics.centerline[index]));
     CHECK(same(withoutDiagnostics.geometry, withDiagnostics.geometry));
 
-    StrokeEngine engine;
+    InkEngine engine;
     engine.enableDiagnostics(true);
-    StrokeFrame frame;
+    InkStrokeFrame frame;
     for (const auto& input : fixture.inputs) {
-      const auto status = input.eventType == StrokeEventType::Down
+      const auto status = input.eventType == InkStrokeEventType::Down
           ? engine.begin(input, frame)
-          : input.eventType == StrokeEventType::Move
+          : input.eventType == InkStrokeEventType::Move
               ? engine.update(input, frame)
               : engine.end(input, frame);
       CHECK(status.ok());
@@ -233,12 +233,12 @@ int main() {
     CHECK(engine.diagnosticSamples().empty());
     CHECK(engine.diagnosticSamples().capacity() >= diagnosticCapacity);
 
-    StrokeFrame disabledFrame;
+    InkStrokeFrame disabledFrame;
     const auto disabledFixture = fixtures::all().front();
     for (const auto& input : disabledFixture.inputs) {
-      const auto status = input.eventType == StrokeEventType::Down
+      const auto status = input.eventType == InkStrokeEventType::Down
           ? engine.begin(input, disabledFrame)
-          : input.eventType == StrokeEventType::Move
+          : input.eventType == InkStrokeEventType::Move
               ? engine.update(input, disabledFrame)
               : engine.end(input, disabledFrame);
       CHECK(status.ok());
@@ -250,15 +250,15 @@ int main() {
       {.type = replay::OperationType::Configure,
        .config = {.minWidth = 0.5, .maxWidth = 1.0, .smoothing = 0.0}},
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Down, 0, 0, 0)},
+       .input = fixtures::sample(InkStrokeEventType::Down, 0, 0, 0)},
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Move, 0.01, 10, 0)},
+       .input = fixtures::sample(InkStrokeEventType::Move, 0.01, 10, 0)},
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Up, 0.02, 20, 0)}});
+       .input = fixtures::sample(InkStrokeEventType::Up, 0.02, 20, 0)}});
   CHECK(configured.ok());
   CHECK(configured.records.size() == 4);
 
-  StrokeConfig config;
+  InkStrokeConfig config;
   config.smoothing = 0.0;
   for (const auto& fixture : fixtures::all()) {
     std::vector<replay::Operation> operations;
@@ -285,7 +285,7 @@ int main() {
     CHECK(baseline.maximumRadius > 0.0);
     CHECK(baseline.maximumStartRadius >= baseline.minimumStartRadius);
     for (const auto& record : result.records) {
-      if (record.frameType != StrokeFrameType::Final) continue;
+      if (record.frameType != InkStrokeFrameType::Final) continue;
       CHECK(!record.envelopeSections.empty());
       CHECK(record.publishedGeometry.evaluated);
       CHECK(record.publishedGeometry.widthCrossCheck !=
@@ -314,7 +314,7 @@ int main() {
 
   const auto cancelled = replay::run("cancelled", {
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Down, 0, 0, 0)},
+       .input = fixtures::sample(InkStrokeEventType::Down, 0, 0, 0)},
       {.type = replay::OperationType::Cancel}});
   CHECK(cancelled.ok());
 
@@ -333,7 +333,7 @@ int main() {
   CHECK(recordedBaseline.strokeCount == 3);
   std::size_t recordedUnsupported = 0;
   for (const auto& record : recorded.records)
-    if (record.frameType == StrokeFrameType::Final &&
+    if (record.frameType == InkStrokeFrameType::Final &&
         record.publishedGeometry.evaluated &&
         record.publishedGeometry.evidence.status ==
             startup::StartupEvidenceStatus::Unsupported)
@@ -382,22 +382,22 @@ int main() {
   // v1 envelope table and every per-stroke SVG snapshot.
   const auto multiStroke = replay::run("multistroke", {
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Down, 0.00, 0, 0)},
+       .input = fixtures::sample(InkStrokeEventType::Down, 0.00, 0, 0)},
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Move, 0.01, 10, 0)},
+       .input = fixtures::sample(InkStrokeEventType::Move, 0.01, 10, 0)},
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Up, 0.02, 20, 0)},
+       .input = fixtures::sample(InkStrokeEventType::Up, 0.02, 20, 0)},
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Down, 0.10, 100, 0)},
+       .input = fixtures::sample(InkStrokeEventType::Down, 0.10, 100, 0)},
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Move, 0.11, 110, 0)},
+       .input = fixtures::sample(InkStrokeEventType::Move, 0.11, 110, 0)},
       {.type = replay::OperationType::Input,
-       .input = fixtures::sample(StrokeEventType::Up, 0.12, 120, 0)}});
+       .input = fixtures::sample(InkStrokeEventType::Up, 0.12, 120, 0)}});
   CHECK(multiStroke.ok());
   CHECK(replay::measureBaseline(multiStroke).strokeCount == 2);
   std::vector<const replay::Record*> finalRecords;
   for (const auto& record : multiStroke.records)
-    if (record.frameType == StrokeFrameType::Final) finalRecords.push_back(&record);
+    if (record.frameType == InkStrokeFrameType::Final) finalRecords.push_back(&record);
   CHECK(finalRecords.size() == 2);
   CHECK(finalRecords[0]->stroke == 1);
   CHECK(finalRecords[1]->stroke == 2);
@@ -420,7 +420,7 @@ int main() {
     const replay::Record* lastNonterminal = nullptr;
     for (const auto& record : multiStroke.records) {
       if (record.stroke == finalRecord->stroke &&
-          record.frameType != StrokeFrameType::Final &&
+          record.frameType != InkStrokeFrameType::Final &&
           !record.geometry.empty() &&
           std::any_of(record.diagnostics.begin(), record.diagnostics.end(),
                       [](const auto& diagnostic) {
@@ -482,7 +482,7 @@ int main() {
         "synthetic-accel-before-reference",
         "synthetic-accel-across-reference",
         "synthetic-accel-after-reference"};
-    StrokeConfig syntheticConfig;
+    InkStrokeConfig syntheticConfig;
     syntheticConfig.smoothing = 0.0;
     std::vector<replay::Result> syntheticResults;
     syntheticResults.reserve(synthetic.size() * 3);
@@ -506,7 +506,7 @@ int main() {
     }
     auto finalRecord = [](const replay::Result& result) -> const replay::Record& {
       for (const auto& record : result.records)
-        if (record.frameType == StrokeFrameType::Final) return record;
+        if (record.frameType == InkStrokeFrameType::Final) return record;
       std::exit(EXIT_FAILURE);
     };
     auto inverseRotate = [](Vec2 point, int degrees) {

@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.collections.AbstractMutableList
 
-internal class StrokePredictionDiagnostics {
+internal class InkStrokePredictionDiagnostics {
   var validityFlags: Int = 0
   var suppressionReason: Int = 0
   var queuedRealInputCount: Long = 0L
@@ -90,7 +90,7 @@ internal class StrokePredictionDiagnostics {
     rendererReplacementDurationNanos = source.long; rendererDrawDurationNanos = source.long
   }
 
-  internal fun copyFrom(source: StrokePredictionDiagnostics) {
+  internal fun copyFrom(source: InkStrokePredictionDiagnostics) {
     validityFlags = source.validityFlags; suppressionReason = source.suppressionReason
     queuedRealInputCount = source.queuedRealInputCount
     processedRealInputCount = source.processedRealInputCount
@@ -259,16 +259,16 @@ internal class StrokeDecoderCounters {
 }
 
 internal class StrokeDecodeBank {
-  val diagnostics = StrokePredictionDiagnostics()
+  val diagnostics = InkStrokePredictionDiagnostics()
   val segments = ReusableList<StrokeCubicSegment>()
   val contours = ReusableList<StrokeContour>()
 }
 
-internal class StrokeFrame {
-  var type: Int = StrokeFrameCodec.COMMITTED_TYPE; private set
+internal class InkStrokeFrame {
+  var type: Int = InkStrokeFrameCodec.COMMITTED_TYPE; private set
   var revision: Long = 0L; private set
   var committedPointCount: Long = 0L; private set
-  val diagnostics = StrokePredictionDiagnostics()
+  val diagnostics = InkStrokePredictionDiagnostics()
   val contours = ReusableList<StrokeContour>()
   internal val decoderCounters = StrokeDecoderCounters()
   private val decodeBanks = arrayOf(StrokeDecodeBank(), StrokeDecodeBank())
@@ -327,7 +327,7 @@ internal class StrokeFrame {
 }
 
 /** Decodes the flattened native cubic segments and contour records. */
-internal object StrokeFrameCodec {
+internal object InkStrokeFrameCodec {
   const val COMMITTED_TYPE = 0
   const val PREDICTION_TYPE = 1
   const val FINAL_TYPE = 2
@@ -337,7 +337,7 @@ internal object StrokeFrameCodec {
   private const val SEGMENT_BYTES = 80
   private const val CONTOUR_RECORD_BYTES = 40
 
-  fun decode(source: ByteBuffer, target: StrokeFrame = StrokeFrame()): StrokeFrame {
+  fun decode(source: ByteBuffer, target: InkStrokeFrame = InkStrokeFrame()): InkStrokeFrame {
     val buffer = source.order(ByteOrder.nativeOrder())
     buffer.clear()
     require(buffer.remaining() >= HEADER_BYTES) { "Stroke frame header is truncated" }

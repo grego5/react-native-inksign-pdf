@@ -1,4 +1,4 @@
-#include "engine/StrokeEngineInternal.hpp"
+#include "engine/InkEngineInternal.hpp"
 
 #include <chrono>
 #include <optional>
@@ -16,11 +16,11 @@ std::uint64_t elapsedNanos(SteadyClock::time_point start) {
       std::chrono::nanoseconds>(SteadyClock::now() - start).count());
 }
 
-void setDirectionalLead(StrokePredictionDiagnostics& diagnostics,
+void setDirectionalLead(InkStrokePredictionDiagnostics& diagnostics,
                         Vec2 direction, Vec2 point, double time,
                         double& temporalLead, double& longitudinalLead,
                         double& lateralError) {
-  if ((diagnostics.validityFlags & StrokeDiagnosticLatestRealRaw) == 0) return;
+  if ((diagnostics.validityFlags & InkStrokeDiagnosticLatestRealRaw) == 0) return;
   const Vec2 delta = detail::subtract(point, diagnostics.latestRealRawInput);
   temporalLead = time - diagnostics.latestRealRawTime;
   longitudinalLead = detail::dot(delta, direction);
@@ -28,15 +28,15 @@ void setDirectionalLead(StrokePredictionDiagnostics& diagnostics,
 }
 
 void populatePlatformPredictionDiagnostics(
-    StrokePredictionDiagnostics& diagnostics,
-    std::span<const StrokeInput> predictedInputs,
+    InkStrokePredictionDiagnostics& diagnostics,
+    std::span<const InkStrokeInput> predictedInputs,
     std::size_t acceptedInputCount, double currentTime,
     std::optional<Vec2> direction) {
   diagnostics.queuedPredictedInputCount = predictedInputs.size();
   diagnostics.processedPredictedInputCount = acceptedInputCount;
   if (acceptedInputCount == 0) return;
-  const StrokeInput& latest = predictedInputs[acceptedInputCount - 1];
-  diagnostics.validityFlags |= StrokeDiagnosticLatestPlatformPredictedRaw;
+  const InkStrokeInput& latest = predictedInputs[acceptedInputCount - 1];
+  diagnostics.validityFlags |= InkStrokeDiagnosticLatestPlatformPredictedRaw;
   diagnostics.latestPlatformPredictedRawInput = latest.position;
   diagnostics.latestPlatformPredictedRawTime = latest.time;
   diagnostics.inputAgeAtReplacement = currentTime - diagnostics.latestRealRawTime;
@@ -49,11 +49,11 @@ void populatePlatformPredictionDiagnostics(
 
 void populatePredictionGeometryDiagnostics(
     const std::vector<detail::CenterlineState>& predictedSuffix,
-    const StrokePredictionFrame& output,
-    StrokePredictionDiagnostics& diagnostics, std::optional<Vec2> direction) {
+    const InkStrokePredictionFrame& output,
+    InkStrokePredictionDiagnostics& diagnostics, std::optional<Vec2> direction) {
   if (!predictedSuffix.empty()) {
     const auto& endpoint = predictedSuffix.back();
-    diagnostics.validityFlags |= StrokeDiagnosticPredictedModeledEndpoint;
+    diagnostics.validityFlags |= InkStrokeDiagnosticPredictedModeledEndpoint;
     diagnostics.predictedModeledEndpoint = endpoint.position;
     diagnostics.predictedModeledTime = endpoint.time;
     if (direction) setDirectionalLead(
@@ -63,20 +63,20 @@ void populatePredictionGeometryDiagnostics(
         diagnostics.modeledPredictionLateralError);
   }
   if (output.contours.empty() || output.contours.back().path.segments.empty()) return;
-  diagnostics.validityFlags |= StrokeDiagnosticTerminalCrossSection;
+  diagnostics.validityFlags |= InkStrokeDiagnosticTerminalCrossSection;
   diagnostics.terminalLeftEndpoint = output.contours.back().path.segments.back().p3;
   diagnostics.terminalRightEndpoint = diagnostics.terminalLeftEndpoint;
 }
 
 
 }
-StrokeStatus StrokeEngine::Impl::replacePredictedInputs(
-    std::span<const StrokeInput> predictedInputs, double currentTime,
-    StrokePredictionFrame& output) {
+InkStrokeStatus InkEngine::Impl::replacePredictedInputs(
+    std::span<const InkStrokeInput> predictedInputs, double currentTime,
+    InkStrokePredictionFrame& output) {
   output.clear();
   if (!contact.active()) {
-    output.diagnostics.suppressionReason = PredictionSuppressionReason::Inactive;
-    return {StrokeStatusCode::NotInProgress, "Prediction requires an active stroke."};
+    output.diagnostics.suppressionReason = InkStrokePredictionSuppressionReason::Inactive;
+    return {InkStrokeStatusCode::NotInProgress, "Prediction requires an active stroke."};
   }
   std::size_t acceptedInputCount = 0;
   const auto modelStart = SteadyClock::now();
@@ -99,7 +99,7 @@ StrokeStatus StrokeEngine::Impl::replacePredictedInputs(
     detail::perfettoCounter("InkSign C++ emitted upstream states", 0);
     detail::perfettoCounter("InkSign C++ contour count", 0);
     detail::perfettoCounter("InkSign C++ segment count", 0);
-    output.diagnostics.suppressionReason = PredictionSuppressionReason::InvalidResult;
+    output.diagnostics.suppressionReason = InkStrokePredictionSuppressionReason::InvalidResult;
     return detail::engine::fromInputStatus(status);
   }
   if (predictedInputs.empty()) {
@@ -107,16 +107,16 @@ StrokeStatus StrokeEngine::Impl::replacePredictedInputs(
     detail::perfettoCounter("InkSign C++ emitted upstream states", 0);
     detail::perfettoCounter("InkSign C++ contour count", 0);
     detail::perfettoCounter("InkSign C++ segment count", 0);
-    output.diagnostics.suppressionReason = PredictionSuppressionReason::EmptyBatch;
-    return StrokeStatus::success();
+    output.diagnostics.suppressionReason = InkStrokePredictionSuppressionReason::EmptyBatch;
+    return InkStrokeStatus::success();
   }
   if (centerlineUpdate.predictedSuffix.empty() || brush.modeledPoints().empty()) {
     upstream.extend({}, {});
     detail::perfettoCounter("InkSign C++ emitted upstream states", 0);
     detail::perfettoCounter("InkSign C++ contour count", 0);
     detail::perfettoCounter("InkSign C++ segment count", 0);
-    output.diagnostics.suppressionReason = PredictionSuppressionReason::ModelNoUnstableOutput;
-    return StrokeStatus::success();
+    output.diagnostics.suppressionReason = InkStrokePredictionSuppressionReason::ModelNoUnstableOutput;
+    return InkStrokeStatus::success();
   }
   const auto geometryStart = SteadyClock::now();
   const auto tips = [&] {
@@ -146,11 +146,11 @@ StrokeStatus StrokeEngine::Impl::replacePredictedInputs(
   populatePlatformPredictionDiagnostics(output.diagnostics, predictedInputs,
                                         acceptedInputCount, currentTime, direction);
   output.diagnostics.suppressionReason = output.contours.empty()
-      ? PredictionSuppressionReason::GeometryEmpty
-      : PredictionSuppressionReason::None;
+      ? InkStrokePredictionSuppressionReason::GeometryEmpty
+      : InkStrokePredictionSuppressionReason::None;
   populatePredictionGeometryDiagnostics(centerlineUpdate.predictedSuffix,
                                         output, output.diagnostics, direction);
-  return StrokeStatus::success();
+  return InkStrokeStatus::success();
 }
 
 }  // namespace margelo::nitro::inksignpdf

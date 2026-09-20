@@ -1,7 +1,7 @@
 #pragma once
 
-#include "StrokeEngine.hpp"
-#include "StrokeEngineC.h"
+#include "InkEngine.hpp"
+#include "InkEngineC.h"
 
 #include <vector>
 
@@ -11,23 +11,23 @@ namespace margelo::nitro::inksignpdf::detail {
 // valid until replace(), replaceFinal(), or clear() is called.
 class FrameTransport {
  public:
-  const NSEStrokeFrameView& replace(const StrokeFrame& frame);
-  const NSEStrokeFrameView& replaceFinal(
+  const InkEngineFrameView& replace(const InkStrokeFrame& frame);
+  const InkEngineFrameView& replaceFinal(
       std::uint64_t revision, std::size_t committedPointCount,
       StrokeContourCollection contours);
   void clear() noexcept;
 
-  const NSEStrokeFrameView& view() const noexcept { return view_; }
+  const InkEngineFrameView& view() const noexcept { return view_; }
 
  private:
-  void replaceFrame(std::uint32_t type, const StrokeFrame& frame);
+  void replaceFrame(std::uint32_t type, const InkStrokeFrame& frame);
   void flatten(const StrokeContourCollection& contours);
   void refreshView(std::uint32_t type, std::uint64_t revision,
                    std::size_t committedPointCount) noexcept;
 
-  std::vector<NSEStrokeCubicSegment> segments_;
-  std::vector<NSEStrokeCubicContourRecord> contours_;
-  NSEStrokeFrameView view_{};
+  std::vector<InkEngineCubicSegment> segments_;
+  std::vector<InkEngineCubicContourRecord> contours_;
+  InkEngineFrameView view_{};
 };
 
 }  // namespace margelo::nitro::inksignpdf::detail

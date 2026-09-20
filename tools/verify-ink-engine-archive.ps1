@@ -38,7 +38,7 @@ if ($metadataObject.abi -ne $Abi) {
     throw "Metadata ABI '$($metadataObject.abi)' does not match '$Abi'."
 }
 if ([int]$metadataObject.apiVersion -ne 8) {
-    throw "Unsupported stroke-engine API version '$($metadataObject.apiVersion)'."
+    throw "Unsupported ink-engine API version '$($metadataObject.apiVersion)'."
 }
 if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceRevision) -and
     $metadataObject.sourceRevision -ne $ExpectedSourceRevision) {
@@ -79,13 +79,13 @@ if ($LASTEXITCODE -ne 0) {
     throw "LLVM full symbol inspection failed: $allSymbolOutput"
 }
 foreach ($symbol in @(
-        "nse_stroke_engine_create",
-        "nse_stroke_engine_destroy",
-        "nse_stroke_engine_configure_pen",
-        "nse_stroke_engine_begin",
-        "nse_stroke_engine_update",
-        "nse_stroke_engine_end",
-        "nse_stroke_engine_frame")) {
+        "ink_engine_create",
+        "ink_engine_destroy",
+        "ink_engine_configure_pen",
+        "ink_engine_begin",
+        "ink_engine_update",
+        "ink_engine_end",
+        "ink_engine_frame")) {
     if ($symbolOutput -notmatch [regex]::Escape($symbol)) {
         throw "Archive is missing required C ABI symbol '$symbol'."
     }

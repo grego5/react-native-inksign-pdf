@@ -1,16 +1,16 @@
-#include "engine/StrokeEngineInternal.hpp"
+#include "engine/InkEngineInternal.hpp"
 
 #include "core/PerfettoTrace.hpp"
 #include <utility>
 
 namespace margelo::nitro::inksignpdf {
 
-void StrokeEngine::Impl::publishContours(
+void InkEngine::Impl::publishContours(
     std::size_t committedPointCount, std::size_t modeledPointStart,
-    StrokeFrame& output) {
+    InkStrokeFrame& output) {
   detail::ScopedPerfettoTrace trace("InkSign/C++ contour publication");
   auto contours = extractUpstreamContours(upstream, committedPointCount);
-  output.type = StrokeFrameType::Committed;
+  output.type = InkStrokeFrameType::Committed;
   output.committedPointCount = committedPointCount;
   output.modeledPointStart = modeledPointStart;
   output.contours = std::move(contours);

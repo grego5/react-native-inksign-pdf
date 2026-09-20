@@ -402,6 +402,7 @@ jobs:
           else
             gh release create "$PDFIUM_RELEASE_TAG" \
               release-assets/*.zip release-assets/*.tar.gz release-assets/SHA256SUMS \
-              --title "PDFium ${PDFIUM_VERSION} static mobile artifacts" \
+              --title "PDFium ${PDFIUM_VERSION} static artifacts" \
               --notes "$release_notes"
           fi
+

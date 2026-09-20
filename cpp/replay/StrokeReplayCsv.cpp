@@ -10,11 +10,11 @@
 namespace margelo::nitro::inksignpdf::replay::detail {
 namespace {
 
-const char* frameName(StrokeFrameType type) {
+const char* frameName(InkStrokeFrameType type) {
   switch (type) {
-    case StrokeFrameType::Committed: return "committed";
-    case StrokeFrameType::Prediction: return "prediction";
-    case StrokeFrameType::Final: return "final";
+    case InkStrokeFrameType::Committed: return "committed";
+    case InkStrokeFrameType::Prediction: return "prediction";
+    case InkStrokeFrameType::Final: return "final";
   }
   return "unknown";
 }
@@ -96,7 +96,7 @@ bool writeCsvArtifacts(const Result& result,
     output << "# schema=stroke-diagnostics-v11; units=page,seconds,display-units,display-units-per-second,display-units-per-second-squared\n";
     output << "operation,event,frame,modeled_index,raw_source_index,modeled_source_index,time,page_x,page_y,running_length_page,running_length_display,velocity_x_page_per_s,velocity_y_page_per_s,display_speed,normalized_speed,acceleration_x_page_per_s2,acceleration_y_page_per_s2,forward_acceleration_page_per_s2,lateral_acceleration_page_per_s2,forward_acceleration_display_per_s2,lateral_acceleration_display_per_s2,dt_seconds,turn_factor,effective_speed_display,target_radius_page,radius_page,segment_distance_page,response_distance_page,response_alpha,final_radius_page,stable,fixed_centerline_frontier,contour_source_start,contour_source_end,real,predicted\n";
     for (const Record& record : result.records) {
-      if (record.frameType != StrokeFrameType::Final) continue;
+      if (record.frameType != InkStrokeFrameType::Final) continue;
       for (const auto& value : record.diagnostics) {
         output << std::setprecision(17) << record.operation << ',' << record.event << ','
           << frameName(record.frameType) << ',' << value.modeledIndex << ',' << value.rawSourceIndex << ','
@@ -123,7 +123,7 @@ bool writeCsvArtifacts(const Result& result,
     startup << "# schema=stroke-envelope-v1; sampled_sections_only=true; continuous_certification=not_claimed\n";
     startup << "operation,stroke,has_moving_diagnostic,evidence_status,evidence_reason,min_width,max_width,maximum_left_inward,maximum_right_inward,width_valley_depth,shoulder_section,shoulder_arclength,body_join_section,body_join_arclength,terminal_section,terminal_arclength,forward_order_violations,sampled_cubic_points,sampled_cubic_failures,sampled_section_failures,sampled_width_disagreements,sampled_width_max_error,contact_observation,contact_width,width_cross_check,sections_compared\n";
     for (const Record& record : result.records) {
-      if (record.frameType != StrokeFrameType::Final) continue;
+      if (record.frameType != InkStrokeFrameType::Final) continue;
       const auto& geometry = record.publishedGeometry;
       const auto& evidence = geometry.evidence;
       startup << std::setprecision(17) << record.operation << ',' << record.stroke << ','
@@ -162,7 +162,7 @@ bool writeCsvArtifacts(const Result& result,
     if (!open("-terminal.csv", terminal)) return false;
     terminal << "# schema=stroke-terminal-v2; distances=page units; radii=page units\n";
     terminal << "operation,stroke,last_valid_moving_speed,normalized_terminal_speed,selected_taper_distance,remaining_arclength,taper_multiplier,tapered_radius,exact_contact,crossing_remaining_at_0_75,crossing_remaining_at_0_50,crossing_remaining_at_0_25\n";
-    for (const Record& record : result.records) if (record.frameType == StrokeFrameType::Final && record.terminal.valid) {
+    for (const Record& record : result.records) if (record.frameType == InkStrokeFrameType::Final && record.terminal.valid) {
       const auto& value = record.terminal;
       auto crossing = [&](double fraction) {
         double remaining = -1.0;
@@ -192,7 +192,7 @@ bool writeCsvArtifacts(const Result& result,
     if (!open("-geometry.csv", output)) return false;
     output << "operation,event,path,segment,p0x,p0y,c1x,c1y,c2x,c2y,p3x,p3y,source_start,source_end\n";
     for (const Record& record : result.records) {
-      if (record.frameType != StrokeFrameType::Final) continue;
+      if (record.frameType != InkStrokeFrameType::Final) continue;
       for (std::size_t contourIndex = 0; contourIndex < record.geometry.size(); ++contourIndex)
         for (std::size_t i = 0; i < record.geometry[contourIndex].path.segments.size(); ++i) {
           const auto& s = record.geometry[contourIndex].path.segments[i];

@@ -154,7 +154,8 @@ extension InkSignView {
     }
     var context: CGContext?
     for captured in pages {
-      guard let sourcePage = sourceDocument.page(at: captured.pageIndex + 1) else {
+      guard let sourcePage = CGPDFDocumentGetPage(sourceDocument,
+                                                   captured.pageIndex + 1) else {
         throw ExportError.failed
       }
       var box = captured.geometry.mediaBox
@@ -206,8 +207,8 @@ extension InkSignView {
     defer {
       if !verifiedSucceeded { policy.deleteExact(verified) }
     }
-    guard rewritten.write(to: verified),
-          let verifiedDocument = PDFDocument(url: verified),
+    rewritten.write(to: verified)
+    guard let verifiedDocument = PDFDocument(url: verified),
           verifiedDocument.pageCount == pages.count else {
       throw ExportError.failed
     }

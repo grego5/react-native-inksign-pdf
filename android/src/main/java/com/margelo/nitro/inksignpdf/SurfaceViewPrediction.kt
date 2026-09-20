@@ -67,7 +67,7 @@ internal fun SurfaceView.requestPredictionNow(): SurfaceView.PredictionReplaceme
       latestRealEventTimeMillis?.toDouble() ?: 0.0,
     )
     InkPerfetto.section("InkSign/platform prediction replacement") {
-      strokeEngine.replacePredictedInputs(predictedInputBatch, currentTimeMillis)
+      inkEngine.replacePredictedInputs(predictedInputBatch, currentTimeMillis)
     }.also {
       InkPerfetto.counter(
         "InkSign prediction replacement current time ms",
@@ -87,14 +87,14 @@ internal fun SurfaceView.requestPredictionNow(): SurfaceView.PredictionReplaceme
       currentBounds = frontBufferComposition.frontBufferBounds().prediction,
     )
   }
-  if (frame.type == StrokeFrameCodec.PREDICTION_TYPE &&
+  if (frame.type == InkStrokeFrameCodec.PREDICTION_TYPE &&
     frame.diagnostics.suppressionReason == SurfaceView.PREDICTION_SUPPRESSION_NONE &&
     frame.contours.isNotEmpty()
   ) {
     predictionFrameCount += 1L
     frontBufferComposition.applyPredictionFrame(frame, presentationGeneration)
     perfetto.marker("InkSign/prediction installed")
-  } else if (frame.type == StrokeFrameCodec.PREDICTION_TYPE) {
+  } else if (frame.type == InkStrokeFrameCodec.PREDICTION_TYPE) {
     predictionSuppressedCount += 1L
     frontBufferComposition.clearPrediction()
   }
@@ -115,7 +115,7 @@ private fun SurfaceView.reportPredictionCounters() {
   InkPerfetto.counter("InkSign prediction duration ns", predictionDurationNanos)
 }
 
-private fun SurfaceView.reportPredictionDiagnostics(frame: StrokeFrame) {
+private fun SurfaceView.reportPredictionDiagnostics(frame: InkStrokeFrame) {
   val diagnostics = frame.diagnostics
   InkPerfetto.counter("InkSign queued real input count", diagnostics.queuedRealInputCount)
   InkPerfetto.counter("InkSign processed real input count", diagnostics.processedRealInputCount)

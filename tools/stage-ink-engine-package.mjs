@@ -12,7 +12,7 @@ const defaultRepository = 'https://github.com/grego5/react-native-inksign-pdf'
 
 function usage() {
   console.log(`Usage:
-  node tools/stage-stroke-engine-package.mjs --release-tag <tag>
+  node tools/stage-ink-engine-package.mjs --release-tag <tag>
     [--release-archive <zip> --checksums <SHA256SUMS>]
     [--release-directory <extracted-release-directory>]
     [--destination <path>] [--repository <url>]
@@ -26,7 +26,7 @@ from the immutable GitHub release identified by --repository and --release-tag.
 
 function parseArguments(argv) {
   const options = {
-    destination: path.join(repositoryRoot, 'android', 'stroke-engine'),
+    destination: path.join(repositoryRoot, 'android', 'ink-engine'),
     repository: defaultRepository,
     force: false,
   }
@@ -150,9 +150,9 @@ function readJson(filePath, label) {
 }
 
 function readExpectedApiVersion() {
-  const header = fs.readFileSync(path.join(repositoryRoot, 'cpp', 'StrokeEngineC.h'), 'utf8')
-  const match = header.match(/NSE_STROKE_ENGINE_API_VERSION\s+([0-9]+)u?/)
-  if (!match) throw new Error('Unable to determine the StrokeEngine C API version')
+  const header = fs.readFileSync(path.join(repositoryRoot, 'cpp', 'InkEngineC.h'), 'utf8')
+  const match = header.match(/INK_ENGINE_API_VERSION\s+([0-9]+)u?/)
+  if (!match) throw new Error('Unable to determine the InkEngine C API version')
   return Number(match[1])
 }
 
@@ -164,26 +164,26 @@ function readExpectedNdkVersion() {
 }
 
 function assertRelease(releaseRoot, checksums, options) {
-  const manifest = readJson(path.join(releaseRoot, 'manifest.json'), 'stroke-engine release manifest')
+  const manifest = readJson(path.join(releaseRoot, 'manifest.json'), 'ink-engine release manifest')
   if (manifest.format !== 1 || manifest.releaseTag !== options.releaseTag) {
-    throw new Error(`Stroke-engine release manifest does not identify ${options.releaseTag}`)
+    throw new Error(`Ink-engine release manifest does not identify ${options.releaseTag}`)
   }
   if (options.expectedSourceRevision && manifest.sourceRevision !== options.expectedSourceRevision) {
-    throw new Error(`Stroke-engine source revision mismatch: expected ${options.expectedSourceRevision}, got ${manifest.sourceRevision}`)
+    throw new Error(`Ink-engine source revision mismatch: expected ${options.expectedSourceRevision}, got ${manifest.sourceRevision}`)
   }
   const expectedNdk = options.expectedNdkVersion ?? readExpectedNdkVersion()
   if (manifest.ndkVersion !== expectedNdk) {
-    throw new Error(`Stroke-engine NDK mismatch: expected ${expectedNdk}, got ${manifest.ndkVersion}`)
+    throw new Error(`Ink-engine NDK mismatch: expected ${expectedNdk}, got ${manifest.ndkVersion}`)
   }
   const expectedApi = readExpectedApiVersion()
   if (manifest.apiVersion !== expectedApi || manifest.perfettoTrace !== false) {
-    throw new Error('Stroke-engine release manifest has an incompatible API or trace policy')
+    throw new Error('Ink-engine release manifest has an incompatible API or trace policy')
   }
 
   const artifacts = manifest.artifacts
   if (!Array.isArray(artifacts) || artifacts.length !== supportedAbis.length ||
       supportedAbis.some((abi) => !artifacts.some((artifact) => artifact.abi === abi))) {
-    throw new Error(`Stroke-engine release must contain exactly: ${supportedAbis.join(', ')}`)
+    throw new Error(`Ink-engine release must contain exactly: ${supportedAbis.join(', ')}`)
   }
 
   for (const abi of supportedAbis) {
@@ -245,12 +245,12 @@ function copyRelease(releaseRoot, destination, manifest) {
   fs.mkdirSync(path.dirname(destination), { recursive: true })
   if (fs.existsSync(destination)) fs.rmSync(destination, { recursive: true, force: true })
   fs.renameSync(stagingDirectory, destination)
-  console.log(`Staged stroke-engine release ${manifest.releaseTag} at ${destination}`)
+  console.log(`Staged ink-engine release ${manifest.releaseTag} at ${destination}`)
 }
 
 async function main() {
   const options = parseArguments(process.argv.slice(2))
-  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'inksign-stroke-engine-'))
+  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'inksign-ink-engine-'))
   try {
     let releaseRoot = options.releaseDirectory
     let checksumsPath = options.checksums
@@ -264,17 +264,17 @@ async function main() {
       const checksums = parseChecksums(checksumsPath)
       const expectedArchiveHash = checksums.get(archiveName)
       if (!expectedArchiveHash) throw new Error(`Checksum list has no entry for ${archiveName}`)
-      assertChecksum(archivePath, expectedArchiveHash, 'stroke-engine release archive')
+      assertChecksum(archivePath, expectedArchiveHash, 'ink-engine release archive')
       releaseRoot = path.join(temporaryDirectory, 'release')
       extractZip(archivePath, releaseRoot)
     } else if (options.releaseArchive) {
       const archivePath = path.resolve(options.releaseArchive)
-      assertFile(archivePath, 'stroke-engine release archive')
+      assertFile(archivePath, 'ink-engine release archive')
       releaseRoot = path.join(temporaryDirectory, 'release')
       const checksums = parseChecksums(path.resolve(options.checksums))
       const expectedArchiveHash = checksums.get(path.basename(archivePath))
       if (!expectedArchiveHash) throw new Error(`Checksum list has no entry for ${path.basename(archivePath)}`)
-      assertChecksum(archivePath, expectedArchiveHash, 'stroke-engine release archive')
+      assertChecksum(archivePath, expectedArchiveHash, 'ink-engine release archive')
       extractZip(archivePath, releaseRoot)
     }
 
@@ -291,6 +291,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`Stroke-engine package staging failed: ${error.message}`)
+  console.error(`Ink-engine package staging failed: ${error.message}`)
   process.exitCode = 1
 })

@@ -96,12 +96,12 @@ void checkStateShape(
 }
 
 void testPolicyProducesUpstreamStates() {
-  const StrokeConfig config{.minWidth = 2.0,
+  const InkStrokeConfig config{.minWidth = 2.0,
                              .maxWidth = 4.0,
                              .logicalDisplayUnitsPerPageUnit = 2.0,
                              .smoothing = 0.0};
   detail::SignatureBrushTipModeler brush(config);
-  StrokeWorkStats stats;
+  InkStrokeWorkStats stats;
   const std::vector<detail::CenterlineState> real{
       state(0.0, 0.0, 0.000, 0), state(50.0, 300.0, 0.010, 1),
       state(100.0, 900.0, 0.020, 2), state(150.0, 1200.0, 0.030, 3)};
@@ -126,12 +126,12 @@ void testPolicyProducesUpstreamStates() {
 }
 
 void testUpstreamRollbackAndPredictionSplit() {
-  const StrokeConfig config{.minWidth = 2.0,
+  const InkStrokeConfig config{.minWidth = 2.0,
                              .maxWidth = 4.0,
                              .logicalDisplayUnitsPerPageUnit = 10.0,
                              .smoothing = 0.0};
   detail::SignatureBrushTipModeler brush(config);
-  StrokeWorkStats stats;
+  InkStrokeWorkStats stats;
   std::vector<detail::CenterlineState> real{
       state(0.0, 0.0, 0.00, 0), state(20.0, 500.0, 0.01, 1),
       state(45.0, 700.0, 0.02, 2), state(75.0, 900.0, 0.03, 3)};
@@ -204,7 +204,7 @@ void testUpstreamRollbackAndPredictionSplit() {
   // prediction/replacement/finish sequence, including mesh, outlines, and
   // bounds.
   detail::SignatureBrushTipModeler authoritative(config);
-  StrokeWorkStats authoritativeStats;
+  InkStrokeWorkStats authoritativeStats;
   const auto authoritativeUpdate = authoritative.update(
       {modeled, 0, modeled.size(), 600.0}, authoritativeStats);
   UpstreamStrokeGeometry reconstructed;
@@ -247,12 +247,12 @@ void testUpstreamBehaviorBranches() {
 
   // Equal center positions are retained by policy and still produce a
   // stationary upstream shape rather than being treated as a missing sample.
-  const StrokeConfig config{.minWidth = 2.0,
+  const InkStrokeConfig config{.minWidth = 2.0,
                              .maxWidth = 4.0,
                              .logicalDisplayUnitsPerPageUnit = 1.0,
                              .smoothing = 0.0};
   detail::SignatureBrushTipModeler brush(config);
-  StrokeWorkStats stats;
+  InkStrokeWorkStats stats;
   const std::vector<detail::CenterlineState> zeroTravel{
       state(10.0, 0.0, 0.00, 0), state(10.0, 0.0, 0.01, 1)};
   const auto modeledZeroTravel = modeledInputs(zeroTravel);
@@ -273,7 +273,7 @@ void testUpstreamBehaviorBranches() {
   // starts from a fresh policy owner and does not inherit dot geometry/state.
   brush.reset();
   stats = {};
-  const detail::NormalizedInput dotInput{.eventType = StrokeEventType::Down,
+  const detail::NormalizedInput dotInput{.eventType = InkStrokeEventType::Down,
                                          .position = {3.0, 4.0},
                                          .time = 0.1};
   const auto dot = brush.finishDot(dotInput, 1.5);
@@ -336,8 +336,8 @@ void testUpstreamBehaviorBranches() {
 
 void testStationaryDotUsesSameTipContract() {
   detail::SignatureBrushTipModeler brush(
-      StrokeConfig{.minWidth = 2.0, .maxWidth = 4.0, .smoothing = 0.0});
-  const detail::NormalizedInput input{.eventType = StrokeEventType::Down,
+      InkStrokeConfig{.minWidth = 2.0, .maxWidth = 4.0, .smoothing = 0.0});
+  const detail::NormalizedInput input{.eventType = InkStrokeEventType::Down,
                                       .position = {3.0, 4.0}, .time = 0.1};
   const auto dot = brush.finishDot(input, 1.5);
   CHECK(dot.newFixedUpstreamStates.empty());

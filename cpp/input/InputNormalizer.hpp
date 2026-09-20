@@ -1,6 +1,6 @@
 #pragma once
 
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -16,7 +16,7 @@ struct StylusSample {
 };
 
 struct NormalizedInput {
-  StrokeEventType eventType = StrokeEventType::Move;
+  InkStrokeEventType eventType = InkStrokeEventType::Move;
   Vec2 position;
   double time = 0.0;
   StylusSample stylus;
@@ -42,26 +42,26 @@ struct InputStatus {
 
 class InputNormalizer {
  public:
-  InputStatus begin(const StrokeInput& input, NormalizedInput& output);
-  InputStatus update(const StrokeInput& input, NormalizedInput& output);
-  InputStatus end(const StrokeInput& input, NormalizedInput& output);
-  InputStatus prepareBatch(std::span<const StrokeInput> inputs, bool terminal,
+  InputStatus begin(const InkStrokeInput& input, NormalizedInput& output);
+  InputStatus update(const InkStrokeInput& input, NormalizedInput& output);
+  InputStatus end(const InkStrokeInput& input, NormalizedInput& output);
+  InputStatus prepareBatch(std::span<const InkStrokeInput> inputs, bool terminal,
                            std::vector<NormalizedInput>& output) const;
-  void commitBatch(std::span<const StrokeInput> inputs, bool terminal);
+  void commitBatch(std::span<const InkStrokeInput> inputs, bool terminal);
   void cancel();
 
   bool inProgress() const { return inProgress_; }
 
  private:
-  InputStatus accept(const StrokeInput& input,
-                     StrokeEventType expected,
+  InputStatus accept(const InkStrokeInput& input,
+                     InkStrokeEventType expected,
                      NormalizedInput& output);
-  static InputStatus validateValues(const StrokeInput& input);
-  static bool isDuplicate(const StrokeInput& first, const StrokeInput& second);
-  static NormalizedInput normalizeInput(const StrokeInput& input);
+  static InputStatus validateValues(const InkStrokeInput& input);
+  static bool isDuplicate(const InkStrokeInput& first, const InkStrokeInput& second);
+  static NormalizedInput normalizeInput(const InkStrokeInput& input);
 
   bool inProgress_ = false;
-  std::optional<StrokeInput> lastInput_;
+  std::optional<InkStrokeInput> lastInput_;
 };
 
 }  // namespace margelo::nitro::inksignpdf::detail

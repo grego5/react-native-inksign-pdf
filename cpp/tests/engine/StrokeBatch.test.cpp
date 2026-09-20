@@ -1,4 +1,4 @@
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 #include "input/CommittedCenterline.hpp"
 #include "tests/support/TestSupport.hpp"
 
@@ -18,7 +18,7 @@ bool nearlyEqual(double first, double second) {
       1e-9 * std::max({1.0, std::abs(first), std::abs(second)});
 }
 
-StrokeInput input(StrokeEventType type, double x, double y, double time) {
+InkStrokeInput input(InkStrokeEventType type, double x, double y, double time) {
   return {.eventType = type,
           .position = {x, y},
           .time = time,
@@ -77,17 +77,17 @@ bool same(const StrokeContourCollection& first,
   return true;
 }
 
-StrokeFrame runStroke(std::size_t batchSize, const std::vector<StrokeInput>& moves) {
-  StrokeEngine engine;
-  StrokeFrame frame;
-  CHECK(engine.begin(input(StrokeEventType::Down, 0.0, 0.0, 0.0), frame).ok());
+InkStrokeFrame runStroke(std::size_t batchSize, const std::vector<InkStrokeInput>& moves) {
+  InkEngine engine;
+  InkStrokeFrame frame;
+  CHECK(engine.begin(input(InkStrokeEventType::Down, 0.0, 0.0, 0.0), frame).ok());
   for (std::size_t start = 0; start < moves.size(); start += batchSize) {
     const std::size_t count = std::min(batchSize, moves.size() - start);
     CHECK(engine.updateBatch(
-              std::span<const StrokeInput>(moves.data() + start, count), frame)
+              std::span<const InkStrokeInput>(moves.data() + start, count), frame)
               .ok());
   }
-  CHECK(engine.end(input(StrokeEventType::Up, moves.back().position.x,
+  CHECK(engine.end(input(InkStrokeEventType::Up, moves.back().position.x,
                         moves.back().position.y, moves.back().time + 0.01),
                    frame)
             .ok());
@@ -100,19 +100,19 @@ int main() {
   // A fast flick starts at the minimum radius and obeys the causal spatial
   // radius bound for both growth and contraction.
   {
-    const StrokeConfig config{
+    const InkStrokeConfig config{
         .minWidth = 2.0, .maxWidth = 4.0, .smoothing = 0.0};
-    StrokeEngine engine(config);
+    InkEngine engine(config);
     engine.enableDiagnostics(true);
-    StrokeFrame frame;
-    CHECK(engine.begin(input(StrokeEventType::Down, 0, 0, 0), frame).ok());
+    InkStrokeFrame frame;
+    CHECK(engine.begin(input(InkStrokeEventType::Down, 0, 0, 0), frame).ok());
     const std::array flick{
-        input(StrokeEventType::Move, 0.5, 0, 0.004),
-        input(StrokeEventType::Move, 2, 0, 0.008),
-        input(StrokeEventType::Move, 10, 0, 0.012),
-        input(StrokeEventType::Move, 30, 0, 0.020),
-        input(StrokeEventType::Move, 30.5, 0, 0.020),
-        input(StrokeEventType::Up, 60, 0, 0.032)};
+        input(InkStrokeEventType::Move, 0.5, 0, 0.004),
+        input(InkStrokeEventType::Move, 2, 0, 0.008),
+        input(InkStrokeEventType::Move, 10, 0, 0.012),
+        input(InkStrokeEventType::Move, 30, 0, 0.020),
+        input(InkStrokeEventType::Move, 30.5, 0, 0.020),
+        input(InkStrokeEventType::Up, 60, 0, 0.032)};
     CHECK(engine.endBatch(flick, frame).ok());
     const auto& samples = engine.diagnosticSamples();
     CHECK(samples.size() >= 2);
@@ -135,24 +135,24 @@ int main() {
   // A covered terminal contact still publishes usable geometry and permits
   // the caller to begin the next stroke with the same frame.
   {
-    StrokeEngine engine({.minWidth = 2.0, .maxWidth = 2.0, .smoothing = 0.0});
-    StrokeFrame frame;
-    CHECK(engine.begin(input(StrokeEventType::Down, 0, 0, 0), frame).ok());
-    CHECK(engine.end(input(StrokeEventType::Up, 0.5, 0, 0.01), frame).ok());
+    InkEngine engine({.minWidth = 2.0, .maxWidth = 2.0, .smoothing = 0.0});
+    InkStrokeFrame frame;
+    CHECK(engine.begin(input(InkStrokeEventType::Down, 0, 0, 0), frame).ok());
+    CHECK(engine.end(input(InkStrokeEventType::Up, 0.5, 0, 0.01), frame).ok());
     CHECK(!frame.contours.empty());
-    CHECK(engine.begin(input(StrokeEventType::Down, 0, 0, 1), frame).ok());
+    CHECK(engine.begin(input(InkStrokeEventType::Down, 0, 0, 1), frame).ok());
     engine.cancel();
   }
   // Dense startup geometry remains the ordinary materialized sweep rather
   // than stale geometry from an earlier prefix.
   {
-    StrokeEngine engine({.minWidth = 2.0, .maxWidth = 2.0, .smoothing = 0.0});
+    InkEngine engine({.minWidth = 2.0, .maxWidth = 2.0, .smoothing = 0.0});
     engine.enableDiagnostics(true);
-    StrokeFrame frame;
-    CHECK(engine.begin(input(StrokeEventType::Down, 0, 0, 0), frame).ok());
-    std::vector<StrokeInput> dense;
+    InkStrokeFrame frame;
+    CHECK(engine.begin(input(InkStrokeEventType::Down, 0, 0, 0), frame).ok());
+    std::vector<InkStrokeInput> dense;
     for (int i = 1; i <= 70; ++i)
-      dense.push_back(input(i == 70 ? StrokeEventType::Up : StrokeEventType::Move,
+      dense.push_back(input(i == 70 ? InkStrokeEventType::Up : InkStrokeEventType::Move,
                             i * 0.02, 0, i * 0.01));
     CHECK(engine.endBatch(dense, frame).ok());
     CHECK(!engine.diagnosticSamples().empty());
@@ -165,17 +165,17 @@ int main() {
       CHECK(!contour.path.segments.empty());
     }
   }
-  std::vector<StrokeInput> moves;
+  std::vector<InkStrokeInput> moves;
   moves.reserve(kMaxRealInputBatch);
   for (std::size_t index = 1; index <= kMaxRealInputBatch; ++index) {
-    moves.push_back(input(StrokeEventType::Move, index * 1.5,
+    moves.push_back(input(InkStrokeEventType::Move, index * 1.5,
                           std::sin(index * 0.17) * 4.0, index * 0.01));
   }
 
-  const StrokeFrame sequential = runStroke(1, moves);
+  const InkStrokeFrame sequential = runStroke(1, moves);
   for (const std::size_t batchSize : {std::size_t{2}, std::size_t{4},
                                       std::size_t{8}, kMaxRealInputBatch}) {
-    const StrokeFrame batched = runStroke(batchSize, moves);
+    const InkStrokeFrame batched = runStroke(batchSize, moves);
     CHECK(same(batched.modeledPoints, sequential.modeledPoints));
     CHECK(same(batched.contours, sequential.contours));
     CHECK(batched.diagnostics.queuedRealInputCount ==
@@ -184,27 +184,27 @@ int main() {
           sequential.diagnostics.stableModeledInputCount);
   }
 
-  StrokeEngine rollback;
-  StrokeFrame frame;
-  CHECK(rollback.begin(input(StrokeEventType::Down, 0.0, 0.0, 0.0), frame).ok());
-  CHECK(rollback.update(input(StrokeEventType::Move, 2.0, 0.0, 0.1), frame).ok());
+  InkEngine rollback;
+  InkStrokeFrame frame;
+  CHECK(rollback.begin(input(InkStrokeEventType::Down, 0.0, 0.0, 0.0), frame).ok());
+  CHECK(rollback.update(input(InkStrokeEventType::Move, 2.0, 0.0, 0.1), frame).ok());
   const auto before = rollback.modeledPoints();
   const auto revision = frame.revision;
   const std::array invalidBatch{
-      input(StrokeEventType::Move, 3.0, 0.0, 0.2),
-      input(StrokeEventType::Move, 4.0, 0.0, 0.15),
+      input(InkStrokeEventType::Move, 3.0, 0.0, 0.2),
+      input(InkStrokeEventType::Move, 4.0, 0.0, 0.15),
   };
   CHECK(rollback.updateBatch(invalidBatch, frame).code ==
-        StrokeStatusCode::TimeWentBackwards);
+        InkStrokeStatusCode::TimeWentBackwards);
   CHECK(frame.revision == revision);
   CHECK(same(rollback.modeledPoints(), before));
-  CHECK(rollback.update(input(StrokeEventType::Move, 5.0, 0.0, 0.3), frame).ok());
+  CHECK(rollback.update(input(InkStrokeEventType::Move, 5.0, 0.0, 0.3), frame).ok());
 
-  StrokeEngine stylusRollback;
-  CHECK(stylusRollback.begin(input(StrokeEventType::Down, 0.0, 0.0, 0.0), frame).ok());
+  InkEngine stylusRollback;
+  CHECK(stylusRollback.begin(input(InkStrokeEventType::Down, 0.0, 0.0, 0.0), frame).ok());
   const std::array incompatibleStylusBatch{
-      input(StrokeEventType::Move, 1.0, 0.0, 0.1),
-      StrokeInput{.eventType = StrokeEventType::Move,
+      input(InkStrokeEventType::Move, 1.0, 0.0, 0.1),
+      InkStrokeInput{.eventType = InkStrokeEventType::Move,
                   .position = {2.0, 0.0},
                   .time = 0.2,
                   .pressure = -1.0,
@@ -212,19 +212,19 @@ int main() {
                   .orientation = -1.0},
   };
   CHECK(stylusRollback.updateBatch(incompatibleStylusBatch, frame).code ==
-        StrokeStatusCode::InvalidInput);
+        InkStrokeStatusCode::InvalidInput);
   CHECK(stylusRollback.modeledPoints().empty());
 
-  StrokeEngine seamStylusRollback;
-  CHECK(seamStylusRollback.begin(input(StrokeEventType::Down, 0.0, 0.0, 0.0),
+  InkEngine seamStylusRollback;
+  CHECK(seamStylusRollback.begin(input(InkStrokeEventType::Down, 0.0, 0.0, 0.0),
                                  frame)
             .ok());
-  CHECK(seamStylusRollback.update(input(StrokeEventType::Move, 1.0, 0.0, 0.1),
+  CHECK(seamStylusRollback.update(input(InkStrokeEventType::Move, 1.0, 0.0, 0.1),
                                   frame)
             .ok());
   const auto seamBefore = seamStylusRollback.modeledPoints();
   const std::array seamChange{
-      StrokeInput{.eventType = StrokeEventType::Move,
+      InkStrokeInput{.eventType = InkStrokeEventType::Move,
                   .position = {2.0, 0.0},
                   .time = 0.2,
                   .pressure = -1.0,
@@ -232,38 +232,38 @@ int main() {
                   .orientation = -1.0},
   };
   CHECK(seamStylusRollback.updateBatch(seamChange, frame).code ==
-        StrokeStatusCode::InvalidInput);
+        InkStrokeStatusCode::InvalidInput);
   CHECK(same(seamStylusRollback.modeledPoints(), seamBefore));
 
   detail::CommittedCenterline centerline;
   detail::CommittedCenterlineUpdate centerlineUpdate;
-  CHECK(centerline.begin(input(StrokeEventType::Down, 0.0, 0.0, 0.0),
+  CHECK(centerline.begin(input(InkStrokeEventType::Down, 0.0, 0.0, 0.0),
                          centerlineUpdate)
             .ok());
   const std::array centerlineMoves{
-      input(StrokeEventType::Move, 1.0, 0.0, 0.1),
-      input(StrokeEventType::Move, 2.0, 0.0, 0.2),
-      input(StrokeEventType::Move, 3.0, 0.0, 0.3),
+      input(InkStrokeEventType::Move, 1.0, 0.0, 0.1),
+      input(InkStrokeEventType::Move, 2.0, 0.0, 0.2),
+      input(InkStrokeEventType::Move, 3.0, 0.0, 0.3),
   };
   CHECK(centerline.updateBatch(centerlineMoves, centerlineUpdate).ok());
   CHECK(centerline.points().size() == 4);
   CHECK(centerline.modeledInputs().back().rawSourceIndex == 3);
   const std::array duplicateBatch{
-      input(StrokeEventType::Move, 4.0, 0.0, 0.4),
-      input(StrokeEventType::Move, 4.0, 0.0, 0.4),
+      input(InkStrokeEventType::Move, 4.0, 0.0, 0.4),
+      input(InkStrokeEventType::Move, 4.0, 0.0, 0.4),
   };
   CHECK(centerline.updateBatch(duplicateBatch, centerlineUpdate).code ==
         detail::InputStatusCode::DuplicateInput);
   CHECK(centerline.points().size() == 4);
 
-  StrokeEngine malformed;
-  CHECK(malformed.begin(input(StrokeEventType::Down, 0.0, 0.0, 0.0), frame).ok());
+  InkEngine malformed;
+  CHECK(malformed.begin(input(InkStrokeEventType::Down, 0.0, 0.0, 0.0), frame).ok());
   const std::array wrongOrder{
-      input(StrokeEventType::Move, 1.0, 0.0, 0.1),
-      input(StrokeEventType::Up, 2.0, 0.0, 0.2),
+      input(InkStrokeEventType::Move, 1.0, 0.0, 0.1),
+      input(InkStrokeEventType::Up, 2.0, 0.0, 0.2),
   };
   CHECK(malformed.updateBatch(wrongOrder, frame).code ==
-        StrokeStatusCode::InvalidEvent);
+        InkStrokeStatusCode::InvalidEvent);
   CHECK(malformed.modeledPoints().empty());
   CHECK(malformed.inProgress());
   return 0;

@@ -11,10 +11,10 @@ bool validOptional(double value) {
   return value == -1.0 || (std::isfinite(value) && value >= 0.0);
 }
 
-bool validPredictedInput(const StrokeInput& input,
-                         const StrokeInput& latestRealInput,
+bool validPredictedInput(const InkStrokeInput& input,
+                         const InkStrokeInput& latestRealInput,
                          double previousTime) {
-  return input.eventType == StrokeEventType::Move &&
+  return input.eventType == InkStrokeEventType::Move &&
       isFinite(input.position) && isFinite(input.time) &&
       input.time > previousTime && validOptional(input.pressure) &&
       validOptional(input.tilt) && validOptional(input.orientation) &&
@@ -23,8 +23,8 @@ bool validPredictedInput(const StrokeInput& input,
       (input.orientation < 0.0) == (latestRealInput.orientation < 0.0);
 }
 
-bool sameStylusPresence(const StrokeInput& first,
-                        const StrokeInput& second) noexcept {
+bool sameStylusPresence(const InkStrokeInput& first,
+                        const InkStrokeInput& second) noexcept {
   return (first.pressure < 0.0) == (second.pressure < 0.0) &&
       (first.tilt < 0.0) == (second.tilt < 0.0) &&
       (first.orientation < 0.0) == (second.orientation < 0.0);
@@ -49,27 +49,27 @@ CommittedCenterline::CommittedCenterline(CommittedCenterlineConfig config)
 }
 
 InputStatus CommittedCenterline::begin(
-    const StrokeInput& input, CommittedCenterlineUpdate& output) {
+    const InkStrokeInput& input, CommittedCenterlineUpdate& output) {
   return process(input, Operation::Begin, output);
 }
 
 InputStatus CommittedCenterline::update(
-    const StrokeInput& input, CommittedCenterlineUpdate& output) {
-  return updateBatch(std::span<const StrokeInput>(&input, 1), output);
+    const InkStrokeInput& input, CommittedCenterlineUpdate& output) {
+  return updateBatch(std::span<const InkStrokeInput>(&input, 1), output);
 }
 
 InputStatus CommittedCenterline::end(
-    const StrokeInput& input, CommittedCenterlineUpdate& output) {
-  return endBatch(std::span<const StrokeInput>(&input, 1), output);
+    const InkStrokeInput& input, CommittedCenterlineUpdate& output) {
+  return endBatch(std::span<const InkStrokeInput>(&input, 1), output);
 }
 
 InputStatus CommittedCenterline::updateBatch(
-    std::span<const StrokeInput> inputs, CommittedCenterlineUpdate& output) {
+    std::span<const InkStrokeInput> inputs, CommittedCenterlineUpdate& output) {
   return processBatch(inputs, Operation::Update, output);
 }
 
 InputStatus CommittedCenterline::endBatch(
-    std::span<const StrokeInput> inputs, CommittedCenterlineUpdate& output) {
+    std::span<const InkStrokeInput> inputs, CommittedCenterlineUpdate& output) {
   return processBatch(inputs, Operation::End, output);
 }
 
@@ -85,7 +85,7 @@ void CommittedCenterline::cancel() {
 }
 
 InputStatus CommittedCenterline::replacePredictedInputs(
-    std::span<const StrokeInput> predictedInputs, double currentTime,
+    std::span<const InkStrokeInput> predictedInputs, double currentTime,
     CommittedCenterlineUpdate& output, std::size_t* acceptedInputCount) {
   output.predictedSuffix.clear();
   if (acceptedInputCount != nullptr) *acceptedInputCount = 0;
@@ -106,7 +106,7 @@ InputStatus CommittedCenterline::replacePredictedInputs(
   predictedRawScratch_.clear();
   predictedRawScratch_.reserve(predictedInputs.size());
   double previousTime = latestRealInputTime_;
-  for (const StrokeInput& input : predictedInputs) {
+  for (const InkStrokeInput& input : predictedInputs) {
     if (!validPredictedInput(input, *latestRealInput_, previousTime)) break;
     const NormalizedInput normalized = {
         .eventType = input.eventType,
@@ -179,10 +179,10 @@ void CommittedCenterline::fillUpdate(CommittedCenterlineUpdate& output,
 }
 
 InputStatus CommittedCenterline::process(
-    const StrokeInput& input, Operation operation,
+    const InkStrokeInput& input, Operation operation,
     CommittedCenterlineUpdate& output) {
   if (operation != Operation::Begin) {
-    return processBatch(std::span<const StrokeInput>(&input, 1), operation,
+    return processBatch(std::span<const InkStrokeInput>(&input, 1), operation,
                          output);
   }
 
@@ -204,7 +204,7 @@ InputStatus CommittedCenterline::process(
 }
 
 InputStatus CommittedCenterline::processBatch(
-    std::span<const StrokeInput> inputs, Operation operation,
+    std::span<const InkStrokeInput> inputs, Operation operation,
     CommittedCenterlineUpdate& output) {
   if (inputs.empty()) {
     return {InputStatusCode::InvalidValue,
@@ -215,10 +215,10 @@ InputStatus CommittedCenterline::processBatch(
             "Real input batch exceeds the native bound."};
   }
   for (std::size_t index = 0; index < inputs.size(); ++index) {
-    const StrokeEventType expected = operation == Operation::End &&
+    const InkStrokeEventType expected = operation == Operation::End &&
             index + 1 == inputs.size()
-        ? StrokeEventType::Up
-        : StrokeEventType::Move;
+        ? InkStrokeEventType::Up
+        : InkStrokeEventType::Move;
     if (inputs[index].eventType != expected) {
       return {InputStatusCode::InvalidEvent,
               "Real input batch contains an invalid event ordering."};

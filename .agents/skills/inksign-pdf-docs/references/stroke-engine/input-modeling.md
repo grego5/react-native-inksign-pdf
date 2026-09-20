@@ -2,7 +2,7 @@
 
 ## Boundary and input admission
 
-- `StrokeEngine` owns synchronous page-space modeling and is independent of
+- `InkEngine` owns synchronous page-space modeling and is independent of
   React Native, UIKit, Android, and PDF I/O. Platform callers copy borrowed
   frames and upstream views before the next engine operation.
 - Input events are `Down`, `Move`, `Up`, or `Cancel` with finite page-space

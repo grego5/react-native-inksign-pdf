@@ -37,10 +37,10 @@ void samePoints(const std::vector<ModeledPoint>& actual,
 }  // namespace
 
 void checkSignatureBrushOwnership() {
-  const StrokeConfig config{.minWidth = 2.0, .maxWidth = 4.0, .smoothing = 0.0};
+  const InkStrokeConfig config{.minWidth = 2.0, .maxWidth = 4.0, .smoothing = 0.0};
   detail::SignatureBrushTipModeler brush(config);
-  std::vector<StrokeDiagnosticSample> diagnostics;
-  StrokeWorkStats stats;
+  std::vector<InkStrokeDiagnosticSample> diagnostics;
+  InkStrokeWorkStats stats;
   std::vector<detail::CenterlineState> real{
       state(0, 0, 0, 10), state(3, 300, 0.008, 11),
       state(9, 1200, 0.016, 12), state(18, 900, 0.024, 13)};
@@ -91,7 +91,7 @@ void checkSignatureBrushOwnership() {
   modeled = modeledInputs(real);
   tips = brush.update({modeled, 2, 4, 500}, stats, &diagnostics);
   detail::SignatureBrushTipModeler reconstructedBrush(config);
-  StrokeWorkStats reconstructedStats;
+  InkStrokeWorkStats reconstructedStats;
   reconstructedBrush.update({modeled, 0, modeled.size(), 500},
                             reconstructedStats);
   samePoints(brush.modeledPoints(), reconstructedBrush.modeledPoints());
@@ -161,7 +161,7 @@ void checkSignatureBrushOwnership() {
   CHECK(joined == 2.0);
 
   brush.reset();
-  const detail::NormalizedInput dot{.eventType = StrokeEventType::Down,
+  const detail::NormalizedInput dot{.eventType = InkStrokeEventType::Down,
                                     .position = {2, 3}, .time = 0.1};
   tips = brush.finishDot(dot, 1.5);
   CHECK(brush.modeledPoints().size() == 1);

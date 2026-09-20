@@ -42,12 +42,12 @@ if (!existsSync(inputPath)) {
 }
 
 const buildDirectory = configuration === 'release' ? 'startup-release' : 'startup-debug';
-const executableName = process.platform === 'win32' ? 'stroke_engine_cli.exe' : 'stroke_engine_cli';
+const executableName = process.platform === 'win32' ? 'ink_engine_cli.exe' : 'ink_engine_cli';
 const executablePath = join(repositoryRoot, 'build', buildDirectory, executableName);
 if (!existsSync(executablePath)) {
   console.error(`FAIL executable_not_found=${executablePath}`);
   console.error(
-    `Build it first with: cmake --build build/${buildDirectory} --target stroke_engine_cli --config ${configuration === 'release' ? 'Release' : 'Debug'}`,
+    `Build it first with: cmake --build build/${buildDirectory} --target ink_engine_cli --config ${configuration === 'release' ? 'Release' : 'Debug'}`,
   );
   process.exit(2);
 }

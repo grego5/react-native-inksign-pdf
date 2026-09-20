@@ -235,7 +235,7 @@ std::vector<startup::StartupSection> buildEnvelopeSections(
 
 bool hasRealMovingDiagnostic(const Record& record) {
   return std::any_of(record.diagnostics.begin(), record.diagnostics.end(),
-                     [](const StrokeDiagnosticSample& sample) {
+                     [](const InkStrokeDiagnosticSample& sample) {
                        return sample.real && !sample.predicted &&
                            sample.segmentDistance > 0.0;
                      });
@@ -253,7 +253,7 @@ BaselineMetrics measureBaseline(const Result& result) {
       ++metrics.inputOperationCount;
     for (const ModeledPoint& point : record.centerline)
       metrics.maximumRadius = std::max(metrics.maximumRadius, point.radius);
-    if (record.frameType == StrokeFrameType::Final) {
+    if (record.frameType == InkStrokeFrameType::Final) {
       ++metrics.strokeCount;
       metrics.committedPointCount += record.committedPointCount;
       metrics.contourCount += record.geometry.size();
@@ -287,7 +287,7 @@ BaselineMetrics measureBaseline(const Result& result) {
 
 bool validateStartupDiagnostics(const Result& result, std::string& error) {
   for (const Record& record : result.records) {
-    if (record.frameType != StrokeFrameType::Final ||
+    if (record.frameType != InkStrokeFrameType::Final ||
         record.diagnostics.empty())
       continue;
     const auto& samples = record.diagnostics;

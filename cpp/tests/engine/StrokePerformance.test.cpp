@@ -1,4 +1,4 @@
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 #include "input/CurrentInkInputModeler.hpp"
 #include "tests/support/TestSupport.hpp"
 
@@ -50,14 +50,14 @@ struct RunResult {
   std::uint64_t checksum = 0;
 };
 
-RunResult runStroke(int sampleCount, StrokeConfig config,
+RunResult runStroke(int sampleCount, InkStrokeConfig config,
                     bool simplifyModelers = true) {
   if (simplifyModelers) {
     config.smoothing = 0.0;
   }
-  StrokeEngine engine(config);
-  StrokeFrame frame;
-  CHECK(engine.begin({.eventType = StrokeEventType::Down,
+  InkEngine engine(config);
+  InkStrokeFrame frame;
+  CHECK(engine.begin({.eventType = InkStrokeEventType::Down,
                       .position = {0, 0},
                       .time = 0},
                      frame).ok());
@@ -73,7 +73,7 @@ RunResult runStroke(int sampleCount, StrokeConfig config,
     const double y = std::sin(index * 0.025) * 20.0 +
         std::sin(index * 0.003) * 40.0;
     const auto updateStart = std::chrono::steady_clock::now();
-    CHECK(engine.update({.eventType = StrokeEventType::Move,
+    CHECK(engine.update({.eventType = InkStrokeEventType::Move,
                          .position = {x, y},
                          .time = time},
                         frame).ok());
@@ -93,9 +93,9 @@ RunResult runStroke(int sampleCount, StrokeConfig config,
   const auto elapsed = std::chrono::steady_clock::now() - start;
   const std::size_t allocations = allocationCount.load() - allocationsBefore;
   std::sort(updateDurations.begin(), updateDurations.end());
-  const StrokeWorkStats work = engine.workStats();
+  const InkStrokeWorkStats work = engine.workStats();
 
-  CHECK(engine.end({.eventType = StrokeEventType::Up,
+  CHECK(engine.end({.eventType = InkStrokeEventType::Up,
                     .position = {sampleCount * 0.4, 0},
                     .time = (sampleCount + 1) / 120.0},
                    frame).ok());
@@ -129,11 +129,11 @@ RunResult runStroke(int sampleCount, StrokeConfig config,
 }
 
 struct LiveStrokeResult {
-  StrokeWorkStats work;
+  InkStrokeWorkStats work;
   std::uint64_t contourChecksum = 0;
 };
 
-std::uint64_t contourChecksum(const StrokeFrame& frame) {
+std::uint64_t contourChecksum(const InkStrokeFrame& frame) {
   std::uint64_t checksum = 1469598103934665603ULL;
   auto add = [&checksum](std::uint64_t value) {
     checksum ^= value;
@@ -157,21 +157,21 @@ std::uint64_t contourChecksum(const StrokeFrame& frame) {
   return checksum;
 }
 
-LiveStrokeResult runLiveStroke(StrokeEngine& engine, StrokeFrame& frame,
+LiveStrokeResult runLiveStroke(InkEngine& engine, InkStrokeFrame& frame,
                                int sampleCount) {
-  CHECK(engine.begin({.eventType = StrokeEventType::Down,
+  CHECK(engine.begin({.eventType = InkStrokeEventType::Down,
                       .position = {0, 0},
                       .time = 0},
                      frame).ok());
   for (int index = 1; index <= sampleCount; ++index) {
-    CHECK(engine.update({.eventType = StrokeEventType::Move,
+    CHECK(engine.update({.eventType = InkStrokeEventType::Move,
                          .position = {index * 0.4,
                                       std::sin(index * 0.025) * 20.0 +
                                           std::sin(index * 0.003) * 40.0},
                         .time = index / 120.0},
                         frame).ok());
   }
-  const StrokeWorkStats work = engine.workStats();
+  const InkStrokeWorkStats work = engine.workStats();
   const std::uint64_t checksum = contourChecksum(frame);
   engine.cancel();
   return {.work = work, .contourChecksum = checksum};
@@ -202,8 +202,8 @@ int main() {
         runs.back().styleStatesProcessed);
   CHECK(runs.back().boundarySearches > 0);
 
-  StrokeEngine warmed;
-  StrokeFrame warmedFrame;
+  InkEngine warmed;
+  InkStrokeFrame warmedFrame;
   const LiveStrokeResult warmup = runLiveStroke(warmed, warmedFrame, 512);
   // The second pass exercises the frame's cross-stroke path recycling. The
   // first pass alone cannot warm storage that is transferred only when the
@@ -241,36 +241,36 @@ int main() {
   checkPlateau(largerRepeat);
   CHECK(larger.contourChecksum == largerRepeat.contourChecksum);
 
-  StrokeFrame predictionFrame;
-  CHECK(warmed.begin({.eventType = StrokeEventType::Down,
+  InkStrokeFrame predictionFrame;
+  CHECK(warmed.begin({.eventType = InkStrokeEventType::Down,
                       .position = {0, 0}, .time = 0}, predictionFrame).ok());
-  CHECK(warmed.update({.eventType = StrokeEventType::Move,
+  CHECK(warmed.update({.eventType = InkStrokeEventType::Move,
                        .position = {4, 1}, .time = 0.1}, predictionFrame).ok());
-  StrokePredictionFrame prediction;
+  InkStrokePredictionFrame prediction;
   CHECK(warmed.replacePredictedInputs(
-      std::array<StrokeInput, 2>{
-          StrokeInput{.eventType = StrokeEventType::Move,
+      std::array<InkStrokeInput, 2>{
+          InkStrokeInput{.eventType = InkStrokeEventType::Move,
                       .position = {5, 2}, .time = 0.2},
-          StrokeInput{.eventType = StrokeEventType::Move,
+          InkStrokeInput{.eventType = InkStrokeEventType::Move,
                       .position = {6, 3}, .time = 0.3}},
       0.15, prediction).ok());
   CHECK(!prediction.contours.empty());
-  CHECK(warmed.end({.eventType = StrokeEventType::Up,
+  CHECK(warmed.end({.eventType = InkStrokeEventType::Up,
                     .position = {7, 4}, .time = 0.4}, predictionFrame).ok());
   CHECK(predictionFrame.isFinal());
 
-  StrokeFrame repeatedPredictionFrame;
-  CHECK(warmed.begin({.eventType = StrokeEventType::Down,
+  InkStrokeFrame repeatedPredictionFrame;
+  CHECK(warmed.begin({.eventType = InkStrokeEventType::Down,
                       .position = {0, 0}, .time = 1.0},
                      repeatedPredictionFrame).ok());
-  CHECK(warmed.update({.eventType = StrokeEventType::Move,
+  CHECK(warmed.update({.eventType = InkStrokeEventType::Move,
                        .position = {4, 1}, .time = 1.1},
                       repeatedPredictionFrame).ok());
-  StrokePredictionFrame repeatedPrediction;
-  const std::array<StrokeInput, 2> repeatedPredictionInputs{
-      StrokeInput{.eventType = StrokeEventType::Move,
+  InkStrokePredictionFrame repeatedPrediction;
+  const std::array<InkStrokeInput, 2> repeatedPredictionInputs{
+      InkStrokeInput{.eventType = InkStrokeEventType::Move,
                   .position = {5, 2}, .time = 1.2},
-      StrokeInput{.eventType = StrokeEventType::Move,
+      InkStrokeInput{.eventType = InkStrokeEventType::Move,
                   .position = {6, 3}, .time = 1.3}};
   CHECK(warmed.replacePredictedInputs(repeatedPredictionInputs, 1.15,
                                       repeatedPrediction).ok());
@@ -278,7 +278,7 @@ int main() {
     CHECK(warmed.replacePredictedInputs(repeatedPredictionInputs, 1.15,
                                         repeatedPrediction).ok());
   }
-  CHECK(warmed.end({.eventType = StrokeEventType::Up,
+  CHECK(warmed.end({.eventType = InkStrokeEventType::Up,
                     .position = {7, 4}, .time = 1.4},
                    repeatedPredictionFrame).ok());
 

@@ -10,14 +10,14 @@
 
 namespace margelo::nitro::inksignpdf {
 
-inline constexpr std::uint32_t kStrokeEngineApiVersion = 8;
+inline constexpr std::uint32_t kInkEngineApiVersion = 8;
 inline constexpr std::size_t kMaxPredictedInputBatch = 64;
 inline constexpr std::size_t kMaxRealInputBatch = 256;
 
-enum class StrokeEventType { Down, Move, Up };
+enum class InkStrokeEventType { Down, Move, Up };
 
-struct StrokeInput {
-  StrokeEventType eventType = StrokeEventType::Move;
+struct InkStrokeInput {
+  InkStrokeEventType eventType = InkStrokeEventType::Move;
   Vec2 position;
   // Monotonic seconds in an arbitrary clock domain (not milliseconds).
   double time = 0.0;
@@ -27,7 +27,7 @@ struct StrokeInput {
   double orientation = -1.0;
 };
 
-struct StrokeConfig {
+struct InkStrokeConfig {
   // Public pen widths are diameters in page units.
   double minWidth = 2.0;
   double maxWidth = 4.0;
@@ -53,7 +53,7 @@ struct ModeledPoint {
   double radius = 0.0;
 };
 
-enum class StrokeStatusCode {
+enum class InkStrokeStatusCode {
   Ok,
   AlreadyInProgress,
   NotInProgress,
@@ -64,17 +64,17 @@ enum class StrokeStatusCode {
   ReconfigureWhileInProgress,
 };
 
-struct StrokeStatus {
-  StrokeStatusCode code = StrokeStatusCode::Ok;
+struct InkStrokeStatus {
+  InkStrokeStatusCode code = InkStrokeStatusCode::Ok;
   const char* message = "";
 
-  bool ok() const { return code == StrokeStatusCode::Ok; }
-  static StrokeStatus success() { return {}; }
+  bool ok() const { return code == InkStrokeStatusCode::Ok; }
+  static InkStrokeStatus success() { return {}; }
 };
 
 // Native-only deterministic work counters. They are cumulative for the active
 // stroke and are intentionally not part of the JavaScript or C ABI surfaces.
-struct StrokeWorkStats {
+struct InkStrokeWorkStats {
   std::uint64_t widthPointsProcessed = 0;
   std::uint64_t styleStatesProcessed = 0;
   std::uint64_t tipStatesMaterialized = 0;
@@ -86,7 +86,7 @@ struct StrokeWorkStats {
   std::uint64_t frameFlatteningCapacityGrowth = 0;
 };
 
-struct StrokeDiagnosticSample {
+struct InkStrokeDiagnosticSample {
   std::size_t modeledIndex = 0;
   std::size_t rawSourceIndex = 0;
   std::size_t modeledSourceIndex = 0;
@@ -119,7 +119,7 @@ struct StrokeDiagnosticSample {
   bool predicted = false;
 };
 
-struct StrokeTerminalDiagnostic {
+struct InkStrokeTerminalDiagnostic {
   bool valid = false;
   double lastValidMovingSpeed = 0.0;
   double normalizedTerminalSpeed = 0.0;
@@ -130,9 +130,9 @@ struct StrokeTerminalDiagnostic {
   bool exactContact = false;
 };
 
-enum class StrokeFrameType { Committed, Prediction, Final };
+enum class InkStrokeFrameType { Committed, Prediction, Final };
 
-enum class PredictionSuppressionReason {
+enum class InkStrokePredictionSuppressionReason {
   None = 0,
   Inactive = 1,
   InvalidResult = 2,
@@ -141,26 +141,26 @@ enum class PredictionSuppressionReason {
   ModelNoUnstableOutput = 5,
 };
 
-enum StrokeDiagnosticValidity : std::uint32_t {
-  StrokeDiagnosticNone = 0,
-  StrokeDiagnosticLatestRealRaw = 1u << 0,
-  StrokeDiagnosticLatestPlatformPredictedRaw = 1u << 1,
-  StrokeDiagnosticStableModeledTip = 1u << 2,
-  StrokeDiagnosticRealModeledTip = 1u << 3,
-  StrokeDiagnosticPredictedModeledEndpoint = 1u << 4,
-  StrokeDiagnosticTerminalCrossSection = 1u << 5,
-  StrokeDiagnosticRenderedPredictionEndpoint = 1u << 6,
-  StrokeDiagnosticDirection = 1u << 7,
+enum InkStrokeDiagnosticValidity : std::uint32_t {
+  InkStrokeDiagnosticNone = 0,
+  InkStrokeDiagnosticLatestRealRaw = 1u << 0,
+  InkStrokeDiagnosticLatestPlatformPredictedRaw = 1u << 1,
+  InkStrokeDiagnosticStableModeledTip = 1u << 2,
+  InkStrokeDiagnosticRealModeledTip = 1u << 3,
+  InkStrokeDiagnosticPredictedModeledEndpoint = 1u << 4,
+  InkStrokeDiagnosticTerminalCrossSection = 1u << 5,
+  InkStrokeDiagnosticRenderedPredictionEndpoint = 1u << 6,
+  InkStrokeDiagnosticDirection = 1u << 7,
 };
 
 // One low-frequency snapshot of the real/predicted boundaries.
 // Position and time fields are meaningful only when their validity bit is set.
 // Lead values are signed along the most recent distinct real direction;
 // lateral values are absolute perpendicular error in page units.
-struct StrokePredictionDiagnostics {
-  std::uint32_t validityFlags = StrokeDiagnosticNone;
-  PredictionSuppressionReason suppressionReason =
-      PredictionSuppressionReason::None;
+struct InkStrokePredictionDiagnostics {
+  std::uint32_t validityFlags = InkStrokeDiagnosticNone;
+  InkStrokePredictionSuppressionReason suppressionReason =
+      InkStrokePredictionSuppressionReason::None;
 
   std::uint64_t queuedRealInputCount = 0;
   std::uint64_t processedRealInputCount = 0;
@@ -210,12 +210,12 @@ struct StrokePredictionDiagnostics {
   std::uint64_t rendererDrawDurationNanos = 0;
 };
 
-struct StrokePredictionFrame {
+struct InkStrokePredictionFrame {
   // Prediction geometry is a complete disposable snapshot of the current
   // upstream outline collection. It is replaced on every prediction update.
   StrokeContourCollection contours;
 
-  StrokePredictionDiagnostics diagnostics;
+  InkStrokePredictionDiagnostics diagnostics;
 
   void clear() {
     contours.clear();
@@ -224,14 +224,14 @@ struct StrokePredictionFrame {
 };
 
 // A caller-owned frame. Its vectors remain valid until the caller reuses or
-// destroys the frame; they never alias mutable StrokeEngine storage. Live
+// destroys the frame; they never alias mutable InkEngine storage. Live
 // frames are complete replacement snapshots; Prediction is a presentation-only
 // preview; Final is the complete export snapshot.
-struct StrokeFrame {
-  StrokeFrameType type = StrokeFrameType::Committed;
+struct InkStrokeFrame {
+  InkStrokeFrameType type = InkStrokeFrameType::Committed;
   std::uint64_t revision = 0;
   std::size_t committedPointCount = 0;
-  StrokePredictionDiagnostics diagnostics;
+  InkStrokePredictionDiagnostics diagnostics;
 
   // Live frames: modeledPoints starts at modeledPointStart and is the
   // replacement suffix. Final frames contain the complete centerline and use
@@ -241,59 +241,59 @@ struct StrokeFrame {
 
   StrokeContourCollection contours;
 
-  bool isFinal() const { return type == StrokeFrameType::Final; }
+  bool isFinal() const { return type == InkStrokeFrameType::Final; }
 };
 
-class StrokeEngine {
+class InkEngine {
  public:
-  explicit StrokeEngine(StrokeConfig config = {});
-  ~StrokeEngine();
+  explicit InkEngine(InkStrokeConfig config = {});
+  ~InkEngine();
 
-  StrokeEngine(const StrokeEngine&) = delete;
-  StrokeEngine& operator=(const StrokeEngine&) = delete;
-  StrokeEngine(StrokeEngine&&) noexcept;
-  StrokeEngine& operator=(StrokeEngine&&) noexcept;
+  InkEngine(const InkEngine&) = delete;
+  InkEngine& operator=(const InkEngine&) = delete;
+  InkEngine(InkEngine&&) noexcept;
+  InkEngine& operator=(InkEngine&&) noexcept;
 
   // Configuration is immutable during a stroke so every frame uses one
   // coherent model.
-  StrokeStatus setConfig(StrokeConfig config);
-  const StrokeConfig& config() const { return config_; }
+  InkStrokeStatus setConfig(InkStrokeConfig config);
+  const InkStrokeConfig& config() const { return config_; }
 
-  StrokeStatus begin(const StrokeInput& input, StrokeFrame& output);
-  StrokeStatus update(const StrokeInput& input, StrokeFrame& output);
-  StrokeStatus end(const StrokeInput& input, StrokeFrame& output);
-  StrokeStatus updateBatch(std::span<const StrokeInput> inputs,
-                           StrokeFrame& output);
-  StrokeStatus endBatch(std::span<const StrokeInput> inputs,
-                        StrokeFrame& output);
+  InkStrokeStatus begin(const InkStrokeInput& input, InkStrokeFrame& output);
+  InkStrokeStatus update(const InkStrokeInput& input, InkStrokeFrame& output);
+  InkStrokeStatus end(const InkStrokeInput& input, InkStrokeFrame& output);
+  InkStrokeStatus updateBatch(std::span<const InkStrokeInput> inputs,
+                           InkStrokeFrame& output);
+  InkStrokeStatus endBatch(std::span<const InkStrokeInput> inputs,
+                        InkStrokeFrame& output);
   void cancel();
 
   // Replaces presentation-only predicted input. The span is borrowed for the
   // duration of the call; no predicted raw input becomes stroke history.
-  StrokeStatus replacePredictedInputs(
-      std::span<const StrokeInput> predictedInputs,
+  InkStrokeStatus replacePredictedInputs(
+      std::span<const InkStrokeInput> predictedInputs,
       double currentTime,
-      StrokePredictionFrame& output);
+      InkStrokePredictionFrame& output);
 
   bool inProgress() const;
   const std::vector<ModeledPoint>& modeledPoints() const;
-  const StrokeWorkStats& workStats() const noexcept;
+  const InkStrokeWorkStats& workStats() const noexcept;
   void recordFrameFlatteningCapacityGrowth() noexcept;
   // Enables the replay/debug sink before a stroke starts. Disabled by
   // default so normal live strokes do not allocate, write, or scan samples.
   void enableDiagnostics(bool enabled);
-  const std::vector<StrokeDiagnosticSample>& diagnosticSamples() const noexcept;
-  const StrokeTerminalDiagnostic& terminalDiagnostic() const noexcept {
+  const std::vector<InkStrokeDiagnosticSample>& diagnosticSamples() const noexcept;
+  const InkStrokeTerminalDiagnostic& terminalDiagnostic() const noexcept {
     return terminalDiagnostic_;
   }
 
  private:
-  static StrokeConfig validateConfig(StrokeConfig config);
+  static InkStrokeConfig validateConfig(InkStrokeConfig config);
 
-  StrokeConfig config_;
+  InkStrokeConfig config_;
   struct Impl;
   std::unique_ptr<Impl> impl_;
-  StrokeTerminalDiagnostic terminalDiagnostic_;
+  InkStrokeTerminalDiagnostic terminalDiagnostic_;
 };
 
 }  // namespace margelo::nitro::inksignpdf

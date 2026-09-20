@@ -36,11 +36,11 @@ bool finite(Vec2 point) {
   return std::isfinite(point.x) && std::isfinite(point.y);
 }
 
-const char* frameName(StrokeFrameType type) {
+const char* frameName(InkStrokeFrameType type) {
   switch (type) {
-    case StrokeFrameType::Committed: return "committed";
-    case StrokeFrameType::Prediction: return "prediction";
-    case StrokeFrameType::Final: return "final";
+    case InkStrokeFrameType::Committed: return "committed";
+    case InkStrokeFrameType::Prediction: return "prediction";
+    case InkStrokeFrameType::Final: return "final";
   }
   return "unknown";
 }
@@ -60,7 +60,7 @@ bool parseNumber(const std::string& text, double& value) {
   }
 }
 
-void validateFinalFrame(const StrokeFrame& frame, Result& result,
+void validateFinalFrame(const InkStrokeFrame& frame, Result& result,
                         std::size_t operation) {
   if (frame.modeledPointStart != 0 ||
       frame.modeledPoints.size() != frame.committedPointCount) {
@@ -144,10 +144,10 @@ bool parseOperation(std::string_view rawLine, Operation& operation,
     error = "expected event,time,x,y[,pressure[,tilt[,orientation]]]";
     return false;
   }
-  StrokeEventType type;
-  if (event == "d" || event == "down") type = StrokeEventType::Down;
-  else if (event == "m" || event == "move") type = StrokeEventType::Move;
-  else if (event == "u" || event == "up") type = StrokeEventType::Up;
+  InkStrokeEventType type;
+  if (event == "d" || event == "down") type = InkStrokeEventType::Down;
+  else if (event == "m" || event == "move") type = InkStrokeEventType::Move;
+  else if (event == "u" || event == "up") type = InkStrokeEventType::Up;
   else {
     error = "event must be down, move, up, or cancel";
     return false;
@@ -177,13 +177,13 @@ bool parseOperation(std::string_view rawLine, Operation& operation,
 }
 
 Result run(std::string name, const std::vector<Operation>& operations,
-           StageSelection stages, StrokeConfig config,
+           StageSelection stages, InkStrokeConfig config,
            ContinuityConfig continuity) {
   Result result{.name = std::move(name)};
-  StrokeEngine engine(config);
+  InkEngine engine(config);
   engine.enableDiagnostics(true);
-  StrokeFrame frame;
-  std::vector<StrokeInput> acceptedInputs;
+  InkStrokeFrame frame;
+  std::vector<InkStrokeInput> acceptedInputs;
   std::vector<ModeledPoint> renderedCenterline;
   StrokeContourCollection renderedGeometry;
   std::uint64_t renderedRevision = 0;
@@ -192,7 +192,7 @@ Result run(std::string name, const std::vector<Operation>& operations,
   for (std::size_t index = 0; index < operations.size(); ++index) {
     const Operation& operation = operations[index];
     if (operation.type == OperationType::Configure) {
-      const StrokeStatus status = engine.setConfig(operation.config);
+      const InkStrokeStatus status = engine.setConfig(operation.config);
       if (status.ok()) engine.enableDiagnostics(true);
       if (!status.ok()) addFailure(result, index, status.message);
       result.records.push_back({.operation = index, .event = "configure"});
@@ -209,21 +209,21 @@ Result run(std::string name, const std::vector<Operation>& operations,
       activeStroke = 0;
       continue;
     }
-    StrokeStatus status;
+    InkStrokeStatus status;
     std::string event;
-    const bool startsStroke = operation.input.eventType == StrokeEventType::Down &&
+    const bool startsStroke = operation.input.eventType == InkStrokeEventType::Down &&
         !engine.inProgress();
     const std::size_t recordStroke = startsStroke ? nextStroke + 1 : activeStroke;
     {
-      const StrokeInput& input = operation.input;
-      event = input.eventType == StrokeEventType::Down ? "down" :
-          input.eventType == StrokeEventType::Move ? "move" : "up";
-      if (input.eventType == StrokeEventType::Down) {
+      const InkStrokeInput& input = operation.input;
+      event = input.eventType == InkStrokeEventType::Down ? "down" :
+          input.eventType == InkStrokeEventType::Move ? "move" : "up";
+      if (input.eventType == InkStrokeEventType::Down) {
         renderedGeometry.clear();
         renderedRevision = 0;
       }
-      status = input.eventType == StrokeEventType::Down ? engine.begin(input, frame) :
-          input.eventType == StrokeEventType::Move ? engine.update(input, frame) :
+      status = input.eventType == InkStrokeEventType::Down ? engine.begin(input, frame) :
+          input.eventType == InkStrokeEventType::Move ? engine.update(input, frame) :
                                                     engine.end(input, frame);
       if (status.ok()) acceptedInputs.push_back(input);
     }
@@ -290,7 +290,7 @@ Result run(std::string name, const std::vector<Operation>& operations,
       std::vector<TimedPosition> positions;
       positions.reserve(source.size());
       for (const auto& value : source) {
-        if constexpr (std::is_same_v<std::decay_t<decltype(value)>, StrokeInput>)
+        if constexpr (std::is_same_v<std::decay_t<decltype(value)>, InkStrokeInput>)
           positions.push_back({.position = value.position, .time = value.time});
         else
           positions.push_back({.position = value.point, .time = value.time});

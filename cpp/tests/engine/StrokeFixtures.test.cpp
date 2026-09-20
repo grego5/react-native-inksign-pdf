@@ -1,4 +1,4 @@
-#include "StrokeEngine.hpp"
+#include "InkEngine.hpp"
 #include "fixtures/StrokeFixtures.hpp"
 
 #include "tests/support/TestSupport.hpp"
@@ -15,7 +15,7 @@ std::uint64_t mix(std::uint64_t hash, std::int64_t value) {
   return hash * 1099511628211ULL;
 }
 
-std::uint64_t geometryHash(const StrokeFrame& frame) {
+std::uint64_t geometryHash(const InkStrokeFrame& frame) {
   std::uint64_t hash = 1469598103934665603ULL;
   for (const ModeledPoint& point : frame.modeledPoints) {
     hash = mix(hash, std::llround(point.point.x * 1000.0));
@@ -40,15 +40,15 @@ std::uint64_t geometryHash(const StrokeFrame& frame) {
   return hash;
 }
 
-StrokeFrame run(const fixtures::Fixture& fixture) {
-  StrokeConfig config;
+InkStrokeFrame run(const fixtures::Fixture& fixture) {
+  InkStrokeConfig config;
   config.smoothing = 0.0;
-  StrokeEngine engine(config);
-  StrokeFrame frame;
-  for (const StrokeInput& input : fixture.inputs) {
-    const StrokeStatus status = input.eventType == StrokeEventType::Down
+  InkEngine engine(config);
+  InkStrokeFrame frame;
+  for (const InkStrokeInput& input : fixture.inputs) {
+    const InkStrokeStatus status = input.eventType == InkStrokeEventType::Down
         ? engine.begin(input, frame)
-        : input.eventType == StrokeEventType::Move
+        : input.eventType == InkStrokeEventType::Move
             ? engine.update(input, frame)
             : engine.end(input, frame);
     CHECK(status.ok());
@@ -61,8 +61,8 @@ StrokeFrame run(const fixtures::Fixture& fixture) {
 
 int main() {
   for (const fixtures::Fixture& fixture : fixtures::all()) {
-    const StrokeFrame first = run(fixture);
-    const StrokeFrame second = run(fixture);
+    const InkStrokeFrame first = run(fixture);
+    const InkStrokeFrame second = run(fixture);
     CHECK(geometryHash(first) == geometryHash(second));
     CHECK(!first.modeledPoints.empty());
     CHECK(!first.contours.empty());

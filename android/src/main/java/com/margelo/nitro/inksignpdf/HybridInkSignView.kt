@@ -32,7 +32,7 @@ class HybridInkSignView internal constructor(
   private val container = FrameLayout(context)
   private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private val pdfWorker = PdfSessionWorker()
-  private val strokeEngine = StrokeEngine()
+  private val inkEngine = InkEngine()
   private val lowLatencyPresenter = LowLatencyInkPresenter(
     context,
     mainView = container,
@@ -41,7 +41,7 @@ class HybridInkSignView internal constructor(
   private val surface = SurfaceView(
     context,
     pdfWorker,
-    strokeEngine,
+    inkEngine,
     traceRecorder,
     lowLatencyInk = lowLatencyPresenter,
   )
@@ -628,7 +628,7 @@ class HybridInkSignView internal constructor(
     mainScope.cancel()
     lowLatencyPresenter.release()
     surface.dispose()
-    strokeEngine.close()
+    inkEngine.close()
     val outputs = synchronized(this) {
       (pendingOutputs + ownedOutputs).toSet().also {
         pendingOutputs.clear()
