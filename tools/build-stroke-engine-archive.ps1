@@ -58,6 +58,7 @@ $configureArguments = @(
     "-DANDROID_PLATFORM=android-24",
     "-DCMAKE_BUILD_TYPE=Release",
     "-DENABLE_PERFETTO_TRACE=$EnablePerfettoTrace",
+    "-DSTROKE_ENGINE_NDK_PATH=$NdkPath",
     "-DSTROKE_ENGINE_ARCHIVE_OUTPUT_DIRECTORY=$OutputDirectory",
     "-DSTROKE_ENGINE_ARCHIVE_NAME=$archiveName"
 )
