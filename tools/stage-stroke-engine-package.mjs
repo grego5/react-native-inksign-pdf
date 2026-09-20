@@ -187,7 +187,7 @@ function assertRelease(releaseRoot, checksums, options) {
   }
 
   for (const abi of supportedAbis) {
-    const archiveName = `libinksign_stroke_engine_${abi}.a`
+    const archiveName = `libinkengine_${abi}.a`
     const archivePath = path.join(releaseRoot, 'android', abi, archiveName)
     const metadataPath = `${archivePath}.json`
     const metadata = readJson(metadataPath, `${abi} metadata`)
@@ -204,7 +204,7 @@ function assertRelease(releaseRoot, checksums, options) {
         releaseArtifact.sourceRevision !== metadata.sourceRevision) {
       throw new Error(`${abi} release manifest does not match its metadata`)
     }
-    const releaseAssetName = `inksign-stroke-engine-${abi}.a`
+    const releaseAssetName = `libinkengine_${abi}.a`
     const listedArchiveHash = checksums.get(releaseAssetName)
     if (!listedArchiveHash) {
       throw new Error(`Checksum list has no entry for ${releaseAssetName}`)
@@ -212,9 +212,9 @@ function assertRelease(releaseRoot, checksums, options) {
     if (listedArchiveHash !== metadata.sha256) {
       throw new Error(`${abi} archive checksum-list entry does not match metadata`)
     }
-    const metadataHash = checksums.get(`inksign-stroke-engine-${abi}.json`)
+    const metadataHash = checksums.get(`libinkengine_${abi}.a.json`)
     if (!metadataHash) {
-      throw new Error(`Checksum list has no entry for inksign-stroke-engine-${abi}.json`)
+      throw new Error(`Checksum list has no entry for libinkengine_${abi}.a.json`)
     }
     assertChecksum(metadataPath, metadataHash, `${abi} metadata`)
   }
@@ -232,7 +232,7 @@ function copyRelease(releaseRoot, destination, manifest) {
   for (const abi of supportedAbis) {
     const abiDirectory = path.join(stagingDirectory, abi)
     fs.mkdirSync(abiDirectory, { recursive: true })
-    const archiveName = `libinksign_stroke_engine_${abi}.a`
+    const archiveName = `libinkengine_${abi}.a`
     fs.copyFileSync(path.join(releaseRoot, 'android', abi, archiveName), path.join(abiDirectory, archiveName))
     fs.copyFileSync(path.join(releaseRoot, 'android', abi, `${archiveName}.json`), path.join(abiDirectory, `${archiveName}.json`))
   }

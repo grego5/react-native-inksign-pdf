@@ -44,9 +44,9 @@ $BuildDirectory = [System.IO.Path]::GetFullPath($BuildDirectory)
 $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 
 $archiveName = if ($EnablePerfettoTrace -eq "ON") {
-    "libinksign_stroke_engine_${Abi}_profile.a"
+    "libinkengine_${Abi}_profile.a"
 } else {
-    "libinksign_stroke_engine_${Abi}.a"
+    "libinkengine_${Abi}.a"
 }
 
 $configureArguments = @(

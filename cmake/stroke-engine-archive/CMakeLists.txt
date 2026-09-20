@@ -24,7 +24,7 @@ set(STROKE_ENGINE_ARCHIVE_OUTPUT_DIRECTORY
   "${CMAKE_BINARY_DIR}/artifacts" CACHE PATH
   "Directory receiving the archive and metadata")
 set(STROKE_ENGINE_ARCHIVE_NAME
-  "libinksign_stroke_engine_${ANDROID_ABI}.a" CACHE STRING
+  "libinkengine_${ANDROID_ABI}.a" CACHE STRING
   "Bundled archive filename")
 set(STROKE_ENGINE_NDK_PATH "" CACHE PATH
   "Android NDK root used for archive metadata")

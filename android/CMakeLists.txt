@@ -61,7 +61,7 @@ else()
   endif()
 
   set(STROKE_ENGINE_ARCHIVE
-    "${STROKE_ENGINE_ARCHIVE_ROOT}/${ANDROID_ABI}/libinksign_stroke_engine_${ANDROID_ABI}.a")
+    "${STROKE_ENGINE_ARCHIVE_ROOT}/${ANDROID_ABI}/libinkengine_${ANDROID_ABI}.a")
   set(STROKE_ENGINE_METADATA "${STROKE_ENGINE_ARCHIVE}.json")
   if(NOT EXISTS "${STROKE_ENGINE_ARCHIVE}")
     message(FATAL_ERROR

@@ -83,7 +83,7 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          archive="$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinksign_stroke_engine_${{ matrix.abi }}.a"
+          archive="$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinkengine_${{ matrix.abi }}.a"
           metadata="$archive.json"
           pwsh -NoProfile -File tools/verify-stroke-engine-archive.ps1 \
             -Archive "$archive" \
@@ -99,9 +99,9 @@ jobs:
           set -euxo pipefail
           staging="$RUNNER_TEMP/stroke-engine/staging"
           mkdir -p "$staging/android/${{ matrix.abi }}"
-          cp "$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinksign_stroke_engine_${{ matrix.abi }}.a" \
+          cp "$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinkengine_${{ matrix.abi }}.a" \
             "$staging/android/${{ matrix.abi }}/"
-          cp "$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinksign_stroke_engine_${{ matrix.abi }}.a.json" \
+          cp "$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinkengine_${{ matrix.abi }}.a.json" \
             "$staging/android/${{ matrix.abi }}/"
           cp THIRD_PARTY_NOTICES.md "$staging/"
           cp CREDITS.md "$staging/"
@@ -150,12 +150,12 @@ jobs:
           test -f release-input/THIRD_PARTY_NOTICES.md
           test -f release-input/CREDITS.md
           for abi in "${expected_abis[@]}"; do
-            archive="release-input/android/$abi/libinksign_stroke_engine_${abi}.a"
+            archive="release-input/android/$abi/libinkengine_${abi}.a"
             metadata="$archive.json"
             test -f "$archive"
             test -f "$metadata"
-            cp "$archive" "release-assets/inksign-stroke-engine-${abi}.a"
-            cp "$metadata" "release-assets/inksign-stroke-engine-${abi}.json"
+            cp "$archive" "release-assets/libinkengine_${abi}.a"
+            cp "$metadata" "release-assets/libinkengine_${abi}.a.json"
           done
 
           cp -R release-input/android release-assets/android
