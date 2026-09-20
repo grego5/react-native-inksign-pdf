@@ -2,7 +2,7 @@
 
 Back to [TASKS.md](../TASKS.md).
 
-Status: Planned
+Status: Complete
 
 ## Objective
 
@@ -35,8 +35,10 @@ retaining an explicit source-build path for repository development and tests.
 
 ## Current behavior and invariants
 
-- Android currently adds Google Ink and Abseil source directories and compiles
-  stroke-engine implementation files into `ReactNativeInkSignPdf`.
+- Android CMake consumes one verified archive per ABI from
+  `android/stroke-engine/<abi>/` by default. Explicit source mode adds the
+  Google Ink and Abseil source directories and compiles the same stroke-engine
+  implementation files into `ReactNativeInkSignPdf`.
 - The JNI adapter remains the only platform bridge for the engine. Java/Kotlin
   receives copied frame bytes, never archive-owned pointers.
 - High-frequency input stays native and synchronous; no JavaScript calls are
@@ -50,8 +52,8 @@ retaining an explicit source-build path for repository development and tests.
    package consumers use the default. Never infer source mode from the presence
    or absence of `third_party` or an archive.
 2. Define an imported static target whose location is selected by `ANDROID_ABI`
-   and whose include surface contains only the engine C header and local adapter
-   headers.
+   under `android/stroke-engine/<abi>/`; the JNI adapter retains the local
+   include surface and the archive is linked through the C ABI.
 3. Remove from the prebuilt target every implementation source inventoried in
    Task 1 and the Google Ink/Abseil `add_subdirectory` calls. Keep JNI and
    PDFium sources in the platform target; keep source mode complete and
@@ -59,8 +61,9 @@ retaining an explicit source-build path for repository development and tests.
 4. Link the imported archive into `ReactNativeInkSignPdf` alongside PDFium,
    Android libraries, and `c++_shared`.
 5. Add configure-time failures for a missing archive, unsupported ABI, missing
-   metadata, or API-version mismatch. Verify the staged ABI/NDK identity and
-   checksum before linking. Never switch to source mode implicitly.
+   metadata, or API-version mismatch. Verify the staged ABI/NDK identity,
+   recorded size, and checksum before linking. Never switch to source mode
+   implicitly.
 6. Apply the same trace compile definition to adapter-side
    `ScopedPerfettoTrace` calls, then confirm that JNI frame-copy behavior and
    all existing native library symbols remain unchanged.
@@ -69,6 +72,9 @@ retaining an explicit source-build path for repository development and tests.
 
 - The archive is immutable implementation code. `JStrokeEngine` owns the
   opaque engine handle and destroys it exactly once.
+- Prebuilt mode is the default. Repository development and tests explicitly
+  opt into source mode with `ReactNativeInkSignPdf_useSourceStrokeEngine=true`;
+  the example project enables that property for local builds.
 - Frame pointers remain valid only until the next mutating engine call; the
   adapter must continue copying them before mutation.
 - Android generation, page ownership, prediction replacement, and disposal
@@ -101,6 +107,8 @@ toolchain and leave the GitHub artifact matrix as the release gate.
 ## Completion criteria
 
 - Published-package configuration imports exactly one correct archive per ABI.
+- Archive metadata, ABI, API version, expected NDK, size, checksum, and the
+  normal trace-disabled policy are checked at CMake configure time.
 - Repository source mode remains functional.
 - No high-frequency boundary, frame lifetime, or lifecycle invariant changes.
 

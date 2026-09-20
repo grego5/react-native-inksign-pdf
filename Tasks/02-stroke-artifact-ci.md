@@ -28,7 +28,9 @@ stroke-engine archives from a full repository checkout.
 
 ## Current behavior and invariants
 
-- The repository already pins Android NDK `30.0.16138531` for PDFium.
+- The repository pins Android NDK `27.1.12297006` for PDFium in
+  `third_party/pdfium/manifest.json`; Gradle and the PDFium workflow derive
+  their compatibility checks from that manifest.
 - Current Android release artifacts are `arm64-v8a` and `x86_64`; the stroke
   artifact matrix must match the native dependencies that the module actually
   supports.

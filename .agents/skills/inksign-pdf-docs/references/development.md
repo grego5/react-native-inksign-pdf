@@ -54,6 +54,14 @@ existing release tag. The release contains raw archives, per-ABI metadata, a
 combined manifest, checksums, and Google Ink/Abseil notices. Profiling archives
 are never selected by this workflow.
 
+Android CMake consumes the packaged archives from
+`android/stroke-engine/<abi>/` by default. It validates the archive metadata,
+ABI, API version, expected NDK, byte size, SHA-256, and trace-disabled policy
+before linking the imported static target. Repository development and tests
+explicitly opt into source mode with
+`ReactNativeInkSignPdf_useSourceStrokeEngine=true`; source mode remains the
+only Android path that compiles Google Ink and Abseil from `third_party`.
+
 ## Validation commands
 
 Use repository runners instead of manually reconstructing their commands:

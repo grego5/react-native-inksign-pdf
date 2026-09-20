@@ -30,7 +30,8 @@ binaries, and scripts required for Android PDFium and iOS pod installation.
 - `ReactNativeInkSignPdf.podspec`: source files, PDFium framework, preserved
   paths, and pod integration.
 - `THIRD_PARTY_NOTICES.md`: required notices for retained and prebuilt code.
-- `Tasks/03-android-prebuilt-consumer.md`: package layout expected by CMake.
+- `Tasks/03-android-prebuilt-consumer.md`: `android/stroke-engine/<abi>/`
+  package layout expected by CMake.
 
 ## Current behavior and invariants
 
