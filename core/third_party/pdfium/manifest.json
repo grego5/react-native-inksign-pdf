@@ -1,0 +1,125 @@
+{
+  "name": "PDFium",
+  "version": "154.0.8021.0",
+  "upstream": {
+    "repository": "https://pdfium.googlesource.com/pdfium",
+    "branch": "chromium/8021",
+    "commit": "784a524ddaa26d86c0f499625b97902095c26dfe",
+    "publicHeaders": ["fpdfview.h", "fpdf_text.h", "fpdf_edit.h"],
+    "license": "BSD-3-Clause"
+  },
+  "buildWorkflow": {
+    "repository": "https://github.com/bblanchon/pdfium-binaries",
+    "releaseCommit": "9dd99a8991bed3a2f37658a31bcd5b403800fd03",
+    "script": "build.sh",
+    "staticBuildType": "static",
+    "staticArguments": "./build.sh -b chromium/8021 -s android <abi>",
+    "androidNdk": "27.1.12297006",
+    "staticGnArguments": [
+      "pdf_is_complete_lib = true",
+      "use_custom_libcxx = false"
+    ],
+    "iosStaticWorkflow": ".github/workflows/build-and-publish-pdfium.yml",
+    "iosStaticRunner": "macos-15",
+    "iosStaticArguments": "./build.sh -s -b chromium/8021 ios <cpu> <device|simulator>",
+    "iosStaticStatus": "static XCFramework published and archive-validated; macOS/Xcode integration and runtime validation pending",
+    "staticBuildNote": "The repository workflow builds from the pinned upstream PDFium source using bblanchon/pdfium-binaries build tooling. Android GN uses the installed NDK through the repository's toolchain-root override. Only final release assets are distributed."
+  },
+  "distribution": {
+    "staticRelease": {
+      "repository": "https://github.com/grego5/react-native-inksign-pdf",
+      "tag": "pdfium-154.0.8021.0-static",
+      "androidAsset": "154.0.8021.0-android-static.zip",
+      "iosAsset": "PDFium-static-154.0.8021.0.xcframework.tar.gz",
+      "checksumsAsset": "SHA256SUMS",
+      "status": "published; archive structure and symbols validated in CI; Android device and iOS runtime validation remain pending",
+      "androidAssetBytes": 25750810,
+      "androidAssetSha256": "ebe510d8a6512f5f335b7b3e8bcaff13811e5f54410e328a06d5805a4991beb2",
+      "iosAssetBytes": 198520928,
+      "iosAssetSha256": "5fcb75322672ff1e4b275324701a04c5de90914b6009dedc3d989f4351f540d8",
+      "checksumsAssetBytes": 210,
+      "checksumsAssetSha256": "f9adf006c1602cd55a53676c926a7f0c4897f23cc7a88b35715f26852d0514cf",
+      "iosSlices": [
+        "ios-arm64",
+        "ios-arm64_x86_64-simulator"
+      ],
+      "artifacts": [
+        {
+          "target": "android",
+          "buildType": "static",
+          "abi": "arm64-v8a",
+          "architecture": "AARCH64",
+          "packagedLibrary": "android/build/pdfium/arm64-v8a/libpdfium.a",
+          "packagedLibraryBytes": 43434854,
+          "packagedLibrarySha256": "75075ce114a0c66b1129ec11ecb046c60802ae206a4547c1453daeaf0d6df9dd",
+          "expectedElfMachine": "AARCH64"
+        },
+        {
+          "target": "android",
+          "buildType": "static",
+          "abi": "x86_64",
+          "architecture": "X86_64",
+          "packagedLibrary": "android/build/pdfium/x86_64/libpdfium.a",
+          "packagedLibraryBytes": 43363000,
+          "packagedLibrarySha256": "f380eca5fe383ec7036254c21fa8fa57ed60509af03c3ce7738d5377f4a60bc8",
+          "expectedElfMachine": "X86_64"
+        },
+        {
+          "target": "ios",
+          "buildType": "static",
+          "slice": "ios-arm64",
+          "architectures": ["arm64"],
+          "packagedLibrary": "ios/build/PDFium.xcframework/ios-arm64/PDFium.framework/PDFium",
+          "packagedLibraryBytes": 268264528,
+          "packagedLibrarySha256": "2ab39fde877b17d7978abe8cde6620c64af63a7b187c473609b2051dc7d4619f"
+        },
+        {
+          "target": "ios",
+          "buildType": "static",
+          "slice": "ios-arm64_x86_64-simulator",
+          "architectures": ["arm64", "x86_64"],
+          "packagedLibrary": "ios/build/PDFium.xcframework/ios-arm64_x86_64-simulator/PDFium.framework/PDFium",
+          "packagedLibraryBytes": 540376296,
+          "packagedLibrarySha256": "3f6cbbcf416f6a4923ee894a636868601c4303451962b948a474b65f7124284c"
+        }
+      ]
+    }
+  },
+  "candidateEvaluation": [
+    {
+      "candidate": "Official PDFium source checkout",
+      "decision": "rejected",
+      "reason": "Reproducible source, but its Chromium/depot_tools closure would make this package responsible for building and maintaining every mobile toolchain slice."
+    },
+    {
+      "candidate": "bblanchon/pdfium-binaries",
+      "decision": "selected",
+      "reason": "Its pinned scripts and patches provide one reproducible Android/iOS static build workflow from the upstream PDFium source, including public headers and license staging."
+    },
+    {
+      "candidate": "Platform PDF renderers",
+      "decision": "rejected",
+      "reason": "Android PdfRenderer and iOS PDFKit are platform-specific and do not provide the shared PDFium C API."
+    }
+  ],
+  "sizeImpact": {
+    "baseline": "No PDFium binary was present before this task; the incremental value is therefore the packaged library size. Android values are static archive sizes; iOS runtime validation remains experimental.",
+    "androidReleaseAbi": {
+      "abi": "arm64-v8a",
+      "incrementalBytes": 43434854
+    },
+    "androidX86_64": {
+      "abi": "x86_64",
+      "incrementalBytes": 43363000
+    },
+    "iosDeviceSlice": {
+      "slice": "ios-arm64",
+      "incrementalBytes": 261153176
+    },
+    "simulatorSlice": {
+      "slice": "ios-arm64_x86_64-simulator",
+      "architectures": ["arm64", "x86_64"],
+      "incrementalBytes": 525814000
+    }
+  }
+}
