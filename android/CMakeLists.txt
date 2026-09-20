@@ -4,6 +4,8 @@ project(ReactNativeInkSignPdf)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+option(ENABLE_PERFETTO_TRACE
+  "Compile Android Perfetto/ATrace instrumentation into source targets" OFF)
 if(MSVC)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20 /Zc:__cplusplus")
 else()
@@ -32,12 +34,16 @@ add_subdirectory(../third_party/abseil-cpp
 add_subdirectory(../third_party/google-ink
   ${CMAKE_CURRENT_BINARY_DIR}/google-ink EXCLUDE_FROM_ALL)
 
+include(${CMAKE_CURRENT_LIST_DIR}/../cpp/StrokeEngineSources.cmake)
+
 add_library(UpstreamStrokeGeometry STATIC
-  ../cpp/upstream/UpstreamStrokeGeometry.cpp
+  ${INKSIGN_UPSTREAM_GEOMETRY_SOURCES}
 )
 target_link_libraries(UpstreamStrokeGeometry PUBLIC GoogleInkGeometry)
 target_include_directories(UpstreamStrokeGeometry PUBLIC ../cpp)
 target_compile_features(UpstreamStrokeGeometry PUBLIC cxx_std_20)
+target_compile_definitions(UpstreamStrokeGeometry PRIVATE
+  ENABLE_PERFETTO_TRACE=$<BOOL:${ENABLE_PERFETTO_TRACE}>)
 
 add_library(ReactNativeInkSignPdf SHARED
   src/main/cpp/cpp-adapter.cpp
@@ -49,18 +55,8 @@ add_library(ReactNativeInkSignPdf SHARED
         ../cpp/pdfium/PdfiumFontCoverage.cpp
         ../cpp/pdfium/PdfiumFontFallback.cpp
   ../cpp/pdfium/PdfiumFontProvider.cpp
-  ../cpp/StrokeEngine.cpp
-  ../cpp/engine/StrokeEngineInternal.cpp
-  ../cpp/engine/StrokeEngineProcessing.cpp
-  ../cpp/engine/StrokeEnginePrediction.cpp
-  ../cpp/StrokeEngineC.cpp
-  ../cpp/upstream/UpstreamStrokeOutput.cpp
-  ../cpp/input/CommittedCenterline.cpp
-  ../cpp/input/CurrentInkInputModeler.cpp
-  ../cpp/modeling/ContactLifecycle.cpp
-  ../cpp/input/InputNormalizer.cpp
-  ../cpp/modeling/VelocityWidthModel.cpp
-  ../cpp/modeling/SignatureBrushTipModeler.cpp
+  ${INKSIGN_STROKE_ENGINE_SOURCES}
+  ${INKSIGN_UPSTREAM_OUTPUT_SOURCES}
 )
 
 target_include_directories(ReactNativeInkSignPdf PRIVATE
@@ -70,6 +66,8 @@ target_include_directories(ReactNativeInkSignPdf PRIVATE
 )
 
 target_compile_features(ReactNativeInkSignPdf PRIVATE cxx_std_20)
+target_compile_definitions(ReactNativeInkSignPdf PRIVATE
+  ENABLE_PERFETTO_TRACE=$<BOOL:${ENABLE_PERFETTO_TRACE}>)
 target_link_libraries(ReactNativeInkSignPdf
   android
   jnigraphics

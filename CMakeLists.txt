@@ -3,6 +3,8 @@ cmake_minimum_required(VERSION 3.22)
 project(ReactNativeInkSignStrokeEngine LANGUAGES C CXX)
 
 option(STROKE_ENGINE_SANITIZE "Enable AddressSanitizer and UBSan" OFF)
+option(ENABLE_PERFETTO_TRACE
+  "Compile Android Perfetto/ATrace instrumentation into source targets" OFF)
 
 if(STROKE_ENGINE_SANITIZE AND NOT MSVC)
   add_compile_options(-fsanitize=address,undefined -fno-omit-frame-pointer)
@@ -30,17 +32,21 @@ set(ABSL_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/abseil-cpp EXCLUDE_FROM_ALL)
 add_subdirectory(third_party/google-ink EXCLUDE_FROM_ALL)
 
+include(${CMAKE_CURRENT_SOURCE_DIR}/cpp/StrokeEngineSources.cmake)
+
 add_library(UpstreamStrokeGeometry STATIC
-  cpp/upstream/UpstreamStrokeGeometry.cpp
+  ${INKSIGN_UPSTREAM_GEOMETRY_SOURCES}
 )
 target_link_libraries(UpstreamStrokeGeometry PUBLIC GoogleInkGeometry)
 target_include_directories(UpstreamStrokeGeometry PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/cpp
 )
 target_compile_features(UpstreamStrokeGeometry PUBLIC cxx_std_20)
+target_compile_definitions(UpstreamStrokeGeometry PRIVATE
+  ENABLE_PERFETTO_TRACE=$<BOOL:${ENABLE_PERFETTO_TRACE}>)
 
 add_library(UpstreamStrokeOutput STATIC
-  cpp/upstream/UpstreamStrokeOutput.cpp
+  ${INKSIGN_UPSTREAM_OUTPUT_SOURCES}
 )
 target_link_libraries(UpstreamStrokeOutput PUBLIC UpstreamStrokeGeometry)
 target_include_directories(UpstreamStrokeOutput PUBLIC
@@ -48,17 +54,7 @@ target_include_directories(UpstreamStrokeOutput PUBLIC
 target_compile_features(UpstreamStrokeOutput PUBLIC cxx_std_20)
 
 add_library(StrokeEngine STATIC
-  cpp/StrokeEngine.cpp
-  cpp/engine/StrokeEngineInternal.cpp
-  cpp/engine/StrokeEngineProcessing.cpp
-  cpp/engine/StrokeEnginePrediction.cpp
-  cpp/StrokeEngineC.cpp
-  cpp/input/CommittedCenterline.cpp
-  cpp/input/CurrentInkInputModeler.cpp
-  cpp/modeling/ContactLifecycle.cpp
-  cpp/input/InputNormalizer.cpp
-  cpp/modeling/VelocityWidthModel.cpp
-  cpp/modeling/SignatureBrushTipModeler.cpp
+  ${INKSIGN_STROKE_ENGINE_SOURCES}
 )
 
 target_link_libraries(StrokeEngine PUBLIC UpstreamStrokeOutput)
@@ -69,6 +65,8 @@ target_include_directories(StrokeEngine PUBLIC
 target_include_directories(StrokeEngine PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}
 )
+target_compile_definitions(StrokeEngine PRIVATE
+  ENABLE_PERFETTO_TRACE=$<BOOL:${ENABLE_PERFETTO_TRACE}>)
 
 add_library(StrokeReplay STATIC
   cpp/replay/ContinuityDiagnostics.cpp

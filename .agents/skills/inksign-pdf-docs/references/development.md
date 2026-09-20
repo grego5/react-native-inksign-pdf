@@ -28,6 +28,24 @@
 Do not expand the v1 contract or introduce another stroke representation
 without first documenting the architectural decision in `architecture.md`.
 
+## Native stroke-engine artifacts
+
+The repository keeps the production stroke engine source-linked for desktop,
+native tests, and deliberate Android source builds. The Android archive
+producer is `tools/build-stroke-engine-archive.ps1`; it uses the Android NDK
+toolchain and emits one indexed static archive plus JSON metadata per ABI.
+The archive contains the C ABI engine, upstream adapters, Google Ink geometry,
+and the required Abseil object files. It does not contain JNI, PDFium, or
+`c++_shared`.
+
+`ENABLE_PERFETTO_TRACE=OFF` is the normal archive policy and compiles Android
+trace scopes and counters out. A local debug source build may explicitly set
+`ENABLE_PERFETTO_TRACE=ON`; a trace-enabled archive is a separately named
+profiling artifact and is not the normal release artifact. The producer's
+`StrokeEngineArchiveSmoke` target verifies that the merged archive resolves
+through `StrokeEngineC.h`; `tools/verify-stroke-engine-archive.ps1` checks the
+ABI, metadata, archive members, C ABI symbols, and normal-artifact trace rule.
+
 ## Validation commands
 
 Use repository runners instead of manually reconstructing their commands:
