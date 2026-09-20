@@ -1,0 +1,412 @@
+name: Build and publish static PDFium
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: GitHub release tag for the pinned PDFium artifacts
+        required: true
+        default: pdfium-154.0.8021.0-static
+
+permissions:
+  contents: read
+
+env:
+  PDFIUM_WORKFLOW_REV: 9dd99a8991bed3a2f37658a31bcd5b403800fd03
+  PDFIUM_UPSTREAM_BRANCH: chromium/8021
+  PDFIUM_VERSION: 154.0.8021.0
+  PDFIUM_ANDROID_NDK: 27.1.12297006
+  PDFIUM_RELEASE_TAG: ${{ inputs.release_tag }}
+
+jobs:
+  build-slice:
+    name: Build ${{ matrix.slice }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slice: ios-arm64
+            cpu: arm64
+            environment: device
+          - slice: ios-arm64-simulator
+            cpu: arm64
+            environment: simulator
+          - slice: ios-x86_64-simulator
+            cpu: x64
+            environment: simulator
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v7
+
+      - name: Check out the pinned PDFium build workflow
+        uses: actions/checkout@v7
+        with:
+          repository: bblanchon/pdfium-binaries
+          ref: ${{ env.PDFIUM_WORKFLOW_REV }}
+          path: .pdfium-binaries
+          fetch-depth: 1
+
+      - name: Initialize PDFium build environment
+        working-directory: .pdfium-binaries
+        run: ./steps/00-environment.sh
+
+      - name: Build and stage static PDFium archive
+        working-directory: .pdfium-binaries
+        env:
+          PDFium_BUILD_TYPE: static
+          PDFium_TARGET_OS: ios
+          PDFium_TARGET_CPU: ${{ matrix.cpu }}
+          PDFium_TARGET_ENVIRONMENT: ${{ matrix.environment }}
+          PDFium_BRANCH: ${{ env.PDFIUM_UPSTREAM_BRANCH }}
+          PDFium_IS_DEBUG: false
+          PDFium_ENABLE_V8: false
+          PDFium_VERSION: ${{ env.PDFIUM_VERSION }}
+        run: |
+          set -euxo pipefail
+          ./steps/01-install.sh
+          if [ ! -f depot_tools/gclient ]; then
+            git clone --quiet https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          fi
+          export PATH="$PWD/depot_tools:$PATH"
+          command -v gclient
+          ./steps/02-checkout.sh
+          ./steps/03-patch.sh
+          ./steps/04-install-extras.sh
+          ./steps/05-configure.sh
+          printf '\nuse_custom_libcxx = false\n' >> "$PDFium_BUILD_DIR/args.gn"
+          (
+            cd "$PDFium_SOURCE_DIR"
+            gn gen "$PDFium_BUILD_DIR"
+          )
+          test -f "$PDFium_BUILD_DIR/build.ninja"
+          ./steps/06-build.sh
+          ./steps/07-stage.sh
+          ./steps/08-licenses.sh
+          # The pinned upstream example uses ordinary archive extraction and
+          # currently fails to link mutually dependent static members on iOS.
+          # The package archive is still validated below; the example smoke
+          # link remains experimental and is intentionally not a release gate.
+
+      - name: Validate the archive
+        working-directory: .pdfium-binaries
+        run: |
+          set -euxo pipefail
+          test -f staging/lib/libpdfium.a
+          file staging/lib/libpdfium.a
+          ar -t staging/lib/libpdfium.a > "$RUNNER_TEMP/pdfium-members.txt"
+          nm -gU staging/lib/libpdfium.a > "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q '\.o$' "$RUNNER_TEMP/pdfium-members.txt"
+          grep -q 'FPDF_InitLibraryWithConfig' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDF_DestroyLibrary' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDFText_LoadPage' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDFPage_New' "$RUNNER_TEMP/pdfium-symbols.txt"
+
+      - name: Stage the slice
+        working-directory: .pdfium-binaries
+        run: |
+          set -euxo pipefail
+          mkdir -p "../pdfium-ios-slices/${{ matrix.slice }}"
+          cp staging/lib/libpdfium.a "../pdfium-ios-slices/${{ matrix.slice }}/libpdfium.a"
+          cp -R pdfium/public "../pdfium-ios-slices/${{ matrix.slice }}/headers"
+
+      - name: Upload static slice
+        uses: actions/upload-artifact@v7
+        with:
+          name: pdfium-static-${{ matrix.slice }}
+          path: pdfium-ios-slices/${{ matrix.slice }}
+          if-no-files-found: error
+
+  build-android:
+    name: Build Android ${{ matrix.abi }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            cpu: arm64
+            expected-machine: AARCH64
+          - abi: x86_64
+            cpu: x64
+            expected-machine: X86_64
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v7
+
+      - name: Check out the pinned PDFium build workflow
+        uses: actions/checkout@v7
+        with:
+          repository: bblanchon/pdfium-binaries
+          ref: ${{ env.PDFIUM_WORKFLOW_REV }}
+          path: .pdfium-binaries
+          fetch-depth: 1
+
+      - name: Set up Android SDK and install NDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          sdkmanager_path="$(find "$sdk_root/cmdline-tools" "$sdk_root/tools" \
+            -type f -name sdkmanager -perm -111 -print -quit 2>/dev/null || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            echo "Android sdkmanager was not found under $sdk_root"
+            exit 1
+          fi
+          sdkmanager_dir="$(dirname "$sdkmanager_path")"
+          export ANDROID_HOME="$sdk_root"
+          export ANDROID_SDK_ROOT="$sdk_root"
+          export PATH="$sdkmanager_dir:$sdk_root/platform-tools:$PATH"
+          {
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+            echo "PATH=$PATH"
+          } >> "$GITHUB_ENV"
+          yes | "$sdkmanager_path" --sdk_root="$sdk_root" --licenses >/dev/null || true
+          "$sdkmanager_path" --sdk_root="$sdk_root" \
+            "platform-tools" \
+            "ndk;${PDFIUM_ANDROID_NDK}"
+
+      - name: Initialize PDFium build environment
+        working-directory: .pdfium-binaries
+        run: ./steps/00-environment.sh
+
+      - name: Build static PDFium archive
+        working-directory: .pdfium-binaries
+        env:
+          PDFium_BUILD_TYPE: static
+          PDFium_TARGET_OS: android
+          PDFium_TARGET_CPU: ${{ matrix.cpu }}
+          PDFium_TARGET_ENVIRONMENT: device
+          PDFium_BRANCH: ${{ env.PDFIUM_UPSTREAM_BRANCH }}
+          PDFium_IS_DEBUG: false
+          PDFium_ENABLE_V8: false
+          PDFium_VERSION: ${{ env.PDFIUM_VERSION }}
+        run: |
+          set -euxo pipefail
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$PDFIUM_ANDROID_NDK"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
+          test -x "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+          "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++" --version
+          export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          if [ ! -f depot_tools/gclient ]; then
+            git clone --quiet https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          fi
+          export PATH="$PWD/depot_tools:$PATH"
+          ./steps/02-checkout.sh
+          ./steps/03-patch.sh
+          ./steps/04-install-extras.sh
+          grep -Fq "Pkg.Revision = ${PDFIUM_ANDROID_NDK}" "$ANDROID_NDK_ROOT/source.properties"
+          ndk_source_path="$PDFium_SOURCE_DIR/third_party/inksign_android_ndk"
+          test ! -e "$ndk_source_path"
+          ln -s "$ANDROID_NDK_ROOT" "$ndk_source_path"
+          android_config="$PDFium_SOURCE_DIR/build/config/android/config.gni"
+          grep -Fq 'android_ndk_root = "//third_party/android_toolchain/ndk"' "$android_config"
+          sed -i 's|android_ndk_root = "//third_party/android_toolchain/ndk"|android_ndk_root = "//third_party/inksign_android_ndk"|' "$android_config"
+          grep -Fq 'android_ndk_root = "//third_party/inksign_android_ndk"' "$android_config"
+          ./steps/05-configure.sh
+          printf '\nuse_custom_libcxx = false\n' >> "$PDFium_BUILD_DIR/args.gn"
+          (
+            cd "$PDFium_SOURCE_DIR"
+            gn gen "$PDFium_BUILD_DIR"
+          )
+          test -f "$PDFium_BUILD_DIR/build.ninja"
+          grep -R -F -q --include='*.ninja' 'third_party/inksign_android_ndk' "$PDFium_BUILD_DIR"
+          ./steps/06-build.sh
+          ./steps/07-stage.sh
+
+      - name: Validate the archive
+        working-directory: .pdfium-binaries
+        run: |
+          set -euxo pipefail
+          test -f staging/lib/libpdfium.a
+          file staging/lib/libpdfium.a
+          ar -t staging/lib/libpdfium.a > "$RUNNER_TEMP/pdfium-members.txt"
+          llvm_nm="$ANDROID_SDK_ROOT/ndk/$PDFIUM_ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          test -x "$llvm_nm"
+          "$llvm_nm" staging/lib/libpdfium.a > "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q '\.o$' "$RUNNER_TEMP/pdfium-members.txt"
+          grep -q 'FPDF_InitLibraryWithConfig' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDF_DestroyLibrary' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDFText_LoadPage' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDFPage_New' "$RUNNER_TEMP/pdfium-symbols.txt"
+
+      - name: Stage the slice
+        working-directory: .pdfium-binaries
+        run: |
+          set -euxo pipefail
+          mkdir -p "../pdfium-android-slices/${{ matrix.abi }}"
+          cp staging/lib/libpdfium.a "../pdfium-android-slices/${{ matrix.abi }}/libpdfium.a"
+
+      - name: Upload static slice
+        uses: actions/upload-artifact@v7
+        with:
+          name: pdfium-static-android-${{ matrix.abi }}
+          path: pdfium-android-slices/${{ matrix.abi }}
+          if-no-files-found: error
+
+  assemble-xcframework:
+    name: Assemble static XCFramework
+    needs: build-slice
+    runs-on: macos-15
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v7
+
+      - name: Download static slices
+        uses: actions/download-artifact@v8
+        with:
+          pattern: pdfium-static-*
+          path: pdfium-ios-slices
+          merge-multiple: false
+
+      - name: Create static framework bundles
+        run: |
+          set -euxo pipefail
+          diff -qr \
+            pdfium-ios-slices/pdfium-static-ios-arm64-simulator/headers \
+            pdfium-ios-slices/pdfium-static-ios-x86_64-simulator/headers
+
+          for platform in ios-arm64 ios-simulator; do
+            framework_dir="framework-staging/${platform}/PDFium.framework"
+            mkdir -p "$framework_dir/Headers"
+            if [ "$platform" = ios-arm64 ]; then
+              cp pdfium-ios-slices/pdfium-static-ios-arm64/libpdfium.a \
+                "$framework_dir/PDFium"
+              cp -R pdfium-ios-slices/pdfium-static-ios-arm64/headers/. \
+                "$framework_dir/Headers/"
+            else
+              lipo -create \
+                pdfium-ios-slices/pdfium-static-ios-arm64-simulator/libpdfium.a \
+                pdfium-ios-slices/pdfium-static-ios-x86_64-simulator/libpdfium.a \
+                -output "$framework_dir/PDFium"
+              lipo "$framework_dir/PDFium" -verify_arch arm64 x86_64
+              cp -R pdfium-ios-slices/pdfium-static-ios-arm64-simulator/headers/. \
+                "$framework_dir/Headers/"
+            fi
+            cat > "$framework_dir/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleExecutable</key>
+            <string>PDFium</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.grego5.pdfium</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>PDFium</string>
+            <key>CFBundlePackageType</key>
+            <string>FMWK</string>
+            <key>CFBundleShortVersionString</key>
+            <string>154.0.8021.0</string>
+            <key>CFBundleVersion</key>
+            <string>154.0.8021.0</string>
+          </dict>
+          </plist>
+          PLIST
+          done
+
+      - name: Create XCFramework
+        run: |
+          set -euxo pipefail
+          xcodebuild -create-xcframework \
+            -framework framework-staging/ios-arm64/PDFium.framework \
+            -framework framework-staging/ios-simulator/PDFium.framework \
+            -output PDFium.xcframework
+
+      - name: Validate static XCFramework
+        run: |
+          set -euxo pipefail
+          test -f PDFium.xcframework/Info.plist
+          test "$(find PDFium.xcframework -name '*.dylib' -print | wc -l | tr -d ' ')" = 0
+          for binary in $(find PDFium.xcframework -path '*/PDFium.framework/PDFium' -type f); do
+            file "$binary"
+            archive_to_check="$binary"
+            if lipo "$binary" -verify_arch arm64 x86_64 2>/dev/null; then
+              archive_to_check="$RUNNER_TEMP/pdfium-thin-arm64.a"
+              lipo "$binary" -thin arm64 -output "$archive_to_check"
+            fi
+            ar -t "$archive_to_check" > "$RUNNER_TEMP/pdfium-members.txt"
+            nm -gU "$binary" > "$RUNNER_TEMP/pdfium-symbols.txt"
+            grep -q '\.o$' "$RUNNER_TEMP/pdfium-members.txt"
+            grep -q 'FPDF_InitLibraryWithConfig' "$RUNNER_TEMP/pdfium-symbols.txt"
+            grep -q 'FPDF_DestroyLibrary' "$RUNNER_TEMP/pdfium-symbols.txt"
+          done
+
+      - name: Package XCFramework
+        run: tar -czf PDFium-static-${PDFIUM_VERSION}.xcframework.tar.gz PDFium.xcframework
+
+      - name: Upload static XCFramework
+        uses: actions/upload-artifact@v7
+        with:
+          name: pdfium-static-ios-xcframework
+          path: |
+            PDFium.xcframework
+            PDFium-static-${{ env.PDFIUM_VERSION }}.xcframework.tar.gz
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish pinned PDFium release assets
+    needs: [assemble-xcframework, build-android]
+    runs-on: macos-15
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v7
+
+      - name: Download the assembled iOS XCFramework
+        uses: actions/download-artifact@v8
+        with:
+          name: pdfium-static-ios-xcframework
+          path: release-input
+
+      - name: Download the Android static archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: pdfium-static-android-*
+          path: android-input
+          merge-multiple: false
+
+      - name: Package the Android static archives
+        run: |
+          set -euxo pipefail
+          mkdir -p release-assets/android
+          cp android-input/pdfium-static-android-arm64-v8a/libpdfium.a release-assets/android/arm64-v8a-libpdfium.a
+          cp android-input/pdfium-static-android-x86_64/libpdfium.a release-assets/android/x86_64-libpdfium.a
+          (cd release-assets && zip -q "${PDFIUM_VERSION}-android-static.zip" android/*)
+
+      - name: Prepare release assets and checksums
+        run: |
+          set -euxo pipefail
+          cp "release-input/PDFium-static-${PDFIUM_VERSION}.xcframework.tar.gz" release-assets/
+          (cd release-assets && shasum -a 256 \
+            "${PDFIUM_VERSION}-android-static.zip" \
+            "PDFium-static-${PDFIUM_VERSION}.xcframework.tar.gz" \
+            > SHA256SUMS)
+
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          printf -v release_notes 'Static Android archives and iOS XCFramework for PDFium %s.\n\n- Android NDK: `%s`\n- Upstream: `%s`\n- Build tooling: `bblanchon/pdfium-binaries` at `%s`\n' \
+            "$PDFIUM_VERSION" "$PDFIUM_ANDROID_NDK" "$PDFIUM_UPSTREAM_BRANCH" "$PDFIUM_WORKFLOW_REV"
+          if gh release view "$PDFIUM_RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$PDFIUM_RELEASE_TAG" \
+              release-assets/*.zip release-assets/*.tar.gz release-assets/SHA256SUMS --clobber
+            gh release edit "$PDFIUM_RELEASE_TAG" --notes "$release_notes"
+          else
+            gh release create "$PDFIUM_RELEASE_TAG" \
+              release-assets/*.zip release-assets/*.tar.gz release-assets/SHA256SUMS \
+              --title "PDFium ${PDFIUM_VERSION} static artifacts" \
+              --notes "$release_notes"
+          fi
