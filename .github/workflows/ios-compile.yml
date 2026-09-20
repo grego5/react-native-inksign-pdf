@@ -1,0 +1,62 @@
+name: Compile iOS native module
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: macos-26
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: example
+    steps:
+      - name: Check out library source
+        uses: actions/checkout@v5
+
+      - name: Select Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Select the Xcode version used by EAS
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install consumer dependencies from this checkout
+        run: npm install --install-links --no-audit --no-fund
+
+      - name: Ensure PDFium iOS binary is installed
+        run: node node_modules/@grego5/react-native-inksign-pdf/tools/fetch-pdfium-ios.mjs
+
+      - name: Generate iOS consumer project
+        env:
+          CI: '1'
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: pod install --project-directory=ios
+
+      - name: Compile the native module for iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -quiet \
+            -project ios/Pods/Pods.xcodeproj \
+            -target ReactNativeInkSignPdf \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee "$RUNNER_TEMP/inksign-ios-compile.log"
+
+      - name: Upload Xcode compile log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: inksign-ios-compile-log
+          path: ${{ runner.temp }}/inksign-ios-compile.log
+          if-no-files-found: ignore
