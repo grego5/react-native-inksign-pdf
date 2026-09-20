@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "document": {
+    "generation": 17,
+    "activePageIndex": 1,
+    "pageCount": 3
+  },
+  "layout": {
+    "width": 320,
+    "height": 480,
+    "usable": true
+  },
+  "completionTokens": [
+    { "name": "editorCommit", "token": "editor-commit-01" },
+    { "name": "dragCommit", "token": "drag-commit-01" },
+    { "name": "previewCompletion", "token": "preview-complete-01" },
+    { "name": "exportCapture", "token": "export-capture-01" },
+    { "name": "replacement", "token": "replacement-01" },
+    { "name": "disposal", "token": "disposal-01" }
+  ],
+  "supersession": {
+    "oldGeneration": 17,
+    "newGeneration": 18
+  }
+}

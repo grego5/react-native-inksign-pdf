@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "contract": "stroke replay geometry and canonical frame transport",
+  "fixtures": [
+    {
+      "name": "signature",
+      "outline_segments": { "min": 85, "max": 85 },
+      "chord_length_ceiling": 9.4825590233334243,
+      "contour_count": 1,
+      "serialized_frame_bytes": 6872,
+      "transport_hash": "0x3674d3b675bfa67c"
+    },
+    {
+      "name": "tight-loop",
+      "outline_segments": { "min": 84, "max": 84 },
+      "chord_length_ceiling": 4.38831208936356,
+      "contour_count": 1,
+      "serialized_frame_bytes": 6792,
+      "transport_hash": "0x7ef66d504b9e2809"
+    },
+    {
+      "name": "reversal",
+      "outline_segments": { "min": 67, "max": 67 },
+      "chord_length_ceiling": 13.038056147017191,
+      "contour_count": 1,
+      "serialized_frame_bytes": 5432,
+      "transport_hash": "0x817bd45e6b343184"
+    },
+    {
+      "name": "sharp-corners",
+      "outline_segments": { "min": 69, "max": 69 },
+      "chord_length_ceiling": 16.666017786189066,
+      "contour_count": 1,
+      "serialized_frame_bytes": 5592,
+      "transport_hash": "0x9d9323e9947a844c"
+    },
+    {
+      "name": "low-speed-jitter",
+      "outline_segments": { "min": 53, "max": 53 },
+      "chord_length_ceiling": 0.66805524832523977,
+      "contour_count": 1,
+      "serialized_frame_bytes": 4312,
+      "transport_hash": "0x668b9e258e6a0278"
+    },
+    {
+      "name": "pressure-stable",
+      "outline_segments": { "min": 31, "max": 31 },
+      "chord_length_ceiling": 8.5330054364862242,
+      "contour_count": 1,
+      "serialized_frame_bytes": 2552,
+      "transport_hash": "0x6d991d8151736474"
+    }
+  ]
+}

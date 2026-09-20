@@ -1,0 +1,12 @@
+{
+  "trace": "equal.perfetto-trace",
+  "file_size_bytes": 100,
+  "file_size_cross_check": true,
+  "metrics": [
+    {"section": "native_timing", "metric": "average", "scope": "cpp_geometry", "value": 2.0, "unit": "ms"},
+    {"section": "native_timing", "metric": "serialized_frame_bytes", "scope": "frame", "value": 100, "unit": "bytes"},
+    {"section": "hot_paths", "metric": "average", "scope": "upstream_extrusion", "value": 1.0, "unit": "ms"},
+    {"section": "frames", "metric": "jank_percentage", "scope": "FrameTimeline", "value": 0, "unit": "%"}
+  ],
+  "anomalies": []
+}

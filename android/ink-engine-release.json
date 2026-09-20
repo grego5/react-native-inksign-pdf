@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "repository": "https://github.com/grego5/react-native-inksign-pdf",
+  "releaseTag": "ink-engine-1.0.0",
+  "archive": "ink-engine-1.0.0-android-static.zip",
+  "archiveBytes": 21785673,
+  "archiveSha256": "38cb9dfb732dd84991837825dbeb2545fbee3f631761aa5af576e1777ee7dc9e",
+  "checksumsAsset": "SHA256SUMS",
+  "checksumsAssetBytes": 550,
+  "checksumsAssetSha256": "2b83103a920674018174d654b3ae7b988b4c0478047d3039d8894994abcb1f94",
+  "releaseManifestBytes": 1013,
+  "releaseManifestSha256": "519474ac38d01cdd669895bd346770305ddaa85f8ad41c9dcabad817dbac0484",
+  "sourceRevision": "f64cb5d4570662a284933850cc1f1153f99741ed",
+  "ndkVersion": "27.1.12297006",
+  "apiVersion": 8,
+  "perfettoTrace": false,
+  "abis": [
+    "arm64-v8a",
+    "x86_64"
+  ],
+  "artifacts": {
+    "arm64-v8a": {
+      "archive": "libinkengine_arm64-v8a.a",
+      "metadata": "libinkengine_arm64-v8a.a.json",
+      "sizeBytes": 55621788,
+      "sha256": "053cd996949758594adff70dcc9b853772b148226cb24f1d6d7bc416b3789437"
+    },
+    "x86_64": {
+      "archive": "libinkengine_x86_64.a",
+      "metadata": "libinkengine_x86_64.a.json",
+      "sizeBytes": 54457174,
+      "sha256": "962bb777923002f55b94c41b937a2a8e644dbe12db0bf02ea684db87ca6200c8"
+    }
+  }
+}
