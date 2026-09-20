@@ -2,7 +2,7 @@
 
 Back to [TASKS.md](../TASKS.md).
 
-Status: Planned
+Status: Complete
 
 ## Objective
 
@@ -35,7 +35,9 @@ binaries, and scripts required for Android PDFium and iOS pod installation.
 
 ## Current behavior and invariants
 
-- `package.json` currently publishes the entire `third_party` tree.
+- `package.json` publishes only the Android module, the staged stroke-engine
+  release directory, the PDFium package data, the iOS sources, and the
+  generated Nitro output required by consumers.
 - Android and iOS PDFium support currently reads metadata from
   `third_party/pdfium/manifest.json` and Android compiles against headers under
   `third_party/pdfium/include`.
@@ -47,18 +49,23 @@ binaries, and scripts required for Android PDFium and iOS pod installation.
 ## Implementation steps
 
 1. Define one stable package path for the per-ABI stroke archives, metadata,
-   and notices. Add a publish/staging step that retrieves the immutable release
-   identified in Task 2, verifies its checksum manifest and source/NDK/API/ABI
-   metadata, and copies the complete ABI set there before `npm pack`. Fail on
-   missing or mismatched artifacts; do not download stroke code at consumer
-   install time.
+   and notices. `tools/stage-stroke-engine-package.mjs` retrieves the immutable
+   release identified by tag, verifies its checksum list and source/NDK/API/ABI
+   metadata, and copies the complete ABI set there before `npm pack`. It also
+   accepts a downloaded release archive/checksum pair or an extracted release
+   directory for offline CI. It fails on missing or mismatched artifacts; the
+   package never downloads stroke code at consumer install time.
 2. Replace the broad `third_party` npm allowlist entry with only
    `third_party/pdfium` and verify that its existing manifest/include paths
    work from the packed package. Move those paths only if pack/install proves
    the narrow allowlist insufficient; update all consumers if moved.
 3. Add the staged stroke archives, metadata, C ABI header, and required license
    files to the allowlist. Confirm no Google Ink/Abseil source or private
-   headers are included.
+   headers are included. The staging command is:
+
+   ```powershell
+   npm run stage:stroke-engine -- --release-tag <tag> --release-archive <archive.zip> --checksums <SHA256SUMS> --force
+   ```
 4. Keep the repository’s full `third_party` tree for source builds and CI.
    Ensure the podspec and iOS postinstall still find PDFium after packing.
 
@@ -74,7 +81,8 @@ binaries, and scripts required for Android PDFium and iOS pod installation.
 
 - Staging rejects an absent ABI, invalid hash, or mismatched release identity.
 - `npm pack --dry-run` lists the prebuilt archive for every supported ABI.
-- The tarball contains no Google Ink or Abseil source directories.
+- The tarball contains no Google Ink or Abseil source directories and retains
+  only `third_party/pdfium`.
 - PDFium Android Gradle validation still downloads/checksums the expected
   archives.
 - macOS postinstall and pod integration still locate the iOS PDFium artifact.
@@ -96,6 +104,8 @@ macOS runner.
 
 - Published npm output contains the verified complete archive set and omits
   Google Ink and Abseil source copies.
+- The staging command can reproduce that output from the immutable stroke
+  release without fetching source code during consumer installation.
 - PDFium Android and iOS package flows remain intact.
 - All binary and third-party notice files required by consumers are present.
 

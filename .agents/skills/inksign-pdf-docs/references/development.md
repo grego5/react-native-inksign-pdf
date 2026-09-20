@@ -61,6 +61,10 @@ before linking the imported static target. Repository development and tests
 explicitly opt into source mode with
 `ReactNativeInkSignPdf_useSourceStrokeEngine=true`; source mode remains the
 only Android path that compiles Google Ink and Abseil from `third_party`.
+The package allowlist retains only `third_party/pdfium`; the verified stroke
+release is staged under `android/stroke-engine/<abi>/` with
+`npm run stage:stroke-engine` before packing. The staging command validates the
+release tag, complete ABI set, metadata, checksums, notices, and licenses.
 
 ## Validation commands
 
