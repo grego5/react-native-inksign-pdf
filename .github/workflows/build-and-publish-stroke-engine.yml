@@ -1,0 +1,199 @@
+name: Build and publish stroke engine
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Immutable GitHub release tag for the stroke-engine artifacts
+        required: true
+        default: stroke-engine-1.0.0
+
+permissions:
+  contents: read
+
+env:
+  STROKE_ENGINE_NDK: 27.1.12297006
+  STROKE_ENGINE_API_VERSION: 8
+  STROKE_ENGINE_RELEASE_TAG: ${{ inputs.release_tag }}
+
+jobs:
+  native-tests:
+    name: Source-linked native tests
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the full source repository
+        uses: actions/checkout@v7
+
+      - name: Configure the source-linked native build
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S . -B build/startup-release -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_PERFETTO_TRACE=OFF
+
+      - name: Run source-linked native tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+          pwsh -NoProfile -File tools/test-native.ps1 -Suite all -Build
+
+  build-archive:
+    name: Build Android ${{ matrix.abi }} archive
+    needs: native-tests
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+          - abi: x86_64
+
+    steps:
+      - name: Check out the full source repository
+        uses: actions/checkout@v7
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install the pinned NDK and CMake
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sdkmanager "cmake;3.22.1" "ndk;${STROKE_ENGINE_NDK}"
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/$STROKE_ENGINE_NDK" >> "$GITHUB_ENV"
+          echo "$ANDROID_SDK_ROOT/ndk/$STROKE_ENGINE_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/cmake/3.22.1/bin" >> "$GITHUB_PATH"
+          test -x "$ANDROID_SDK_ROOT/ndk/$STROKE_ENGINE_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+          grep -Fq "Pkg.Revision = $STROKE_ENGINE_NDK" \
+            "$ANDROID_SDK_ROOT/ndk/$STROKE_ENGINE_NDK/source.properties"
+
+      - name: Build and smoke-link the optimized archive
+        shell: bash
+        run: |
+          set -euxo pipefail
+          pwsh -NoProfile -File tools/build-stroke-engine-archive.ps1 \
+            -Abi "${{ matrix.abi }}" \
+            -NdkPath "$ANDROID_NDK_ROOT" \
+            -BuildDirectory "$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}" \
+            -OutputDirectory "$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts" \
+            -SmokeLink
+
+      - name: Validate the archive and release metadata
+        shell: bash
+        run: |
+          set -euxo pipefail
+          archive="$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinksign_stroke_engine_${{ matrix.abi }}.a"
+          metadata="$archive.json"
+          pwsh -NoProfile -File tools/verify-stroke-engine-archive.ps1 \
+            -Archive "$archive" \
+            -Metadata "$metadata" \
+            -Abi "${{ matrix.abi }}" \
+            -LlvmBin "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin" \
+            -ExpectedSourceRevision "$GITHUB_SHA" \
+            -ExpectedNdkVersion "$STROKE_ENGINE_NDK"
+
+      - name: Stage the versioned artifact layout
+        shell: bash
+        run: |
+          set -euxo pipefail
+          staging="$RUNNER_TEMP/stroke-engine/staging"
+          mkdir -p "$staging/android/${{ matrix.abi }}"
+          cp "$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinksign_stroke_engine_${{ matrix.abi }}.a" \
+            "$staging/android/${{ matrix.abi }}/"
+          cp "$RUNNER_TEMP/stroke-engine/${{ matrix.abi }}/artifacts/libinksign_stroke_engine_${{ matrix.abi }}.a.json" \
+            "$staging/android/${{ matrix.abi }}/"
+          cp THIRD_PARTY_NOTICES.md "$staging/"
+          cp CREDITS.md "$staging/"
+
+      - name: Upload the verified ABI artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: stroke-engine-static-${{ matrix.abi }}
+          path: ${{ runner.temp }}/stroke-engine/staging
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish stroke engine release
+    needs: [build-archive]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the full source repository
+        uses: actions/checkout@v7
+
+      - name: Download all verified ABI artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: stroke-engine-static-*
+          path: release-input
+          merge-multiple: true
+
+      - name: Assemble the immutable release bundle
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          case "$STROKE_ENGINE_RELEASE_TAG" in
+            stroke-engine-[A-Za-z0-9._-]*) ;;
+            *) echo "release_tag must start with stroke-engine- and contain no slashes" >&2; exit 1 ;;
+          esac
+          if gh release view "$STROKE_ENGINE_RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release $STROKE_ENGINE_RELEASE_TAG already exists; releases are immutable" >&2
+            exit 1
+          fi
+
+          expected_abis=(arm64-v8a x86_64)
+          mkdir -p release-assets
+          test -f release-input/THIRD_PARTY_NOTICES.md
+          test -f release-input/CREDITS.md
+          for abi in "${expected_abis[@]}"; do
+            archive="release-input/android/$abi/libinksign_stroke_engine_${abi}.a"
+            metadata="$archive.json"
+            test -f "$archive"
+            test -f "$metadata"
+            cp "$archive" "release-assets/inksign-stroke-engine-${abi}.a"
+            cp "$metadata" "release-assets/inksign-stroke-engine-${abi}.json"
+          done
+
+          cp -R release-input/android release-assets/android
+          cp release-input/THIRD_PARTY_NOTICES.md release-assets/
+          cp release-input/CREDITS.md release-assets/
+          cp third_party/google-ink/LICENSE release-assets/GOOGLE_INK_LICENSE
+          cp third_party/abseil-cpp/LICENSE release-assets/ABSEIL_LICENSE
+
+          metadata_files=(release-input/android/*/*.json)
+          test "${#metadata_files[@]}" -eq "${#expected_abis[@]}"
+          artifact_json="$(jq -cs 'map(del(.archive))' "${metadata_files[@]}")"
+          jq -n \
+            --arg tag "$STROKE_ENGINE_RELEASE_TAG" \
+            --arg source "$GITHUB_SHA" \
+            --arg ndk "$STROKE_ENGINE_NDK" \
+            --argjson api "$STROKE_ENGINE_API_VERSION" \
+            --argjson artifacts "$artifact_json" \
+            '{format: 1, releaseTag: $tag, sourceRevision: $source,
+              ndkVersion: $ndk, apiVersion: $api, perfettoTrace: false,
+              artifacts: $artifacts}' > release-assets/manifest.json
+
+          bundle="${STROKE_ENGINE_RELEASE_TAG}-android-static.zip"
+          (cd release-assets && zip -qr "../$bundle" android \
+            THIRD_PARTY_NOTICES.md CREDITS.md GOOGLE_INK_LICENSE ABSEIL_LICENSE \
+            manifest.json)
+          mv "$bundle" release-assets/
+          (cd release-assets && sha256sum \
+            *.a *.json "${bundle}" > SHA256SUMS)
+
+      - name: Publish the immutable GitHub release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euxo pipefail
+          gh release create "$STROKE_ENGINE_RELEASE_TAG" \
+            release-assets/*.a release-assets/*.json release-assets/*.zip \
+            release-assets/SHA256SUMS release-assets/*.md release-assets/*_LICENSE \
+            --target "$GITHUB_SHA" \
+            --title "Stroke engine $STROKE_ENGINE_RELEASE_TAG" \
+            --notes "Verified Android stroke-engine archives. Source: $GITHUB_SHA; NDK: $STROKE_ENGINE_NDK; tracing/debug instrumentation is compiled out of normal artifacts."

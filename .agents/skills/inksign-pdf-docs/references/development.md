@@ -46,6 +46,14 @@ profiling artifact and is not the normal release artifact. The producer's
 through `StrokeEngineC.h`; `tools/verify-stroke-engine-archive.ps1` checks the
 ABI, metadata, archive members, C ABI symbols, and normal-artifact trace rule.
 
+The manually triggered `.github/workflows/build-and-publish-stroke-engine.yml`
+workflow builds the supported Android release ABIs (`arm64-v8a` and
+`x86_64`) from a full checkout with NDK `27.1.12297006`. It runs source-linked
+native tests once, smoke-links and verifies every ABI, and refuses to reuse an
+existing release tag. The release contains raw archives, per-ABI metadata, a
+combined manifest, checksums, and Google Ink/Abseil notices. Profiling archives
+are never selected by this workflow.
+
 ## Validation commands
 
 Use repository runners instead of manually reconstructing their commands:

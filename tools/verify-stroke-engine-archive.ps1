@@ -8,6 +8,8 @@ param(
     [ValidateSet("arm64-v8a", "armeabi-v7a", "x86", "x86_64")]
     [string]$Abi,
     [string]$LlvmBin,
+    [string]$ExpectedSourceRevision,
+    [string]$ExpectedNdkVersion,
     [switch]$AllowPerfettoTrace
 )
 
@@ -37,6 +39,14 @@ if ($metadataObject.abi -ne $Abi) {
 }
 if ([int]$metadataObject.apiVersion -ne 8) {
     throw "Unsupported stroke-engine API version '$($metadataObject.apiVersion)'."
+}
+if (-not [string]::IsNullOrWhiteSpace($ExpectedSourceRevision) -and
+    $metadataObject.sourceRevision -ne $ExpectedSourceRevision) {
+    throw "Metadata source revision '$($metadataObject.sourceRevision)' does not match '$ExpectedSourceRevision'."
+}
+if (-not [string]::IsNullOrWhiteSpace($ExpectedNdkVersion) -and
+    $metadataObject.ndkVersion -ne $ExpectedNdkVersion) {
+    throw "Metadata NDK '$($metadataObject.ndkVersion)' does not match '$ExpectedNdkVersion'."
 }
 if (-not $AllowPerfettoTrace -and [bool]$metadataObject.perfettoTrace) {
     throw "The normal archive must have Perfetto tracing compiled out."

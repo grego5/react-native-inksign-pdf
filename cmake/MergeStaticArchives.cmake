@@ -81,7 +81,7 @@ endif()
 
 file(SIZE "${OUTPUT}" _archive_size)
 file(SHA256 "${OUTPUT}" _archive_sha256)
-file(TO_CMAKE_PATH "${OUTPUT}" _output_json)
+get_filename_component(_output_json "${OUTPUT}" NAME)
 if(ENABLE_PERFETTO_TRACE)
   set(_perfetto_json true)
 else()
