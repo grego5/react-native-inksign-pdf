@@ -16,9 +16,17 @@
   including a nonzero media-box origin.
 - Committed text and previews use `InkSignPdfTextRenderer` in canonical
   top-left page coordinates.
-- Tile and preview results carry the document generation and page identity;
-  queued tile jobs check page, generation, and zoom before rendering, and stale
-  results are discarded. The tile cache is bounded presentation state.
+- Tiles use a page-anchored 512-by-512 device-pixel grid. Render zoom rounds
+  upward to the next one-eighth step and is capped at 16; canonical tile
+  coverage is `512 / (renderZoom * screenScale)`, so zoom never enlarges a
+  bitmap allocation.
+- At most eight tile requests are queued. Decoded tile cache cost is bounded
+  at 64 MiB using exact `stride * height` byte counts and least-recently-used
+  eviction; visible current and fallback tiles are protected when possible.
+- Tile results carry document generation, page, quantized zoom, and render
+  token identity. The serial PDFium worker checks request currency before
+  rendering and main-thread installation checks it again; stale results are
+  discarded while valid prior tiles remain visible beneath replacements.
 
 ## Prediction
 

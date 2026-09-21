@@ -33,10 +33,9 @@ It requires `IOS_DISTRIBUTION_P12_B64`, `IOS_DISTRIBUTION_P12_PASSWORD`, and
 `IOS_AD_HOC_PROFILE_B64` repository secrets. The profile must authorize the
 consumer bundle identifier and its registered test devices.
 
-The manually triggered `Compile iOS native module` GitHub Actions workflow
-builds the pod target on a macOS runner using the `example` Expo consumer.
-It installs this checkout as a packed local dependency, generates an iOS
-project, installs pods, and compiles `ReactNativeInkSignPdf` for the simulator
-without signing or making an EAS build. Its Xcode log is uploaded as an
-artifact. This checks native compilation only; it does not run XCTest or
-validate runtime behavior.
+The manually triggered `iOS validation` GitHub Actions workflow uses the
+`example` Expo consumer on macOS. It installs this checkout as a local
+dependency, generates the iOS project, installs pods, builds the lifecycle
+test scheme once, enumerates the requested test classes, and runs only the
+selected focus. Failure result bundles and logs are uploaded; it does not
+archive, sign, or install an app.

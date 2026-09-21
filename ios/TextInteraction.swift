@@ -5,6 +5,7 @@ private let defaultTextFontSize: CGFloat = 16
 private let minimumTextFontSize: CGFloat = 8
 private let maximumTextFontSize: CGFloat = 72
 private let textFontSizeStep: CGFloat = 1
+private let textEditorInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
 
 /// Owns transient selection, editing, and movement presentation for page text.
 /// The page history remains the only owner of committed annotation values.
@@ -53,6 +54,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private var interactionState: InteractionState = .idle
   private var editor: UITextView?
   private var settlingEditor = false
+  private var lastEditorContentSize = CGSize.zero
   private var keyboardAvoidanceEnabled = true
   private var caretFollowEnabled = false
   private var keyboardFrameInScreen: CGRect?
@@ -325,7 +327,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     let selection = selectedAnnotation()
     let shouldDrawSelectedBackground: Bool = {
       switch interactionState {
-      case .selected, .dragging: return true
+      case .selected, .dragging: return editor == nil
       default: return false
       }
     }()
@@ -349,6 +351,17 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       path.lineWidth = outlineStrokeWidth
       path.setLineDash([4, 3], count: 2, phase: 0)
       path.stroke()
+    }
+    if case .editing(let state) = interactionState, editor != nil {
+      let text = editor?.text ?? "M"
+      let contentSize = editorContentSize(text: text, fontSize: state.fontSize)
+      let path = UIBezierPath(rect: CGRect(origin: state.position,
+                                            size: contentSize).applying(transform))
+      outlineColor.setStroke()
+      path.lineWidth = outlineStrokeWidth
+      path.setLineDash([4, 3], count: 2, phase: 0)
+      path.stroke()
+      return
     }
     guard let selection else { return }
     let path = UIBezierPath(rect: outlineBounds(for: selection, transform: transform))
@@ -390,7 +403,10 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
     let location = recognizer.location(in: self)
-    if let editor, editor.frame.contains(location) { return }
+    if let editor {
+      let editorPoint = editor.convert(location, from: self)
+      if editor.point(inside: editorPoint, with: nil) { return }
+    }
     if let id = annotation(at: location) {
       selectAndEdit(id)
     } else if selectedAnnotationID != nil {
@@ -448,7 +464,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   ) {
     let id = owner?.allocateTextAnnotationID() ?? ""
     guard !id.isEmpty else { return }
-    let size = InkSignPdfTextAnnotation.intrinsicSize(of: "M", fontSize: defaultFontSize)
+    let size = editorContentSize(text: "M", fontSize: defaultFontSize)
     let isRTL = preferredDirection(for: nil)
     interactionState = .editing(EditingState(id: id,
                                               generation: presentation.generation,
@@ -473,10 +489,10 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     textView.isEditable = true
     textView.isSelectable = true
     textView.isScrollEnabled = false
-    textView.textContainerInset = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+    textView.textContainerInset = textEditorInsets
     textView.textContainer.lineFragmentPadding = 0
-    textView.textContainer.lineBreakMode = .byCharWrapping
-    textView.textContainer.widthTracksTextView = true
+    textView.textContainer.lineBreakMode = .byClipping
+    textView.textContainer.widthTracksTextView = false
     textView.font = UIFont.systemFont(ofSize: state.fontSize)
     textView.textColor = parseColor(state.textColor) ?? .black
     textView.text = text
@@ -491,12 +507,14 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     applyWritingDirection(to: textView, isRTL: presentationState.isRTL)
     layoutEditor()
     if let pagePoint, let pageSize = owner?.documentState?.activePage.geometry.mediaBox.size {
-      let size = textView.bounds.size
-      let origin = clampedPosition(CGPoint(x: pagePoint.x - size.width / 2,
-                                           y: pagePoint.y - size.height / 2),
-                                   size: size, pageSize: pageSize)
+      let contentSize = editorContentSize(text: textView.text ?? "",
+                                          fontSize: presentationState.fontSize)
+      let origin = clampedPosition(CGPoint(x: pagePoint.x - contentSize.width / 2,
+                                           y: pagePoint.y - contentSize.height / 2),
+                                   size: contentSize, pageSize: pageSize)
       presentationState.position = origin
-      presentationState.anchorX = presentationState.isRTL ? origin.x + size.width : origin.x
+      presentationState.anchorX = presentationState.isRTL
+        ? origin.x + contentSize.width : origin.x
       interactionState = .editing(presentationState)
       layoutEditor()
     }
@@ -582,7 +600,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func finishEditing() {
     guard case .editing(let state) = interactionState, let textView = editor else { return }
-    let text = materializedEditorText(from: textView)
+    let text = textView.text ?? ""
     let original = state.original
     var finishedID: String?
     if let original {
@@ -615,7 +633,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func settledAnnotation(state: EditingState, text: String,
                                   pageSize: CGSize) -> InkSignPdfTextAnnotation {
-    let size = InkSignPdfTextAnnotation.intrinsicSize(of: text, fontSize: state.fontSize)
+    let size = editorContentSize(text: text, fontSize: state.fontSize)
     let preferred = CGPoint(x: state.isRTL ? state.anchorX - size.width : state.position.x,
                             y: state.position.y)
     let origin = clampedPosition(preferred, size: size, pageSize: pageSize)
@@ -635,37 +653,6 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       ? (pageSize.height - size.height) / 2
       : min(max(position.y, 0), pageSize.height - size.height)
     return CGPoint(x: x, y: y)
-  }
-
-  /// UITextView can display soft-wrapped lines without changing its string.
-  /// Materialize those visual breaks once at the canonical boundary so the
-  /// committed annotation reopens with the same line structure.
-  private func materializedEditorText(from textView: UITextView) -> String {
-    let source = textView.text ?? ""
-    guard !source.isEmpty else { return source }
-    let layoutManager = textView.layoutManager
-    layoutManager.ensureLayout(for: textView.textContainer)
-    let sourceNSString = source as NSString
-    let result = NSMutableString()
-    var glyphIndex = 0
-    while glyphIndex < layoutManager.numberOfGlyphs {
-      var lineGlyphRange = NSRange(location: 0, length: 0)
-      _ = layoutManager.lineFragmentRect(forGlyphAt: glyphIndex,
-                                         effectiveRange: &lineGlyphRange)
-      guard lineGlyphRange.length > 0 else { break }
-      let lineCharacterRange = layoutManager.characterRange(
-        forGlyphRange: lineGlyphRange, actualGlyphRange: nil)
-      if lineCharacterRange.length > 0 {
-        if result.length > 0,
-           result.character(at: result.length - 1) != 10,
-           lineCharacterRange.location > 0 {
-          result.append("\n")
-        }
-        result.append(sourceNSString.substring(with: lineCharacterRange))
-      }
-      glyphIndex = NSMaxRange(lineGlyphRange)
-    }
-    return result.length > 0 ? result as String : source
   }
 
   private func changeSelectedFont(by delta: CGFloat) throws -> Double {
@@ -716,6 +703,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     self.editor = nil
     settlingEditor = false
     caretFollowEnabled = false
+    lastEditorContentSize = .zero
     owner?.resetTextViewportAvoidance()
   }
 
@@ -757,32 +745,37 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     guard let editor, case .editing(let state) = interactionState,
           let owner,
           let transform = owner.pageToOverlayTransform else { return }
-    let editorText = editor.text ?? ""
-    let text = editorText.isEmpty ? "M" : editorText
-    let measured = InkSignPdfTextAnnotation.intrinsicSize(of: text, fontSize: state.fontSize)
+    let text = editor.text ?? ""
+    let contentText = text.isEmpty ? "M" : text
+    let contentSize = editorContentSize(text: contentText, fontSize: state.fontSize)
+    let editorSize = CGSize(width: contentSize.width + textEditorInsets.left + textEditorInsets.right,
+                            height: contentSize.height + textEditorInsets.top + textEditorInsets.bottom)
     let pageSize = owner.activePageSize()
-    let availableWidth = max(state.fontSize * 4 + 4,
-                              state.isRTL ? state.anchorX : pageSize.width - state.position.x)
-    let measuredWidth = min(max(measured.width + 4, state.fontSize * 4 + 4), availableWidth)
-    editor.bounds = CGRect(x: 0, y: 0, width: measuredWidth, height: 10_000)
-    editor.textContainer.size = CGSize(width: max(measuredWidth - 4, 1),
-                                       height: .greatestFiniteMagnitude)
-    editor.layoutManager.ensureLayout(for: editor.textContainer)
-    let usedHeight = editor.layoutManager.usedRect(for: editor.textContainer).height
-    let size = CGSize(width: measuredWidth,
-                      height: max(usedHeight + 4, measured.height + 4))
-    let positionX = state.isRTL ? state.anchorX - size.width : state.position.x
+    let positionX = state.isRTL ? state.anchorX - contentSize.width : state.position.x
     var updatedState = state
-    updatedState.position.x = min(max(positionX, 0), max(pageSize.width - size.width, 0))
+    updatedState.position.x = contentSize.width >= pageSize.width
+      ? (pageSize.width - contentSize.width) / 2
+      : min(max(positionX, 0), pageSize.width - contentSize.width)
+    updatedState.position.y = contentSize.height >= pageSize.height
+      ? (pageSize.height - contentSize.height) / 2
+      : min(max(state.position.y, 0), pageSize.height - contentSize.height)
     if updatedState.position != state.position {
       interactionState = .editing(updatedState)
     }
-    editor.bounds = CGRect(origin: .zero, size: size)
-    editor.center = CGPoint(x: updatedState.position.x + size.width / 2,
-                            y: updatedState.position.y + size.height / 2).applying(transform)
+    editor.bounds = CGRect(origin: .zero, size: editorSize)
+    editor.textContainer.size = CGSize(width: max(contentSize.width, 1),
+                                       height: max(contentSize.height, 1))
+    editor.layoutManager.ensureLayout(for: editor.textContainer)
+    lastEditorContentSize = contentSize
+    editor.center = CGPoint(x: updatedState.position.x + contentSize.width / 2,
+                            y: updatedState.position.y + contentSize.height / 2).applying(transform)
     editor.transform = CGAffineTransform(a: transform.a, b: transform.b,
                                          c: transform.c, d: transform.d,
                                          tx: 0, ty: 0)
+  }
+
+  private func editorContentSize(text: String, fontSize: CGFloat) -> CGSize {
+    InkSignPdfTextRenderer.layout(text: text, fontSize: fontSize).size
   }
 
   private func followCaretIfNeeded() {
@@ -861,7 +854,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     guard case .editing(var state) = interactionState,
           let resolved = resolvedDirection(for: textView.text),
           resolved != state.isRTL else { return }
-    let oldPageWidth = editor?.bounds.width ?? 0
+    let oldPageWidth = max(lastEditorContentSize.width,
+                           editorContentSize(text: "M", fontSize: state.fontSize).width)
     state.isRTL = resolved
     state.anchorX = resolved ? state.position.x + oldPageWidth : state.position.x
     interactionState = .editing(state)

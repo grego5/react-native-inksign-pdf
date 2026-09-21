@@ -12,6 +12,92 @@ private struct InkSignPdfTileKey: Hashable {
   let row: Int
 }
 
+struct InkSignPdfTileGeometry: Equatable {
+  let canonicalRect: CGRect
+  let pixelWidth: Int
+  let pixelHeight: Int
+  let byteCost: Int
+}
+
+struct InkSignPdfTilePlan: Equatable {
+  static let pixelLimit = 512
+  static let maxPendingTiles = 8
+  static let maxCacheBytes = 64 * 1024 * 1024
+
+  let renderZoom: CGFloat
+  let canonicalTileExtent: CGFloat
+  let pageSize: CGSize
+  let columns: Int
+  let rows: Int
+  let density: CGFloat
+
+  init?(pageSize: CGSize, viewportZoom: CGFloat, density: CGFloat) {
+    guard pageSize.width.isFinite, pageSize.height.isFinite,
+          pageSize.width > 0, pageSize.height > 0,
+          viewportZoom.isFinite, viewportZoom > 0,
+          density.isFinite, density > 0 else { return nil }
+    let renderZoom = min(16, max(0.125, ceil(viewportZoom * 8) / 8))
+    self.init(pageSize: pageSize, renderZoom: renderZoom, density: density)
+  }
+
+  init?(pageSize: CGSize, renderZoom: CGFloat, density: CGFloat) {
+    guard pageSize.width.isFinite, pageSize.height.isFinite,
+          pageSize.width > 0, pageSize.height > 0,
+          renderZoom.isFinite, renderZoom > 0, renderZoom <= 16,
+          density.isFinite, density > 0 else { return nil }
+    let canonicalTileExtent = CGFloat(Self.pixelLimit) / (renderZoom * density)
+    guard renderZoom.isFinite, renderZoom > 0,
+          canonicalTileExtent.isFinite, canonicalTileExtent > 0 else { return nil }
+    let columnsValue = ceil(pageSize.width / canonicalTileExtent)
+    let rowsValue = ceil(pageSize.height / canonicalTileExtent)
+    guard columnsValue.isFinite, rowsValue.isFinite,
+          columnsValue >= 1, rowsValue >= 1,
+          columnsValue <= CGFloat(Int.max), rowsValue <= CGFloat(Int.max) else {
+      return nil
+    }
+    self.renderZoom = renderZoom
+    self.canonicalTileExtent = canonicalTileExtent
+    self.pageSize = pageSize
+    self.columns = Int(columnsValue)
+    self.rows = Int(rowsValue)
+    self.density = density
+  }
+
+  func tile(column: Int, row: Int) -> InkSignPdfTileGeometry? {
+    guard column >= 0, column < columns, row >= 0, row < rows else { return nil }
+    let origin = CGPoint(x: CGFloat(column) * canonicalTileExtent,
+                         y: CGFloat(row) * canonicalTileExtent)
+    let width = min(canonicalTileExtent, pageSize.width - origin.x)
+    let height = min(canonicalTileExtent, pageSize.height - origin.y)
+    guard width.isFinite, height.isFinite, width > 0, height > 0 else { return nil }
+    let rawPixelWidth = ceil(width * renderZoom * density)
+    let rawPixelHeight = ceil(height * renderZoom * density)
+    guard rawPixelWidth.isFinite, rawPixelHeight.isFinite,
+          rawPixelWidth >= 1, rawPixelHeight >= 1,
+          rawPixelWidth <= CGFloat(Self.pixelLimit) + 1,
+          rawPixelHeight <= CGFloat(Self.pixelLimit) + 1 else {
+      return nil
+    }
+    let pixelWidth = min(Self.pixelLimit, max(1, Int(rawPixelWidth)))
+    let pixelHeight = min(Self.pixelLimit, max(1, Int(rawPixelHeight)))
+    let stride = pixelWidth.multipliedReportingOverflow(by: 4)
+    guard !stride.overflow else { return nil }
+    let byteCost = stride.partialValue.multipliedReportingOverflow(by: pixelHeight)
+    guard !byteCost.overflow else { return nil }
+    return InkSignPdfTileGeometry(
+      canonicalRect: CGRect(origin: origin, size: CGSize(width: width, height: height)),
+      pixelWidth: pixelWidth,
+      pixelHeight: pixelHeight,
+      byteCost: byteCost.partialValue)
+  }
+}
+
+private struct InkSignPdfTileCacheEntry {
+  let image: UIImage
+  let byteCost: Int
+  var lastUsed: UInt64
+}
+
 /// Owns the iOS page viewport and the PDFium-backed base image. PDFPage is
 /// retained only as document metadata for the existing history/export layer.
 final class InkPdfView: UIView {
@@ -21,28 +107,31 @@ final class InkPdfView: UIView {
   private let renderQueue = DispatchQueue(label: "ReactNativeInkSignPdf.ios.tiles",
                                            qos: .userInitiated)
   private var tileViews: [InkSignPdfTileKey: UIImageView] = [:]
-  private var tileImages: [InkSignPdfTileKey: UIImage] = [:]
-  private var pendingTiles = Set<InkSignPdfTileKey>()
+  private var tileImages: [InkSignPdfTileKey: InkSignPdfTileCacheEntry] = [:]
+  private var failedTiles = Set<InkSignPdfTileKey>()
+  private var pendingTiles: [InkSignPdfTileKey: UInt64] = [:]
+  private var queuedTileRequests = 0
+  private var nextTileRequestID: UInt64 = 0
+  private var cacheClock: UInt64 = 0
   private var renderGeneration: UInt64 = 0
-  private var pageSize = CGSize.zero
-  private var displaySize = CGSize.zero
-  private var pageFocus = CGPoint.zero
   private var pageSession: InkSignPdfPdfiumSession?
   private var pageGeometry = PageGeometry.empty
   private var pageIndex = -1
-  private var hasAppliedViewport = false
+  private var pageGeneration: UInt64?
   private var pinchStartZoom: CGFloat = 1
   private var pinchStartPoint = CGPoint.zero
+  private(set) var viewportTransform: PageViewportTransform?
 
   var currentPage: PDFPage?
   var minScaleFactor: CGFloat = 0.1
   var maxScaleFactor: CGFloat = 16
   var autoScales = false
-  private(set) var scaleFactor: CGFloat = 1
+  var scaleFactor: CGFloat { viewportTransform?.zoom ?? 1 }
 
   var scaleFactorForSizeToFit: CGFloat {
-    guard bounds.width > 0, bounds.height > 0, displaySize.width > 0,
-          displaySize.height > 0 else { return 0 }
+    let displaySize = PageViewportTransform.displaySize(for: pageGeometry)
+    guard bounds.width > 0, bounds.height > 0,
+          displaySize.width > 0, displaySize.height > 0 else { return 0 }
     return min(bounds.width / displaySize.width, bounds.height / displaySize.height)
   }
 
@@ -78,11 +167,29 @@ final class InkPdfView: UIView {
     addGestureRecognizer(pinchGesture)
   }
 
+  deinit {
+    clearTiles()
+  }
+
   override func layoutSubviews() {
     super.layoutSubviews()
-    updatePageLayout()
-    guard hasAppliedViewport else { return }
-    renderTiles(generation: owner?.generation ?? 0)
+    guard let current = viewportTransform,
+          pageGeneration == current.generation,
+          owner?.generation == nil || owner?.generation == current.generation,
+          let rebased = current.rebased(to: bounds) else {
+      renderGeneration &+= 1
+      clearTiles()
+      viewportTransform = nil
+      pageLayer.frame = .zero
+      return
+    }
+    if current.viewBounds != bounds {
+      renderGeneration &+= 1
+      clearTiles()
+    }
+    viewportTransform = rebased
+    pageLayer.frame = rebased.pageFrame
+    renderTiles(generation: rebased.generation)
   }
 
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
@@ -96,18 +203,16 @@ final class InkPdfView: UIView {
     index: Int,
     page: PDFPage,
     geometry: PageGeometry,
-    session: InkSignPdfPdfiumSession
+    session: InkSignPdfPdfiumSession,
+    generation: UInt64
   ) {
     renderGeneration &+= 1
     currentPage = page
     pageIndex = index
     pageGeometry = geometry
     pageSession = session
-    pageSize = geometry.mediaBox.size
-    displaySize = rotatedSize(for: geometry)
-    pageFocus = CGPoint(x: pageSize.width / 2, y: pageSize.height / 2)
-    scaleFactor = 1
-    hasAppliedViewport = false
+    pageGeneration = generation
+    viewportTransform = nil
     clearTiles()
     pageLayer.frame = .zero
   }
@@ -118,177 +223,61 @@ final class InkPdfView: UIView {
     pageSession = nil
     pageIndex = -1
     pageGeometry = .empty
-    pageSize = .zero
-    displaySize = .zero
-    hasAppliedViewport = false
+    pageGeneration = nil
+    viewportTransform = nil
     clearTiles()
     pageLayer.frame = .zero
   }
 
   @discardableResult
   func applyViewport(zoom: CGFloat, focus: CGPoint, generation: UInt64) -> Bool {
-    guard currentPage != nil,
-          pageSize.width > 0, pageSize.height > 0,
-          displaySize.width > 0, displaySize.height > 0,
-          bounds.width > 0, bounds.height > 0,
-          zoom.isFinite, focus.x.isFinite, focus.y.isFinite else {
+    guard currentPage != nil, pageGeneration == generation else {
+      renderGeneration &+= 1
+      clearTiles()
+      viewportTransform = nil
+      pageLayer.frame = .zero
       return false
     }
     let clampedZoom = min(max(zoom, minScaleFactor), maxScaleFactor)
-    let clampedFocus = clampedViewportFocus(focus, at: clampedZoom)
-    scaleFactor = clampedZoom
-    pageFocus = clampedFocus
-    hasAppliedViewport = true
-    updatePageLayout()
+    guard let transform = PageViewportTransform(
+      geometry: pageGeometry,
+      bounds: bounds,
+      zoom: clampedZoom,
+      focus: focus,
+      generation: generation) else {
+      renderGeneration &+= 1
+      clearTiles()
+      viewportTransform = nil
+      pageLayer.frame = .zero
+      return false
+    }
+    viewportTransform = transform
+    pageLayer.frame = transform.pageFrame
+    failedTiles.removeAll()
     renderTiles(generation: generation)
     return !pageLayer.frame.isNull && !pageLayer.frame.isEmpty
   }
 
   func convert(_ point: CGPoint, to page: PDFPage) -> CGPoint {
-    guard page === currentPage else { return .zero }
-    let canonical = canonicalPointFromView(point)
-    let mediaBox = pageGeometry.mediaBox
-    return CGPoint(x: canonical.x + mediaBox.minX,
-                   y: mediaBox.maxY - canonical.y)
+    guard page === currentPage, let transform = viewportTransform else { return .zero }
+    return transform.pdfPoint(fromView: point)
   }
 
   func convert(_ point: CGPoint, from page: PDFPage) -> CGPoint {
-    guard page === currentPage else { return .zero }
-    let mediaBox = pageGeometry.mediaBox
-    let canonical = canonicalPoint(fromPDF: CGPoint(
-      x: point.x - mediaBox.minX,
-      y: mediaBox.maxY - point.y))
-    return displayPoint(fromCanonical: canonical)
+    guard page === currentPage, let transform = viewportTransform else { return .zero }
+    return transform.viewPoint(fromPDF: point)
   }
 
   func convert(_ rect: CGRect, from page: PDFPage) -> CGRect {
-    let corners = [
-      convert(CGPoint(x: rect.minX, y: rect.minY), from: page),
-      convert(CGPoint(x: rect.maxX, y: rect.minY), from: page),
-      convert(CGPoint(x: rect.minX, y: rect.maxY), from: page),
-      convert(CGPoint(x: rect.maxX, y: rect.maxY), from: page),
-    ]
-    return CGRect(x: corners.map(\.x).min() ?? 0,
-                  y: corners.map(\.y).min() ?? 0,
-                  width: (corners.map(\.x).max() ?? 0) - (corners.map(\.x).min() ?? 0),
-                  height: (corners.map(\.y).max() ?? 0) - (corners.map(\.y).min() ?? 0))
-  }
-
-  private func rotatedSize(for geometry: PageGeometry) -> CGSize {
-    let rotation = ((geometry.rotation % 360) + 360) % 360
-    return rotation == 90 || rotation == 270
-      ? CGSize(width: geometry.mediaBox.height, height: geometry.mediaBox.width)
-      : geometry.mediaBox.size
-  }
-
-  private func updatePageLayout() {
-    guard pageSize.width > 0, pageSize.height > 0,
-          displaySize.width > 0, displaySize.height > 0 else {
-      pageLayer.frame = .zero
-      return
-    }
-    let scaledSize = CGSize(width: displaySize.width * scaleFactor,
-                            height: displaySize.height * scaleFactor)
-    let focus = displayPoint(fromCanonical: pageFocus)
-    pageLayer.frame = CGRect(
-      x: bounds.midX - focus.x * scaleFactor,
-      y: bounds.midY - focus.y * scaleFactor,
-      width: scaledSize.width,
-      height: scaledSize.height)
-  }
-
-  private func clampedViewportFocus(_ point: CGPoint, at zoom: CGFloat) -> CGPoint {
-    let candidate = canonicalPoint(fromPDF: point)
-    guard zoom.isFinite, zoom > 0, bounds.width > 0, bounds.height > 0 else {
-      return candidate
-    }
-    let visibleWidth = bounds.width / zoom
-    let visibleHeight = bounds.height / zoom
-    let rotation = ((pageGeometry.rotation % 360) + 360) % 360
-    let visibleCanonicalWidth = rotation == 90 || rotation == 270 ? visibleHeight : visibleWidth
-    let visibleCanonicalHeight = rotation == 90 || rotation == 270 ? visibleWidth : visibleHeight
-    return CGPoint(
-      x: clampedViewportCoordinate(candidate.x,
-                                   pageLength: pageSize.width,
-                                   visibleLength: visibleCanonicalWidth),
-      y: clampedViewportCoordinate(candidate.y,
-                                   pageLength: pageSize.height,
-                                   visibleLength: visibleCanonicalHeight))
-  }
-
-  private func clampedViewportCoordinate(
-    _ value: CGFloat,
-    pageLength: CGFloat,
-    visibleLength: CGFloat
-  ) -> CGFloat {
-    let candidate = value.isFinite ? value : pageLength / 2
-    guard visibleLength.isFinite, visibleLength > 0 else {
-      return min(max(candidate, 0), pageLength)
-    }
-    if visibleLength >= pageLength { return pageLength / 2 }
-    return min(max(candidate, visibleLength / 2), pageLength - visibleLength / 2)
-  }
-
-  private func canonicalPoint(fromPDF point: CGPoint) -> CGPoint {
-    CGPoint(x: min(max(point.x, 0), pageSize.width),
-            y: min(max(point.y, 0), pageSize.height))
-  }
-
-  private func canonicalPointFromView(_ point: CGPoint) -> CGPoint {
-    guard scaleFactor > 0 else { return .zero }
-    let display = CGPoint(x: (point.x - pageLayer.frame.minX) / scaleFactor,
-                          y: (point.y - pageLayer.frame.minY) / scaleFactor)
-    let rotation = ((pageGeometry.rotation % 360) + 360) % 360
-    let result: CGPoint
-    switch rotation {
-    case 90:
-      result = CGPoint(x: pageSize.width - display.y, y: display.x)
-    case 180:
-      result = CGPoint(x: pageSize.width - display.x, y: pageSize.height - display.y)
-    case 270:
-      result = CGPoint(x: display.y, y: pageSize.height - display.x)
-    default:
-      result = display
-    }
-    return canonicalPoint(fromPDF: result)
-  }
-
-  private func displayPoint(fromCanonical point: CGPoint) -> CGPoint {
-    let x = min(max(point.x, 0), pageSize.width)
-    let y = min(max(point.y, 0), pageSize.height)
-    let rotation = ((pageGeometry.rotation % 360) + 360) % 360
-    switch rotation {
-    case 90: return CGPoint(x: y, y: pageSize.width - x)
-    case 180: return CGPoint(x: pageSize.width - x, y: pageSize.height - y)
-    case 270: return CGPoint(x: pageSize.height - y, y: x)
-    default: return CGPoint(x: x, y: y)
-    }
-  }
-
-  private func pdfiumTransform(tileOrigin: CGPoint, density: CGFloat) -> CGAffineTransform {
-    let rotation = ((pageGeometry.rotation % 360) + 360) % 360
-    let scale = scaleFactor * density
-    let w = pageSize.width
-    let h = pageSize.height
-    let base: CGAffineTransform
-    switch rotation {
-    case 90: base = CGAffineTransform(a: 0, b: -1, c: -1, d: 0, tx: h, ty: w)
-    case 180: base = CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: w, ty: 0)
-    case 270: base = CGAffineTransform(a: 0, b: 1, c: 1, d: 0, tx: 0, ty: 0)
-    default: base = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: h)
-    }
-    return CGAffineTransform(a: base.a * scale,
-                             b: base.b * scale,
-                             c: base.c * scale,
-                             d: base.d * scale,
-                             tx: base.tx * scale - tileOrigin.x * density,
-                             ty: base.ty * scale - tileOrigin.y * density)
+    guard page === currentPage, let transform = viewportTransform else { return .zero }
+    return transform.viewRect(fromPDF: rect)
   }
 
   private func renderTiles(generation: UInt64) {
-    guard let session = pageSession, pageIndex >= 0,
+    guard let session = pageSession,
+          let viewport = viewportTransform,
+          pageIndex >= 0,
           bounds.width > 0, bounds.height > 0 else { return }
-    let tilePoints: CGFloat = 512
     let density = max(UIScreen.main.scale, 1)
     let visible = bounds.intersection(pageLayer.frame)
     guard !visible.isNull, !visible.isEmpty else { return }
@@ -296,40 +285,63 @@ final class InkPdfView: UIView {
                               y: max(0, visible.minY - pageLayer.frame.minY),
                               width: min(pageLayer.bounds.width, visible.width),
                               height: min(pageLayer.bounds.height, visible.height))
-    let firstColumn = max(0, Int(floor(localVisible.minX / (tilePoints * scaleFactor))))
-    let firstRow = max(0, Int(floor(localVisible.minY / (tilePoints * scaleFactor))))
-    let lastColumn = max(firstColumn, Int(ceil(localVisible.maxX / (tilePoints * scaleFactor))) - 1)
-    let lastRow = max(firstRow, Int(ceil(localVisible.maxY / (tilePoints * scaleFactor))) - 1)
-    let columns = Int(ceil(displaySize.width / tilePoints))
-    let rows = Int(ceil(displaySize.height / tilePoints))
-    let zoomBucket = Int((scaleFactor * 100).rounded())
+    guard let plan = InkSignPdfTilePlan(pageSize: viewport.displaySize,
+                                        viewportZoom: viewport.zoom,
+                                        density: density) else { return }
+    let viewTileExtent = plan.canonicalTileExtent * viewport.zoom
+    guard viewTileExtent.isFinite, viewTileExtent > 0 else { return }
+    let firstColumn = max(0, Int(floor(localVisible.minX / viewTileExtent)))
+    let firstRow = max(0, Int(floor(localVisible.minY / viewTileExtent)))
+    let lastColumn = max(firstColumn, Int(ceil(localVisible.maxX / viewTileExtent)) - 1)
+    let lastRow = max(firstRow, Int(ceil(localVisible.maxY / viewTileExtent)) - 1)
     let renderToken = renderGeneration
     var desired = Set<InkSignPdfTileKey>()
-    for row in firstRow...min(lastRow, rows - 1) {
-      for column in firstColumn...min(lastColumn, columns - 1) {
+    for row in firstRow...min(lastRow, plan.rows - 1) {
+      for column in firstColumn...min(lastColumn, plan.columns - 1) {
         let key = InkSignPdfTileKey(generation: generation, pageIndex: pageIndex,
-                                    zoomBucket: zoomBucket, column: column, row: row)
+                                    zoomBucket: Int((plan.renderZoom * 8).rounded()),
+                                    column: column, row: row)
         desired.insert(key)
-        let tileOrigin = CGPoint(x: CGFloat(column) * tilePoints * scaleFactor,
-                                 y: CGFloat(row) * tilePoints * scaleFactor)
-        let tileWidth = min(tilePoints * scaleFactor, pageLayer.bounds.width - tileOrigin.x)
-        let tileHeight = min(tilePoints * scaleFactor, pageLayer.bounds.height - tileOrigin.y)
-        guard tileWidth > 0, tileHeight > 0 else { continue }
-        if let image = tileImages[key] {
-          install(image: image, key: key, frame: CGRect(origin: tileOrigin,
-                                                        size: CGSize(width: tileWidth,
-                                                                     height: tileHeight)))
+        guard let tile = plan.tile(column: column, row: row),
+              let frame = frame(for: tile.canonicalRect, viewport: viewport) else {
           continue
         }
-        guard !pendingTiles.contains(key) else { continue }
-        pendingTiles.insert(key)
-        let pixelWidth = max(1, Int(ceil(tileWidth * density)))
-        let pixelHeight = max(1, Int(ceil(tileHeight * density)))
-        let transform = pdfiumTransform(tileOrigin: tileOrigin, density: density)
+        if let entry = tileImages[key] {
+          touchCacheEntry(for: key)
+          install(image: entry.image, key: key, frame: frame)
+          continue
+        }
+        if failedTiles.contains(key) { continue }
+        guard queuedTileRequests < InkSignPdfTilePlan.maxPendingTiles,
+              pendingTiles[key] == nil else { continue }
+        nextTileRequestID &+= 1
+        let requestID = nextTileRequestID
+        pendingTiles[key] = requestID
+        queuedTileRequests += 1
+        let transform = viewport.pdfToDeviceTransform(
+          canonicalTileOrigin: tile.canonicalRect.origin,
+          renderZoom: plan.renderZoom,
+          density: density)
+        let pixelWidth = tile.pixelWidth
+        let pixelHeight = tile.pixelHeight
+        let byteCost = tile.byteCost
         renderQueue.async { [weak self, weak session] in
+          var requestWasCurrent = false
+          var renderedImage = false
           defer {
             DispatchQueue.main.async { [weak self] in
-              self?.pendingTiles.remove(key)
+              guard let self else { return }
+              self.queuedTileRequests = max(0, self.queuedTileRequests - 1)
+              if self.pendingTiles[key] == requestID {
+                self.pendingTiles.removeValue(forKey: key)
+              }
+              if requestWasCurrent && !renderedImage {
+                self.failedTiles.insert(key)
+              }
+              if let generation = self.pageGeneration,
+                 self.viewportTransform?.generation == generation {
+                self.renderTiles(generation: generation)
+              }
             }
           }
           guard let self, let session else { return }
@@ -337,14 +349,19 @@ final class InkPdfView: UIView {
             self.isCurrentTileRequest(key, renderToken: renderToken)
           }
           guard isCurrent else { return }
-          let pixels = NSMutableData(length: pixelWidth * pixelHeight * 4)
+          requestWasCurrent = true
+          let strideResult = pixelWidth.multipliedReportingOverflow(by: 4)
+          guard !strideResult.overflow else { return }
+          let byteResult = strideResult.partialValue.multipliedReportingOverflow(by: pixelHeight)
+          guard !byteResult.overflow, byteResult.partialValue == byteCost else { return }
+          let pixels = NSMutableData(length: byteResult.partialValue)
           guard let pixels else { return }
           do {
             try session.renderPage(
               UInt(key.pageIndex),
               width: Int32(pixelWidth),
               height: Int32(pixelHeight),
-              stride: Int32(pixelWidth * 4),
+              stride: Int32(strideResult.partialValue),
               pageToDevice: transform,
               clip: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight),
               background: UInt32.max,
@@ -355,20 +372,30 @@ final class InkPdfView: UIView {
                   let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
                   let image = CGImage(width: pixelWidth, height: pixelHeight,
                                       bitsPerComponent: 8, bitsPerPixel: 32,
-                                      bytesPerRow: pixelWidth * 4,
+                                      bytesPerRow: strideResult.partialValue,
                                       space: colorSpace,
                                       bitmapInfo: CGBitmapInfo.byteOrder32Little
                                         .union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)),
                                       provider: provider, decode: nil,
                                       shouldInterpolate: true, intent: .defaultIntent) else { return }
             let uiImage = UIImage(cgImage: image, scale: density, orientation: .up)
+            renderedImage = true
             DispatchQueue.main.async {
               guard self.isCurrentTileRequest(key, renderToken: renderToken) else { return }
-              self.tileImages[key] = uiImage
+              guard let viewport = self.viewportTransform,
+                    let plan = InkSignPdfTilePlan(pageSize: viewport.displaySize,
+                                                  viewportZoom: viewport.zoom,
+                                                  density: density),
+                    let currentTile = plan.tile(column: key.column, row: key.row),
+                    let currentFrame = self.frame(for: currentTile.canonicalRect,
+                                                  viewport: viewport) else { return }
+              self.cacheClock &+= 1
+              self.tileImages[key] = InkSignPdfTileCacheEntry(image: uiImage,
+                                                               byteCost: byteCost,
+                                                               lastUsed: self.cacheClock)
               self.install(image: uiImage, key: key,
-                           frame: CGRect(origin: tileOrigin,
-                                         size: CGSize(width: tileWidth, height: tileHeight)))
-              self.boundTileCache()
+                           frame: currentFrame)
+              self.boundTileCache(protected: self.protectedVisibleTileKeys().union([key]))
             }
           } catch {
             return
@@ -376,19 +403,86 @@ final class InkPdfView: UIView {
         }
       }
     }
-    tileViews.keys.filter { !desired.contains($0) }.forEach { key in
+    let visibleCachedKeys = tileImages.keys.filter { key in
+      guard key.generation == generation, key.pageIndex == pageIndex,
+            let tile = tileGeometry(for: key, plan: plan),
+            let frame = frame(for: tile.canonicalRect, viewport: viewport) else { return false }
+      return frame.intersects(localVisible)
+    }
+    for key in visibleCachedKeys {
+      guard let entry = tileImages[key],
+            let tile = tileGeometry(for: key, plan: plan),
+            let frame = frame(for: tile.canonicalRect, viewport: viewport) else { continue }
+      touchCacheEntry(for: key)
+      install(image: entry.image, key: key, frame: frame)
+    }
+    let retained = Set(visibleCachedKeys).union(desired)
+    tileViews.keys.filter { !retained.contains($0) }.forEach { key in
       tileViews[key]?.removeFromSuperview()
       tileViews.removeValue(forKey: key)
     }
+    boundTileCache(protected: retained)
   }
 
   private func isCurrentTileRequest(_ key: InkSignPdfTileKey,
                                     renderToken: UInt64) -> Bool {
-    renderGeneration == renderToken &&
+    guard let viewport = viewportTransform else { return false }
+    let renderZoom = min(16, max(0.125, ceil(viewport.zoom * 8) / 8))
+    return renderGeneration == renderToken &&
       owner?.generation == key.generation &&
       pageIndex == key.pageIndex &&
-      scaleFactor.isFinite &&
-      Int((scaleFactor * 100).rounded()) == key.zoomBucket
+      viewport.generation == key.generation &&
+      viewport.zoom.isFinite &&
+      Int((renderZoom * 8).rounded()) == key.zoomBucket
+  }
+
+  private func touchCacheEntry(for key: InkSignPdfTileKey) {
+    guard var entry = tileImages[key] else { return }
+    cacheClock &+= 1
+    entry.lastUsed = cacheClock
+    tileImages[key] = entry
+  }
+
+  private func tileGeometry(for key: InkSignPdfTileKey,
+                            plan: InkSignPdfTilePlan) -> InkSignPdfTileGeometry? {
+    guard let keyPlan = InkSignPdfTilePlan(
+      pageSize: plan.pageSize,
+      renderZoom: CGFloat(key.zoomBucket) / 8,
+      density: plan.density) else { return nil }
+    return keyPlan.tile(column: key.column, row: key.row)
+  }
+
+  private func frame(for canonicalRect: CGRect,
+                     viewport: PageViewportTransform) -> CGRect? {
+    let frame = CGRect(x: canonicalRect.minX * viewport.zoom,
+                       y: canonicalRect.minY * viewport.zoom,
+                       width: canonicalRect.width * viewport.zoom,
+                       height: canonicalRect.height * viewport.zoom)
+    guard frame.minX.isFinite, frame.minY.isFinite,
+          frame.width.isFinite, frame.height.isFinite,
+          !frame.isNull, !frame.isEmpty else { return nil }
+    return frame
+  }
+
+  private func protectedVisibleTileKeys() -> Set<InkSignPdfTileKey> {
+    guard let viewport = viewportTransform,
+          let plan = InkSignPdfTilePlan(pageSize: viewport.displaySize,
+                                        viewportZoom: viewport.zoom,
+                                        density: max(UIScreen.main.scale, 1)) else {
+      return []
+    }
+    let visible = bounds.intersection(pageLayer.frame)
+    guard !visible.isNull, !visible.isEmpty else { return [] }
+    let localVisible = CGRect(x: max(0, visible.minX - pageLayer.frame.minX),
+                              y: max(0, visible.minY - pageLayer.frame.minY),
+                              width: min(pageLayer.bounds.width, visible.width),
+                              height: min(pageLayer.bounds.height, visible.height))
+    return Set(tileImages.keys.filter { key in
+      guard key.generation == viewport.generation, key.pageIndex == pageIndex,
+            let tile = tileGeometry(for: key, plan: plan),
+            let frame = frame(for: tile.canonicalRect, viewport: viewport) else { return false }
+      return frame.intersects(localVisible)
+    })
   }
 
   private func install(image: UIImage, key: InkSignPdfTileKey, frame: CGRect) {
@@ -404,11 +498,21 @@ final class InkPdfView: UIView {
     imageView.frame = frame
   }
 
-  private func boundTileCache() {
-    guard tileImages.count > 64 else { return }
-    let stale = tileImages.keys.filter { tileViews[$0] == nil }
-    for key in stale.prefix(max(0, tileImages.count - 64)) {
-      tileImages.removeValue(forKey: key)
+  private func boundTileCache(protected: Set<InkSignPdfTileKey>) {
+    var totalBytes = 0
+    for entry in tileImages.values {
+      let result = totalBytes.addingReportingOverflow(entry.byteCost)
+      totalBytes = result.overflow ? Int.max : result.partialValue
+    }
+    while totalBytes > InkSignPdfTilePlan.maxCacheBytes, !tileImages.isEmpty {
+      let candidate = tileImages.keys
+        .filter { !protected.contains($0) }
+        .min { (tileImages[$0]?.lastUsed ?? 0) < (tileImages[$1]?.lastUsed ?? 0) }
+        ?? tileImages.keys.min { (tileImages[$0]?.lastUsed ?? 0) < (tileImages[$1]?.lastUsed ?? 0) }
+      guard let key = candidate, let entry = tileImages.removeValue(forKey: key) else { break }
+      totalBytes = max(0, totalBytes - entry.byteCost)
+      tileViews[key]?.removeFromSuperview()
+      tileViews.removeValue(forKey: key)
     }
   }
 
@@ -416,6 +520,7 @@ final class InkPdfView: UIView {
     tileViews.values.forEach { $0.removeFromSuperview() }
     tileViews.removeAll()
     tileImages.removeAll()
+    failedTiles.removeAll()
     pendingTiles.removeAll()
   }
 
@@ -428,8 +533,10 @@ final class InkPdfView: UIView {
     guard bounds.width > 0, bounds.height > 0,
           translation.x.isFinite, translation.y.isFinite else { return }
     let center = CGPoint(x: bounds.midX, y: bounds.midY)
-    let focus = canonicalPointFromView(
-      CGPoint(x: center.x - translation.x, y: center.y - translation.y))
+    guard let viewport = viewportTransform else { return }
+    let focus = viewport.clampedCanonicalPoint(fromView: CGPoint(
+      x: center.x - translation.x,
+      y: center.y - translation.y))
     guard applyViewport(zoom: scaleFactor,
                         focus: focus,
                         generation: owner?.generation ?? 0) else { return }
@@ -445,8 +552,11 @@ final class InkPdfView: UIView {
       pinchStartPoint = gesture.location(in: self)
     case .changed:
       let zoom = min(max(pinchStartZoom * gesture.scale, minScaleFactor), maxScaleFactor)
-      let anchor = canonicalPointFromView(pinchStartPoint)
-      let focus = canonicalPoint(anchor: anchor, keepingViewPoint: pinchStartPoint, zoom: zoom)
+      guard let viewport = viewportTransform else { return }
+      let anchor = viewport.canonicalPoint(fromView: pinchStartPoint)
+      let focus = viewport.focus(keepingCanonicalPoint: anchor,
+                                atViewPoint: pinchStartPoint,
+                                zoom: zoom)
       guard applyViewport(zoom: zoom, focus: focus, generation: owner?.generation ?? 0) else {
         return
       }
@@ -456,21 +566,4 @@ final class InkPdfView: UIView {
     }
   }
 
-  private func canonicalPoint(anchor: CGPoint, keepingViewPoint point: CGPoint,
-                              zoom: CGFloat) -> CGPoint {
-    let displayAnchor = displayPoint(fromCanonical: anchor)
-    let center = CGPoint(x: bounds.midX, y: bounds.midY)
-    let targetDisplay = CGPoint(x: (point.x - center.x) / zoom + displayAnchor.x,
-                                y: (point.y - center.y) / zoom + displayAnchor.y)
-    let rotation = ((pageGeometry.rotation % 360) + 360) % 360
-    switch rotation {
-    case 90: return canonicalPoint(fromPDF: CGPoint(x: pageSize.width - targetDisplay.y,
-                                                    y: targetDisplay.x))
-    case 180: return canonicalPoint(fromPDF: CGPoint(x: pageSize.width - targetDisplay.x,
-                                                     y: pageSize.height - targetDisplay.y))
-    case 270: return canonicalPoint(fromPDF: CGPoint(x: targetDisplay.y,
-                                                     y: pageSize.height - targetDisplay.x))
-    default: return canonicalPoint(fromPDF: targetDisplay)
-    }
-  }
 }

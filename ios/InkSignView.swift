@@ -95,9 +95,11 @@ final class InkSignView: HybridInkSignViewSpec {
   var currentPen = PenValue()
   var queuedPen: PenValue?
   var activeDrawingBaseline: InkSignPdfPageContentSnapshot?
+  var activeDrawingPageToOverlayTransform: CGAffineTransform?
   var activeDrawingTransactionID: UInt64?
   var pendingDrawingTransactionID: UInt64?
   var endedDrawingBaseline: InkSignPdfPageContentSnapshot?
+  var endedDrawingPageToOverlayTransform: CGAffineTransform?
   var endedDrawingTransactionID: UInt64?
   var nextDrawingTransactionID: UInt64 = 0
   var nextTextAnnotationID: UInt64 = 0
@@ -107,6 +109,7 @@ final class InkSignView: HybridInkSignViewSpec {
   weak var attachedOverlayPage: PDFPage?
   var overlayTransformBounds = CGRect.zero
   var overlayTransformMediaBox = CGRect.zero
+  var overlayTransformViewportFrame = CGRect.zero
   var pageToOverlayTransform: CGAffineTransform?
   var disposed = false
   var pendingOutputURLs = Set<URL>()
@@ -251,13 +254,13 @@ final class InkSignView: HybridInkSignViewSpec {
       let pendingOpen = self.pendingOpen
       self.pendingOpen = nil
       self.pageTurnLifecycle.dispose()
-      self.edgeNavigationGestureRecognizer.isEnabled = false
       self.publicationLock.unlock()
       pendingOpen?.promise.reject(withError: LoadError.cancelled)
       self.textInteractionOverlay.finishForLifecycle()
       self.cancelActiveStroke(clearLive: false)
       self.documentView.removePage()
       self.documentState = nil
+      self.setInteractionMode(editing: false, interactionsEnabled: false)
       self.attachedOverlayPage = nil
       self.invalidateOverlayTransformCache()
       self.activeDrawingBaseline = nil

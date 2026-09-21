@@ -85,11 +85,9 @@ extension InkSignView {
     try requireViewportReady(request: request)
     cancelPendingPageSwitch()
     pageTurnLifecycle.cancelUncommittedTurn()
-    canvasView.isUserInteractionEnabled = false
-    documentView.gestureRecognizers?.forEach { $0.isEnabled = false }
     cancelActiveStroke()
-    applyViewport(request: request, animated: true)
     setInteractionMode(editing: toEditing)
+    applyViewport(request: request, animated: true)
   }
 
   func requireViewportReady(request: ViewportRequest) throws {
@@ -170,13 +168,16 @@ extension InkSignView {
 
   func currentViewportSnapshot() throws -> Viewport {
     try requireViewportReady(request: .preserve)
-    guard let page = documentState?.activePage.page else { throw ViewportError.notReady }
+    guard let state = documentState,
+          let transform = documentView.viewportTransform else {
+      throw ViewportError.notReady
+    }
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
-    let pdfPoint = documentView.convert(viewCenter, to: page)
-    let mediaBox = documentState?.activePage.geometry.mediaBox ?? .zero
-    let x = pdfPoint.x - mediaBox.minX
-    let y = mediaBox.maxY - pdfPoint.y
-    let zoom = Double(documentView.scaleFactor)
+    let focus = transform.clampedCanonicalPoint(fromView: viewCenter)
+    let mediaBox = state.activePage.geometry.mediaBox
+    let x = focus.x
+    let y = focus.y
+    let zoom = Double(transform.zoom)
     guard x.isFinite, y.isFinite, zoom.isFinite, zoom > 0 else {
       throw ViewportError.notReady
     }
@@ -306,15 +307,16 @@ extension InkSignView {
   func panViewport(by translation: CGPoint) {
     guard !disposed,
           let page = documentState?.activePage.page,
+          let viewport = documentView.viewportTransform,
           documentView.bounds.width > 0,
           documentView.bounds.height > 0,
           translation.x.isFinite,
           translation.y.isFinite else { return }
+    cancelActiveStroke()
     let center = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
-    let pagePoint = documentView.convert(
-      CGPoint(x: center.x - translation.x, y: center.y - translation.y),
-      to: page)
-    guard let focus = canonicalPoint(from: pagePoint) else { return }
+    let focus = viewport.clampedCanonicalPoint(fromView: CGPoint(
+      x: center.x - translation.x,
+      y: center.y - translation.y))
     guard documentView.applyViewport(zoom: documentView.scaleFactor,
                                      focus: focus,
                                      generation: generation) else { return }
@@ -346,7 +348,6 @@ extension InkSignView {
 
   @objc func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
     guard !disposed, !editMode, let page = documentState?.activePage.page else { return }
-    let pageGeometry = documentState?.activePage.geometry ?? .empty
     if !isFittedToPage() {
       applyViewport(request: .fit, animated: true)
       return
@@ -358,9 +359,9 @@ extension InkSignView {
     guard currentZoom.isFinite, clampedTargetZoom > currentZoom else { return }
 
     let location = recognizer.location(in: documentView)
-    let pdfPoint = documentView.convert(location, to: page)
-    guard let tappedPoint = canonicalPoint(from: pdfPoint),
-          tappedPoint.x.isFinite, tappedPoint.y.isFinite else { return }
+    guard let viewport = documentView.viewportTransform else { return }
+    let tappedPoint = viewport.clampedCanonicalPoint(fromView: location)
+    guard tappedPoint.x.isFinite, tappedPoint.y.isFinite else { return }
     let focus = tappedPoint
 
     cancelViewportAnimation()
@@ -391,7 +392,8 @@ extension InkSignView {
     }
 
     let pageCenter = CGPoint(x: pageGeometry.mediaBox.midX, y: pageGeometry.mediaBox.midY)
-    let pageCenterInView = documentView.convert(pageCenter, from: page)
+    guard let viewport = documentView.viewportTransform else { return false }
+    let pageCenterInView = viewport.viewPoint(fromPDF: pageCenter)
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
     let centerDistance = hypot(pageCenterInView.x - viewCenter.x,
                                pageCenterInView.y - viewCenter.y)
@@ -409,26 +411,10 @@ extension InkSignView {
   }
 
   private func currentCanonicalFocus() -> CGPoint? {
-    guard let page = documentState?.activePage.page else { return nil }
+    guard documentState?.activePage.page != nil,
+          let viewport = documentView.viewportTransform else { return nil }
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
-    let pdfPoint = documentView.convert(viewCenter, to: page)
-    return canonicalPoint(from: pdfPoint)
-  }
-
-  private func canonicalPoint(from pdfPoint: CGPoint) -> CGPoint? {
-    let mediaBox = documentState?.activePage.geometry.mediaBox ?? .zero
-    let x = pdfPoint.x - mediaBox.minX
-    let y = mediaBox.maxY - pdfPoint.y
-    guard x.isFinite, y.isFinite else { return nil }
-    return clampedCanonicalPoint(CGPoint(x: x, y: y))
-  }
-
-  private func clampedCanonicalPoint(_ point: CGPoint) -> CGPoint {
-    let mediaBox = documentState?.activePage.geometry.mediaBox ?? .zero
-    return CGPoint(
-      x: min(max(point.x, 0), mediaBox.width),
-      y: min(max(point.y, 0), mediaBox.height)
-    )
+    return viewport.clampedCanonicalPoint(fromView: viewCenter)
   }
 
   static func parseViewport(_ options: ViewportOptions?) throws -> ViewportRequest {

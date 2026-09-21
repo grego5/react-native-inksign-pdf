@@ -501,8 +501,7 @@ final class InkSignPdfPageTurnLifecycle {
     let shouldCommit = transaction.progress >= 1 &&
       transaction.targetDelta != nil && transaction.targetPageIndex != nil && transaction.preview != nil
     if shouldCommit {
-      owner.edgeNavigationGestureRecognizer.isEnabled = false
-      owner.documentView.gestureRecognizers?.forEach { $0.isEnabled = false }
+      owner.setInteractionMode(editing: false, interactionsEnabled: false)
       beginSettlement(outcome: .commit,
                       targetDelta: transaction.targetDelta,
                       targetPageIndex: transaction.targetPageIndex,
@@ -700,25 +699,22 @@ final class InkSignPdfPageTurnLifecycle {
           let state = owner.documentState,
           owner.documentView.bounds.width > 0,
           owner.documentView.bounds.height > 0,
-          state.activePage.geometry.isValid else { return nil }
-    let page = state.activePage.page
+          state.activePage.geometry.isValid,
+          let viewport = owner.documentView.viewportTransform else { return nil }
     let bounds = owner.documentView.bounds
-    let pageBounds = owner.documentView.convert(page.bounds(for: .mediaBox), from: page)
+    let pageBounds = viewport.pageFrame
     let edgeTolerance = 1 / max(UIScreen.main.scale, 1)
     guard location.y >= pageBounds.minY - edgeTolerance,
           location.y <= pageBounds.maxY + edgeTolerance,
           location.x >= pageBounds.minX - edgeTolerance,
           location.x <= pageBounds.maxX + edgeTolerance else { return nil }
-    let leftPDF = owner.documentView.convert(CGPoint(x: bounds.minX, y: bounds.midY), to: page)
-    let rightPDF = owner.documentView.convert(CGPoint(x: bounds.maxX, y: bounds.midY), to: page)
-    let mediaBox = state.activePage.geometry.mediaBox
-    let left = CGPoint(x: leftPDF.x - mediaBox.minX, y: mediaBox.maxY - leftPDF.y)
-    let right = CGPoint(x: rightPDF.x - mediaBox.minX, y: mediaBox.maxY - rightPDF.y)
-    let rotation = ((state.activePage.geometry.rotation % 360) + 360) % 360
-    let usesCanonicalY = rotation == 90 || rotation == 270
-    let leftAxis = usesCanonicalY ? left.y : left.x
-    let rightAxis = usesCanonicalY ? right.y : right.x
-    let pageLength = usesCanonicalY ? mediaBox.height : mediaBox.width
+    let left = viewport.clampedCanonicalPoint(fromView: CGPoint(x: bounds.minX,
+                                                                 y: bounds.midY))
+    let right = viewport.clampedCanonicalPoint(fromView: CGPoint(x: bounds.maxX,
+                                                                  y: bounds.midY))
+    let leftAxis = viewport.canonicalToDisplay.applying(left).x
+    let rightAxis = viewport.canonicalToDisplay.applying(right).x
+    let pageLength = viewport.displaySize.width
     let visibleLength = abs(rightAxis - leftAxis)
     let pointsPerPoint = visibleLength / bounds.width
     let onePixel = pointsPerPoint / max(UIScreen.main.scale, 1)
@@ -799,18 +795,19 @@ final class InkSignPdfPageTurnLifecycle {
     guard let owner, geometry.isValid,
           owner.documentView.bounds.width > 0,
           owner.documentView.bounds.height > 0 else { return nil }
-    let rotation = ((geometry.rotation % 360) + 360) % 360
-    let width = rotation == 90 || rotation == 270 ? geometry.mediaBox.height : geometry.mediaBox.width
-    let height = rotation == 90 || rotation == 270 ? geometry.mediaBox.width : geometry.mediaBox.height
+    let displaySize = PageViewportTransform.displaySize(for: geometry)
+    let width = displaySize.width
+    let height = displaySize.height
     let scale = min(owner.documentView.bounds.width / width,
                     owner.documentView.bounds.height / height)
     guard scale.isFinite, scale > 0 else { return nil }
-    let frame = CGRect(x: owner.documentView.bounds.midX - width * scale / 2,
-                       y: owner.documentView.bounds.midY - height * scale / 2,
-                       width: width * scale,
-                       height: height * scale)
-    guard frame.minX.isFinite, frame.minY.isFinite,
-          frame.width.isFinite, frame.height.isFinite else { return nil }
-    return (frame, scale)
+    guard let viewport = PageViewportTransform(
+      geometry: geometry,
+      bounds: owner.documentView.bounds,
+      zoom: scale,
+      focus: CGPoint(x: geometry.mediaBox.width / 2,
+                     y: geometry.mediaBox.height / 2),
+      generation: owner.generation) else { return nil }
+    return (viewport.pageFrame, viewport.zoom)
   }
 }

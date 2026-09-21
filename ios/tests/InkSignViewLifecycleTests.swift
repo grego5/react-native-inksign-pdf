@@ -667,8 +667,9 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertTrue(overlay.routePlacementTap(at: overlayPoint))
     XCTAssertFalse(overlay.hasPendingPlacement())
     let editor = try XCTUnwrap(textEditor(in: overlay))
-    let expectedOrigin = CGPoint(x: pagePoint.x - editor.bounds.width / 2,
-                                 y: pagePoint.y - editor.bounds.height / 2)
+    let placeholderSize = InkSignPdfTextRenderer.layout(text: "M", fontSize: 16).size
+    let expectedOrigin = CGPoint(x: pagePoint.x - placeholderSize.width / 2,
+                                 y: pagePoint.y - placeholderSize.height / 2)
     editor.text = "signed"
 
     XCTAssertTrue(overlay.routeTouchBegan(at: CGPoint(x: 10, y: 390)))
@@ -691,7 +692,8 @@ final class InkSignViewLifecycleTests: XCTestCase {
 
     let inverse = try XCTUnwrap(fixture.view.pageToOverlayTransform).inverted()
     let center = editor.center.applying(inverse)
-    let editingRightEdge = center.x + editor.bounds.width / 2
+    let contentSize = InkSignPdfTextRenderer.layout(text: "שלום", fontSize: 16).size
+    let editingRightEdge = center.x + contentSize.width / 2
     XCTAssertTrue(overlay.routeTouchBegan(at: CGPoint(x: 10, y: 390)))
 
     let annotations = try XCTUnwrap(fixture.view.documentState?.activePage.history.content.textAnnotations)
@@ -1151,7 +1153,8 @@ final class InkSignViewLifecycleTests: XCTestCase {
       index: activePageIndex,
       page: pages[activePageIndex],
       geometry: states[activePageIndex].geometry,
-      session: pdfiumSession)
+      session: pdfiumSession,
+      generation: view.generation)
     view.documentView.layoutIfNeeded()
     if applyInitialViewport {
       XCTAssertTrue(view.documentView.applyViewport(

@@ -26,8 +26,7 @@ extension InkSignView {
     cancelViewportAnimation()
     cancelActiveStroke()
     pendingPageSwitchEditing = wasEditing
-    canvasView.isUserInteractionEnabled = false
-    documentView.gestureRecognizers?.forEach { $0.isEnabled = false }
+    setInteractionMode(editing: false, interactionsEnabled: false)
     pageSwitchRequestID &+= 1
     let requestID = pageSwitchRequestID
     pendingPageSwitchID = requestID
@@ -43,7 +42,8 @@ extension InkSignView {
     documentView.installPage(index: target.index,
                              page: target.page,
                              geometry: target.geometry,
-                             session: state.pdfiumSession)
+                             session: state.pdfiumSession,
+                             generation: generation)
     overlayDidDisplay(canvasView, for: target.page)
     return try currentPageInfo()
   }
@@ -66,8 +66,6 @@ extension InkSignView {
       pageTurnLifecycle.pageTurnCommitFailedBeforeStart()
       return
     }
-    edgeNavigationGestureRecognizer.isEnabled = false
-    documentView.gestureRecognizers?.forEach { $0.isEnabled = false }
     do {
       try switchPage(to: targetPageIndex) { [weak self] result in
         if case .success(let info) = result { self?.onPageChange?(info) }

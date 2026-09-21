@@ -124,14 +124,11 @@ extension InkSignView {
                               fitToPage: fitToPage)
     textInteractionOverlay.finishForLifecycle()
     cancelActiveStroke(clearLive: false)
-    editMode = false
-    canvasView.isUserInteractionEnabled = false
-    canvasView.isHidden = true
     documentState = nil
+    setInteractionMode(editing: false, interactionsEnabled: false)
     attachedOverlayPage = nil
     textInteractionOverlay.syncContent()
     pageTurnLifecycle.cancelUncommittedTurn()
-    edgeNavigationGestureRecognizer.isEnabled = false
     cancelPendingPageSwitch()
     pageSwitchRequestID &+= 1
     pendingPageSwitchID = nil
@@ -225,7 +222,8 @@ extension InkSignView {
           index: 0,
           page: loadedPages[0].page,
           geometry: loadedPages[0].geometry,
-          session: pdfiumSession)
+          session: pdfiumSession,
+          generation: token)
         self.overlayDidDisplay(self.canvasView, for: loadedPages[0].page)
         self.configureDoubleTapGestureRecognition()
       }
@@ -245,16 +243,18 @@ extension InkSignView {
     }
   }
 
-  func setInteractionMode(editing: Bool) {
+  func setInteractionMode(editing: Bool, interactionsEnabled: Bool = true) {
     let editing = editing && documentState != nil
     textInteractionOverlay.finishForLifecycle()
     if editMode && !editing { cancelActiveStroke() }
     editMode = editing
     pageTurnLifecycle.modeChanged(editing: editing)
-    edgeNavigationGestureRecognizer.isEnabled = !editing && documentState != nil && !disposed
+    let enabled = interactionsEnabled && documentState != nil && !disposed
+    edgeNavigationGestureRecognizer.isEnabled = !editing && enabled
     canvasView.isHidden = documentState == nil
-    canvasView.isUserInteractionEnabled = documentState != nil
-    documentView.gestureRecognizers?.forEach { $0.isEnabled = !editing }
+    canvasView.isUserInteractionEnabled = enabled
+    canvasView.drawingGestureRecognizer.isEnabled = editing && enabled
+    documentView.gestureRecognizers?.forEach { $0.isEnabled = !editing && enabled }
     emitChange()
   }
 

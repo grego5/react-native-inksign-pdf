@@ -45,6 +45,7 @@ extension InkSignView {
     pendingDrawingTransactionID = nil
     activeDrawingTransactionID = transactionID
     activeDrawingBaseline = documentState?.activePage.history.content
+    activeDrawingPageToOverlayTransform = pageToOverlayTransform
   }
 
   /// PencilKit documents that the final force values can arrive after this
@@ -59,8 +60,10 @@ extension InkSignView {
     pendingDrawingTransactionID = nil
     endedDrawingTransactionID = transactionID
     endedDrawingBaseline = baseline
+    endedDrawingPageToOverlayTransform = activeDrawingPageToOverlayTransform
     activeDrawingTransactionID = nil
     activeDrawingBaseline = nil
+    activeDrawingPageToOverlayTransform = nil
   }
 
   func canvasGestureWillBegin(_ canvas: InkCanvasView) -> UInt64? {
@@ -98,8 +101,10 @@ extension InkSignView {
     pendingDrawingTransactionID = nil
     activeDrawingTransactionID = nil
     activeDrawingBaseline = nil
+    activeDrawingPageToOverlayTransform = nil
     endedDrawingTransactionID = nil
     endedDrawingBaseline = nil
+    endedDrawingPageToOverlayTransform = nil
     if hadInteraction { canvasView.cancelDrawingInteraction() }
     if clearLive { installCommittedDrawing() }
     installQueuedPenIfNeeded()
@@ -110,10 +115,18 @@ extension InkSignView {
   /// it can never be attributed to a subsequent active transaction.
   func finishEndedDrawingTransaction(transactionID: UInt64) {
     guard endedDrawingTransactionID == transactionID,
-          let baseline = endedDrawingBaseline else { return }
-    let finished = canonicalDrawing(from: canvasView.drawing)
+          let baseline = endedDrawingBaseline,
+          let transform = endedDrawingPageToOverlayTransform else {
+      endedDrawingTransactionID = nil
+      endedDrawingBaseline = nil
+      endedDrawingPageToOverlayTransform = nil
+      installCommittedDrawing()
+      return
+    }
+    let finished = canonicalDrawing(from: canvasView.drawing, using: transform)
     endedDrawingTransactionID = nil
     endedDrawingBaseline = nil
+    endedDrawingPageToOverlayTransform = nil
     if sameDrawing(finished, baseline.drawing) {
       installCommittedDrawing()
       installQueuedPenIfNeeded()
@@ -149,8 +162,8 @@ extension InkSignView {
     canvasView.isInstallingDrawing = false
   }
 
-  func canonicalDrawing(from displayed: PKDrawing) -> PKDrawing {
-    guard let transform = pageToOverlayTransform else { return PKDrawing() }
+  func canonicalDrawing(from displayed: PKDrawing,
+                        using transform: CGAffineTransform) -> PKDrawing {
     return displayed.transformed(using: transform.inverted())
   }
 

@@ -12,6 +12,9 @@
   mutation. It accepts canonical media-box-relative focus, clamps zoom/focus,
   updates both values, calculates the page frame once, and schedules visible
   tiles once.
+- `PageViewportTransform` is the shared mapping for canonical, PDF, display,
+  view, overlay, preview, and PDFium tile coordinates. It carries normalized
+  rotation, media-box origin, zoom, focus, page frame, and inverse conversion.
 - The coordinator resolves a complete `ViewportTarget` before mutation: open
   defaults an omitted zoom to `1`, existing-document focus commands preserve
   the current zoom when omitted, and fit commands use the usable fit scale and
@@ -26,6 +29,8 @@
 
 - `InkSignPdfTextInteractionOverlay` owns editing, selection, dragging, cursor,
   keyboard, and one-shot placement.
+- Text editing uses explicit-line `TextLayoutMetrics` for canonical content
+  bounds; UIKit editor insets remain presentation-only and are not committed.
 - Placement converts one valid tap into page coordinates. Empty drafts are
   discarded, and missing selection reports `text_not_focused`.
 - History and export use committed content; presentation state remains transient.

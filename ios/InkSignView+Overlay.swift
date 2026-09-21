@@ -73,36 +73,34 @@ extension InkSignView {
   }
 
   func refreshOverlayTransform(_ overlay: InkCanvasView, for page: PDFPage) {
-    guard isSupportedPage(page), attachedOverlayPage === page else { return }
-    let mediaBox = documentState?.activePage.geometry.mediaBox ?? .zero
-    if overlayTransformPage === page,
-       overlayTransformBounds == overlay.bounds,
-       overlayTransformMediaBox == mediaBox {
+    guard isSupportedPage(page), attachedOverlayPage === page,
+          let viewport = documentView.viewportTransform else {
+      invalidateOverlayTransformCache()
       return
     }
-    func convert(_ point: CGPoint) -> CGPoint {
-      let viewPoint = documentView.convert(point, from: page)
-      return overlay.convert(viewPoint, from: documentView)
+    let documentOrigin = overlay.convert(.zero, from: documentView)
+    let documentXAxis = overlay.convert(CGPoint(x: 1, y: 0), from: documentView)
+    let documentYAxis = overlay.convert(CGPoint(x: 0, y: 1), from: documentView)
+    let documentToOverlay = CGAffineTransform(
+      a: documentXAxis.x - documentOrigin.x,
+      b: documentXAxis.y - documentOrigin.y,
+      c: documentYAxis.x - documentOrigin.x,
+      d: documentYAxis.y - documentOrigin.y,
+      tx: documentOrigin.x,
+      ty: documentOrigin.y)
+    let transform = documentToOverlay.concatenating(viewport.canonicalToView)
+    guard transform.a.isFinite, transform.b.isFinite,
+          transform.c.isFinite, transform.d.isFinite,
+          transform.tx.isFinite, transform.ty.isFinite,
+          transform.invertedIfFinite != nil else {
+      invalidateOverlayTransformCache()
+      return
     }
-    let origin = convert(CGPoint(x: mediaBox.minX, y: mediaBox.maxY))
-    let xAxis = convert(CGPoint(x: mediaBox.maxX, y: mediaBox.maxY))
-    let yAxis = convert(CGPoint(x: mediaBox.minX, y: mediaBox.minY))
-    let transform = CGAffineTransform(
-      a: (xAxis.x - origin.x) / mediaBox.width,
-      b: (xAxis.y - origin.y) / mediaBox.width,
-      c: (yAxis.x - origin.x) / mediaBox.height,
-      d: (yAxis.y - origin.y) / mediaBox.height,
-      tx: origin.x,
-      ty: origin.y)
-    let sx = sqrt(transform.a * transform.a + transform.b * transform.b)
-    let sy = sqrt(transform.c * transform.c + transform.d * transform.d)
-    let determinant = transform.a * transform.d - transform.b * transform.c
-    let relativeDifference = abs(sx - sy) / max(sx, sy)
-    guard transform.a.isFinite, transform.b.isFinite, transform.c.isFinite,
-          transform.d.isFinite, transform.tx.isFinite, transform.ty.isFinite,
-          sx.isFinite, sy.isFinite, sx > 0.0, sy > 0.0,
-          determinant.isFinite, abs(determinant) > 0.000001,
-          relativeDifference.isFinite, relativeDifference <= 0.001 else {
+    let mediaBox = viewport.geometry.mediaBox
+    if overlayTransformPage === page,
+       overlayTransformBounds == overlay.bounds,
+       overlayTransformMediaBox == mediaBox,
+       overlayTransformViewportFrame == viewport.pageFrame {
       return
     }
     if hasDrawingTransaction { cancelActiveStroke() }
@@ -110,6 +108,7 @@ extension InkSignView {
     overlayTransformPage = page
     overlayTransformBounds = overlay.bounds
     overlayTransformMediaBox = mediaBox
+    overlayTransformViewportFrame = viewport.pageFrame
     installCommittedDrawing()
     textInteractionOverlay.syncTransform()
   }
@@ -118,6 +117,7 @@ extension InkSignView {
     overlayTransformPage = nil
     overlayTransformBounds = .zero
     overlayTransformMediaBox = .zero
+    overlayTransformViewportFrame = .zero
     pageToOverlayTransform = nil
   }
 }

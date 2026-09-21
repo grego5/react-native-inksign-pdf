@@ -2,6 +2,13 @@ import CoreText
 import CoreGraphics
 import UIKit
 
+struct TextLayoutMetrics: Equatable {
+  let lines: [String]
+  let maximumLineWidth: CGFloat
+  let lineHeight: CGFloat
+  let size: CGSize
+}
+
 /// Renders immutable text annotations without crossing the worker boundary with
 /// UIKit presentation state. All coordinates passed to this type are
 /// media-box-relative page units with a top-left origin.
@@ -9,15 +16,24 @@ enum InkSignPdfTextRenderer {
   static let exportPixelsPerPageUnit: CGFloat = 2
   static let maximumExportPixels = 16_000_000
 
-  static func intrinsicSize(of text: String, fontSize: CGFloat) -> CGSize {
+  static func layout(text: String, fontSize: CGFloat) -> TextLayoutMetrics {
     precondition(fontSize.isFinite && fontSize > 0,
                  "Text annotation font size must be finite and positive")
     let lines = text.components(separatedBy: "\n")
     let lineHeight = max(UIFont.systemFont(ofSize: fontSize).lineHeight, 1)
-    let width = lines.reduce(CGFloat.zero) { widest, line in
+    let maximumLineWidth = lines.reduce(CGFloat.zero) { widest, line in
       max(widest, typographicWidth(of: line, fontSize: fontSize))
     }
-    return CGSize(width: max(width, 1), height: lineHeight * CGFloat(lines.count))
+    let width = max(maximumLineWidth, 1)
+    return TextLayoutMetrics(lines: lines,
+                             maximumLineWidth: maximumLineWidth,
+                             lineHeight: lineHeight,
+                             size: CGSize(width: width,
+                                          height: lineHeight * CGFloat(lines.count)))
+  }
+
+  static func intrinsicSize(of text: String, fontSize: CGFloat) -> CGSize {
+    layout(text: text, fontSize: fontSize).size
   }
 
   /// Draws text in a top-left-origin canonical context. The caller owns the

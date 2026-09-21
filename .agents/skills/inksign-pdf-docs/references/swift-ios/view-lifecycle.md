@@ -9,7 +9,7 @@
   covers the document, first page, overlay, bounds, geometry, and requested fit
   scale before the target is applied and the promise is published.
 - `InkPdfView` is a leaf presentation component. It owns the current canonical
-  focus, zoom, page frame, and PDFium tiles.
+  focus, zoom, page frame, immutable `PageViewportTransform`, and PDFium tiles.
 - `InkSignPdfDocumentState` owns the source document, ordered pages, active page,
   PDFium session, generation, and committed page content. The Objective-C++
   facade owns the native session and serializes all PDFium operations.
@@ -42,4 +42,3 @@
 - Disposal is UI-thread-owned and idempotent. It cancels input, navigation,
   previews, and export, removes the overlay, releases the document, and clears
   callbacks. Worker results use generation checks.
-
