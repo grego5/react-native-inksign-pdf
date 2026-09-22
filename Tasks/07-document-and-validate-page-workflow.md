@@ -11,7 +11,7 @@ Document the completed native page workflow, expose it in the example applicatio
 - Do not add generic camera capture, page-thumbnail, arbitrary insertion, page
   swapping, or structural undo features.
 - Do not replace `addPages` with an application-level external picker.
-- Do not broaden the public API beyond the approved contract.
+- Keep the public API limited to the create-or-append contract in Tasks 06a–06e.
 
 ## Read before implementation
 
@@ -35,18 +35,18 @@ Document the completed native page workflow, expose it in the example applicatio
 
 1. Update the architecture and platform reference documents after implementation so they describe stable page IDs, the module-owned working PDF, transactional session replacement, picker ownership, structural dirty state, and export from current page order.
 2. Document the exact public methods and semantics in the README: `addPages(options?)`, `removePage()`, and `movePage(pageIndex)`.
-3. State clearly that `addPages()` accepts both PDF and image by default, `type` only restricts the picker, selection may contain multiple items, every selected PDF contributes all pages, and pages are appended.
-4. Document cancellation as a successful result with `addedPageCount: 0`, sole-page removal failure, zero-based move destinations, same-index no-op behavior, and operation concurrency errors.
-5. Add example controls for unrestricted add, PDF-only add, image-only add, removing the current page, and moving the current page to a requested index.
-6. Keep the existing external picker only for initial `open`; use the module's native picker for interactive page acquisition and `addPages({ sources })` for scanner-produced files.
-7. Drive example page count, current page, disabled states, and error display from resolved results and existing callbacks rather than assuming mutations succeeded.
+3. State clearly that `addPages()` accepts both PDF and image by default, creates a document when none exists, and otherwise appends. Document multipage PDF expansion, mixed selection order, A4 image-page default, `imagePageSize` in PDF points, and `type` as a picker restriction.
+4. Document cancellation as `addedPageCount: 0` with no `pageInfo` only when no document exists. Include sole-page removal failure, zero-based move destinations, same-index no-op behavior, operation concurrency errors, and failed replacement-open preservation.
+5. Add example controls for unrestricted add, PDF-only add, image-only add, image page size, removing the current page, and moving the current page to a requested index.
+6. Keep `open(path)` for explicit PDF replacement. Use the module's native picker for interactive creation and page acquisition, and `addPages({ sources })` for scanner-produced files.
+7. Drive example page count, current page, disabled states, and error display from resolved results and existing callbacks; handle an empty-view cancellation without assuming `pageInfo` exists.
 8. Run the complete validation matrix and inspect generated artifacts for accidental API or platform drift.
 
 ## Tests
 
 - Add or update TypeScript contract tests for all public signatures and result shapes.
-- Verify the example handles cancellation without an error and refreshes page state after add, remove, and move.
-- Perform a manual parity pass on Android and iOS with mixed image/PDF selection, multipage PDF input, annotations before and after move, removal, and final export.
+- Verify the example handles cancellation with and without a document and refreshes page state after creation, add, remove, and move.
+- Perform a manual parity pass on Android and iOS with empty-view creation, mixed image/PDF selection, multipage PDF input, annotations before and after move, removal, failed replacement open, and final export.
 - Confirm no scanner dependency, camera permission, or unrelated native
   processing dependency was introduced.
 
