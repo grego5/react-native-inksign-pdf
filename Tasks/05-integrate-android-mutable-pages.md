@@ -31,7 +31,7 @@ Implement `addPages`, `removePage`, and `movePage` on Android by combining the n
 
 1. Replace the immutable/index-owned document state with one `MutableDocumentCoordinator`. It exclusively owns the working PDF, ordered stable-ID `PageRecord` collection, current page ID, generation, operation state, and render session. The view delegates; it does not maintain a second page model.
 2. During `open`, copy the source into a module-owned working PDF before publishing the document. All rendering, structural mutation, and export use this working PDF; remove branches that continue using the caller's source.
-3. Route `open`, `addPages`, `scanPages`, `removePage`, `movePage`, and `finalize` through one serialized coordinator state machine. Before structural mutation, commit active text editing, reject an active incomplete ink gesture, and capture the immutable command inputs.
+3. Route `open`, `addPages`, `removePage`, `movePage`, and `finalize` through one serialized coordinator state machine. Before structural mutation, commit active text editing, reject an active incomplete ink gesture, and capture the immutable command inputs.
 4. Normalize each selected image off the UI thread with the ported
    `react-native-images-to-pdf` encoder: apply EXIF orientation, render onto a
    white page using the active page dimensions captured when the operation
@@ -43,9 +43,6 @@ Implement `addPages`, `removePage`, and `movePage` on Android by combining the n
    order. A selected multipage PDF contributes all pages in source order.
    PDFium creates image pages directly from the encoded JPEG data. Create stable
    page states for appended pages and activate the first appended page.
-6. Implement `scanPages` by invoking the Android document scanner, staging its
-   ordered image results, encoding them through the same encoder, and appending
-   them through the same PDFium image-page command as `addPages`.
 7. Implement `removePage` against the current stable page ID. Reject removal when only one page remains with `last_page_required`; otherwise discard only the removed page's state and activate the page now at the removed index, or the previous page when the removed page was last.
 8. Implement `movePage(pageIndex)` by moving the current page in both the working PDF and stable page-state collection. Validate `0 <= pageIndex < pageCount`; treat the current index as a successful no-op and keep the moved page active.
 9. Produce a candidate artifact without mutating published state. Validate and open its PDFium session, then atomically publish the candidate PDF, session, ordered page records, active page ID, generation, and dirty state as one coordinator transition.

@@ -3,13 +3,16 @@
 Extend `InkSignView` into a native mutable-document editor. Users can append
 selected PDF and image files, remove the current page, move the current page,
 continue editing ink and text on every surviving page, and finalize the current
-ordered document. File/image import and native document scanning use the same
-page-staging and assembly pipeline.
+ordered document. File/image import and caller-provided scanner output use the
+same page-staging and assembly pipeline.
 
 ## Public contract
 
 - `addPages(options?)` opens native selection UI and always appends successful
   selections to the end of the document.
+- `addPages({ sources })` imports the supplied ordered local paths or file URLs
+  without presenting a picker. Scanner packages can use this mode after they
+  finish writing their cache files.
 - `options.type` is optional and accepts `pdf` or `image`. Omission permits
   both. One action may select multiple files; every selected PDF contributes
   all of its pages and every selected image contributes one page.
@@ -17,9 +20,6 @@ page-staging and assembly pipeline.
   page.
 - `movePage(pageIndex)` moves the current page to the zero-based destination
   index. Intervening pages shift; it is not a swap operation.
-- `scanPages()` opens the platform document scanner, stages its ordered image
-  results, and appends them through the same image-to-PDF conversion as
-  `addPages`.
 - After either operation, the first newly appended page becomes active. A
   canceled operation leaves the previous active page unchanged.
 - `removePage()` rejects removal of the final remaining page; the document
@@ -53,7 +53,7 @@ generation, and operation state. A `PageRecord` has a stable native ID and owns
 that page's ink and text state; its index is always derived from collection
 position.
 
-The native file picker and document scanner return an ordered list of
+The native file picker or caller-provided sources return an ordered list of
 module-owned staged inputs. Image normalization converts one staged image into
   one optimized staged JPEG. Reuse the proven implementation in
   `C:\dev\react-native-images-to-pdf` with EXIF orientation enabled, white
@@ -68,7 +68,7 @@ session, then deletes the retired artifact. The view delegates commands to the
 coordinator and renders its published state; it does not mutate page arrays or
 manage files independently.
 
-`addPages`, `scanPages`, `removePage`, `movePage`, `open`, and `finalize` all enter the same
+`addPages`, `removePage`, `movePage`, `open`, and `finalize` all enter the same
 serialized coordinator boundary. There is no second structural state model,
 no optional pre-mutation source mode, and no platform-specific PDF mutation
 path.

@@ -13,6 +13,8 @@
 #include "JPageType.hpp"
 #include "PageType.hpp"
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -35,8 +37,20 @@ namespace margelo::nitro::inksignpdf {
       static const auto clazz = javaClassStatic();
       static const auto fieldType = clazz->getField<JPageType>("type");
       jni::local_ref<JPageType> type = this->getFieldValue(fieldType);
+      static const auto fieldSources = clazz->getField<jni::JArrayClass<jni::JString>>("sources");
+      jni::local_ref<jni::JArrayClass<jni::JString>> sources = this->getFieldValue(fieldSources);
       return AddPagesOptions(
-        type != nullptr ? std::make_optional(type->toCpp()) : std::nullopt
+        type != nullptr ? std::make_optional(type->toCpp()) : std::nullopt,
+        sources != nullptr ? std::make_optional([&](auto&& __input) {
+          size_t __size = __input->size();
+          std::vector<std::string> __vector;
+          __vector.reserve(__size);
+          for (size_t __i = 0; __i < __size; __i++) {
+            auto __element = __input->getElement(__i);
+            __vector.push_back(__element->toStdString());
+          }
+          return __vector;
+        }(sources)) : std::nullopt
       );
     }
 
@@ -46,12 +60,22 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JAddPagesOptions::javaobject> fromCpp(const AddPagesOptions& value) {
-      using JSignature = JAddPagesOptions(jni::alias_ref<JPageType>);
+      using JSignature = JAddPagesOptions(jni::alias_ref<JPageType>, jni::alias_ref<jni::JArrayClass<jni::JString>>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
-        value.type.has_value() ? JPageType::fromCpp(value.type.value()) : nullptr
+        value.type.has_value() ? JPageType::fromCpp(value.type.value()) : nullptr,
+        value.sources.has_value() ? [&](auto&& __input) {
+          size_t __size = __input.size();
+          jni::local_ref<jni::JArrayClass<jni::JString>> __array = jni::JArrayClass<jni::JString>::newArray(__size);
+          for (size_t __i = 0; __i < __size; __i++) {
+            const auto& __element = __input[__i];
+            auto __elementJni = jni::make_jstring(__element);
+            __array->setElement(__i, *__elementJni);
+          }
+          return __array;
+        }(value.sources.value()) : nullptr
       );
     }
   };

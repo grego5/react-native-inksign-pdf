@@ -46,6 +46,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
 #include "PageType.hpp"
+#include <vector>
 #include "Viewport.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
@@ -212,14 +213,6 @@ namespace margelo::nitro::inksignpdf {
     }
     inline std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) override {
       auto __result = _swiftPart.addPages(options);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<AddPagesResult>> scanPages() override {
-      auto __result = _swiftPart.scanPages();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

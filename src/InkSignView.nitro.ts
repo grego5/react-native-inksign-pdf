@@ -23,6 +23,8 @@ export type PageType = 'pdf' | 'image'
 export interface AddPagesOptions {
   /** Restricts the native picker. Omission permits both `pdf` and `image`. */
   type?: PageType
+  /** Ordered local file paths or file URLs to import without presenting a picker. */
+  sources?: string[]
 }
 
 export interface AddPagesResult {
@@ -99,7 +101,6 @@ export interface InkSignViewProps extends HybridViewProps {
 export interface InkSignViewMethods extends HybridViewMethods {
   open(path: string, options?: ViewportOptions): Promise<PageInfo>
   addPages(options?: AddPagesOptions): Promise<AddPagesResult>
-  scanPages(): Promise<AddPagesResult>
   removePage(): Promise<PageInfo>
   movePage(pageIndex: number): Promise<PageInfo>
   nextPage(): void

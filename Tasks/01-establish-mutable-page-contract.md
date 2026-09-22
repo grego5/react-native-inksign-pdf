@@ -7,15 +7,15 @@ Status: Complete
 ## Objective
 
 Define the Nitro API and cross-platform behavior for native file selection,
-document scanning, and ordered page mutation before platform implementation
-begins.
+caller-provided local sources, and ordered page mutation before platform
+implementation begins.
 
 ## Non-goals
 
-- Do not implement picker/scanner presentation, PDF mutation, or image
-  conversion in this contract task.
-- Do not add generic camera capture, directory browsing, thumbnails, or
-  structural undo/redo; `scanPages()` is the platform document-scanner action.
+- Do not implement picker presentation, PDF mutation, or image conversion in
+  this contract task.
+- Do not add camera capture, scanner dependencies, directory browsing,
+  thumbnails, or structural undo/redo.
 - Do not expose native paths, PDF bytes, security-scoped URLs, or Android
   content URIs to JavaScript.
 
@@ -45,7 +45,6 @@ imperative results and coarse metadata only.
    `addedPageCount === 0` and unchanged current `PageInfo`.
 3. Add these asynchronous methods to `InkSignViewMethods`:
    `addPages(options?: AddPagesOptions): Promise<AddPagesResult>`,
-   `scanPages(): Promise<AddPagesResult>`,
    `removePage(): Promise<PageInfo>`, and
    `movePage(pageIndex: number): Promise<PageInfo>`.
 4. Define `addPages` as append-only. Permit multiple selected files, process
@@ -58,11 +57,13 @@ imperative results and coarse metadata only.
    `0..<pageCount`. Other pages shift, the moved page stays active, and a move
    to its current index is a successful no-op.
 7. Require a ready document. Invalid indexes reject before mutation. Permit
-   only one picker, scanner, or structural mutation; conflicting calls reject with
+   only one picker or structural mutation; conflicting calls reject with
    `operation_in_progress`, while `open` and disposal reject pending work with
    `operation_cancelled`.
-8. Define `scanPages()` as returning the same result shape and active-page
-   behavior as `addPages`, with ordered scanner images converted to pages.
+8. Define `sources` as an ordered list of local paths or file URLs. When
+   supplied, `addPages` bypasses picker presentation and imports those sources
+   through the same staging and assembly path. An omitted `sources` value opens
+   the native picker.
 9. Structural mutations set document dirty state outside page-local undo/redo.
    Emit `onPageChange` after the active page and its new metadata are installed;
    emit `onStateChange` for dirty-state changes. Cancellation emits neither.
@@ -75,8 +76,7 @@ imperative results and coarse metadata only.
 
 ## Rules
 
-- Use exactly `pdf`, `image`, `addPages`, `scanPages`, `removePage`, and
-  `movePage`.
+- Use exactly `pdf`, `image`, `addPages`, `removePage`, and `movePage`.
 - Do not add insertion-index or swap APIs.
 - `PageInfo.pageIndex` stays positional; stable page identity is native-only.
 - Picker cancellation does not dirty the document.
@@ -84,7 +84,7 @@ imperative results and coarse metadata only.
 ## Tests
 
 - Add TypeScript compile fixtures for optional `type`, valid literal values,
-  method returns, `scanPages`, and the required move destination.
+  method returns, `sources`, and the required move destination.
 - Assert unsupported type strings and obsolete method names fail type checking.
 - Inspect generated Kotlin and Swift signatures for parity.
 

@@ -20,7 +20,10 @@ import java.util.Objects
 data class AddPagesOptions(
   @DoNotStrip
   @Keep
-  val type: PageType?
+  val type: PageType?,
+  @DoNotStrip
+  @Keep
+  val sources: Array<String>?
 ) {
   /* primary constructor */
 
@@ -28,11 +31,13 @@ data class AddPagesOptions(
     if (this === other) return true
     if (other !is AddPagesOptions) return false
     return Objects.deepEquals(this.type, other.type)
+      && Objects.deepEquals(this.sources, other.sources)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
-      type
+      type,
+      sources
     ).contentDeepHashCode()
   }
 
@@ -44,8 +49,8 @@ data class AddPagesOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(type: PageType?): AddPagesOptions {
-      return AddPagesOptions(type)
+    private fun fromCpp(type: PageType?, sources: Array<String>?): AddPagesOptions {
+      return AddPagesOptions(type, sources)
     }
   }
 }

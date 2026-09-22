@@ -50,6 +50,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 // C++ helpers for Swift
 #include "ReactNativeInkSignPdf-Swift-Cxx-Bridge.hpp"

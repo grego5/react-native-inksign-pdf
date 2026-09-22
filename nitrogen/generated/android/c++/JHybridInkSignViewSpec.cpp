@@ -56,6 +56,7 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 #include "JAddPagesOptions.hpp"
 #include "PageType.hpp"
 #include "JPageType.hpp"
+#include <vector>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -259,22 +260,6 @@ namespace margelo::nitro::inksignpdf {
   std::shared_ptr<Promise<AddPagesResult>> JHybridInkSignViewSpec::addPages(const std::optional<AddPagesOptions>& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JAddPagesOptions> /* options */)>("addPages");
     auto __result = method(_javaPart, options.has_value() ? JAddPagesOptions::fromCpp(options.value()) : nullptr);
-    return [&]() {
-      auto __promise = Promise<AddPagesResult>::create();
-      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
-        auto __result = jni::static_ref_cast<JAddPagesResult>(__boxedResult);
-        __promise->resolve(__result->toCpp());
-      });
-      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
-        jni::JniException __jniError(__throwable);
-        __promise->reject(std::make_exception_ptr(__jniError));
-      });
-      return __promise;
-    }();
-  }
-  std::shared_ptr<Promise<AddPagesResult>> JHybridInkSignViewSpec::scanPages() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("scanPages");
-    auto __result = method(_javaPart);
     return [&]() {
       auto __promise = Promise<AddPagesResult>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {

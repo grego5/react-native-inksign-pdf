@@ -145,10 +145,6 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun scanPages(): Promise<AddPagesResult>
-  
-  @DoNotStrip
-  @Keep
   abstract fun removePage(): Promise<PageInfo>
   
   @DoNotStrip

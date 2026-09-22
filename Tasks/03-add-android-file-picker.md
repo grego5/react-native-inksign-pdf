@@ -1,4 +1,4 @@
-# Task 03: Add Android input staging for picker and scanner
+# Task 03: Add Android file picker and source staging
 
 [Back to task index](../TASKS.md)
 
@@ -6,9 +6,9 @@ Status: Planned
 
 ## Objective
 
-Present native Android selection UI for `addPages`, launch the existing Android
-document scanner for `scanPages`, and stage every ordered PDF/image input in
-module-owned cache before processing.
+Present native Android selection UI for `addPages` and stage both picker
+selections and caller-provided local sources in module-owned cache before
+processing.
 
 ## Non-goals
 
@@ -28,8 +28,7 @@ module-owned cache before processing.
   React context ownership.
 - Generated `HybridInkSignViewManager` only to inspect the supplied
   `ThemedReactContext`; do not edit it.
-- Existing scanner module source and its Android result contract: import the
-  platform scanner surface directly; no external scanner package is required.
+- The caller-provided source contract in `src/InkSignView.nitro.ts`.
 
 ## Current behavior and invariants
 
@@ -41,43 +40,37 @@ view disposal cancels pending promises.
 
 1. Add one Android input coordinator owned by `HybridInkSignView` and
    registered with its `ThemedReactContext` activity-result lifecycle. It owns
-   exactly one pending picker or scanner request and unregisters on disposal.
+   exactly one pending picker request and unregisters on disposal.
 2. Launch `ACTION_OPEN_DOCUMENT` with `CATEGORY_OPENABLE`, multiple selection,
    and MIME filters from optional `type`: `application/pdf`, `image/*`, or both
    through `EXTRA_MIME_TYPES` when omitted.
 3. Preserve provider result order across `data` and `ClipData`, remove exact
    duplicate URIs, and accept mixed selection when unrestricted.
-4. Add `com.google.android.gms:play-services-mlkit-document-scanner:16.0.0`
-   and configure `GmsDocumentScannerOptions` for JPEG page results, the full
-   scanner mode, and camera capture. Obtain the scanner with
-   `GmsDocumentScanning.getClient(options)`.
-5. Launch `getStartScanIntent(activity)` through
-   `StartIntentSenderForResult`. Implement `scanPages()` from the returned
-   `GmsDocumentScanningResult` page image URIs in scanner order; copy those
-   URIs through the same staging path as picker images.
-6. Treat cancellation as an empty success. Reject missing activity, detached
+4. When `sources` is supplied, bypass activity-result presentation and stage
+   each ordered local path or file URL through the same source-copy path. Do
+   not expose staged paths back to JavaScript.
+5. Treat cancellation as an empty success. Reject missing activity, detached
    view, malformed result, unsupported content, unreadable stream, or stale
    request with stable errors.
-7. Open each URI through `ContentResolver`, validate/sniff `pdf` or `image`, and
+6. Open each picker URI or supported caller-provided URI through
+   `ContentResolver`, validate/sniff `pdf` or `image`, and
    copy it to a unique staging file. Never derive a filesystem path from a
    `content://` URI.
-8. Return an immutable ordered list of staged native paths and resolved types.
+7. Return an immutable ordered list of staged native paths and resolved types.
    Delete all staged files on partial failure, supersession, open, or disposal.
-9. Keep presentation/results on the main thread and copying on I/O. No activity,
+8. Keep presentation/results on the main thread and copying on I/O. No activity,
    URI, cursor, or resolver enters worker snapshots.
 
 ## Rules
 
 - Add no storage permission.
-- ML Kit supplies scanner UI and models through Google Play services; do not
-  add a camera permission or a bundled scanner model to the library.
 - Picker/staging owns selection only; document state owns mutation.
-- Concurrent `addPages` or `scanPages` rejects with `operation_in_progress`.
+- Concurrent `addPages` rejects with `operation_in_progress`.
 
 ## Tests
 
-- Unit-test MIME filters, ordered URI extraction, deduplication, scanner result
-  ordering, cancellation, and request transitions.
+- Unit-test MIME filters, ordered URI extraction, deduplication, source ordering,
+  cancellation, and request transitions.
 - Use fake providers for one PDF, multiple images, and mixed selection.
 - Verify staged-file readability and cleanup after failure/disposal.
 - Verify stale results never invoke document mutation.
