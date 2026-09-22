@@ -67,11 +67,27 @@ stored state or the JavaScript boundary.
   colors are presentation-only; an unspecified editor fill contrasts with the
   saved text color. doubleTap configures an absolute zoom target, default 2.0,
   and optional edit-mode entry.
-- Methods: open, nextPage, previousPage, getViewport, enterEditMode,
-  enterViewMode, undo, redo, clear, insertAnnotationOn,
-  insertAnnotationOff, increaseTextSize, decreaseTextSize,
-  removeTextAnnotation, and finalize. Android debug builds also expose the
-  debug-recording methods defined in the TypeScript spec.
+- Methods: open, addPages, scanPages, removePage, movePage, nextPage,
+  previousPage, getViewport, enterEditMode, enterViewMode, undo, redo, clear,
+  insertAnnotationOn, insertAnnotationOff, increaseTextSize,
+  decreaseTextSize, removeTextAnnotation, and finalize. Android debug builds
+  also expose the debug-recording methods defined in the TypeScript spec.
+- `PageType` is `pdf` or `image`. `addPages(options?)` accepts both types when
+  omitted, appends selected files in picker order, expands every selected PDF
+  in source order, and appends one page per image. `scanPages()` appends
+  scanner images in scanner order and returns the same `AddPagesResult` shape.
+  Cancellation resolves with zero added pages and leaves the active page and
+  state unchanged.
+- `removePage()` removes the active page and activates the page now at its
+  index, or the preceding page when the removed page was last; the final page
+  cannot be removed. `movePage(pageIndex)` accepts a destination in
+  `0..<pageCount`, shifts intervening pages, and keeps the moved page active.
+  Structural mutations are outside page-local undo/redo and mark the document
+  dirty after successful publication.
+- The document must be ready for page mutation. Only one picker, scanner, or
+  structural mutation may be active; conflicting operations reject with
+  `operation_in_progress`, and open/disposal cancel pending work with
+  `operation_cancelled`. Invalid move destinations reject before mutation.
 - insertAnnotationOn settles current editing, preserves the viewport, and arms
   exactly one valid page tap; it does not create content or open the keyboard.
   The next valid tap creates one native draft, disables placement, focuses its
