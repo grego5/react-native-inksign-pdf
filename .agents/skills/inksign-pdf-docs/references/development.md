@@ -94,6 +94,12 @@ XCFramework, Podspec, linker, or release changes require simulator validation
 and a device archive; the release workflow itself validates both packaged
 architectures.
 
+## Dispatching GitHub Actions from an agent
+
+Dispatch with `gh` through an escalated `exec_command`; the sandbox can block
+the authenticated GitHub request. Set `sandbox_permissions` to
+`require_escalated` on the command itself:
+
 ## Validation commands
 
 Use repository runners instead of manually reconstructing their commands:
@@ -144,3 +150,4 @@ When a tool returns a live process/session:
 
 Use the runner's final `PASS` or `FAIL` line as the result. The heartbeat is
 the liveness signal; intermediate polling is not validation.
+

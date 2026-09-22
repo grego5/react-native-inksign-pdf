@@ -273,7 +273,9 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
     PdfiumPageAssemblyCommand command,
     std::string scratchPath) {
   PdfiumPageAssemblyResult result;
-  if (inputBytes.empty() || scratchPath.empty()) {
+  if (scratchPath.empty() ||
+      (inputBytes.empty() &&
+       command.operation != PdfiumPageAssemblyOperation::Append)) {
     result.error = invalidInput("assembly input and scratch path are required");
     return result;
   }
@@ -297,11 +299,19 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
     std::lock_guard apiLock(state.apiMutex);
 
     FPDF_DOCUMENT destination = nullptr;
-    operationError = loadDocument(inputBytes, destination,
-                                  PdfiumErrorCode::DocumentOpenFailed,
-                                  "working PDF");
+    if (inputBytes.empty()) {
+      destination = FPDF_CreateNewDocument();
+      if (destination == nullptr) {
+        operationError = {PdfiumErrorCode::DocumentOpenFailed,
+                          "PDFium could not create a new working PDF"};
+      }
+    } else {
+      operationError = loadDocument(inputBytes, destination,
+                                    PdfiumErrorCode::DocumentOpenFailed,
+                                    "working PDF");
+    }
     ScopedDocument destinationScope(destination);
-    if (operationError) {
+    if (operationError && !inputBytes.empty()) {
       operationError = inspectPages(destination, expectedPages);
     }
 

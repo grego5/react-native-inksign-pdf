@@ -43,8 +43,11 @@ Implement `addPages`, `removePage`, and `movePage` on iOS using the native picke
 3. Implement `addPages` by invoking the iOS picker, encoding each image to
    optimized JPEG data, and appending selected items in order. A selected
    multipage PDF contributes every page in source order. PDFium creates image
-   pages directly from the encoded JPEG data. Assign stable page states and
-   activate the first appended page.
+   pages directly from the encoded JPEG data. If a document is already open,
+   append to its working PDF and use its active page size for images. If no
+   document is open, create a PDF from the selected inputs and use letter-size
+   pages for images. Assign stable page states and activate the first added
+   page.
 4. Implement `removePage` for the current stable page ID. Reject removal of the sole page with `last_page_required`; otherwise remove only that page's state and select the page now at its index, or the preceding page when it was last.
 5. Implement `movePage(pageIndex)` by moving the current page in the working PDF and stable collection. Validate the destination range, make a same-index call a successful no-op, and retain the moved page as active.
 6. Produce a candidate artifact without mutating published state. Validate and open replacement PDFKit and PDFium documents, then atomically publish the candidate URL, sessions, ordered page records, active page ID, generation, and dirty state as one coordinator transition.
@@ -86,4 +89,4 @@ Implement `addPages`, `removePage`, and `movePage` on iOS using the native picke
 
 `feat(ios): support mutable pdf pages`
 
-Status: Planned
+Status: In progress; macOS simulator build and tests are still required.

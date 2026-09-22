@@ -4,11 +4,35 @@ import PDFKit
 /// Owns the currently published PDF and all document generation state. UIKit
 /// presentation remains in `InkSignView` and `InkPdfView`.
 final class InkSignPdfDocumentCoordinator {
-  enum OperationKind: Equatable { case open, finalize, structural }
+  enum OperationType: Equatable { case open, finalize, structural }
+  enum PageMutation {
+    case append([InkSignPdfPageState])
+    case removeActive
+    case moveActive(to: Int)
+  }
+  struct PageOrder {
+    let pages: [InkSignPdfPageState]
+    let activePageID: UUID
+    let addedPageCount: Int
+    let changed: Bool
+  }
+  enum PageMutationError: LocalizedError, Equatable {
+    case lastPageRequired
+    case invalidPageIndex
+    case activePageMissing
+
+    var errorDescription: String? {
+      switch self {
+      case .lastPageRequired: return "last_page_required: The document must retain one page"
+      case .invalidPageIndex: return "invalid_page_index: The destination page index is invalid"
+      case .activePageMissing: return "active_page_missing: The active page is not in the document"
+      }
+    }
+  }
   struct OperationToken {
     let id: UUID
     let generation: UInt64
-    let kind: OperationKind
+    let type: OperationType
   }
 
   let artifactPolicy: InkSignPdfCacheArtifactPolicy
@@ -19,6 +43,7 @@ final class InkSignPdfDocumentCoordinator {
   private(set) var structuralDirty = false
   private var activeOperation: OperationToken?
   private var rollbackDocument: InkSignPdfDocumentState?
+  private var rollbackStructuralDirty: Bool?
   private var operationPublishedDocument = false
   private var pendingArtifacts = Set<URL>()
   private var ownedOutputs = Set<URL>()
@@ -31,6 +56,44 @@ final class InkSignPdfDocumentCoordinator {
     guard let document, let index = document.index(of: id) else { return nil }
     document.activePageID = id
     return index
+  }
+
+  static func pageOrder(current: [InkSignPdfPageState],
+                        activePageID: UUID,
+                        mutation: PageMutation) throws -> PageOrder {
+    guard let activeIndex = current.firstIndex(where: { $0.id == activePageID }) else {
+      throw PageMutationError.activePageMissing
+    }
+    switch mutation {
+    case .append(let appended):
+      guard !appended.isEmpty else {
+        return PageOrder(pages: current, activePageID: activePageID,
+                         addedPageCount: 0, changed: false)
+      }
+      return PageOrder(pages: current + appended, activePageID: appended[0].id,
+                       addedPageCount: appended.count, changed: true)
+    case .removeActive:
+      guard current.count > 1 else { throw PageMutationError.lastPageRequired }
+      var pages = current
+      pages.remove(at: activeIndex)
+      return PageOrder(pages: pages,
+                       activePageID: pages[min(activeIndex, pages.count - 1)].id,
+                       addedPageCount: 0,
+                       changed: true)
+    case .moveActive(let destination):
+      guard destination >= 0, destination < current.count else {
+        throw PageMutationError.invalidPageIndex
+      }
+      guard destination != activeIndex else {
+        return PageOrder(pages: current, activePageID: activePageID,
+                         addedPageCount: 0, changed: false)
+      }
+      var pages = current
+      let active = pages.remove(at: activeIndex)
+      pages.insert(active, at: destination)
+      return PageOrder(pages: pages, activePageID: activePageID,
+                       addedPageCount: 0, changed: true)
+    }
   }
 
   @discardableResult
@@ -51,14 +114,24 @@ final class InkSignPdfDocumentCoordinator {
     return generation
   }
 
-  func admit(_ kind: OperationKind) -> OperationToken? {
+  func admit(_ type: OperationType) -> OperationToken? {
     lock.lock()
-    defer { lock.unlock() }
-    guard !isDisposed, activeOperation == nil else { return nil }
-    if kind != .finalize { generation &+= 1 }
-    let token = OperationToken(id: UUID(), generation: generation, kind: kind)
+    guard !isDisposed else { lock.unlock(); return nil }
+    var cancelledArtifacts: [URL] = []
+    if type == .open, activeOperation?.type == .structural {
+      activeOperation = nil
+      cancelledArtifacts = Array(pendingArtifacts)
+      pendingArtifacts.removeAll()
+    } else if activeOperation != nil {
+      lock.unlock()
+      return nil
+    }
+    if type == .open { generation &+= 1 }
+    let token = OperationToken(id: UUID(), generation: generation, type: type)
     activeOperation = token
     operationPublishedDocument = false
+    lock.unlock()
+    cancelledArtifacts.forEach(artifactPolicy.deleteExact)
     return token
   }
 
@@ -77,16 +150,18 @@ final class InkSignPdfDocumentCoordinator {
     guard activeOperation?.id == token.id else { lock.unlock(); return }
     activeOperation = nil
     let obsolete: InkSignPdfDocumentState?
-    if token.kind == .open {
+    if token.type == .open {
       if succeeded {
         obsolete = rollbackDocument
       } else if operationPublishedDocument {
         obsolete = document
         document = rollbackDocument
+        if let rollbackStructuralDirty { structuralDirty = rollbackStructuralDirty }
       } else {
         obsolete = nil
       }
       rollbackDocument = nil
+      rollbackStructuralDirty = nil
       operationPublishedDocument = false
     } else {
       obsolete = nil
@@ -159,14 +234,49 @@ final class InkSignPdfDocumentCoordinator {
     guard !isDisposed, self.generation == generation else { return false }
     if let previous = self.document, previous.workingURL != document.workingURL {
       rollbackDocument = previous
+      rollbackStructuralDirty = structuralDirty
     }
     self.document = document
+    structuralDirty = false
     return true
   }
 
   func publish(_ document: InkSignPdfDocumentState, operation: OperationToken) -> Bool {
-    guard operation.kind == .open, isCurrent(operation) else { return false }
+    guard operation.type == .open, isCurrent(operation) else { return false }
     guard publish(document, generation: operation.generation) else { return false }
+    operationPublishedDocument = true
+    return true
+  }
+
+  /// Replaces every structural document field as one coordinator transition.
+  /// The caller installs the returned document's presentation on the main
+  /// thread before releasing the old session and working artifact.
+  func publishStructural(_ candidate: InkSignPdfDocumentState,
+                         operation: OperationToken) -> InkSignPdfDocumentState? {
+    lock.lock()
+    defer { lock.unlock() }
+    guard operation.type == .structural, !isDisposed,
+          generation == operation.generation, activeOperation?.id == operation.id,
+          let previous = document else { return nil }
+    document = candidate
+    generation &+= 1
+    pendingArtifacts.remove(candidate.workingURL)
+    structuralDirty = true
+    operationPublishedDocument = true
+    return previous
+  }
+
+  func publishInitialStructural(_ candidate: InkSignPdfDocumentState,
+                                operation: OperationToken) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    guard operation.type == .structural, !isDisposed,
+          generation == operation.generation, activeOperation?.id == operation.id,
+          case nil = document else { return false }
+    document = candidate
+    generation &+= 1
+    pendingArtifacts.remove(candidate.workingURL)
+    structuralDirty = true
     operationPublishedDocument = true
     return true
   }
@@ -175,6 +285,7 @@ final class InkSignPdfDocumentCoordinator {
     document?.pdfiumSession.close()
     if let workingURL = document?.workingURL { artifactPolicy.deleteExact(workingURL) }
     document = nil
+    structuralDirty = false
   }
 
   func setStructuralDirty(_ dirty: Bool) {
@@ -190,6 +301,7 @@ final class InkSignPdfDocumentCoordinator {
     let artifacts = pendingArtifacts.union(ownedOutputs)
     let previous = rollbackDocument
     rollbackDocument = nil
+    rollbackStructuralDirty = nil
     pendingArtifacts.removeAll()
     ownedOutputs.removeAll()
     clearDocument()
@@ -216,14 +328,16 @@ final class InkSignPdfDocumentState {
        workingURL: URL,
        document: PDFDocument,
        pdfiumSession: InkSignPdfPdfiumSession,
-       pages: [InkSignPdfPageState]) {
+       pages: [InkSignPdfPageState],
+       activePageID: UUID? = nil) {
     precondition(!pages.isEmpty)
     self.sourceURL = sourceURL
     self.workingURL = workingURL
     self.document = document
     self.pdfiumSession = pdfiumSession
     self.pages = pages
-    self.activePageID = pages[0].id
+    self.activePageID = activePageID ?? pages[0].id
+    precondition(pages.contains { $0.id == self.activePageID })
   }
 
   var activePageIndex: Int {
@@ -246,14 +360,18 @@ final class InkSignPdfPageState {
   let id: UUID
   let page: PDFPage
   let geometry: PageGeometry
-  let history = InkSignPdfPageContentHistory()
+  let history: InkSignPdfPageContentHistory
 
   var contentRevision: UInt64 { history.revision }
 
-  init(id: UUID = UUID(), page: PDFPage, geometry: PageGeometry) {
+  init(id: UUID = UUID(),
+       page: PDFPage,
+       geometry: PageGeometry,
+       history: InkSignPdfPageContentHistory = InkSignPdfPageContentHistory()) {
     self.id = id
     self.page = page
     self.geometry = geometry
+    self.history = history
   }
 }
 

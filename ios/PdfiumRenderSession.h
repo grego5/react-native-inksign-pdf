@@ -15,6 +15,12 @@ FOUNDATION_EXPORT NSInteger const InkSignPdfPdfiumInvalidFallbackFontErrorCode;
   void *_state;
 }
 
+/// Creates a new PDF directly from ordered PDF and image append inputs.
++ (nullable NSArray<NSValue *> *)assembleNewPDFWithAppendInputs:(NSArray<NSDictionary<NSString *, id> *> *)appendInputs
+                                                    scratchURL:(NSURL *)scratchURL
+                                                         error:(NSError **)error
+    NS_SWIFT_NAME(assembleNewPDF(appendInputs:scratchURL:));
+
 - (nullable instancetype)initWithData:(NSData *)data
                       fallbackFontPath:(nullable NSString *)fallbackFontPath
                        collectionIndex:(double)collectionIndex
@@ -40,6 +46,18 @@ FOUNDATION_EXPORT NSInteger const InkSignPdfPdfiumInvalidFallbackFontErrorCode;
               flags:(uint32_t)flags
              pixels:(NSMutableData *)pixels
               error:(NSError **)error;
+
+/// Writes a detached candidate PDF using the shared page assembler. Append
+/// inputs use dictionaries with `type`, `data`, `pageWidth`, `pageHeight`, and
+/// affine placement components `a` through `f`.
+- (nullable NSArray<NSValue *> *)assemblePDFData:(NSData *)data
+                                       operation:(NSInteger)operation
+                                        pageIndex:(NSUInteger)pageIndex
+                                  destinationIndex:(NSUInteger)destinationIndex
+                                      appendInputs:(NSArray<NSDictionary<NSString *, id> *> *)appendInputs
+                                        scratchURL:(NSURL *)scratchURL
+                                             error:(NSError **)error
+    NS_SWIFT_NAME(assemble(data:operation:pageIndex:destinationIndex:appendInputs:scratchURL:));
 
 - (void)close;
 

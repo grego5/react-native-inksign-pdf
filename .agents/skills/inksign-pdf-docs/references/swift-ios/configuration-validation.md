@@ -40,3 +40,7 @@ installs pods, builds the lifecycle test scheme once, enumerates the requested
 test classes, and runs only the selected focus (`stabilization`, `pdfium`,
 `page-input`, `lifecycle`, `all`, or `build-only`). Failure result bundles and
 logs are uploaded; it does not archive, sign, or install an app.
+
+The `lifecycle` and `all` focuses include `MutablePageImageEncoderTests`,
+which covers EXIF correction, contain-fit background behavior, and mixed
+PDF/image append ordering through the iOS PDFium facade.

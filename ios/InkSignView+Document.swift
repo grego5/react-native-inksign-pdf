@@ -195,54 +195,36 @@ extension InkSignView {
       } catch {
         self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
       }
-      guard let workingURL, let loaded = PDFDocument(url: workingURL) else {
+      guard let workingURL else {
         self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
       }
-      guard loaded.pageCount > 0 else {
-        self.finishLoad(token: token, promise: promise, error: .unsupportedPdf); return
-      }
-      let pdfiumSession: InkSignPdfPdfiumSession
+      let loadedCandidate: InkSignPdfDocumentCandidate
       do {
-        let workingData = try Data(contentsOf: workingURL, options: [.mappedIfSafe])
-        pdfiumSession = try InkSignPdfPdfiumSession(
-          data: workingData,
+        loadedCandidate = try InkSignPdfDocumentCandidateLoader.load(
+          url: workingURL,
           fallbackFontPath: requestedFallbackFont?.path,
           collectionIndex: requestedFallbackFont?.collectionIndex ?? 0)
-      } catch {
-        let nativeError = error as NSError
-        let loadError: LoadError = nativeError.domain == InkSignPdfPdfiumErrorDomain &&
-          nativeError.code == InkSignPdfPdfiumInvalidFallbackFontErrorCode
-          ? .invalidFallbackFont(nativeError.localizedDescription)
-          : .pdfLoadFailed
+      } catch let candidateError as InkSignPdfDocumentCandidateError {
+        let loadError: LoadError
+        switch candidateError {
+        case .empty, .inconsistent:
+          loadError = .unsupportedPdf
+        case .pdfium(let underlying):
+          let nativeError = underlying as NSError
+          loadError = nativeError.domain == InkSignPdfPdfiumErrorDomain &&
+            nativeError.code == InkSignPdfPdfiumInvalidFallbackFontErrorCode
+            ? .invalidFallbackFont(nativeError.localizedDescription)
+            : .pdfLoadFailed
+        case .unreadable, .invalidPage, .invalidGeometry:
+          loadError = .pdfLoadFailed
+        }
         self.finishLoad(token: token, promise: promise, error: loadError); return
+      } catch {
+        self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
       }
-      guard pdfiumSession.pageCount == loaded.pageCount else {
-        pdfiumSession.close()
-        self.finishLoad(token: token, promise: promise, error: .unsupportedPdf); return
-      }
-      var loadedPages: [InkSignPdfPageState] = []
-      for index in 0..<loaded.pageCount {
-        guard let loadedPage = loaded.page(at: index) else {
-          pdfiumSession.close()
-          self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
-        }
-        var pdfiumSize = CGSize.zero
-        do {
-          try pdfiumSession.pageSize(for: UInt(index), into: &pdfiumSize)
-        } catch {
-          pdfiumSession.close()
-          self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
-        }
-        let bounds = loadedPage.bounds(for: .mediaBox)
-        let rotation = loadedPage.rotation
-        let geometry = PageGeometry(mediaBox: bounds, rotation: rotation)
-        guard pdfiumSize.width.isFinite, pdfiumSize.height.isFinite,
-              geometry.isValid else {
-          pdfiumSession.close()
-          self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
-        }
-        loadedPages.append(InkSignPdfPageState(page: loadedPage, geometry: geometry))
-      }
+      let loaded = loadedCandidate.document
+      let pdfiumSession = loadedCandidate.pdfiumSession
+      let loadedPages = loadedCandidate.pages
       ownsWorkingURL = true
       DispatchQueue.main.async { [weak self, coordinator] in
         guard let self, !self.disposed, self.documentCoordinator.generation == token,

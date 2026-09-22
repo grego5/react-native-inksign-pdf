@@ -5,10 +5,11 @@ the page history.
 
 ## Export flow
 
-1. The coordinator admits one finalize operation and captures the working
-   source URL, ordered page geometry, committed PencilKit drawings, committed
-   text annotations, and operation generation. The active or uncommitted
-   interaction is not included.
+1. The coordinator admits one finalize operation and captures the current
+   working source URL, ordered page geometry, committed PencilKit drawings,
+   committed text annotations, and operation generation. After a structural
+   page mutation, this source is the newly assembled PDF in its published page
+   order. The active or uncommitted interaction is not included.
 2. On the export queue, copy the captured source into a unique immutable
    snapshot artifact, then create a new PDF and process each source page in
    order.

@@ -136,11 +136,11 @@ jobs:
               test_args="-only-testing:__TEST_TARGET__/PageInputCoordinatorTests"
               ;;
             lifecycle)
-              test_classes="InkSignViewLifecycleTests"
-              test_args="-only-testing:__TEST_TARGET__/InkSignViewLifecycleTests"
+              test_classes="InkSignViewLifecycleTests,MutablePageImageEncoderTests"
+              test_args="-only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
               ;;
             all)
-              test_classes="InkSignViewStabilizationTests,PdfiumSmokeTests,PageInputCoordinatorTests,InkSignViewLifecycleTests"
+              test_classes="InkSignViewStabilizationTests,PdfiumSmokeTests,PageInputCoordinatorTests,InkSignViewLifecycleTests,MutablePageImageEncoderTests"
               test_args=""
               ;;
             build-only)
@@ -192,7 +192,7 @@ jobs:
               select(length >= 2) | .[0]] | .[0] // empty' \
             "$RUNNER_TEMP/ios-tests.json")"
           test -n "$test_target"
-          test_args="${IOS_TEST_ARGS_TEMPLATE/__TEST_TARGET__/$test_target}"
+          test_args="${IOS_TEST_ARGS_TEMPLATE//__TEST_TARGET__/$test_target}"
           echo "IOS_TEST_ARGS=$test_args" >> "$GITHUB_ENV"
 
       - name: Run selected tests

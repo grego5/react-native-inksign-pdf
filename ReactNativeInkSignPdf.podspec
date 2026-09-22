@@ -24,7 +24,7 @@ Pod::Spec.new do |s|
   }
   s.requires_arc = true
   s.libraries    = ['c++']
-  s.frameworks   = ['UIKit', 'PDFKit', 'PencilKit', 'QuartzCore', 'CoreGraphics']
+  s.frameworks   = ['UIKit', 'PDFKit', 'PencilKit', 'QuartzCore', 'CoreGraphics', 'ImageIO', 'UniformTypeIdentifiers']
   s.dependency 'React-Core'
   s.dependency 'React-Fabric/components/view'
   s.dependency 'NitroModules'
@@ -34,7 +34,7 @@ Pod::Spec.new do |s|
 
   s.test_spec 'LifecycleTests' do |test_spec|
     test_spec.source_files = 'ios/tests/**/*.{swift,mm,h}'
-    test_spec.frameworks = ['UIKit', 'PDFKit', 'PencilKit', 'XCTest']
+    test_spec.frameworks = ['UIKit', 'PDFKit', 'PencilKit', 'XCTest', 'ImageIO']
   end
 
 end

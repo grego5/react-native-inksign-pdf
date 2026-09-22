@@ -1,6 +1,7 @@
 #import "PdfiumRenderSession.h"
 
 #include "../core/pdfium-adapter/PdfiumDocumentSession.hpp"
+#include "../core/pdfium-adapter/PdfiumPageAssembler.hpp"
 
 #include <dispatch/dispatch.h>
 
@@ -21,6 +22,12 @@ using margelo::nitro::inksignpdf::pdfium::PdfiumErrorCode;
 using margelo::nitro::inksignpdf::pdfium::PdfiumFallbackFont;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageMetadata;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageRenderRequest;
+using margelo::nitro::inksignpdf::pdfium::PdfiumAppendInput;
+using margelo::nitro::inksignpdf::pdfium::PdfiumAppendInputType;
+using margelo::nitro::inksignpdf::pdfium::PdfiumImagePlacement;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssembler;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyCommand;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyOperation;
 
 NSErrorDomain const InkSignPdfPdfiumErrorDomain =
     @"com.margelo.nitro.inksignpdf.pdfium";
@@ -63,6 +70,94 @@ PdfiumError closedError() {
   return {PdfiumErrorCode::Closed, "PDFium session is closed"};
 }
 
+NSArray<NSValue *> *assemblePDFData(
+    NSData *data,
+    NSInteger operation,
+    NSUInteger pageIndex,
+    NSUInteger destinationIndex,
+    NSArray<NSDictionary<NSString *, id> *> *appendInputs,
+    NSURL *scratchURL,
+    BOOL allowsEmptyBase,
+    NSError **error) {
+  if (data == nil || (data.length == 0 && !allowsEmptyBase) || scratchURL == nil ||
+      !scratchURL.isFileURL || scratchURL.path.length == 0 ||
+      operation < 0 || operation > 2) {
+    PdfiumError invalid{PdfiumErrorCode::InvalidInput,
+                        "Invalid PDF page assembly input"};
+    assignError(error, invalid);
+    return nil;
+  }
+
+  std::vector<std::uint8_t> inputBytes;
+  const auto *source = static_cast<const std::uint8_t *>(data.bytes);
+  if (source != nullptr && data.length > 0) {
+    inputBytes.assign(source, source + data.length);
+  }
+
+  PdfiumPageAssemblyCommand command;
+  command.operation = static_cast<PdfiumPageAssemblyOperation>(operation);
+  command.pageIndex = pageIndex;
+  command.destinationIndex = destinationIndex;
+  command.appendInputs.reserve(appendInputs.count);
+  for (NSDictionary<NSString *, id> *value in appendInputs) {
+    NSString *type = [[value[@"type"] class] isSubclassOfClass:NSString.class]
+        ? value[@"type"] : nil;
+    NSData *bytes = [[value[@"data"] class] isSubclassOfClass:NSData.class]
+        ? value[@"data"] : nil;
+    if (type == nil || bytes == nil || bytes.length == 0 ||
+        ![type isEqualToString:@"pdf"] && ![type isEqualToString:@"image"]) {
+      PdfiumError invalid{PdfiumErrorCode::InvalidInput,
+                          "Invalid PDF page append input"};
+      assignError(error, invalid);
+      return nil;
+    }
+    PdfiumAppendInput append;
+    append.type = [type isEqualToString:@"pdf"]
+        ? PdfiumAppendInputType::Pdf : PdfiumAppendInputType::Image;
+    const auto *bytesBegin = static_cast<const std::uint8_t *>(bytes.bytes);
+    append.bytes.assign(bytesBegin, bytesBegin + bytes.length);
+    if (auto number = value[@"pageWidth"];
+        [[number class] isSubclassOfClass:NSNumber.class]) {
+      append.pageWidth = [number doubleValue];
+    }
+    if (auto number = value[@"pageHeight"];
+        [[number class] isSubclassOfClass:NSNumber.class]) {
+      append.pageHeight = [number doubleValue];
+    }
+    double *components[] = {&append.placement.a, &append.placement.b,
+                            &append.placement.c, &append.placement.d,
+                            &append.placement.e, &append.placement.f};
+    const char *keys[] = {"a", "b", "c", "d", "e", "f"};
+    for (std::size_t index = 0; index < 6; ++index) {
+      NSString *key = [NSString stringWithUTF8String:keys[index]];
+      id number = value[key];
+      if ([[number class] isSubclassOfClass:NSNumber.class]) {
+        *components[index] = [number doubleValue];
+      }
+    }
+    command.appendInputs.push_back(std::move(append));
+  }
+
+  const char *scratchPath = scratchURL.path.fileSystemRepresentation;
+  if (scratchPath == nullptr || scratchPath[0] == '\0') {
+    PdfiumError invalid{PdfiumErrorCode::InvalidInput,
+                        "Invalid PDF page assembly output path"};
+    assignError(error, invalid);
+    return nil;
+  }
+  auto result = PdfiumPageAssembler::assemble(
+      std::move(inputBytes), std::move(command), scratchPath);
+  if (!result.ok()) {
+    assignError(error, result.error);
+    return nil;
+  }
+  NSMutableArray<NSValue *> *sizes = [NSMutableArray arrayWithCapacity:result.pages.size()];
+  for (const auto &page : result.pages) {
+    [sizes addObject:[NSValue valueWithCGSize:CGSizeMake(page.width, page.height)]];
+  }
+  return sizes;
+}
+
 }  // namespace
 
 @interface InkSignPdfPdfiumSession ()
@@ -70,6 +165,14 @@ PdfiumError closedError() {
 @end
 
 @implementation InkSignPdfPdfiumSession
+
++ (NSArray<NSValue *> *)assembleNewPDFWithAppendInputs:(NSArray<NSDictionary<NSString *, id> *> *)appendInputs
+                                            scratchURL:(NSURL *)scratchURL
+                                                 error:(NSError **)error {
+  return assemblePDFData([NSData data],
+                         static_cast<NSInteger>(PdfiumPageAssemblyOperation::Append),
+                         0, 0, appendInputs, scratchURL, YES, error);
+}
 
 - (instancetype)initWithState:(PdfiumSessionState *)state {
   self = [super init];
@@ -233,6 +336,17 @@ PdfiumError closedError() {
     return NO;
   }
   return YES;
+}
+
+- (NSArray<NSValue *> *)assemblePDFData:(NSData *)data
+                              operation:(NSInteger)operation
+                               pageIndex:(NSUInteger)pageIndex
+                         destinationIndex:(NSUInteger)destinationIndex
+                             appendInputs:(NSArray<NSDictionary<NSString *, id> *> *)appendInputs
+                               scratchURL:(NSURL *)scratchURL
+                                    error:(NSError **)error {
+  return assemblePDFData(data, operation, pageIndex, destinationIndex,
+                         appendInputs, scratchURL, NO, error);
 }
 
 - (void)close {

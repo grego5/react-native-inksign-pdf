@@ -103,7 +103,7 @@ struct InkSignPdfPageContentSnapshot {
   }
 }
 
-enum InkSignPdfPageContentActionKind: Equatable {
+enum InkSignPdfPageContentActionType: Equatable {
   case ink
   case textCreate
   case textEdit
@@ -114,7 +114,7 @@ enum InkSignPdfPageContentActionKind: Equatable {
 }
 
 struct InkSignPdfPageContentHistoryAction {
-  let kind: InkSignPdfPageContentActionKind
+  let type: InkSignPdfPageContentActionType
   let before: InkSignPdfPageContentSnapshot
   let after: InkSignPdfPageContentSnapshot
 }
@@ -137,14 +137,14 @@ final class InkSignPdfPageContentHistory {
 
   @discardableResult
   func record(
-    kind: InkSignPdfPageContentActionKind,
+    type: InkSignPdfPageContentActionType,
     before: InkSignPdfPageContentSnapshot,
     after: InkSignPdfPageContentSnapshot
   ) -> Bool {
     guard !before.equals(after) else { return false }
     guard content.equals(before) else { return false }
     content = after
-    undoStack.append(InkSignPdfPageContentHistoryAction(kind: kind, before: before, after: after))
+    undoStack.append(InkSignPdfPageContentHistoryAction(type: type, before: before, after: after))
     redoStack.removeAll(keepingCapacity: true)
     revision &+= 1
     return true
@@ -155,21 +155,21 @@ final class InkSignPdfPageContentHistory {
     guard !content.textAnnotations.contains(where: { $0.id == annotation.id }) else { return false }
     var annotations = content.textAnnotations
     annotations.append(annotation)
-    return record(kind: .textCreate, before: content, after: content.replacingText(annotations))
+    return record(type: .textCreate, before: content, after: content.replacingText(annotations))
   }
 
   @discardableResult
   func replaceText(
     before: InkSignPdfTextAnnotation,
     with annotation: InkSignPdfTextAnnotation,
-    kind: InkSignPdfPageContentActionKind
+    type: InkSignPdfPageContentActionType
   ) -> Bool {
     guard let index = content.textAnnotations.firstIndex(where: { $0.id == before.id }),
           content.textAnnotations[index] == before,
           before.id == annotation.id else { return false }
     var annotations = content.textAnnotations
     annotations[index] = annotation
-    return record(kind: kind, before: content, after: content.replacingText(annotations))
+    return record(type: type, before: content, after: content.replacingText(annotations))
   }
 
   @discardableResult
@@ -178,12 +178,12 @@ final class InkSignPdfPageContentHistory {
           content.textAnnotations[index] == annotation else { return false }
     var annotations = content.textAnnotations
     annotations.remove(at: index)
-    return record(kind: .textDelete, before: content, after: content.replacingText(annotations))
+    return record(type: .textDelete, before: content, after: content.replacingText(annotations))
   }
 
   func clear() {
     guard !content.isEmpty else { return }
-    record(kind: .clear, before: content,
+    record(type: .clear, before: content,
            after: InkSignPdfPageContentSnapshot(drawing: PKDrawing(), textAnnotations: []))
   }
 

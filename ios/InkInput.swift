@@ -133,7 +133,7 @@ extension InkSignView {
       return
     }
     guard let page = documentCoordinator.document?.activePage else { return }
-    page.history.record(kind: .ink,
+    page.history.record(type: .ink,
                         before: baseline,
                         after: baseline.replacingDrawing(finished))
     installCommittedDrawing()

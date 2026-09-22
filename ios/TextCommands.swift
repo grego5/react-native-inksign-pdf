@@ -63,7 +63,7 @@ extension InkSignView {
   func replaceTextAnnotation(
     _ before: InkSignPdfTextAnnotation,
     with after: InkSignPdfTextAnnotation,
-    kind: InkSignPdfPageContentActionKind,
+    type: InkSignPdfPageContentActionType,
     generation: UInt64,
     pageIndex: Int
   ) {
@@ -71,7 +71,7 @@ extension InkSignView {
           let state = documentCoordinator.document,
           state.activePageIndex == pageIndex else { return }
     cancelActiveStroke()
-    guard state.activePage.history.replaceText(before: before, with: after, kind: kind) else { return }
+  guard state.activePage.history.replaceText(before: before, with: after, type: type) else { return }
     textInteractionOverlay.syncContent()
     emitChange()
   }

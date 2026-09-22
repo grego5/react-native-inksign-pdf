@@ -24,6 +24,8 @@ $preview = Read-Source "ios/PagePreview.swift"
 $overlay = Read-Source "ios/PageOverlay.swift"
 $documentState = Read-Source "ios/DocumentState.swift"
 $document = Read-Source "ios/InkSignView+Document.swift"
+$candidateLoader = Read-Source "ios/DocumentCandidateLoader.swift"
+$mutableTransactions = Read-Source "ios/MutableDocumentTransactions.swift"
 $inputCoordinator = Read-Source "ios/PageInputCoordinator.swift"
 $cacheArtifacts = Read-Source "ios/CacheArtifacts.swift"
 $export = Read-Source "ios/InkSignView+Export.swift"
@@ -46,7 +48,12 @@ Assert-NotContains $preview 'pageRef\.draw\(|drawPDFPage' 'previews do not draw 
 
 # PDFKit remains only as source metadata/export support; display state carries
 # no compatibility-text snapshot or renderer adapter.
-Assert-Contains $document 'PDFDocument\(url: workingURL\)' 'PDFKit reads the module-owned working source'
+Assert-Contains $document 'InkSignPdfDocumentCandidateLoader\.load\(' 'open uses the shared candidate loader'
+Assert-Contains $candidateLoader 'PDFDocument\(url: url\)' 'shared candidate loader opens the PDFKit document'
+Assert-Contains $candidateLoader 'InkSignPdfPdfiumSession\(data:' 'shared candidate loader opens the PDFium session'
+Assert-Contains $candidateLoader 'session\.pageSize\(for:' 'shared candidate loader validates PDFium page sizes'
+Assert-Contains $mutableTransactions 'InkSignPdfPdfiumSession\.assembleNewPDF\(' 'page addition can create a PDF without an open document'
+Assert-Contains $documentState 'func publishInitialStructural\(' 'coordinator can publish the first structural document'
 Assert-Contains $documentState 'final class InkSignPdfDocumentCoordinator' 'document coordinator owns native document state'
 Assert-Contains $documentState 'private\(set\) var generation' 'document coordinator owns generation state'
 Assert-Contains $documentState 'activePageID' 'active page is stored by stable identity'
@@ -76,8 +83,8 @@ Assert-Contains $renderingDocs 'Page-turn previews render the target page throug
 Assert-Contains $lifecycleDocs 'PDFium supplies page dimensions and all base display pixels' 'lifecycle reference documents PDFium ownership'
 Assert-Contains $lifecycleDocs 'coordinator owns the published PDFKit document, PDFium session, generation' 'lifecycle reference documents coordinator ownership'
 
-# Page-input staging is a separate lifecycle boundary until Task 6 consumes
-# the detached staged values in the structural mutation coordinator.
+# Page-input staging supplies detached values to the structural mutation
+# coordinator, which assembles and validates a candidate before publication.
 Assert-Contains $view 'pageInputCoordinator' 'iOS view owns page-input staging'
 Assert-Contains $document 'pageInputCoordinator\.cancelPending\(\)' 'open invalidates page-input staging'
 Assert-Contains $inputCoordinator 'UIDocumentPickerViewController' 'Files picker exists'

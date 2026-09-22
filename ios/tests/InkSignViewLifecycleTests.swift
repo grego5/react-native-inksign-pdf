@@ -75,6 +75,268 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertFalse(coordinator.isCurrent(finalize))
   }
 
+  func testMutablePageOrderPreservesIdentityAndSelection() throws {
+    let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
+    let appendedFixture = makeFixture(pageCount: 1)
+    defer {
+      fixture.view.dispose(); fixture.window.isHidden = true
+      appendedFixture.view.dispose(); appendedFixture.window.isHidden = true
+    }
+    let state = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    let ids = state.pages.map(\.id)
+    let appended = try XCTUnwrap(appendedFixture.view.documentCoordinator.document?.pages.first)
+
+    let moveToEnd = try InkSignPdfDocumentCoordinator.pageOrder(
+      current: state.pages, activePageID: ids[1], mutation: .moveActive(to: 2))
+    XCTAssertEqual(moveToEnd.pages.map(\.id), [ids[0], ids[2], ids[1]])
+    XCTAssertEqual(moveToEnd.activePageID, ids[1])
+    XCTAssertTrue(moveToEnd.pages[2].history === state.pages[1].history)
+
+    let noOp = try InkSignPdfDocumentCoordinator.pageOrder(
+      current: moveToEnd.pages, activePageID: ids[1], mutation: .moveActive(to: 2))
+    XCTAssertFalse(noOp.changed)
+    XCTAssertEqual(noOp.pages.map(\.id), moveToEnd.pages.map(\.id))
+
+    let removedLast = try InkSignPdfDocumentCoordinator.pageOrder(
+      current: moveToEnd.pages, activePageID: ids[1], mutation: .removeActive)
+    XCTAssertEqual(removedLast.pages.map(\.id), [ids[0], ids[2]])
+    XCTAssertEqual(removedLast.activePageID, ids[2])
+    XCTAssertTrue(removedLast.pages[1].history === state.pages[2].history)
+
+    let removedMiddle = try InkSignPdfDocumentCoordinator.pageOrder(
+      current: state.pages, activePageID: ids[1], mutation: .removeActive)
+    XCTAssertEqual(removedMiddle.pages.map(\.id), [ids[0], ids[2]])
+    XCTAssertEqual(removedMiddle.activePageID, ids[2])
+
+    let appendedOrder = try InkSignPdfDocumentCoordinator.pageOrder(
+      current: state.pages, activePageID: ids[1], mutation: .append([appended]))
+    XCTAssertEqual(appendedOrder.pages.map(\.id), ids + [appended.id])
+    XCTAssertEqual(appendedOrder.activePageID, appended.id)
+    XCTAssertEqual(appendedOrder.addedPageCount, 1)
+
+    XCTAssertThrowsError(try InkSignPdfDocumentCoordinator.pageOrder(
+      current: state.pages, activePageID: ids[1], mutation: .moveActive(to: 3))) { error in
+      XCTAssertEqual(error as? InkSignPdfDocumentCoordinator.PageMutationError, .invalidPageIndex)
+    }
+    XCTAssertThrowsError(try InkSignPdfDocumentCoordinator.pageOrder(
+      current: [state.pages[0]], activePageID: ids[0], mutation: .removeActive)) { error in
+      XCTAssertEqual(error as? InkSignPdfDocumentCoordinator.PageMutationError, .lastPageRequired)
+    }
+  }
+
+  func testRejectedAndNoOpPageCommandsKeepActiveTextDraft() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let overlay = view.textInteractionOverlay
+    try overlay.armPlacement(generation: view.documentCoordinator.generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 100, y: 140)))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    editor.text = "draft"
+    overlay.textViewDidChange(editor)
+    let generation = view.documentCoordinator.generation
+
+    _ = try view.removePage()
+    _ = try view.movePage(pageIndex: 2)
+    _ = try view.movePage(pageIndex: 0)
+
+    XCTAssertTrue(textEditor(in: overlay) === editor)
+    XCTAssertTrue(view.documentCoordinator.document?.activePage.history.content.isEmpty == true)
+    XCTAssertEqual(view.documentCoordinator.generation, generation)
+  }
+
+  func testCancelledPickerKeepsActiveTextDraft() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    view.pageInputCoordinator = InkSignPdfPageInputCoordinator(
+      hostView: view.container,
+      artifactPolicy: view.artifactPolicy,
+      presenterProvider: { fixture.window.rootViewController },
+      controllerPresenter: { _, _ in },
+      sourceChooser: { _, _ in UIViewController() })
+    let overlay = view.textInteractionOverlay
+    try overlay.armPlacement(generation: view.documentCoordinator.generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 100, y: 140)))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    editor.text = "draft"
+    overlay.textViewDidChange(editor)
+    let generation = view.documentCoordinator.generation
+
+    _ = try view.addPages(options: nil)
+    view.pageInputCoordinator.cancelPending()
+
+    XCTAssertTrue(textEditor(in: overlay) === editor)
+    XCTAssertTrue(view.documentCoordinator.document?.activePage.history.content.isEmpty == true)
+    XCTAssertEqual(view.documentCoordinator.generation, generation)
+  }
+
+  func testMoveAndRemoveCommandsPublishFinalPageOrder() throws {
+    let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let original = try XCTUnwrap(view.documentCoordinator.document)
+    let movedID = original.activePageID
+    let annotation = makeCenteredTextAnnotation(
+      id: "moved-page", text: "kept", fontSize: 18,
+      pageSize: original.activePage.geometry.mediaBox.size)
+    XCTAssertTrue(original.activePage.history.appendText(annotation))
+
+    let moved = expectation(description: "move page")
+    let move = try view.movePage(pageIndex: 0)
+    move.then { _ in moved.fulfill() }
+    move.catch { error in XCTFail("move failed: \(error)"); moved.fulfill() }
+    wait(for: [moved], timeout: 30)
+
+    let afterMove = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(afterMove.pages.map(\.geometry.mediaBox.width), [400, 300, 500])
+    XCTAssertEqual(afterMove.activePageID, movedID)
+    XCTAssertEqual(afterMove.activePage.history.content.textAnnotations.first?.text, "kept")
+
+    let removed = expectation(description: "remove page")
+    let remove = try view.removePage()
+    remove.then { _ in removed.fulfill() }
+    remove.catch { error in XCTFail("remove failed: \(error)"); removed.fulfill() }
+    wait(for: [removed], timeout: 30)
+
+    let afterRemove = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(afterRemove.pages.map(\.geometry.mediaBox.width), [300, 500])
+    XCTAssertEqual(afterRemove.activePageIndex, 0)
+
+    let exported = expectation(description: "export page order")
+    let output = try view.finalize()
+    output.then { path in
+      let pdf = PDFDocument(url: URL(fileURLWithPath: path))
+      XCTAssertEqual(pdf?.pageCount, 2)
+      XCTAssertEqual(pdf?.page(at: 0)?.bounds(for: .mediaBox).width, 300)
+      XCTAssertEqual(pdf?.page(at: 1)?.bounds(for: .mediaBox).width, 500)
+      exported.fulfill()
+    }
+    output.catch { error in XCTFail("export failed: \(error)"); exported.fulfill() }
+    wait(for: [exported], timeout: 30)
+  }
+
+  func testStructuralPublicationIsAtomicAndRejectsStaleCandidate() throws {
+    let fixture = makeFixture(pageCount: 2)
+    let candidateFixture = makeFixture(pageCount: 3, activePageIndex: 2)
+    defer {
+      fixture.view.dispose(); fixture.window.isHidden = true
+      candidateFixture.view.dispose(); candidateFixture.window.isHidden = true
+    }
+    let coordinator = fixture.view.documentCoordinator
+    let original = try XCTUnwrap(coordinator.document)
+    let fixtureCandidate = try XCTUnwrap(candidateFixture.view.documentCoordinator.document)
+    let candidateData = try Data(contentsOf: fixtureCandidate.workingURL)
+    let candidateURL = try coordinator.artifactPolicy.allocateWorkingSource()
+    try candidateData.write(to: candidateURL, options: .atomic)
+    let candidatePDF = try XCTUnwrap(PDFDocument(url: candidateURL))
+    let candidateSession = try InkSignPdfPdfiumSession(data: candidateData,
+                                                       fallbackFontPath: nil,
+                                                       collectionIndex: 0)
+    let candidatePages = try fixtureCandidate.pages.enumerated().map { index, old -> InkSignPdfPageState in
+      guard let page = candidatePDF.page(at: index) else {
+        throw InkSignView.MutablePageError.assemblyFailed
+      }
+      return InkSignPdfPageState(id: old.id,
+                                 page: page,
+                                 geometry: old.geometry,
+                                 history: old.history)
+    }
+    let candidate = InkSignPdfDocumentState(sourceURL: fixtureCandidate.sourceURL,
+                                            workingURL: candidateURL,
+                                            document: candidatePDF,
+                                            pdfiumSession: candidateSession,
+                                            pages: candidatePages,
+                                            activePageID: fixtureCandidate.activePageID)
+    defer {
+      if coordinator.document !== candidate {
+        candidateSession.close()
+        coordinator.artifactPolicy.deleteExact(candidateURL)
+      }
+    }
+    let operation = try XCTUnwrap(coordinator.admit(.structural))
+
+    XCTAssertTrue(coordinator.publishStructural(candidate, operation: operation) === original)
+    XCTAssertTrue(coordinator.document === candidate)
+    XCTAssertTrue(coordinator.structuralDirty)
+    coordinator.settle(operation, succeeded: true)
+
+    let staleCandidate = try XCTUnwrap(candidateFixture.view.documentCoordinator.document)
+    let staleOperation = try XCTUnwrap(coordinator.admit(.structural))
+    _ = coordinator.nextGeneration()
+    XCTAssertNil(coordinator.publishStructural(staleCandidate, operation: staleOperation))
+    XCTAssertTrue(coordinator.document === candidate)
+    coordinator.settle(staleOperation, succeeded: false)
+  }
+
+  func testCoordinatorCanPublishTheFirstAddedDocument() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let source = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    let data = try Data(contentsOf: source.workingURL)
+    let artifacts = InkSignPdfCacheArtifactPolicy.shared
+    let candidateURL = try artifacts.allocateWorkingSource()
+    defer { artifacts.deleteExact(candidateURL) }
+    try data.write(to: candidateURL, options: .atomic)
+    let loaded = try InkSignPdfDocumentCandidateLoader.load(
+      url: candidateURL,
+      fallbackFontPath: nil,
+      collectionIndex: 0)
+    let candidate = InkSignPdfDocumentState(sourceURL: candidateURL,
+                                            workingURL: candidateURL,
+                                            document: loaded.document,
+                                            pdfiumSession: loaded.pdfiumSession,
+                                            pages: loaded.pages)
+    let coordinator = InkSignPdfDocumentCoordinator(artifactPolicy: artifacts)
+    defer { coordinator.dispose() }
+    let operation = try XCTUnwrap(coordinator.admit(.structural))
+
+    XCTAssertTrue(coordinator.publishInitialStructural(candidate, operation: operation))
+    XCTAssertTrue(coordinator.document === candidate)
+    XCTAssertEqual(coordinator.document?.pages.count, 1)
+    XCTAssertTrue(coordinator.structuralDirty)
+    coordinator.settle(operation, succeeded: true)
+  }
+
+  func testOpenCancelsStructuralAdmissionAndDeletesPendingArtifacts() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let coordinator = fixture.view.documentCoordinator
+    let structural = try XCTUnwrap(coordinator.admit(.structural))
+    let staged = try coordinator.artifactPolicy.allocateWorkingSource()
+    XCTAssertTrue(coordinator.registerPendingArtifact(staged, for: structural))
+
+    let open = try XCTUnwrap(coordinator.admit(.open))
+
+    XCTAssertFalse(coordinator.isCurrent(structural))
+    XCTAssertFalse(FileManager.default.fileExists(atPath: staged.path))
+    coordinator.settle(structural, succeeded: false)
+    coordinator.settle(open, succeeded: false)
+    XCTAssertNotNil(coordinator.document)
+  }
+
+  func testFailedReplacementOpenRestoresStructuralDirtyState() throws {
+    let fixture = makeFixture(pageCount: 2)
+    let replacementFixture = makeFixture(pageCount: 1)
+    defer {
+      fixture.view.dispose(); fixture.window.isHidden = true
+      replacementFixture.view.dispose(); replacementFixture.window.isHidden = true
+    }
+    let coordinator = fixture.view.documentCoordinator
+    let original = try XCTUnwrap(coordinator.document)
+    let replacement = try XCTUnwrap(replacementFixture.view.documentCoordinator.document)
+    coordinator.setStructuralDirty(true)
+    let operation = try XCTUnwrap(coordinator.admit(.open))
+
+    XCTAssertTrue(coordinator.publish(replacement, operation: operation))
+    XCTAssertFalse(coordinator.isDirty)
+    coordinator.settle(operation, succeeded: false)
+
+    XCTAssertTrue(coordinator.document === original)
+    XCTAssertTrue(coordinator.structuralDirty)
+    XCTAssertTrue(coordinator.isDirty)
+  }
+
   func testReplacementOpenCancelsPendingOpen() throws {
     let fixture = makeFixture()
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
@@ -628,10 +890,10 @@ final class InkSignViewLifecycleTests: XCTestCase {
     history.appendText(annotation)
     history.replaceText(before: annotation,
                         with: annotation.replacingText("after\nline", pageSize: pageSize),
-                        kind: .textEdit)
+                        type: .textEdit)
 
     XCTAssertEqual(history.content.textAnnotations.count, 1)
-    XCTAssertEqual(history.undoStack.map(\.kind), [.textCreate, .textEdit])
+    XCTAssertEqual(history.undoStack.map(\.type), [.textCreate, .textEdit])
     XCTAssertTrue(history.undo())
     XCTAssertEqual(history.content.textAnnotations[0].text, "before")
     XCTAssertTrue(history.redo())
@@ -761,7 +1023,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let annotations = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history.content.textAnnotations)
     XCTAssertEqual(annotations.count, 1)
     XCTAssertEqual(annotations[0].text, "signed")
-    XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.history.undoStack.map(\.kind), [.textCreate])
+    XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.history.undoStack.map(\.type), [.textCreate])
   }
 
   func testTextPlacementCancelsOnModeAndPageChange() throws {
@@ -827,7 +1089,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertEqual(annotations.count, 1)
     XCTAssertEqual(annotations[0].position.x, expectedOrigin.x, accuracy: 0.001)
     XCTAssertEqual(annotations[0].position.y, expectedOrigin.y, accuracy: 0.001)
-    XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.history.undoStack.map(\.kind), [.textCreate])
+    XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.history.undoStack.map(\.type), [.textCreate])
   }
 
   func testRTLTextKeepsTheEditingRightEdgeOnCommit() throws {

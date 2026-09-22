@@ -590,7 +590,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                          pageSize: document.activePage.geometry.mediaBox.size)
       owner.replaceTextAnnotation(drag.original,
                                   with: updated,
-                                  kind: .textMove,
+                                  type: .textMove,
                                   generation: drag.generation,
                                   pageIndex: drag.pageIndex)
     }
@@ -613,7 +613,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
         let updated = settledAnnotation(state: state, text: text, pageSize: pageSize)
         owner?.replaceTextAnnotation(original,
                                      with: updated,
-                                     kind: .textEdit,
+                                     type: .textEdit,
                                      generation: state.generation,
                                      pageIndex: state.pageIndex)
         finishedID = original.id
@@ -686,7 +686,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     let updated = annotation.changingFontSize(to: fontSize, pageSize: presentation.pageSize)
     owner?.replaceTextAnnotation(annotation,
                                  with: updated,
-                                 kind: .textFont,
+                                 type: .textFont,
                                  generation: presentation.generation,
                                  pageIndex: presentation.pageIndex)
     interactionState = .selected(id: id)
