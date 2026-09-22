@@ -69,13 +69,13 @@ final class ViewportAnimationDriver: NSObject, InkSignPdfPageTurnAnimationDriver
 extension InkSignView {
   @discardableResult
   func applyViewport(target: ViewportTarget) -> Bool {
-    guard let page = documentState?.activePage.page else { return false }
+    guard let page = documentCoordinator.document?.activePage.page else { return false }
     documentView.minScaleFactor = 0.1
     documentView.maxScaleFactor = 16
     documentView.autoScales = false
     guard documentView.applyViewport(zoom: target.zoom,
                                      focus: target.focus,
-                                     generation: generation) else { return false }
+                                     generation: documentCoordinator.generation) else { return false }
     invalidateOverlayTransformCache()
     refreshOverlayTransform(canvasView, for: page)
     return true
@@ -99,7 +99,7 @@ extension InkSignView {
   }
 
   func viewportReadiness() -> ViewportReadiness {
-    let state = documentState
+    let state = documentCoordinator.document
     return ViewportReadiness(
       documentReady: state?.activePage.geometry.isValid == true,
       viewInWindow: documentView.window != nil,
@@ -135,9 +135,9 @@ extension InkSignView {
   @discardableResult
   func completeOpenIfReady() -> Bool {
     guard let pending = pendingOpen,
-          pending.token == generation,
+          pending.token == documentCoordinator.generation,
           !disposed,
-          let state = documentState,
+          let state = documentCoordinator.document,
           state.activePageIndex == 0,
           documentView.currentPage === state.activePage.page,
           attachedOverlayPage === state.activePage.page,
@@ -148,7 +148,7 @@ extension InkSignView {
     }
     if pending.fitToPage, usableFitScale() == nil { return false }
     guard let target = openViewportTarget(for: pending) else { return false }
-    pendingOpen = nil
+    let operation = pending.operation
     do {
       guard applyViewport(target: target),
             attachedOverlayPage === state.activePage.page,
@@ -156,19 +156,40 @@ extension InkSignView {
             pageToOverlayTransform != nil else {
         throw ViewportError.notReady
       }
+      pendingOpen = nil
+      if let operation { documentCoordinator.settle(operation, succeeded: true) }
       setInteractionMode(editing: false)
       pending.promise.resolve(withResult: toPublicPageInfo(try currentPageInfo()))
       emitChange(force: true)
       return true
     } catch {
+      pendingOpen = nil
+      if let operation { documentCoordinator.settle(operation, succeeded: false) }
+      restoreDocumentAfterOpenFailure()
       pending.promise.reject(withError: error)
       return false
     }
   }
 
+  func restoreDocumentAfterOpenFailure() {
+    guard let state = documentCoordinator.document else {
+      documentView.removePage()
+      setInteractionMode(editing: false, interactionsEnabled: false)
+      return
+    }
+    let index = state.activePageIndex
+    documentView.installPage(index: index,
+                             page: state.activePage.page,
+                             geometry: state.activePage.geometry,
+                             session: state.pdfiumSession,
+                             generation: documentCoordinator.generation)
+    overlayDidDisplay(canvasView, for: state.activePage.page)
+    setInteractionMode(editing: false)
+  }
+
   func currentViewportSnapshot() throws -> Viewport {
     try requireViewportReady(request: .preserve)
-    guard let state = documentState,
+    guard let state = documentCoordinator.document,
           let transform = documentView.viewportTransform else {
       throw ViewportError.notReady
     }
@@ -189,7 +210,7 @@ extension InkSignView {
   }
 
   private func applyViewport(request: ViewportRequest, animated: Bool = false) {
-    guard let page = documentState?.activePage.page else { return }
+    guard let page = documentCoordinator.document?.activePage.page else { return }
     cancelViewportAnimation()
     documentView.minScaleFactor = 0.1
     documentView.maxScaleFactor = 16
@@ -219,8 +240,8 @@ extension InkSignView {
   }
 
   private func viewportTarget(for request: ViewportRequest) -> ViewportTarget? {
-    guard let page = documentState?.activePage.page else { return nil }
-    let pageGeometry = documentState?.activePage.geometry ?? .empty
+    guard let page = documentCoordinator.document?.activePage.page else { return nil }
+    let pageGeometry = documentCoordinator.document?.activePage.geometry ?? .empty
     switch request {
     case .preserve:
       return nil
@@ -241,7 +262,7 @@ extension InkSignView {
   }
 
   private func openViewportTarget(for pending: PendingOpen) -> ViewportTarget? {
-    guard let state = documentState else { return nil }
+    guard let state = documentCoordinator.document else { return nil }
     let mediaBox = state.activePage.geometry.mediaBox
     let focus = pending.focus ?? CGPoint(x: mediaBox.width / 2,
                                           y: mediaBox.height / 2)
@@ -283,7 +304,7 @@ extension InkSignView {
     guard documentView.currentPage === page,
           documentView.applyViewport(zoom: zoom,
                                      focus: focus,
-                                     generation: generation) else { return }
+                                     generation: documentCoordinator.generation) else { return }
     invalidateOverlayTransformCache()
     refreshOverlayTransform(canvasView, for: page)
   }
@@ -306,7 +327,7 @@ extension InkSignView {
   /// the same direction as the supplied translation.
   func panViewport(by translation: CGPoint) {
     guard !disposed,
-          let page = documentState?.activePage.page,
+          let page = documentCoordinator.document?.activePage.page,
           let viewport = documentView.viewportTransform,
           documentView.bounds.width > 0,
           documentView.bounds.height > 0,
@@ -319,7 +340,7 @@ extension InkSignView {
       y: center.y - translation.y))
     guard documentView.applyViewport(zoom: documentView.scaleFactor,
                                      focus: focus,
-                                     generation: generation) else { return }
+                                     generation: documentCoordinator.generation) else { return }
     invalidateOverlayTransformCache()
     refreshOverlayTransform(canvasView, for: page)
   }
@@ -347,7 +368,7 @@ extension InkSignView {
   }
 
   @objc func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
-    guard !disposed, !editMode, let page = documentState?.activePage.page else { return }
+    guard !disposed, !editMode, let page = documentCoordinator.document?.activePage.page else { return }
     if !isFittedToPage() {
       applyViewport(request: .fit, animated: true)
       return
@@ -376,8 +397,8 @@ extension InkSignView {
   }
 
   func isFittedToPage() -> Bool {
-    guard let page = documentState?.activePage.page,
-          let pageGeometry = documentState?.activePage.geometry,
+    guard let page = documentCoordinator.document?.activePage.page,
+          let pageGeometry = documentCoordinator.document?.activePage.geometry,
           pageGeometry.isValid,
           documentView.bounds.width > 0, documentView.bounds.height > 0,
           let fitScale = usableFitScale(),
@@ -411,7 +432,7 @@ extension InkSignView {
   }
 
   private func currentCanonicalFocus() -> CGPoint? {
-    guard documentState?.activePage.page != nil,
+    guard documentCoordinator.document?.activePage.page != nil,
           let viewport = documentView.viewportTransform else { return nil }
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
     return viewport.clampedCanonicalPoint(fromView: viewCenter)

@@ -28,7 +28,7 @@ extension InkSignView {
   func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
     cancelViewportAnimation()
     guard canvasView === self.canvasView,
-          editMode, documentState != nil,
+          editMode, documentCoordinator.document != nil,
           pageToOverlayTransform != nil,
           activeDrawingTransactionID == nil,
           endedDrawingTransactionID == nil else {
@@ -44,7 +44,7 @@ extension InkSignView {
     }
     pendingDrawingTransactionID = nil
     activeDrawingTransactionID = transactionID
-    activeDrawingBaseline = documentState?.activePage.history.content
+    activeDrawingBaseline = documentCoordinator.document?.activePage.history.content
     activeDrawingPageToOverlayTransform = pageToOverlayTransform
   }
 
@@ -67,7 +67,7 @@ extension InkSignView {
   }
 
   func canvasGestureWillBegin(_ canvas: InkCanvasView) -> UInt64? {
-    guard canvas === canvasView, editMode, documentState != nil,
+    guard canvas === canvasView, editMode, documentCoordinator.document != nil,
           pageToOverlayTransform != nil else {
       return nil
     }
@@ -132,7 +132,7 @@ extension InkSignView {
       installQueuedPenIfNeeded()
       return
     }
-    guard let page = documentState?.activePage else { return }
+    guard let page = documentCoordinator.document?.activePage else { return }
     page.history.record(kind: .ink,
                         before: baseline,
                         after: baseline.replacingDrawing(finished))
@@ -148,8 +148,8 @@ extension InkSignView {
 
   func installCommittedDrawing() {
     let displayed: PKDrawing
-    let committedDrawing = documentState?.activePage.history.content.drawing ?? PKDrawing()
-    if let activePage = documentState?.activePage.page,
+    let committedDrawing = documentCoordinator.document?.activePage.history.content.drawing ?? PKDrawing()
+    if let activePage = documentCoordinator.document?.activePage.page,
        attachedOverlayPage === activePage,
        overlayTransformPage === activePage,
        let transform = pageToOverlayTransform {

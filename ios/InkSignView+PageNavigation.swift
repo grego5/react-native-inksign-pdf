@@ -11,7 +11,7 @@ extension InkSignView {
     to pageIndex: Int,
     completion: ((Result<PageInfo, Error>) -> Void)? = nil
   ) throws -> InkSignPdfNativePageInfo {
-    guard let state = documentState else { throw ViewportError.notReady }
+    guard let state = documentCoordinator.document else { throw ViewportError.notReady }
     try requireViewportReady(request: .preserve)
     guard pageIndex >= 0, pageIndex < state.pages.count else {
       throw ViewportError.invalidOptions("page index is out of range")
@@ -39,11 +39,11 @@ extension InkSignView {
 
     let target = state.activePage
     pageTurnLifecycle.pageSwitchStarted(switchID: requestID, targetPageIndex: pageIndex)
-    documentView.installPage(index: target.index,
+    documentView.installPage(index: pageIndex,
                              page: target.page,
                              geometry: target.geometry,
                              session: state.pdfiumSession,
-                             generation: generation)
+                             generation: documentCoordinator.generation)
     overlayDidDisplay(canvasView, for: target.page)
     return try currentPageInfo()
   }
@@ -62,7 +62,7 @@ extension InkSignView {
   }
 
   func beginPageTurnCommit(targetPageIndex: Int) {
-    guard !disposed, documentState != nil else {
+    guard !disposed, documentCoordinator.document != nil else {
       pageTurnLifecycle.pageTurnCommitFailedBeforeStart()
       return
     }
@@ -105,7 +105,7 @@ extension InkSignView {
 
   func finishPageSwitchIfReady(requestID: UInt64) {
     guard pendingPageSwitchID == requestID,
-          let state = documentState,
+          let state = documentCoordinator.document,
           documentView.currentPage === state.activePage.page,
           attachedOverlayPage === state.activePage.page,
           documentView.bounds.width > 0,

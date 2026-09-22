@@ -23,4 +23,8 @@ Move the existing iOS document and page state behind one mutable-document coordi
 - Add focused lifecycle and page-state tests for stable IDs, active-page lookup, working-file ownership, replacement, and stale-result suppression.
 - Update the iOS lifecycle reference to match implemented ownership. Run focused iOS lifecycle validation and `git diff --check -- ':!nitrogen/generated/**'`.
 
-Status: Planned
+Status: Complete
+
+Coordinator ownership, stable page IDs, and exact working-PDF artifact
+ownership are implemented. Focused lifecycle coverage and the repository iOS
+lifecycle contract runner verify the ownership boundary.

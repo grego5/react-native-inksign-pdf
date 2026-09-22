@@ -429,8 +429,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       UIImpactFeedbackGenerator(style: .light).impactOccurred()
     case .changed:
       guard case .dragging(let drag) = interactionState,
-            owner?.generation == drag.generation,
-            owner?.documentState?.activePageIndex == drag.pageIndex,
+            owner?.documentCoordinator.generation == drag.generation,
+            owner?.documentCoordinator.document?.activePageIndex == drag.pageIndex,
             let transform = owner?.pageToOverlayTransform,
             let inverse = transform.invertedIfFinite else { return }
       let translation = CGPoint(x: location.x - drag.startPoint.x,
@@ -447,8 +447,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       commitDrag()
     case .cancelled, .failed:
       if case .dragging(let drag) = interactionState {
-        interactionState = owner?.generation == drag.generation &&
-          owner?.documentState?.activePageIndex == drag.pageIndex
+        interactionState = owner?.documentCoordinator.generation == drag.generation &&
+          owner?.documentCoordinator.document?.activePageIndex == drag.pageIndex
           ? .selected(id: drag.original.id) : .idle
       }
       syncPresentation()
@@ -506,7 +506,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     }
     applyWritingDirection(to: textView, isRTL: presentationState.isRTL)
     layoutEditor()
-    if let pagePoint, let pageSize = owner?.documentState?.activePage.geometry.mediaBox.size {
+    if let pagePoint, let pageSize = owner?.documentCoordinator.document?.activePage.geometry.mediaBox.size {
       let contentSize = editorContentSize(text: textView.text ?? "",
                                           fontSize: presentationState.fontSize)
       let origin = clampedPosition(CGPoint(x: pagePoint.x - contentSize.width / 2,
@@ -578,8 +578,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private func commitDrag() {
     guard case .dragging(let drag) = interactionState else { return }
     guard let owner,
-          owner.generation == drag.generation,
-          let document = owner.documentState,
+          owner.documentCoordinator.generation == drag.generation,
+          let document = owner.documentCoordinator.document,
           document.activePageIndex == drag.pageIndex else {
       interactionState = .idle
       syncPresentation()
@@ -894,10 +894,10 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func presentation() -> (generation: UInt64, pageIndex: Int,
                                   pageSize: CGSize, annotations: [InkSignPdfTextAnnotation])? {
-    guard let owner, let state = owner.documentState,
+    guard let owner, let state = owner.documentCoordinator.document,
           owner.attachedOverlayPage === state.activePage.page,
           owner.pageToOverlayTransform != nil else { return nil }
-    return (owner.generation, state.activePageIndex,
+    return (owner.documentCoordinator.generation, state.activePageIndex,
             state.activePage.geometry.mediaBox.size,
             state.activePage.history.content.textAnnotations)
   }

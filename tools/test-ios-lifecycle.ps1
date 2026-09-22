@@ -32,6 +32,7 @@ $lifecycleTests = Read-Source "ios/tests/InkSignViewLifecycleTests.swift"
 $inputTests = Read-Source "ios/tests/PageInputCoordinatorTests.swift"
 $renderingDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/rendering.md"
 $lifecycleDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/view-lifecycle.md"
+$exportDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/export.md"
 
 # One PDFium-backed base-page renderer is used for both live tiles and previews.
 Assert-Contains $view 'let documentView = InkPdfView\(\)' 'iOS view owns the PDFium page host'
@@ -45,7 +46,14 @@ Assert-NotContains $preview 'pageRef\.draw\(|drawPDFPage' 'previews do not draw 
 
 # PDFKit remains only as source metadata/export support; display state carries
 # no compatibility-text snapshot or renderer adapter.
-Assert-Contains $document 'let loaded = PDFDocument\(data: sourceData\)' 'PDFKit source document remains available for metadata'
+Assert-Contains $document 'PDFDocument\(url: workingURL\)' 'PDFKit reads the module-owned working source'
+Assert-Contains $documentState 'final class InkSignPdfDocumentCoordinator' 'document coordinator owns native document state'
+Assert-Contains $documentState 'private\(set\) var generation' 'document coordinator owns generation state'
+Assert-Contains $documentState 'activePageID' 'active page is stored by stable identity'
+Assert-Contains $documentState 'let workingURL: URL' 'document state retains its working artifact'
+Assert-NotContains $view 'var documentState|var generation' 'view keeps no parallel document or generation state'
+Assert-Contains $documentState 'func admit\(' 'coordinator admits serialized document operations'
+Assert-Contains $documentState 'func settle\(' 'coordinator settles operation artifacts'
 Assert-Contains $export 'drawPDFPage' 'PDFKit/Core Graphics source export remains available'
 Assert-NotContains $documentState 'compatibility|CompatibilityText|textRuns' 'page state has no compatibility text model'
 Assert-NotContains $preview 'compatibility|CompatibilityText|textRuns' 'preview request has no compatibility text model'
@@ -66,7 +74,7 @@ Assert-NotContains $lifecycleTests 'CompatibilityText|compatibilityText|PdfFontO
 Assert-Contains $renderingDocs 'PDFium pixels are the only base page image' 'rendering reference documents one base renderer'
 Assert-Contains $renderingDocs 'Page-turn previews render the target page through the retained PDFium session' 'rendering reference documents PDFium previews'
 Assert-Contains $lifecycleDocs 'PDFium supplies page dimensions and all base display pixels' 'lifecycle reference documents PDFium ownership'
-Assert-Contains $lifecycleDocs 'PDFKit document remains available only for source metadata and export' 'lifecycle reference limits PDFKit ownership'
+Assert-Contains $lifecycleDocs 'coordinator owns the published PDFKit document, PDFium session, generation' 'lifecycle reference documents coordinator ownership'
 
 # Page-input staging is a separate lifecycle boundary until Task 6 consumes
 # the detached staged values in the structural mutation coordinator.
@@ -86,6 +94,10 @@ Assert-Contains $inputCoordinator 'operationInProgress' 'page-input conflicts ha
 Assert-Contains $inputCoordinator 'operationCancelled' 'page-input cancellation has stable errors'
 Assert-Contains $cacheArtifacts 'allocateStagedInput' 'iOS cache allocates staged inputs'
 Assert-Contains $cacheArtifacts 'stagedInputPattern' 'iOS startup scavenges staged inputs'
+Assert-Contains $cacheArtifacts 'allocateWorkingSource' 'iOS cache allocates working sources'
+Assert-Contains $cacheArtifacts 'workingSourcePattern' 'iOS startup scavenges working sources'
+Assert-Contains $cacheArtifacts 'allocateExportSnapshot' 'iOS cache allocates export snapshots'
+Assert-Contains $cacheArtifacts 'exportSnapshotPattern' 'iOS startup scavenges export snapshots'
 Assert-Contains $inputCoordinator 'documentPickerFactory' 'picker construction is injectable'
 Assert-Contains $inputCoordinator 'sourceChooser' 'Files and Photos routing is injectable'
 Assert-Contains $inputCoordinator 'securityScope' 'security scope access is injectable'
@@ -94,5 +106,11 @@ Assert-Contains $inputTests 'testDisposalCancellationRejectsPendingPickerAndDism
 Assert-Contains $inputTests 'testPickerRoutesFilesAndPhotoLibraryWithAllowedTypesAndOrderedPhotos' 'picker routing and allowed types are tested'
 Assert-Contains $inputTests 'testConcurrentRequestIsRejectedAndStalePickerCannotSettleNewRequest' 'page-input supersession is tested'
 Assert-Contains $inputTests 'testSecurityScopeIsBalancedForEachLocalSource' 'security-scope balance is tested'
+Assert-Contains $lifecycleTests 'testCoordinatorUsesStablePageIdentityAndOwnsWorkingArtifact' 'coordinator page identity and working artifact ownership are tested'
+Assert-Contains $lifecycleTests 'testCoordinatorAdmissionDirtyAggregationAndArtifactCleanup' 'coordinator admission, dirty aggregation, and cleanup are tested'
+Assert-Contains $lifecycleTests 'testStaleExportCannotPublishOutput' 'stale export publication is tested'
+Assert-Contains $lifecycleTests 'testFailedReplacementRestoresPublishedDocumentAndDeletesCandidate' 'failed replacement restores document and removes working artifact'
+Assert-Contains $export 'sourceSnapshot' 'finalize exports from an immutable source artifact'
+Assert-Contains $exportDocs 'unique immutable\s+snapshot artifact' 'export reference documents snapshot ownership'
 
 Write-Output "PASS iOS PDFium rendering contract checks"

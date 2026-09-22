@@ -7,15 +7,19 @@ import NitroModules
 
 extension InkSignView {
   func finalize() throws -> Promise<String> {
+    guard let operation = documentCoordinator.admit(.finalize) else {
+      return Promise.rejected(withError: ExportError.operationInProgress)
+    }
     let captureResult: Result<ExportSnapshot, Error>
     if Thread.isMainThread {
-      captureResult = Result { try captureExportSnapshot() }
+      captureResult = Result { try captureExportSnapshot(operation: operation) }
     } else {
       var captured: Result<ExportSnapshot, Error>?
       DispatchQueue.main.sync {
-        captured = Result { try self.captureExportSnapshot() }
+        captured = Result { try self.captureExportSnapshot(operation: operation) }
       }
       guard let captured else {
+        documentCoordinator.finish(operation)
         return Promise.rejected(withError: ExportError.cancelled)
       }
       captureResult = captured
@@ -25,47 +29,35 @@ extension InkSignView {
     case .success(let value):
       snapshot = value
     case .failure(let error):
+      documentCoordinator.finish(operation)
       return Promise.rejected(withError: error)
     }
 
     let queue = exportQueue
-    return Promise.parallel(queue) { [weak self] in
-      guard let owner = self else { throw ExportError.cancelled }
+    let coordinator = documentCoordinator
+    return Promise.parallel(queue) {
+      defer { coordinator.finish(snapshot.operation) }
+      var outputPublished = false
+      defer {
+        coordinator.discardArtifact(snapshot.sourceSnapshot)
+        if !outputPublished { coordinator.discardArtifact(snapshot.output) }
+      }
       do {
-        var published = false
-        defer {
-          if !published {
-            owner.publicationLock.lock()
-            owner.pendingOutputURLs.remove(snapshot.output)
-            owner.publicationLock.unlock()
-            owner.artifactPolicy.deleteExact(snapshot.output)
-          }
-        }
+        try FileManager.default.copyItem(at: snapshot.source, to: snapshot.sourceSnapshot)
         let temporary = try Self.writePDF(
-          source: snapshot.source,
+          source: snapshot.sourceSnapshot,
           pages: snapshot.pages,
-          policy: owner.artifactPolicy)
-        defer { owner.artifactPolicy.deleteExact(temporary) }
-
-        owner.publicationLock.lock()
-        defer { owner.publicationLock.unlock() }
-        guard !owner.disposed, owner.generation == snapshot.generation else {
-          owner.pendingOutputURLs.remove(snapshot.output)
-          owner.artifactPolicy.deleteExact(snapshot.output)
-          throw ExportError.cancelled
-        }
-        do {
+          policy: coordinator.artifactPolicy)
+        defer { coordinator.artifactPolicy.deleteExact(temporary) }
+        let didPublish = try coordinator.publishOutput(snapshot.output,
+                                                       token: snapshot.operation) {
           try Self.publish(temporary: temporary, to: snapshot.output)
-        } catch {
-          owner.pendingOutputURLs.remove(snapshot.output)
-          owner.artifactPolicy.deleteExact(snapshot.output)
-          throw error
         }
-        owner.pendingOutputURLs.remove(snapshot.output)
-        owner.ownedOutputURLs.insert(snapshot.output)
-        published = true
+        guard didPublish else { throw ExportError.cancelled }
+        outputPublished = true
         return snapshot.output.path
       } catch {
+        guard coordinator.isCurrent(snapshot.operation) else { throw ExportError.cancelled }
         throw Self.normalizeExportError(error)
       }
     }
@@ -74,34 +66,41 @@ extension InkSignView {
   /// Captures all export inputs on the main-thread-owned document boundary.
   /// The worker must never inspect live document, canvas, or generation state
   /// to decide what request it is exporting.
-  func captureExportSnapshot() throws -> ExportSnapshot {
+  func captureExportSnapshot(
+    operation: InkSignPdfDocumentCoordinator.OperationToken
+  ) throws -> ExportSnapshot {
     guard !disposed else { throw ExportError.cancelled }
-    guard let state = documentState, !state.pages.isEmpty else {
+    guard documentCoordinator.isCurrent(operation) else { throw ExportError.cancelled }
+    guard let state = documentCoordinator.document, !state.pages.isEmpty else {
       throw ExportError.notReady
     }
-    let pages = try state.pages.map { page in
+    let pages = try state.pages.enumerated().map { pageIndex, page in
       guard page.geometry.isValid,
             let drawing = try? PKDrawing(data: page.history.content.drawing.dataRepresentation()) else {
         throw ExportError.failed
       }
-      return ExportPageSnapshot(pageIndex: page.index,
+      return ExportPageSnapshot(pageIndex: pageIndex,
                                 geometry: page.geometry,
                                 drawing: drawing,
                                 textAnnotations: page.history.content.textAnnotations)
     }
-    let output: URL
+    var allocatedArtifacts: (source: URL, output: URL)?
     do {
-      output = try artifactPolicy.allocateSignedOutput()
+      let artifacts = try documentCoordinator.allocateExportArtifacts(for: operation)
+      allocatedArtifacts = artifacts
     } catch {
+      if let artifacts = allocatedArtifacts {
+        documentCoordinator.discardArtifact(artifacts.source)
+        documentCoordinator.discardArtifact(artifacts.output)
+      }
       throw ExportError.failed
     }
-    publicationLock.lock()
-    pendingOutputURLs.insert(output)
-    publicationLock.unlock()
-    return ExportSnapshot(source: state.sourceURL,
-                          output: output,
+    guard let artifacts = allocatedArtifacts else { throw ExportError.failed }
+    return ExportSnapshot(source: state.workingURL,
+                          sourceSnapshot: artifacts.source,
+                          output: artifacts.output,
                           pages: pages,
-                          generation: generation)
+                          operation: operation)
   }
 
   func startDebugRecording() {
@@ -275,7 +274,8 @@ struct ExportPageSnapshot {
 
 struct ExportSnapshot {
   let source: URL
+  let sourceSnapshot: URL
   let output: URL
   let pages: [ExportPageSnapshot]
-  let generation: UInt64
+  let operation: InkSignPdfDocumentCoordinator.OperationToken
 }

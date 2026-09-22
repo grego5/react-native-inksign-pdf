@@ -5,7 +5,7 @@ extension InkSignView {
     try performOnMainSync {
       self.cancelActiveStroke()
       self.textInteractionOverlay.finishForLifecycle()
-      guard let page = self.documentState?.activePage else { return }
+      guard let page = self.documentCoordinator.document?.activePage else { return }
       guard page.history.undo() else { return }
       self.installCommittedDrawing()
       self.textInteractionOverlay.syncContent()
@@ -17,7 +17,7 @@ extension InkSignView {
     try performOnMainSync {
       self.cancelActiveStroke()
       self.textInteractionOverlay.finishForLifecycle()
-      guard let page = self.documentState?.activePage else { return }
+      guard let page = self.documentCoordinator.document?.activePage else { return }
       guard page.history.redo() else { return }
       self.installCommittedDrawing()
       self.textInteractionOverlay.syncContent()
@@ -29,7 +29,7 @@ extension InkSignView {
     try performOnMainSync {
       self.cancelActiveStroke()
       self.textInteractionOverlay.finishForLifecycle()
-      guard let page = self.documentState?.activePage else { return }
+      guard let page = self.documentCoordinator.document?.activePage else { return }
       page.history.clear()
       self.installCommittedDrawing()
       self.textInteractionOverlay.syncContent()
@@ -38,7 +38,7 @@ extension InkSignView {
   }
 
   func emitChange(force: Bool = false) {
-    guard let state = documentState else {
+    guard let state = documentCoordinator.document else {
       let mode = textInteractionOverlay.interactionMode()
       let tuple = (false, false, false, mode.stringValue)
       if force || lastChange == nil || lastChange!.0 != tuple.0 ||
@@ -52,7 +52,7 @@ extension InkSignView {
     let page = state.activePage
     let pageState = page.history.state
     let value = (canUndo: pageState.canUndo, canRedo: pageState.canRedo,
-                 isDirty: state.pages.contains { !$0.history.content.isEmpty })
+                 isDirty: documentCoordinator.isDirty)
     let mode = textInteractionOverlay.interactionMode()
     let tuple = (value.canUndo, value.canRedo, value.isDirty, mode.stringValue)
     guard force || lastChange == nil || lastChange!.0 != tuple.0 ||

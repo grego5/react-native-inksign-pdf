@@ -45,6 +45,14 @@ final class InkSignPdfCacheArtifactPolicy {
     try allocate(prefix: ".input-", suffix: ".tmp")
   }
 
+  func allocateWorkingSource() throws -> URL {
+    try allocate(prefix: ".working-", suffix: ".pdf")
+  }
+
+  func allocateExportSnapshot() throws -> URL {
+    try allocate(prefix: ".snapshot-", suffix: ".pdf", createFile: false)
+  }
+
   func deleteExact(_ url: URL) {
     guard isOwnedDirectFile(url), !isSymbolicLink(url) else { return }
     try? FileManager.default.removeItem(at: url)
@@ -58,11 +66,11 @@ final class InkSignPdfCacheArtifactPolicy {
     return output
   }
 
-  private func allocate(prefix: String, suffix: String) throws -> URL {
+  private func allocate(prefix: String, suffix: String, createFile: Bool = true) throws -> URL {
     for _ in 0..<32 {
       let url = root.appendingPathComponent("\(prefix)\(UUID().uuidString)\(suffix)")
       guard isOwnedDirectFile(url) else { throw CacheError.unavailable }
-      if FileManager.default.createFile(atPath: url.path, contents: nil) { return url }
+      if !createFile || FileManager.default.createFile(atPath: url.path, contents: nil) { return url }
     }
     throw CacheError.unavailable
   }
@@ -83,7 +91,9 @@ final class InkSignPdfCacheArtifactPolicy {
     return Self.signedOutputPattern.firstMatch(in: name) != nil ||
       Self.exportScratchPattern.firstMatch(in: name) != nil ||
       Self.verificationScratchPattern.firstMatch(in: name) != nil ||
-      Self.stagedInputPattern.firstMatch(in: name) != nil
+      Self.stagedInputPattern.firstMatch(in: name) != nil ||
+      Self.workingSourcePattern.firstMatch(in: name) != nil ||
+      Self.exportSnapshotPattern.firstMatch(in: name) != nil
   }
 
   private func isSignedOutput(_ url: URL) -> Bool {
@@ -125,6 +135,8 @@ final class InkSignPdfCacheArtifactPolicy {
   private static let exportScratchPattern = try! NSRegularExpression(pattern: "^\\.signed-[^/]+\\.pdf$")
   private static let verificationScratchPattern = try! NSRegularExpression(pattern: "^\\.signed-verify-[^/]+\\.pdf$")
   private static let stagedInputPattern = try! NSRegularExpression(pattern: "^\\.input-[^/]+\\.tmp$")
+  private static let workingSourcePattern = try! NSRegularExpression(pattern: "^\\.working-[^/]+\\.pdf$")
+  private static let exportSnapshotPattern = try! NSRegularExpression(pattern: "^\\.snapshot-[^/]+\\.pdf$")
 
   enum ConfigurationError: LocalizedError {
     case invalidLeaf

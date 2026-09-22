@@ -19,7 +19,7 @@ extension InkSignView {
   /// Converts an overlay point through the coordinator-owned PDFKit mapping
   /// into canonical media-box-relative page coordinates.
   func canonicalPagePoint(fromOverlay point: CGPoint) -> CGPoint? {
-    guard let state = documentState,
+    guard let state = documentCoordinator.document,
           attachedOverlayPage === state.activePage.page,
           let transform = pageToOverlayTransform,
           let inverse = transform.invertedIfFinite else { return nil }
@@ -32,7 +32,7 @@ extension InkSignView {
   }
 
   func isSupportedPage(_ candidate: PDFPage) -> Bool {
-    guard let state = documentState else { return false }
+    guard let state = documentCoordinator.document else { return false }
     return state.activePage.page === candidate && state.activePage.geometry.isValid
   }
 
@@ -55,7 +55,7 @@ extension InkSignView {
   }
 
   func overlayLayoutChanged(_ overlay: InkCanvasView) {
-    guard !disposed, let page = documentState?.activePage.page,
+    guard !disposed, let page = documentCoordinator.document?.activePage.page,
           attachedOverlayPage === page, isSupportedPage(page) else { return }
     refreshOverlayTransform(overlay, for: page)
     if let pendingPageSwitchID { finishPageSwitchIfReady(requestID: pendingPageSwitchID) }
@@ -67,7 +67,7 @@ extension InkSignView {
   /// dependent state; they never issue another viewport mutation.
   func documentViewViewportChanged(_ view: InkPdfView) {
     guard view === documentView,
-          let page = documentState?.activePage.page else { return }
+          let page = documentCoordinator.document?.activePage.page else { return }
     invalidateOverlayTransformCache()
     refreshOverlayTransform(canvasView, for: page)
   }

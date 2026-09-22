@@ -56,6 +56,7 @@ final class InkSignPdfCanvasViewDelegate: NSObject, PKCanvasViewDelegate {
 final class InkSignView: HybridInkSignViewSpec {
   struct PendingOpen {
     let token: UInt64
+    let operation: InkSignPdfDocumentCoordinator.OperationToken? = nil
     let promise: Promise<PageInfo>
     let zoom: Double?
     let focus: CGPoint?
@@ -67,7 +68,6 @@ final class InkSignView: HybridInkSignViewSpec {
   let overlayProvider = PageOverlayProvider()
   let loadQueue = DispatchQueue(label: "ReactNativeInkSignPdf.load", qos: .userInitiated)
   let exportQueue = DispatchQueue(label: "ReactNativeInkSignPdf.export", qos: .userInitiated)
-  let publicationLock = NSLock()
   let artifactPolicy = InkSignPdfCacheArtifactPolicy.shared
   lazy var pageInputCoordinator = InkSignPdfPageInputCoordinator(
     hostView: container,
@@ -81,9 +81,8 @@ final class InkSignView: HybridInkSignViewSpec {
     previewScheduler: pageTurnPreviewScheduler,
     animationDriverFactory: pageTurnAnimationDriverFactory)
 
-  var documentState: InkSignPdfDocumentState?
+  let documentCoordinator: InkSignPdfDocumentCoordinator
   lazy var textInteractionOverlay = InkSignPdfTextInteractionOverlay(frame: .zero)
-  var generation: UInt64 = 0
   var viewportRequestID: UInt64 = 0
   var pageSwitchRequestID: UInt64 = 0
   var pageNavigationRequestID: UInt64 = 0
@@ -115,8 +114,6 @@ final class InkSignView: HybridInkSignViewSpec {
   var overlayTransformViewportFrame = CGRect.zero
   var pageToOverlayTransform: CGAffineTransform?
   var disposed = false
-  var pendingOutputURLs = Set<URL>()
-  var ownedOutputURLs = Set<URL>()
 
   var view: UIView { container }
 
@@ -174,6 +171,7 @@ final class InkSignView: HybridInkSignViewSpec {
   ) {
     pageTurnPreviewScheduler = previewScheduler
     pageTurnAnimationDriverFactory = animationDriverFactory
+    documentCoordinator = InkSignPdfDocumentCoordinator(artifactPolicy: artifactPolicy)
     super.init()
     container.clipsToBounds = true
     documentView.owner = self
@@ -221,18 +219,9 @@ final class InkSignView: HybridInkSignViewSpec {
     pageTurnLifecycle.dispose()
     viewportAnimation?.stop()
     pendingOpen = nil
-    publicationLock.lock()
     disposed = true
-    generation &+= 1
+    documentCoordinator.dispose()
     pageNavigationRequestID &+= 1
-    let outputs = pendingOutputURLs.union(ownedOutputURLs)
-    pendingOutputURLs.removeAll()
-    ownedOutputURLs.removeAll()
-    publicationLock.unlock()
-    let policy = artifactPolicy
-    exportQueue.async {
-      outputs.forEach(policy.deleteExact)
-    }
     overlayProvider.owner = nil
     canvasView.owner = nil
     textInteractionOverlay.dispose()
@@ -247,9 +236,8 @@ final class InkSignView: HybridInkSignViewSpec {
       guard !self.disposed else { return }
       self.pageInputCoordinator.cancelPending()
       self.cancelPendingPageSwitch()
-      self.publicationLock.lock()
       self.disposed = true
-      self.generation &+= 1
+      self.documentCoordinator.dispose()
       self.viewportRequestID &+= 1
       self.pageSwitchRequestID &+= 1
       self.pageNavigationRequestID &+= 1
@@ -258,12 +246,10 @@ final class InkSignView: HybridInkSignViewSpec {
       let pendingOpen = self.pendingOpen
       self.pendingOpen = nil
       self.pageTurnLifecycle.dispose()
-      self.publicationLock.unlock()
       pendingOpen?.promise.reject(withError: LoadError.cancelled)
       self.textInteractionOverlay.finishForLifecycle()
       self.cancelActiveStroke(clearLive: false)
       self.documentView.removePage()
-      self.documentState = nil
       self.setInteractionMode(editing: false, interactionsEnabled: false)
       self.attachedOverlayPage = nil
       self.invalidateOverlayTransformCache()
@@ -281,15 +267,6 @@ final class InkSignView: HybridInkSignViewSpec {
       }
       self.onStateChange = nil
       self.onPageChange = nil
-      self.publicationLock.lock()
-      let outputs = self.pendingOutputURLs.union(self.ownedOutputURLs)
-      self.pendingOutputURLs.removeAll()
-      self.ownedOutputURLs.removeAll()
-      self.publicationLock.unlock()
-      let policy = self.artifactPolicy
-      self.exportQueue.async {
-        outputs.forEach(policy.deleteExact)
-      }
     }
   }
 
@@ -306,6 +283,7 @@ final class InkSignView: HybridInkSignViewSpec {
     case invalidFallbackFont(String)
     case unsupportedPdf
     case cancelled
+    case operationInProgress
 
     var errorDescription: String? {
       switch self {
@@ -314,6 +292,7 @@ final class InkSignView: HybridInkSignViewSpec {
       case .invalidFallbackFont(let reason): return "invalid_fallback_font: \(reason)"
       case .unsupportedPdf: return "unsupported_pdf: The PDF is not supported"
       case .cancelled: return "operation_cancelled: PDF loading was cancelled"
+      case .operationInProgress: return "operation_in_progress: Another document operation is active"
       }
     }
   }
@@ -323,6 +302,7 @@ final class InkSignView: HybridInkSignViewSpec {
     case invalidOutput
     case cancelled
     case failed
+    case operationInProgress
 
     var errorDescription: String? {
       switch self {
@@ -330,6 +310,7 @@ final class InkSignView: HybridInkSignViewSpec {
       case .invalidOutput: return "invalid_output_path: The export path is invalid"
       case .cancelled: return "operation_cancelled: PDF export was cancelled"
       case .failed: return "pdf_export_failed: Unable to export the PDF"
+      case .operationInProgress: return "operation_in_progress: Another document operation is active"
       }
     }
   }

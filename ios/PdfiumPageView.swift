@@ -175,7 +175,7 @@ final class InkPdfView: UIView {
     super.layoutSubviews()
     guard let current = viewportTransform,
           pageGeneration == current.generation,
-          owner?.generation == nil || owner?.generation == current.generation,
+          owner?.documentCoordinator.generation == nil || owner?.documentCoordinator.generation == current.generation,
           let rebased = current.rebased(to: bounds) else {
       renderGeneration &+= 1
       clearTiles()
@@ -429,7 +429,7 @@ final class InkPdfView: UIView {
     guard let viewport = viewportTransform else { return false }
     let renderZoom = min(16, max(0.125, ceil(viewport.zoom * 8) / 8))
     return renderGeneration == renderToken &&
-      owner?.generation == key.generation &&
+      owner?.documentCoordinator.generation == key.generation &&
       pageIndex == key.pageIndex &&
       viewport.generation == key.generation &&
       viewport.zoom.isFinite &&
@@ -539,7 +539,7 @@ final class InkPdfView: UIView {
       y: center.y - translation.y))
     guard applyViewport(zoom: scaleFactor,
                         focus: focus,
-                        generation: owner?.generation ?? 0) else { return }
+                        generation: owner?.documentCoordinator.generation ?? 0) else { return }
     owner?.documentViewViewportChanged(self)
   }
 
@@ -557,7 +557,7 @@ final class InkPdfView: UIView {
       let focus = viewport.focus(keepingCanonicalPoint: anchor,
                                 atViewPoint: pinchStartPoint,
                                 zoom: zoom)
-      guard applyViewport(zoom: zoom, focus: focus, generation: owner?.generation ?? 0) else {
+      guard applyViewport(zoom: zoom, focus: focus, generation: owner?.documentCoordinator.generation ?? 0) else {
         return
       }
       owner?.documentViewViewportChanged(self)
