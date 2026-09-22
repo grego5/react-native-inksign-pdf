@@ -84,6 +84,10 @@ namespace margelo::nitro::inksignpdf {
   public:
     // Methods
     std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) override;
+    std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) override;
+    std::shared_ptr<Promise<AddPagesResult>> scanPages() override;
+    std::shared_ptr<Promise<PageInfo>> removePage() override;
+    std::shared_ptr<Promise<PageInfo>> movePage(double pageIndex) override;
     void nextPage() override;
     void previousPage() override;
     Viewport getViewport() override;

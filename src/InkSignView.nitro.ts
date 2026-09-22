@@ -18,6 +18,20 @@ export interface PageInfo {
   height: number
 }
 
+export type PageType = 'pdf' | 'image'
+
+export interface AddPagesOptions {
+  /** Restricts the native picker. Omission permits both `pdf` and `image`. */
+  type?: PageType
+}
+
+export interface AddPagesResult {
+  /** Metadata for the page active after the operation. */
+  pageInfo: PageInfo
+  /** Number of pages appended. Cancellation resolves with zero. */
+  addedPageCount: number
+}
+
 export interface StateChangeEvent {
   canUndo: boolean
   canRedo: boolean
@@ -84,6 +98,10 @@ export interface InkSignViewProps extends HybridViewProps {
 
 export interface InkSignViewMethods extends HybridViewMethods {
   open(path: string, options?: ViewportOptions): Promise<PageInfo>
+  addPages(options?: AddPagesOptions): Promise<AddPagesResult>
+  scanPages(): Promise<AddPagesResult>
+  removePage(): Promise<PageInfo>
+  movePage(pageIndex: number): Promise<PageInfo>
   nextPage(): void
   previousPage(): void
   getViewport(): Viewport

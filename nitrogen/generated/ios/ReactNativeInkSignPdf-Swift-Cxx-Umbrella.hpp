@@ -8,6 +8,10 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `AddPagesOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
+// Forward declaration of `AddPagesResult` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
@@ -16,6 +20,8 @@ namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
+// Forward declaration of `PageType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageType; }
 // Forward declaration of `PdfFallbackFont` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
@@ -26,10 +32,13 @@ namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 
 // Include C++ defined types
+#include "AddPagesOptions.hpp"
+#include "AddPagesResult.hpp"
 #include "DoubleTapOptions.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "InteractionMode.hpp"
 #include "PageInfo.hpp"
+#include "PageType.hpp"
 #include "PdfFallbackFont.hpp"
 #include "StateChangeEvent.hpp"
 #include "Viewport.hpp"
