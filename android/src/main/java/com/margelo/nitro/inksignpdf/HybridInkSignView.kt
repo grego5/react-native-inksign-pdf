@@ -29,6 +29,7 @@ class HybridInkSignView internal constructor(
     private val context: Context,
 ) : HybridInkSignViewSpec() {
   private val artifactPolicy = CacheArtifactPolicy.initialize(context)
+  private val pageInputCoordinator = AndroidPageInputCoordinator(context, artifactPolicy)
   private val container = FrameLayout(context)
   private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private val pdfWorker = PdfSessionWorker()
@@ -436,6 +437,7 @@ class HybridInkSignView internal constructor(
     checkMainThread()
     if (disposed) throw operationCancelled()
 
+    pageInputCoordinator.cancelPending()
     surface.withStateTransaction { textOverlay.finishForLifecycle() }
     val viewport = ViewportRequestParser.parseOpen(options)
     val fallbackFontSnapshot = fallbackFont
@@ -624,6 +626,7 @@ class HybridInkSignView internal constructor(
       pending
     }
     promises.forEach { promise -> promise.reject(operationCancelled()) }
+    pageInputCoordinator.close()
     textOverlay.dispose()
     mainScope.cancel()
     lowLatencyPresenter.release()

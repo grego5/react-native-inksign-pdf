@@ -92,7 +92,7 @@ stored state or the JavaScript boundary.
   `0..<pageCount`, shifts intervening pages, and keeps the moved page active.
   Structural mutations are outside page-local undo/redo and mark the document
   dirty after successful publication.
-- The document must be ready for page mutation. Only one picker, scanner, or
+- The document must be ready for page mutation. Only one page-input staging or
   structural mutation may be active; conflicting operations reject with
   `operation_in_progress`, and open/disposal cancel pending work with
   `operation_cancelled`. Invalid move destinations reject before mutation.

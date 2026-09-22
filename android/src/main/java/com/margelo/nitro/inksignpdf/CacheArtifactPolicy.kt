@@ -25,6 +25,8 @@ internal class CacheArtifactPolicy private constructor(
 
   fun allocateExportScratch(): File = allocateReservedFile(".signed-", ".tmp")
 
+  fun allocateStagedInput(): File = allocateReservedFile(".input-", ".tmp")
+
   fun validatedSignedOutput(path: String, source: File): File {
     if (path.isBlank()) throw invalidOutputPath("The export path is invalid")
     val output = try {
@@ -95,6 +97,7 @@ internal class CacheArtifactPolicy private constructor(
     if (Files.isSymbolicLink(file.toPath()) || !file.isFile) return false
     if (!isOwnedDirectChild(file)) return false
     return SIGNED_OUTPUT.matches(file.name) || EXPORT_SCRATCH.matches(file.name) ||
+      STAGED_INPUT.matches(file.name) ||
       (debugArtifactsEnabled && DEBUG_RECORDING.matches(file.name))
   }
 
@@ -111,6 +114,7 @@ internal class CacheArtifactPolicy private constructor(
     private const val MAX_ALLOCATION_ATTEMPTS = 32
     private val SIGNED_OUTPUT = Regex("signed-[^/\\\\]+\\.pdf")
     private val EXPORT_SCRATCH = Regex("\\.signed-[^/\\\\]+\\.tmp")
+    private val STAGED_INPUT = Regex("\\.input-[^/\\\\]+\\.tmp")
     private val DEBUG_RECORDING = Regex("android-stroke-[^/\\\\]+\\.csv")
 
     @Volatile private var initialized: CacheArtifactPolicy? = null
