@@ -1,8 +1,9 @@
 # Android PDF export
 
-`PdfExporter` snapshots committed page history on the UI thread and writes the
-result from a worker-owned PDF session. It never reads rolling or predicted
-geometry and never modifies the source PDF.
+`PdfExporter` snapshots the current working PDF's committed page history on the
+UI thread and writes the result from a worker-owned PDF session. It never reads
+rolling or predicted geometry and never modifies either the caller's source or
+the published working artifact.
 
 - Source pages, order, dimensions, and rotations are preserved.
 - Completed cubic contours are written as separate opaque vector fill paths.

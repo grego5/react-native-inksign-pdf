@@ -27,6 +27,10 @@ internal class CacheArtifactPolicy private constructor(
 
   fun allocateStagedInput(): File = allocateReservedFile(".input-", ".tmp")
 
+  fun allocateWorkingPdf(): File = allocateReservedFile(".working-", ".pdf")
+
+  fun allocateMutationScratch(): File = allocateReservedFile(".mutation-", ".tmp")
+
   fun validatedSignedOutput(path: String, source: File): File {
     if (path.isBlank()) throw invalidOutputPath("The export path is invalid")
     val output = try {
@@ -97,7 +101,8 @@ internal class CacheArtifactPolicy private constructor(
     if (Files.isSymbolicLink(file.toPath()) || !file.isFile) return false
     if (!isOwnedDirectChild(file)) return false
     return SIGNED_OUTPUT.matches(file.name) || EXPORT_SCRATCH.matches(file.name) ||
-      STAGED_INPUT.matches(file.name) ||
+      STAGED_INPUT.matches(file.name) || WORKING_PDF.matches(file.name) ||
+      MUTATION_SCRATCH.matches(file.name) ||
       (debugArtifactsEnabled && DEBUG_RECORDING.matches(file.name))
   }
 
@@ -115,6 +120,8 @@ internal class CacheArtifactPolicy private constructor(
     private val SIGNED_OUTPUT = Regex("signed-[^/\\\\]+\\.pdf")
     private val EXPORT_SCRATCH = Regex("\\.signed-[^/\\\\]+\\.tmp")
     private val STAGED_INPUT = Regex("\\.input-[^/\\\\]+\\.tmp")
+    private val WORKING_PDF = Regex("\\.working-[^/\\\\]+\\.pdf")
+    private val MUTATION_SCRATCH = Regex("\\.mutation-[^/\\\\]+\\.tmp")
     private val DEBUG_RECORDING = Regex("android-stroke-[^/\\\\]+\\.csv")
 
     @Volatile private var initialized: CacheArtifactPolicy? = null

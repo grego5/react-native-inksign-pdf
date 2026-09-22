@@ -4,8 +4,9 @@
 
 - `HybridInkSignView` is the public Nitro/Fabric boundary. `SurfaceView` owns
   UI-thread presentation, input routing, history projection, and cancellation.
-- `InkDocumentState` owns the source path, ordered pages, active page, and
-  document generation. `InkDocumentController` owns viewport and tile state;
+- `MutableDocumentCoordinator` owns the module-owned working PDF path, ordered
+  stable-ID page records, active page, structural dirty state, and document
+  generation. `InkDocumentController` owns viewport and tile state;
   `PageNavigationController` owns navigation and handoff state.
 - `TextInteractionOverlay` owns the temporary editor, text gestures, keyboard,
   and one-shot placement. `PdfSessionWorker` owns PDF readers and the native
@@ -31,11 +32,22 @@
   placement and clear stale editor/selection state before new state is installed.
 - Document replacement cancels active work, invalidates prior worker results,
   resets presentation, and installs only the current generation.
+- Opening copies the caller's PDF into a module-owned working artifact before
+  publication. Structural commands assemble a unique candidate from that
+  working artifact, open and validate it on the PDF worker, then publish the
+  candidate path, session metadata, stable page records, and active page as one
+  UI transition. Failed candidates leave published state unchanged.
+- Only one open, page-input staging, structural mutation, or export operation
+  is active at a time. Picker staging, image normalization, file I/O, PDFium
+  assembly, and session replacement stay off the UI thread; picker cancellation
+  and disposal remove request-owned temporary files.
 - PDFium page pixels are the only base-page presentation. Android annotation
   state is composited after tile publication and never participates in PDFium
   page parsing or text reconstruction.
 - Disposal is UI-thread-owned and idempotent. It cancels input/navigation,
   invalidates the generation, clears callbacks/presentation, and closes worker
   resources.
-- The source PDF is read-only and is never replaced or deleted by lifecycle
-  operations; export output ownership is defined in [export.md](export.md).
+- The caller's source PDF is read-only and is never replaced or deleted by
+  lifecycle operations. The current working PDF is the only document consumed
+  by rendering, mutation, and export; export output ownership is defined in
+  [export.md](export.md).

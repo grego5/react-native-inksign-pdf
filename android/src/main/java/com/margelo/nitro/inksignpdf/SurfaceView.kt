@@ -58,7 +58,7 @@ internal class SurfaceView(
   }
   private val pagePreviewMatrix = Matrix()
   internal val inkRenderer = InkRenderer()
-  internal var documentState: InkDocumentState? = null
+  internal var documentState: MutableDocumentCoordinator? = null
   private var pageSwitchRequestId = 0L
   internal val documentController = InkDocumentController(
     context = context,
@@ -195,7 +195,7 @@ internal class SurfaceView(
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()
     clearActivePresentation()
-    documentState = InkDocumentState(
+    documentState = MutableDocumentCoordinator(
       sourcePath = info.sourcePath,
       generation = info.generation,
       pages = info.pages,
@@ -228,6 +228,56 @@ internal class SurfaceView(
     committedTextLayer = TextRenderLayer.empty()
     invalidate()
     onTextContentChanged?.invoke()
+  }
+
+  /** Publishes one fully validated structural candidate as a single UI transaction. */
+  fun publishStructuralCandidate(
+    info: PdfSessionInfo,
+    candidatePages: List<InkPageState>,
+    activePageId: String,
+  ): PdfPageInfo {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    val state = documentState ?: throw PdfSessionException(
+      "view_not_ready",
+      "A PDF must be opened before changing pages",
+    )
+    if (state.generation != info.generation || info.pageCount != candidatePages.size) {
+      throw PdfSessionException(
+        "operation_cancelled",
+        "The structural candidate belongs to a superseded document",
+      )
+    }
+    require(candidatePages.all { it.dimensions.width > 0.0 && it.dimensions.height > 0.0 })
+    cancelActiveStroke()
+    pageNavigationController.cancel()
+    state.installCandidate(info.sourcePath, candidatePages, activePageId)
+    pageSwitchRequestId += 1L
+    val active = state.page(state.activePageIndex)
+    documentController.setPage(dimensions = active.dimensions, fitToPage = true)
+    inkRenderer.setCompletedHistory(active.history.snapshot())
+    rebuildCommittedTextLayer()
+    notifyStateChange()
+    invalidate()
+    onTextContentChanged?.invoke()
+    return currentPageInfo().also { onPageChange?.invoke(it) }
+  }
+
+  fun requireStructuralMutationReady() {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    if (documentState == null) {
+      throw PdfSessionException(
+        "view_not_ready",
+        "A PDF must be opened before changing pages",
+      )
+    }
+    if (activePointerId != noPointer) {
+      throw PdfSessionException(
+        "operation_in_progress",
+        "A stroke is still being completed",
+      )
+    }
   }
 
   fun currentDocumentInfo(): PdfSessionInfo {

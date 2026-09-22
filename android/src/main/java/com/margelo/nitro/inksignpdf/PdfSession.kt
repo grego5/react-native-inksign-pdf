@@ -311,6 +311,45 @@ internal class PdfSessionWorker(
     replaceInternal(path, generation, null, completion)
   }
 
+  /** Applies one transactional PDFium mutation and installs its candidate session. */
+  fun mutate(
+    workingPath: String,
+    candidatePath: String,
+    generation: Long,
+    request: PdfiumAssemblyRequest,
+    fallbackFont: PdfFallbackFont?,
+    retireCandidate: (File) -> Unit,
+    completion: (Result<PdfSessionInfo>) -> Unit,
+  ) {
+    val rejected = synchronized(stateLock) {
+      if (closed) {
+        true
+      } else {
+        requestedGeneration = generation
+        try {
+          executor.execute {
+            mutateOnWorker(
+              workingPath,
+              candidatePath,
+              generation,
+              request,
+              fallbackFont,
+              retireCandidate,
+              completion,
+            )
+          }
+          false
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+          true
+        }
+      }
+    }
+    if (rejected) {
+      retireCandidate(File(candidatePath))
+      completion(Result.failure(cancelled(generation)))
+    }
+  }
+
   private fun replaceInternal(
     path: String,
     generation: Long,
@@ -475,6 +514,36 @@ internal class PdfSessionWorker(
       candidate?.close()
       Result.failure<PdfSessionInfo>(error)
     }
+    completion(result)
+  }
+
+  private fun mutateOnWorker(
+    workingPath: String,
+    candidatePath: String,
+    generation: Long,
+    request: PdfiumAssemblyRequest,
+    fallbackFont: PdfFallbackFont?,
+    retireCandidate: (File) -> Unit,
+    completion: (Result<PdfSessionInfo>) -> Unit,
+  ) {
+    val candidateFile = File(candidatePath)
+    val result = try {
+      if (isStale(generation)) throw cancelled(generation)
+      PdfiumPageAssembler.assemble(File(workingPath), request, candidateFile)
+      if (isStale(generation)) throw cancelled(generation)
+      val opened = opener.open(candidatePath, generation, fallbackFont)
+      if (isStale(generation)) {
+        opened.close()
+        throw cancelled(generation)
+      }
+      val previous = current
+      current = opened
+      previous?.close()
+      Result.success(opened.info)
+    } catch (error: Throwable) {
+      Result.failure<PdfSessionInfo>(error)
+    }
+    if (result.isFailure) retireCandidate(candidateFile)
     completion(result)
   }
 

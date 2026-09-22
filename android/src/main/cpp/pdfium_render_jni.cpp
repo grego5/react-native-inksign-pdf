@@ -10,12 +10,18 @@
 #include <vector>
 
 #include "pdfium-adapter/PdfiumDocumentSession.hpp"
+#include "pdfium-adapter/PdfiumPageAssembler.hpp"
 
 namespace {
 
 using margelo::nitro::inksignpdf::pdfium::PdfiumDocumentSession;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageMetadata;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageRenderRequest;
+using margelo::nitro::inksignpdf::pdfium::PdfiumAppendInput;
+using margelo::nitro::inksignpdf::pdfium::PdfiumAppendInputType;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyCommand;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyOperation;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssembler;
 
 struct ScopedBitmapUnlock final {
   JNIEnv* env;
@@ -25,6 +31,138 @@ struct ScopedBitmapUnlock final {
 };
 
 }  // namespace
+
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_margelo_nitro_inksignpdf_PdfiumPageAssembler_nativeAssemble(
+    JNIEnv* env,
+    jclass,
+    jbyteArray inputBytes,
+    jint operation,
+    jobjectArray appendBytes,
+    jintArray appendTypes,
+    jdoubleArray appendMetadata,
+    jint pageIndex,
+    jint destinationIndex,
+    jstring scratchPath) {
+  if (inputBytes == nullptr || scratchPath == nullptr || pageIndex < 0 ||
+      destinationIndex < 0 || operation < 0 || operation > 2) {
+    env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                  "Invalid PDFium assembly request");
+    return nullptr;
+  }
+
+  const auto inputLength = env->GetArrayLength(inputBytes);
+  if (inputLength <= 0) {
+    env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                  "PDFium assembly input is empty");
+    return nullptr;
+  }
+  std::vector<std::uint8_t> input(static_cast<std::size_t>(inputLength));
+  env->GetByteArrayRegion(
+      inputBytes, 0, inputLength, reinterpret_cast<jbyte*>(input.data()));
+  if (env->ExceptionCheck()) return nullptr;
+
+  const auto inputCount = appendBytes == nullptr
+      ? 0
+      : env->GetArrayLength(appendBytes);
+  if (inputCount > 0 && (appendTypes == nullptr || appendMetadata == nullptr ||
+                         env->GetArrayLength(appendTypes) != inputCount ||
+                         env->GetArrayLength(appendMetadata) != inputCount * 8)) {
+    env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                  "PDFium assembly append metadata is inconsistent");
+    return nullptr;
+  }
+  std::vector<jint> types(static_cast<std::size_t>(inputCount));
+  if (inputCount > 0) {
+    env->GetIntArrayRegion(appendTypes, 0, inputCount, types.data());
+    if (env->ExceptionCheck()) return nullptr;
+  }
+  std::vector<jdouble> metadata(static_cast<std::size_t>(inputCount) * 8);
+  if (!metadata.empty()) {
+    env->GetDoubleArrayRegion(
+        appendMetadata, 0, static_cast<jsize>(metadata.size()), metadata.data());
+    if (env->ExceptionCheck()) return nullptr;
+  }
+
+  PdfiumPageAssemblyCommand command;
+  command.operation = static_cast<PdfiumPageAssemblyOperation>(operation);
+  command.pageIndex = static_cast<std::size_t>(pageIndex);
+  command.destinationIndex = static_cast<std::size_t>(destinationIndex);
+  command.appendInputs.reserve(static_cast<std::size_t>(inputCount));
+  for (jsize index = 0; index < inputCount; ++index) {
+    auto* bytes = static_cast<jbyteArray>(
+        env->GetObjectArrayElement(appendBytes, index));
+    if (bytes == nullptr) {
+      env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                    "PDFium append input is null");
+      return nullptr;
+    }
+    const auto length = env->GetArrayLength(bytes);
+    if (length <= 0) {
+      env->DeleteLocalRef(bytes);
+      env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                    "PDFium append input is empty");
+      return nullptr;
+    }
+    PdfiumAppendInput append;
+    if (types[static_cast<std::size_t>(index)] == 0) {
+      append.type = PdfiumAppendInputType::Pdf;
+    } else if (types[static_cast<std::size_t>(index)] == 1) {
+      append.type = PdfiumAppendInputType::Image;
+    } else {
+      env->DeleteLocalRef(bytes);
+      env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                    "PDFium append input type is invalid");
+      return nullptr;
+    }
+    append.bytes.resize(static_cast<std::size_t>(length));
+    env->GetByteArrayRegion(
+        bytes, 0, length, reinterpret_cast<jbyte*>(append.bytes.data()));
+    env->DeleteLocalRef(bytes);
+    if (env->ExceptionCheck()) return nullptr;
+    const auto offset = static_cast<std::size_t>(index) * 8;
+    append.pageWidth = metadata[offset];
+    append.pageHeight = metadata[offset + 1];
+    append.placement = {
+        metadata[offset + 2], metadata[offset + 3], metadata[offset + 4],
+        metadata[offset + 5], metadata[offset + 6], metadata[offset + 7]};
+    command.appendInputs.push_back(std::move(append));
+  }
+
+  const char* utfPath = env->GetStringUTFChars(scratchPath, nullptr);
+  if (utfPath == nullptr) return nullptr;
+  const std::string scratch(utfPath);
+  env->ReleaseStringUTFChars(scratchPath, utfPath);
+  const auto result = PdfiumPageAssembler::assemble(
+      std::move(input), std::move(command), scratch);
+  if (!result) {
+    const auto message = result.error.message.empty()
+        ? "PDFium page assembly failed"
+        : result.error.message;
+    env->ThrowNew(env->FindClass("java/lang/IllegalStateException"),
+                  message.c_str());
+    return nullptr;
+  }
+  if (result.pages.size() >
+      static_cast<std::size_t>((std::numeric_limits<jsize>::max)() / 3)) {
+    env->ThrowNew(env->FindClass("java/lang/IllegalStateException"),
+                  "PDFium assembly returned too many pages");
+    return nullptr;
+  }
+  const auto values = env->NewDoubleArray(
+      static_cast<jsize>(result.pages.size() * 3));
+  if (values == nullptr) return nullptr;
+  std::vector<jdouble> flattened;
+  flattened.reserve(result.pages.size() * 3);
+  for (const auto& page : result.pages) {
+    flattened.push_back(page.width);
+    flattened.push_back(page.height);
+    flattened.push_back(static_cast<jdouble>(page.rotation));
+  }
+  env->SetDoubleArrayRegion(
+      values, 0, static_cast<jsize>(flattened.size()), flattened.data());
+  return values;
+}
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeOpen(

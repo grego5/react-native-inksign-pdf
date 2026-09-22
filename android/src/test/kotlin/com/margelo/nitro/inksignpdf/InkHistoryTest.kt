@@ -7,7 +7,7 @@ import org.junit.Test
 class InkHistoryTest {
   @Test
   fun documentPagesKeepHistoryAndDirtyStateIndependent() {
-    val document = InkDocumentState(
+    val document = MutableDocumentCoordinator(
       sourcePath = "multi-page.pdf",
       generation = 1L,
       pages = listOf(

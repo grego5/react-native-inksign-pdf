@@ -49,11 +49,16 @@ class HybridInkSignView internal constructor(
   private val textOverlay = TextInteractionOverlay(context, surface)
   private val pendingOutputs = LinkedHashSet<File>()
   private val ownedOutputs = LinkedHashSet<File>()
+  private val pendingWorkingFiles = LinkedHashSet<File>()
+  private var workingPdf: File? = null
+  private var activeFallbackFont: PdfFallbackFont? = null
   @Volatile private var documentGeneration = 0L
   @Volatile private var viewportRequestID = 0L
   private var pageNavigationRequestID = 0L
   @Volatile private var disposed = false
   private var editMode = false
+  private var operationSequence = 0L
+  private var activeOperation: Long? = null
   private val pendingPromises = IdentityHashMap<Promise<*>, Unit>()
 
   override val view: View
@@ -188,20 +193,222 @@ class HybridInkSignView internal constructor(
   override fun open(path: String, options: ViewportOptions?): Promise<PageInfo> {
     return launchPromise {
       val request = beginOpen(path, options)
-      val info = awaitWorkerResult(request.generation) { completion ->
-        pdfWorker.replace(
-          path,
-          request.generation,
-          request.fallbackFont,
-          completion,
-        )
+      var published = false
+      try {
+        withContext(Dispatchers.IO) {
+          val source = try {
+            File(path).canonicalFile
+          } catch (error: Exception) {
+            throw PdfSessionException("invalid_source_path", "Unable to resolve the PDF path", error)
+          }
+          if (!source.isFile || !source.canRead()) {
+            throw PdfSessionException("invalid_source_path", "Unable to read the PDF")
+          }
+          source.copyTo(request.workingFile, overwrite = true)
+        }
+        val info = awaitWorkerResult(request.generation) { completion ->
+          pdfWorker.replace(
+            request.workingFile.path,
+            request.generation,
+            request.fallbackFont,
+            completion,
+          )
+        }
+        ensureCurrentOpen(request.generation, info)
+        surface.setDocument(info, request.zoom, request.focus, request.fitToPage)
+        textOverlay.syncContent()
+        editMode = false
+        surface.setEditMode(false)
+        workingPdf = request.workingFile
+        activeFallbackFont = request.fallbackFont
+        pendingWorkingFiles.remove(request.workingFile)
+        published = true
+        request.previousWorkingFile?.let(artifactPolicy::deleteExact)
+        toPublicPageInfo(surface.currentPageInfo())
+      } finally {
+        if (!published) artifactPolicy.deleteExact(request.workingFile)
+        request.previousWorkingFile?.let {
+          pendingWorkingFiles.remove(it)
+          artifactPolicy.deleteExact(it)
+        }
+        endOperation(request.operationID)
       }
-      ensureCurrentOpen(request.generation, info)
-      surface.setDocument(info, request.zoom, request.focus, request.fitToPage)
-      textOverlay.syncContent()
-      editMode = false
-      surface.setEditMode(false)
-      toPublicPageInfo(surface.currentPageInfo())
+    }
+  }
+
+  override fun addPages(options: AddPagesOptions?): Promise<AddPagesResult> {
+    return launchPromise {
+      val operation = beginStructuralOperation()
+      var staged = emptyList<StagedPageInput>()
+      var candidatePath: File? = null
+      var published = false
+      try {
+        val generation = documentGeneration
+        val activePage = surface.currentPageInfo()
+        staged = pageInputCoordinator.stage(options)
+        if (staged.isEmpty()) {
+          return@launchPromise AddPagesResult(
+            pageInfo = toPublicPageInfo(surface.currentPageInfo()),
+            addedPageCount = 0.0,
+          )
+        }
+        val inputs = withContext(Dispatchers.IO) {
+          staged.map { input ->
+            when (input.type) {
+              PageType.PDF -> PdfiumAppendRequest(PageType.PDF, input.file.readBytes())
+              PageType.IMAGE -> AndroidImagePageEncoder.encode(input.file, activePage.dimensions)
+            }
+          }
+        }
+        ensureCurrentStructural(generation)
+        val candidate = artifactPolicy.allocateMutationScratch()
+        candidatePath = candidate
+        pendingWorkingFiles += candidate
+        val request = PdfiumAssemblyRequest(
+          operation = PdfiumAssemblyOperation.APPEND,
+          appendInputs = inputs,
+        )
+        val info = awaitWorkerResult(generation) { completion ->
+          pdfWorker.mutate(
+            workingPath = checkNotNull(workingPdf).path,
+            candidatePath = candidate.path,
+            generation = generation,
+            request = request,
+            fallbackFont = activeFallbackFont,
+            retireCandidate = artifactPolicy::deleteExact,
+            completion = completion,
+          )
+        }
+        ensureCurrentStructural(generation)
+        val current = checkNotNull(surface.documentState)
+        val oldPageCount = current.pageCount
+        val addedDimensions = info.pages.drop(current.pageCount)
+        if (addedDimensions.isEmpty()) {
+          throw PdfSessionException("pdf_mutation_failed", "The append candidate contains no added pages")
+        }
+        val pageCandidate = current.appendCandidate(addedDimensions)
+        val pageInfo = surface.publishStructuralCandidate(
+          info,
+          pageCandidate.pages,
+          pageCandidate.activePageId,
+        )
+        val oldWorking = workingPdf
+        workingPdf = candidate
+        pendingWorkingFiles.remove(candidate)
+        published = true
+        oldWorking?.let(artifactPolicy::deleteExact)
+        AddPagesResult(
+          pageInfo = toPublicPageInfo(pageInfo),
+          addedPageCount = (pageCandidate.pages.size - oldPageCount).toDouble(),
+        )
+      } finally {
+        pageInputCoordinator.release(staged)
+        if (!published) candidatePath?.let(artifactPolicy::deleteExact)
+        endOperation(operation)
+      }
+    }
+  }
+
+  override fun removePage(): Promise<PageInfo> {
+    return launchPromise {
+      val operation = beginStructuralOperation()
+      var candidatePath: File? = null
+      var published = false
+      try {
+        val generation = documentGeneration
+        val current = checkNotNull(surface.documentState)
+        if (current.pageCount <= 1) {
+          throw PdfSessionException("last_page_required", "The document must retain one page")
+        }
+        val removedIndex = current.activePageIndex
+        val pageCandidate = current.removeActiveCandidate()
+        val candidate = artifactPolicy.allocateMutationScratch()
+        candidatePath = candidate
+        pendingWorkingFiles += candidate
+        val info = awaitWorkerResult(generation) { completion ->
+          pdfWorker.mutate(
+            workingPath = checkNotNull(workingPdf).path,
+            candidatePath = candidate.path,
+            generation = generation,
+            request = PdfiumAssemblyRequest(
+              operation = PdfiumAssemblyOperation.REMOVE,
+              pageIndex = removedIndex,
+            ),
+            fallbackFont = activeFallbackFont,
+            retireCandidate = artifactPolicy::deleteExact,
+            completion = completion,
+          )
+        }
+        ensureCurrentStructural(generation)
+        val pageInfo = surface.publishStructuralCandidate(
+          info,
+          pageCandidate.pages,
+          pageCandidate.activePageId,
+        )
+        val oldWorking = workingPdf
+        workingPdf = candidate
+        pendingWorkingFiles.remove(candidate)
+        published = true
+        oldWorking?.let(artifactPolicy::deleteExact)
+        toPublicPageInfo(pageInfo)
+      } finally {
+        if (!published) candidatePath?.let(artifactPolicy::deleteExact)
+        endOperation(operation)
+      }
+    }
+  }
+
+  override fun movePage(pageIndex: Double): Promise<PageInfo> {
+    return launchPromise {
+      val operation = beginStructuralOperation()
+      var candidatePath: File? = null
+      var published = false
+      try {
+        val generation = documentGeneration
+        val current = checkNotNull(surface.documentState)
+        if (!pageIndex.isFinite() || pageIndex < 0.0 || pageIndex >= current.pageCount ||
+          pageIndex != kotlin.math.floor(pageIndex)
+        ) {
+          throw PdfSessionException("invalid_page_index", "The destination page index is invalid")
+        }
+        val destination = pageIndex.toInt()
+        val source = current.activePageIndex
+        if (source == destination) return@launchPromise toPublicPageInfo(surface.currentPageInfo())
+        val pageCandidate = current.moveActiveCandidate(destination)
+        val candidate = artifactPolicy.allocateMutationScratch()
+        candidatePath = candidate
+        pendingWorkingFiles += candidate
+        val info = awaitWorkerResult(generation) { completion ->
+          pdfWorker.mutate(
+            workingPath = checkNotNull(workingPdf).path,
+            candidatePath = candidate.path,
+            generation = generation,
+            request = PdfiumAssemblyRequest(
+              operation = PdfiumAssemblyOperation.MOVE,
+              pageIndex = source,
+              destinationIndex = destination,
+            ),
+            fallbackFont = activeFallbackFont,
+            retireCandidate = artifactPolicy::deleteExact,
+            completion = completion,
+          )
+        }
+        ensureCurrentStructural(generation)
+        val pageInfo = surface.publishStructuralCandidate(
+          info,
+          pageCandidate.pages,
+          pageCandidate.activePageId,
+        )
+        val oldWorking = workingPdf
+        workingPdf = candidate
+        pendingWorkingFiles.remove(candidate)
+        published = true
+        oldWorking?.let(artifactPolicy::deleteExact)
+        toPublicPageInfo(pageInfo)
+      } finally {
+        if (!published) candidatePath?.let(artifactPolicy::deleteExact)
+        endOperation(operation)
+      }
     }
   }
 
@@ -320,19 +527,24 @@ class HybridInkSignView internal constructor(
 
   override fun finalize(): Promise<String> {
     return launchPromise {
-      val snapshot = try {
-        captureExport()
-      } catch (error: Throwable) {
-        throw normalizeFinalizeError(error)
-      }
+      val operation = beginFinalizeOperation()
       try {
-        val output = awaitWorkerResult(snapshot.generation) { completion ->
-          pdfWorker.export(snapshot, artifactPolicy, completion)
+        val snapshot = try {
+          captureExport()
+        } catch (error: Throwable) {
+          throw normalizeFinalizeError(error)
         }
-        publishExport(snapshot, output)
-      } catch (error: Throwable) {
-        retireExport(snapshot.outputPath)
-        throw normalizeFinalizeError(error)
+        try {
+          val output = awaitWorkerResult(snapshot.generation) { completion ->
+            pdfWorker.export(snapshot, artifactPolicy, completion)
+          }
+          publishExport(snapshot, output)
+        } catch (error: Throwable) {
+          retireExport(snapshot.outputPath)
+          throw normalizeFinalizeError(error)
+        }
+      } finally {
+        endOperation(operation)
       }
     }
   }
@@ -460,13 +672,68 @@ class HybridInkSignView internal constructor(
     surface.clearDocument()
     emitResetState()
 
+    val workingFile = artifactPolicy.allocateWorkingPdf()
+    pendingWorkingFiles += workingFile
+    val previousWorkingFile = workingPdf
+    workingPdf = null
+    activeFallbackFont = null
+    previousWorkingFile?.let { pendingWorkingFiles += it }
+    operationSequence += 1L
+    val operationID = operationSequence
+    activeOperation = operationID
+
     return OpenRequest(
       generation = generation,
       focus = viewport.focus,
       zoom = viewport.zoom,
       fitToPage = viewport.fitToPage,
       fallbackFont = fallbackFontSnapshot,
+      workingFile = workingFile,
+      previousWorkingFile = previousWorkingFile,
+      operationID = operationID,
     )
+  }
+
+  private fun beginStructuralOperation(): Long {
+    checkMainThread()
+    if (disposed) throw operationCancelled()
+    if (activeOperation != null) {
+      throw PdfSessionException(
+        "operation_in_progress",
+        "Another document operation is already active",
+      )
+    }
+    surface.withStateTransaction { textOverlay.finishForLifecycle() }
+    surface.requireStructuralMutationReady()
+    operationSequence += 1L
+    return operationSequence.also { activeOperation = it }
+  }
+
+  private fun beginFinalizeOperation(): Long {
+    checkMainThread()
+    if (disposed) throw operationCancelled()
+    if (activeOperation != null) {
+      throw PdfSessionException(
+        "operation_in_progress",
+        "Another document operation is already active",
+      )
+    }
+    surface.withStateTransaction { textOverlay.finishForLifecycle() }
+    operationSequence += 1L
+    return operationSequence.also { activeOperation = it }
+  }
+
+  private fun endOperation(operationID: Long) {
+    if (activeOperation == operationID) activeOperation = null
+  }
+
+  private fun ensureCurrentStructural(generation: Long) {
+    checkMainThread()
+    if (disposed || documentGeneration != generation ||
+      surface.documentState?.generation != generation
+    ) {
+      throw operationCancelled()
+    }
   }
 
   private fun ensureCurrentOpen(generation: Long, info: PdfSessionInfo) {
@@ -638,7 +905,10 @@ class HybridInkSignView internal constructor(
         ownedOutputs.clear()
       }
     }
-    pdfWorker.close(outputs, artifactPolicy::deleteExact)
+    val workingFiles = (pendingWorkingFiles + listOfNotNull(workingPdf)).toSet()
+    pendingWorkingFiles.clear()
+    workingPdf = null
+    pdfWorker.close(outputs + workingFiles, artifactPolicy::deleteExact)
     onStateChange = null
     onPageChange = null
     textOverlay.onInteractionModeChanged = null
@@ -676,6 +946,9 @@ class HybridInkSignView internal constructor(
     val zoom: Double?,
     val fitToPage: Boolean,
     val fallbackFont: PdfFallbackFont?,
+    val workingFile: File,
+    val previousWorkingFile: File?,
+    val operationID: Long,
   )
 
 }

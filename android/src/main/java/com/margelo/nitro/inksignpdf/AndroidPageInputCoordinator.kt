@@ -80,6 +80,11 @@ internal class AndroidPageInputCoordinator(
     }
   }
 
+  /** Releases successfully staged files after the document worker consumes them. */
+  suspend fun release(staged: Collection<StagedPageInput>) = withContext(Dispatchers.IO) {
+    staged.forEach { artifactPolicy.deleteExact(it.file) }
+  }
+
   /** Cancels the active picker or source-copy operation. Must run on main. */
   fun cancelPending() {
     checkMainThread()

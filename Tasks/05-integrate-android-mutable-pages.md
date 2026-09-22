@@ -84,4 +84,4 @@ Implement `addPages`, `removePage`, and `movePage` on Android by combining the n
 
 `feat(android): support mutable pdf pages`
 
-Status: Planned
+Status: Complete

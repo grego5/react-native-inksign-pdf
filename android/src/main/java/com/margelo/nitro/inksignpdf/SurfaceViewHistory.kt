@@ -86,7 +86,7 @@ internal fun SurfaceView.reportedState(): InkState {
   return InkState(
     canUndo = active.canUndo,
     canRedo = active.canRedo,
-    isDirty = state.pages.any { it.history.state().isDirty },
+    isDirty = state.structuralDirty || state.pages.any { it.history.state().isDirty },
   )
 }
 
