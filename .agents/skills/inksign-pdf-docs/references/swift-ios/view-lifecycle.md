@@ -5,6 +5,10 @@
 - `InkSignView` owns the PDFium page host, PencilKit input, page history, and export
   orchestration. Its document state retains the Objective-C++ PDFium session
   facade and the source PDFKit document needed by export/metadata paths.
+- `InkSignView` owns the page-input coordinator. The coordinator owns one
+  main-thread picker request and stages Files, Photo Library, and caller-provided
+  local sources into exact module cache artifacts before a structural mutation
+  consumes them.
 - `InkSignView` owns viewport commands and lifecycle completion. Open readiness
   covers the document, first page, overlay, bounds, geometry, and requested fit
   scale before the target is applied and the promise is published.
@@ -34,6 +38,10 @@
   transform are ready.
 - Caller-owned source files are read-only. Native cleanup is limited to exact
   module-created cache artifacts.
+- Files security-scoped access is balanced around each copy. Photo provider
+  temporary URLs are copied during the provider completion callback. Photo
+  multi-selection uses ordered mode and the picker is dismissed before staging;
+  worker state retains only ordered staged URLs and resolved `pdf`/`image` types.
 
 ## Navigation and disposal
 
@@ -41,4 +49,5 @@
   results carry generation and page identity checks.
 - Disposal is UI-thread-owned and idempotent. It cancels input, navigation,
   previews, and export, removes the overlay, releases the document, and clears
-  callbacks. Worker results use generation checks.
+  callbacks. It also cancels picker staging and removes its partial cache
+  artifacts. Worker results use generation checks.

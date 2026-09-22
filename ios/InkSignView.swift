@@ -69,6 +69,9 @@ final class InkSignView: HybridInkSignViewSpec {
   let exportQueue = DispatchQueue(label: "ReactNativeInkSignPdf.export", qos: .userInitiated)
   let publicationLock = NSLock()
   let artifactPolicy = InkSignPdfCacheArtifactPolicy.shared
+  lazy var pageInputCoordinator = InkSignPdfPageInputCoordinator(
+    hostView: container,
+    artifactPolicy: artifactPolicy)
   private lazy var gestureRecognizerDelegate = InkSignPdfGestureRecognizerDelegate(owner: self)
   private lazy var canvasViewDelegate = InkSignPdfCanvasViewDelegate(owner: self)
   private let pageTurnPreviewScheduler: InkSignPdfPageTurnPreviewScheduler
@@ -242,6 +245,7 @@ final class InkSignView: HybridInkSignViewSpec {
   func dispose() {
     performOnMain {
       guard !self.disposed else { return }
+      self.pageInputCoordinator.cancelPending()
       self.cancelPendingPageSwitch()
       self.publicationLock.lock()
       self.disposed = true

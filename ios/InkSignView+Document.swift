@@ -108,6 +108,7 @@ extension InkSignView {
       promise.reject(withError: LoadError.cancelled)
       return
     }
+    pageInputCoordinator.cancelPending()
     cancelViewportAnimation()
     pendingOpen?.promise.reject(withError: LoadError.cancelled)
     pendingOpen = nil

@@ -41,6 +41,10 @@ final class InkSignPdfCacheArtifactPolicy {
     try allocate(prefix: ".signed-verify-", suffix: ".pdf")
   }
 
+  func allocateStagedInput() throws -> URL {
+    try allocate(prefix: ".input-", suffix: ".tmp")
+  }
+
   func deleteExact(_ url: URL) {
     guard isOwnedDirectFile(url), !isSymbolicLink(url) else { return }
     try? FileManager.default.removeItem(at: url)
@@ -78,7 +82,8 @@ final class InkSignPdfCacheArtifactPolicy {
     let name = url.lastPathComponent
     return Self.signedOutputPattern.firstMatch(in: name) != nil ||
       Self.exportScratchPattern.firstMatch(in: name) != nil ||
-      Self.verificationScratchPattern.firstMatch(in: name) != nil
+      Self.verificationScratchPattern.firstMatch(in: name) != nil ||
+      Self.stagedInputPattern.firstMatch(in: name) != nil
   }
 
   private func isSignedOutput(_ url: URL) -> Bool {
@@ -119,6 +124,7 @@ final class InkSignPdfCacheArtifactPolicy {
   private static let signedOutputPattern = try! NSRegularExpression(pattern: "^signed-[^/]+\\.pdf$")
   private static let exportScratchPattern = try! NSRegularExpression(pattern: "^\\.signed-[^/]+\\.pdf$")
   private static let verificationScratchPattern = try! NSRegularExpression(pattern: "^\\.signed-verify-[^/]+\\.pdf$")
+  private static let stagedInputPattern = try! NSRegularExpression(pattern: "^\\.input-[^/]+\\.tmp$")
 
   enum ConfigurationError: LocalizedError {
     case invalidLeaf

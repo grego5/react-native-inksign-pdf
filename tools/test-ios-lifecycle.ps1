@@ -24,9 +24,12 @@ $preview = Read-Source "ios/PagePreview.swift"
 $overlay = Read-Source "ios/PageOverlay.swift"
 $documentState = Read-Source "ios/DocumentState.swift"
 $document = Read-Source "ios/InkSignView+Document.swift"
+$inputCoordinator = Read-Source "ios/PageInputCoordinator.swift"
+$cacheArtifacts = Read-Source "ios/CacheArtifacts.swift"
 $export = Read-Source "ios/InkSignView+Export.swift"
 $textRendering = Read-Source "ios/TextRendering.swift"
 $lifecycleTests = Read-Source "ios/tests/InkSignViewLifecycleTests.swift"
+$inputTests = Read-Source "ios/tests/PageInputCoordinatorTests.swift"
 $renderingDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/rendering.md"
 $lifecycleDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/view-lifecycle.md"
 
@@ -64,5 +67,32 @@ Assert-Contains $renderingDocs 'PDFium pixels are the only base page image' 'ren
 Assert-Contains $renderingDocs 'Page-turn previews render the target page through the retained PDFium session' 'rendering reference documents PDFium previews'
 Assert-Contains $lifecycleDocs 'PDFium supplies page dimensions and all base display pixels' 'lifecycle reference documents PDFium ownership'
 Assert-Contains $lifecycleDocs 'PDFKit document remains available only for source metadata and export' 'lifecycle reference limits PDFKit ownership'
+
+# Page-input staging is a separate lifecycle boundary until Task 6 consumes
+# the detached staged values in the structural mutation coordinator.
+Assert-Contains $view 'pageInputCoordinator' 'iOS view owns page-input staging'
+Assert-Contains $document 'pageInputCoordinator\.cancelPending\(\)' 'open invalidates page-input staging'
+Assert-Contains $inputCoordinator 'UIDocumentPickerViewController' 'Files picker exists'
+Assert-Contains $inputCoordinator 'PHPickerViewController' 'Photo Library picker exists'
+Assert-Contains $inputCoordinator 'allowsMultipleSelection = true' 'Files picker allows multiple selection'
+Assert-Contains $inputCoordinator 'selectionLimit = 0' 'Photo picker allows multiple selection'
+Assert-Contains $inputCoordinator 'configuration\.selection = \.ordered' 'Photo picker preserves selection order'
+Assert-Contains $inputCoordinator 'controllerDismisser\(picker, false\)' 'Photo picker is dismissed before staging'
+Assert-Contains $inputCoordinator 'startAccessingSecurityScopedResource' 'Files staging enters security scope'
+Assert-Contains $inputCoordinator 'stopAccessingSecurityScopedResource' 'Files staging leaves security scope'
+Assert-Contains $inputCoordinator 'coordinate\(\s*readingItemAt:' 'Files staging coordinates provider reads'
+Assert-Contains $inputCoordinator 'loadFileRepresentation' 'Photo staging copies provider files'
+Assert-Contains $inputCoordinator 'operationInProgress' 'page-input conflicts have stable errors'
+Assert-Contains $inputCoordinator 'operationCancelled' 'page-input cancellation has stable errors'
+Assert-Contains $cacheArtifacts 'allocateStagedInput' 'iOS cache allocates staged inputs'
+Assert-Contains $cacheArtifacts 'stagedInputPattern' 'iOS startup scavenges staged inputs'
+Assert-Contains $inputCoordinator 'documentPickerFactory' 'picker construction is injectable'
+Assert-Contains $inputCoordinator 'sourceChooser' 'Files and Photos routing is injectable'
+Assert-Contains $inputCoordinator 'securityScope' 'security scope access is injectable'
+Assert-Contains $inputTests 'testPhotoCancellationDismissesPicker' 'photo picker cancellation is tested'
+Assert-Contains $inputTests 'testDisposalCancellationRejectsPendingPickerAndDismissesIt' 'picker disposal is tested'
+Assert-Contains $inputTests 'testPickerRoutesFilesAndPhotoLibraryWithAllowedTypesAndOrderedPhotos' 'picker routing and allowed types are tested'
+Assert-Contains $inputTests 'testConcurrentRequestIsRejectedAndStalePickerCannotSettleNewRequest' 'page-input supersession is tested'
+Assert-Contains $inputTests 'testSecurityScopeIsBalancedForEachLocalSource' 'security-scope balance is tested'
 
 Write-Output "PASS iOS PDFium rendering contract checks"
