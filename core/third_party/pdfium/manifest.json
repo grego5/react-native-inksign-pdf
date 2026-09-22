@@ -55,13 +55,14 @@
       "checksumsAsset": "SHA256SUMS",
       "status": "published; archive structure and symbols validated in CI; Android device and iOS runtime validation remain pending",
       "androidAssetBytes": 25750810,
-      "androidAssetSha256": "ebe510d8a6512f5f335b7b3e8bcaff13811e5f54410e328a06d5805a4991beb2",
-      "iosAssetBytes": 198520928,
-      "iosAssetSha256": "5fcb75322672ff1e4b275324701a04c5de90914b6009dedc3d989f4351f540d8",
+      "androidAssetSha256": "ec0e59ec5d3058e0518fe602413419bce5b719ef25282a67f167f9ad23d29a3c",
+      "iosAssetBytes": 131616852,
+      "iosAssetSha256": "15e2b74a1864dd2493c63728fe91e048e22b92e608f2718e3a1f389b6c33e90f",
       "checksumsAssetBytes": 210,
-      "checksumsAssetSha256": "f9adf006c1602cd55a53676c926a7f0c4897f23cc7a88b35715f26852d0514cf",
+      "checksumsAssetSha256": "f733fde3f7486f7f7155d37d1ad449e0e7fcf607faa992aef8488da7b22ae1e4",
       "iosSlices": [
-        "ios-arm64"
+        "ios-arm64",
+        "ios-arm64-simulator"
       ],
       "artifacts": [
         {
@@ -92,6 +93,15 @@
           "packagedLibrary": "ios/build/PDFium.xcframework/ios-arm64/PDFium.framework/PDFium",
           "packagedLibraryBytes": 268264528,
           "packagedLibrarySha256": "2ab39fde877b17d7978abe8cde6620c64af63a7b187c473609b2051dc7d4619f"
+        },
+        {
+          "target": "ios",
+          "buildType": "static",
+          "slice": "ios-arm64-simulator",
+          "architectures": ["arm64"],
+          "packagedLibrary": "ios/build/PDFium.xcframework/ios-arm64-simulator/PDFium.framework/PDFium",
+          "packagedLibraryBytes": 268977216,
+          "packagedLibrarySha256": "db064fe3a0a7fca2f44352aa63564c45bc637bc0778695cde5899db4d22eb23d"
         }
       ]
     }

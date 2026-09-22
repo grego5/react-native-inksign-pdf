@@ -300,7 +300,7 @@ internal class MutableDocumentCoordinator(
     untrackWorkingFile(file)
     artifactPolicy.deleteExact(file)
   }
-  fun currentWorkingFile(): java.io.File? = sourcePath.takeIf { it.isNotEmpty() }?.let(::java.io.File)
+  fun currentWorkingFile(): java.io.File? = sourcePath.takeIf { it.isNotEmpty() }?.let { java.io.File(it) }
   fun workingFiles(): Set<java.io.File> = workingFiles.toSet()
 
   fun allocateMutationCandidate(): java.io.File = artifactPolicy.allocateMutationScratch().also(::trackWorkingFile)

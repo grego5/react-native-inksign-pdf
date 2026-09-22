@@ -20,6 +20,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -193,12 +194,13 @@ internal class PageInputCoordinator(
     output: java.io.OutputStream,
   ) {
     val buffer = ByteArray(COPY_BUFFER_BYTES)
+    val context = currentCoroutineContext()
     while (true) {
-      coroutineContext.ensureActive()
+      context.ensureActive()
       ensureActive(request)
       val count = input.read(buffer)
       if (count < 0) return
-      coroutineContext.ensureActive()
+      context.ensureActive()
       ensureActive(request)
       output.write(buffer, 0, count)
     }
@@ -412,7 +414,7 @@ internal class PageInputCoordinator(
           ordered += clipData.getItemAt(index).uri
         }
       }
-      return ordered.takeIf { it.isNotEmpty() }
+      return ordered.toList().takeIf { it.isNotEmpty() }
     }
   }
 }

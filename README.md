@@ -1,12 +1,15 @@
 # @grego5/react-native-inksign-pdf
 
 - PDF documents singing with ink signature module for React Native.
+- Load document or images programatically by path, or through native file picker. Images converted to pdf pages automatically.
+- Add additional files to be added as pages. Can add/remove/reorder pages.
+- Can bring own scanner module and bridge it seamlessly by adding pages through path to the file in cacae directory.
 - Displays loaded PDF as background. Including swipe/method pagination.
 - Renders document with PDFium binaries, mainly to support option to provide fallback font, since this option unavailable in platform native pdf libraries. For example Acrobat Reader can handle missing fonts, many other pdf viewers just render blank space instead.
 - Supports velocity-driven ink, text annotations, and histroy.
 - Android using custom c++ InkEngine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
-- iOS basic compatibility using PencilKit, because I can't test similar low level implementation without mac. No web support.
-- Export changes to new PDF as vector path, preserving minimal size and high quality on Android, rasterized overlay as iOS fallback.
+- iOS basic compatibility using platform typical PencilKit, which is not as good but close. No web support.
+- Export changes to new PDF as vector path, preserving minimal size and high quality on Android, lower quality rasterized overlay as iOS fallback.
 
 Intended workflow: open pdf, double click an area or dedicated button to enter edit mode, zoom into tapped area or prefined coordinates,
 draw a signature, save to new file. The brush doesn't scale with zoom level, but the drawn shape does.

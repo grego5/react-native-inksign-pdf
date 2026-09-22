@@ -1,22 +1,27 @@
-name: iOS validation
+name: iOS simulator validation
 
 on:
   workflow_dispatch:
     inputs:
       focus:
-        description: Test focus for the complete iOS module build
+        description: Select the simulator validation scope
         required: true
         default: stabilization
         type: choice
         options:
           - stabilization
           - pdfium
+          - page-input
           - lifecycle
           - all
           - build-only
 
 permissions:
   contents: read
+
+concurrency:
+  group: ios-simulator-validation-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
@@ -80,7 +85,7 @@ jobs:
       - name: Install CocoaPods
         run: pod install --project-directory=ios
 
-      - name: Resolve lifecycle test scheme and focus
+      - name: Resolve test scheme and focus
         shell: bash
         run: |
           set -euo pipefail
@@ -120,18 +125,22 @@ jobs:
           case "${{ inputs.focus }}" in
             stabilization)
               test_classes="InkSignViewStabilizationTests"
-              test_args="-only-testing:__LIFECYCLE_TARGET__/InkSignViewStabilizationTests"
+              test_args="-only-testing:__TEST_TARGET__/InkSignViewStabilizationTests"
               ;;
             pdfium)
               test_classes="PdfiumSmokeTests"
-              test_args="-only-testing:__LIFECYCLE_TARGET__/PdfiumSmokeTests"
+              test_args="-only-testing:__TEST_TARGET__/PdfiumSmokeTests"
+              ;;
+            page-input)
+              test_classes="PageInputCoordinatorTests"
+              test_args="-only-testing:__TEST_TARGET__/PageInputCoordinatorTests"
               ;;
             lifecycle)
               test_classes="InkSignViewLifecycleTests"
-              test_args="-only-testing:__LIFECYCLE_TARGET__/InkSignViewLifecycleTests"
+              test_args="-only-testing:__TEST_TARGET__/InkSignViewLifecycleTests"
               ;;
             all)
-              test_classes="InkSignViewStabilizationTests,PdfiumSmokeTests,InkSignViewLifecycleTests"
+              test_classes="InkSignViewStabilizationTests,PdfiumSmokeTests,PageInputCoordinatorTests,InkSignViewLifecycleTests"
               test_args=""
               ;;
             build-only)
@@ -178,12 +187,12 @@ jobs:
               "$RUNNER_TEMP/ios-tests.json" > /dev/null
           done
           first_class="${IOS_TEST_CLASSES%%,*}"
-          lifecycle_target="$(jq -r --arg class "$first_class" \
+          test_target="$(jq -r --arg class "$first_class" \
             '[.. | strings | select(contains($class)) | split("/") |
               select(length >= 2) | .[0]] | .[0] // empty' \
             "$RUNNER_TEMP/ios-tests.json")"
-          test -n "$lifecycle_target"
-          test_args="${IOS_TEST_ARGS_TEMPLATE/__LIFECYCLE_TARGET__/$lifecycle_target}"
+          test -n "$test_target"
+          test_args="${IOS_TEST_ARGS_TEMPLATE/__TEST_TARGET__/$test_target}"
           echo "IOS_TEST_ARGS=$test_args" >> "$GITHUB_ENV"
 
       - name: Run selected tests

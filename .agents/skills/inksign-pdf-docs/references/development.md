@@ -69,6 +69,31 @@ not invoke the InkEngine downloader. The npm package contains the release pin,
 C ABI headers, and PDFium inputs, but no InkEngine archives or Google
 Ink/Abseil source trees.
 
+## iOS artifacts and validation
+
+The manually dispatched `.github/workflows/build-and-publish-pdfium.yml`
+workflow builds the static PDFium slices `ios-arm64` for devices and
+`ios-arm64-simulator` for Apple Silicon simulators, then packages both in one
+XCFramework release asset. Its validation checks both XCFramework variants and
+the static PDFium symbols.
+
+The manually dispatched `.github/workflows/ios-validation.yml` workflow runs
+the iOS test suite on a simulator. Use `stabilization`, `pdfium`,
+`page-input`, or `lifecycle` for focused validation and `all` when the complete
+iOS boundary is affected. `build-only` checks project and framework
+integration without executing tests.
+
+The manually dispatched `.github/workflows/ios-adhoc.yml` workflow archives
+the example application with the `iphoneos` SDK and produces the installable
+device build. Use it to validate the device slice and before a release that
+will be installed on hardware. Physical-device interaction and performance
+remain a manual check.
+
+Select the narrowest applicable simulator focus for a change. PDFium,
+XCFramework, Podspec, linker, or release changes require simulator validation
+and a device archive; the release workflow itself validates both packaged
+architectures.
+
 ## Validation commands
 
 Use repository runners instead of manually reconstructing their commands:

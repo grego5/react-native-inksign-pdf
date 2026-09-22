@@ -29,6 +29,9 @@ jobs:
           - slice: ios-arm64
             cpu: arm64
             environment: device
+          - slice: ios-arm64-simulator
+            cpu: arm64
+            environment: simulator
 
     steps:
       - name: Check out this repository
@@ -260,13 +263,14 @@ jobs:
       - name: Create static framework bundles
         run: |
           set -euxo pipefail
-          framework_dir="framework-staging/ios-arm64/PDFium.framework"
-          mkdir -p "$framework_dir/Headers"
-          cp pdfium-ios-slices/pdfium-static-ios-arm64/libpdfium.a \
-            "$framework_dir/PDFium"
-          cp -R pdfium-ios-slices/pdfium-static-ios-arm64/headers/. \
-            "$framework_dir/Headers/"
-          cat > "$framework_dir/Info.plist" <<'PLIST'
+          create_framework() {
+            local slice="$1"
+            local framework_dir="framework-staging/$slice/PDFium.framework"
+            local artifact_dir="pdfium-ios-slices/pdfium-static-$slice"
+            mkdir -p "$framework_dir/Headers"
+            cp "$artifact_dir/libpdfium.a" "$framework_dir/PDFium"
+            cp -R "$artifact_dir/headers/." "$framework_dir/Headers/"
+            cat > "$framework_dir/Info.plist" <<'PLIST'
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -290,12 +294,17 @@ jobs:
           </dict>
           </plist>
           PLIST
+          }
+
+          create_framework ios-arm64
+          create_framework ios-arm64-simulator
 
       - name: Create XCFramework
         run: |
           set -euxo pipefail
           xcodebuild -create-xcframework \
             -framework framework-staging/ios-arm64/PDFium.framework \
+            -framework framework-staging/ios-arm64-simulator/PDFium.framework \
             -output PDFium.xcframework
 
       - name: Validate static XCFramework
@@ -303,9 +312,9 @@ jobs:
           set -euxo pipefail
           test -f PDFium.xcframework/Info.plist
           test "$(find PDFium.xcframework -name '*.dylib' -print | wc -l | tr -d ' ')" = 0
-          test "$(find PDFium.xcframework -mindepth 1 -maxdepth 1 -type d -name '*simulator*' -print | wc -l | tr -d ' ')" = 0
           test -d PDFium.xcframework/ios-arm64
-          test "$(find PDFium.xcframework -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 1
+          test -d PDFium.xcframework/ios-arm64-simulator
+          test "$(find PDFium.xcframework -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')" = 2
           for binary in $(find PDFium.xcframework -path '*/PDFium.framework/PDFium' -type f); do
             file "$binary"
             archive_to_check="$binary"

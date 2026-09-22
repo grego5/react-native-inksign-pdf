@@ -27,15 +27,16 @@ The lifecycle runner checks source-level ownership and lifecycle contracts, but
 it cannot prove visual fidelity, gesture feel, animation timing, haptics, or
 device performance. Report those as separate iOS runtime results.
 
-The manually triggered `Build iOS ad hoc IPA` workflow uses the `example`
+The manually triggered `Build iOS Ad Hoc dev client` workflow uses the `example`
 Expo consumer to archive and sign an installable iOS app.
 It requires `IOS_DISTRIBUTION_P12_B64`, `IOS_DISTRIBUTION_P12_PASSWORD`, and
 `IOS_AD_HOC_PROFILE_B64` repository secrets. The profile must authorize the
 consumer bundle identifier and its registered test devices.
 
-The manually triggered `iOS validation` GitHub Actions workflow uses the
-`example` Expo consumer on macOS. It installs this checkout as a local
-dependency, generates the iOS project, installs pods, builds the lifecycle
-test scheme once, enumerates the requested test classes, and runs only the
-selected focus. Failure result bundles and logs are uploaded; it does not
-archive, sign, or install an app.
+The manually triggered `iOS simulator validation` GitHub Actions workflow uses
+the `example` Expo consumer on macOS and runs against an iOS simulator. It
+installs this checkout as a local dependency, generates the iOS project,
+installs pods, builds the lifecycle test scheme once, enumerates the requested
+test classes, and runs only the selected focus (`stabilization`, `pdfium`,
+`page-input`, `lifecycle`, `all`, or `build-only`). Failure result bundles and
+logs are uploaded; it does not archive, sign, or install an app.

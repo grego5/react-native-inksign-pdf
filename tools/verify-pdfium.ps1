@@ -38,9 +38,9 @@ if (-not $staticRelease.tag -or -not $staticRelease.androidAsset -or
 
 $expectedArtifacts = @(
   "android:arm64-v8a",
-  "android:x86_64",
-  "ios:ios-arm64"
+  "android:x86_64"
 )
+$expectedArtifacts += @($staticRelease.iosSlices | ForEach-Object { "ios:$($_)" })
 $actualArtifacts = @(
   foreach ($artifact in @($staticRelease.artifacts)) {
     if ($artifact.buildType -ne "static") {
