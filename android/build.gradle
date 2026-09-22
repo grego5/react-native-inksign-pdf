@@ -11,6 +11,9 @@ apply from: '../nitrogen/generated/android/ReactNativeInkSignPdf+autolinking.gra
 def pdfiumRoot = file('../core/third_party/pdfium')
 def pdfiumAndroidRoot = file("${buildDir}/pdfium")
 def pdfiumManifest = new JsonSlurper().parse(new File(pdfiumRoot, 'manifest.json'))
+def requiredPdfiumSymbols = pdfiumManifest.upstream.requiredSymbols.collect {
+  it.toString()
+}
 def requiredPdfiumAndroidNdk = pdfiumManifest.buildWorkflow.androidNdk.toString()
 def pdfiumRelease = pdfiumManifest.distribution.staticRelease
 def pdfiumAndroidArtifacts = pdfiumRelease.artifacts.findAll { artifact ->
@@ -63,12 +66,7 @@ def assertArchive = { File archive, def artifact ->
   }
 
   String symbols = new String(bytes, StandardCharsets.ISO_8859_1)
-  for (String symbol : [
-      'FPDF_InitLibraryWithConfig',
-      'FPDF_DestroyLibrary',
-      'FPDFText_LoadPage',
-      'FPDFPage_New'
-  ]) {
+  for (String symbol : requiredPdfiumSymbols) {
     if (!symbols.contains(symbol)) {
       return false
     }

@@ -22,6 +22,12 @@ $pdfiumRoot = Join-Path $root "core\third_party\pdfium"
 $manifestPath = Join-Path $pdfiumRoot "manifest.json"
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 $staticRelease = $manifest.distribution.staticRelease
+$requiredPdfiumSymbols = @($manifest.upstream.requiredSymbols)
+$requiredPdfiumHeaders = @($manifest.upstream.publicHeaders)
+
+if ($requiredPdfiumSymbols.Count -eq 0 -or $requiredPdfiumHeaders.Count -eq 0) {
+  throw "FAIL PDFium metadata does not declare required symbols and headers"
+}
 
 if (-not $staticRelease.tag -or -not $staticRelease.androidAsset -or
     -not $staticRelease.androidAssetSha256 -or -not $staticRelease.iosAsset -or
@@ -102,12 +108,7 @@ function Assert-StaticArchive([string]$Path, [string]$Label, [string]$ExpectedMa
   $hasExpectedMachine = $false
   $hasElfObject = $false
   $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
-  foreach ($symbol in @(
-      "FPDF_InitLibraryWithConfig",
-      "FPDF_DestroyLibrary",
-      "FPDFText_LoadPage",
-      "FPDFPage_New"
-    )) {
+  foreach ($symbol in $requiredPdfiumSymbols) {
     if ($ascii.IndexOf($symbol, [System.StringComparison]::Ordinal) -lt 0) {
       throw "FAIL $Label does not contain required PDFium symbol $symbol"
     }
@@ -209,12 +210,7 @@ function Assert-IosStaticBinary([string]$Path, [string]$Label) {
   }
 
   $ascii = [System.Text.Encoding]::ASCII.GetString($bytes)
-  foreach ($symbol in @(
-      "FPDF_InitLibraryWithConfig",
-      "FPDF_DestroyLibrary",
-      "FPDFText_LoadPage",
-      "FPDFPage_New"
-    )) {
+  foreach ($symbol in $requiredPdfiumSymbols) {
     if ($ascii.IndexOf($symbol, [System.StringComparison]::Ordinal) -lt 0) {
       throw "FAIL $Label does not contain required PDFium symbol $symbol"
     }
@@ -222,7 +218,7 @@ function Assert-IosStaticBinary([string]$Path, [string]$Label) {
 }
 
 function Assert-Headers {
-  foreach ($header in @("fpdfview.h", "fpdf_text.h", "fpdf_edit.h")) {
+  foreach ($header in $requiredPdfiumHeaders) {
     $headerPath = Join-Path $pdfiumRoot (Join-Path "include" $header)
     if (-not (Test-Path -LiteralPath $headerPath -PathType Leaf)) {
       throw "FAIL missing public PDFium header $header"

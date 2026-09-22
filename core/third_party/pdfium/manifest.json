@@ -5,7 +5,28 @@
     "repository": "https://pdfium.googlesource.com/pdfium",
     "branch": "chromium/8021",
     "commit": "784a524ddaa26d86c0f499625b97902095c26dfe",
-    "publicHeaders": ["fpdfview.h", "fpdf_text.h", "fpdf_edit.h"],
+    "publicHeaders": [
+      "fpdfview.h",
+      "fpdf_text.h",
+      "fpdf_edit.h",
+      "fpdf_ppo.h",
+      "fpdf_save.h"
+    ],
+    "requiredSymbols": [
+      "FPDF_InitLibraryWithConfig",
+      "FPDF_DestroyLibrary",
+      "FPDFText_LoadPage",
+      "FPDFPage_New",
+      "FPDF_ImportPagesByIndex",
+      "FPDFPage_Delete",
+      "FPDF_MovePages",
+      "FPDFPageObj_NewImageObj",
+      "FPDFImageObj_LoadJpegFileInline",
+      "FPDFImageObj_SetMatrix",
+      "FPDFPage_InsertObject",
+      "FPDFPage_GenerateContent",
+      "FPDF_SaveAsCopy"
+    ],
     "license": "BSD-3-Clause"
   },
   "buildWorkflow": {

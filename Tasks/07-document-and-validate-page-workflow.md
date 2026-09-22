@@ -24,9 +24,12 @@ Document the completed native page workflow, expose it in the example applicatio
 
 ## Current state
 
-- Documentation describes a fixed-page editing and signing workflow.
+- The public contract and shared PDFium assembler are documented, but the
+  README and platform references still need the completed coordinator,
+  picker, working-PDF, and transactional publication workflow.
 - The example uses an Expo picker to select the initial PDF passed to `open`.
-- Maintainer references do not yet describe structural mutations, working PDFs, or native picker ownership.
+- Android and iOS picker ownership, example controls, and end-to-end validation
+  remain to be documented after Tasks 3 through 6.
 
 ## Implementation
 

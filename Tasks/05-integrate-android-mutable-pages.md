@@ -53,6 +53,10 @@ Implement `addPages`, `removePage`, and `movePage` on Android by combining the n
 ## Correctness and lifecycle rules
 
 - Keep all view and document-state mutation on the UI thread; run image decoding, PDF assembly, session opening, and file I/O on the existing serialized worker boundary.
+- Keep every PDFium API call behind the process-wide shared
+  `PdfiumLibraryState::apiMutex`. Platform workers own session lifetime and
+  ordering but must not add coordinator-owned or per-document PDFium locks;
+  helpers invoked while the shared guard is held must not acquire it again.
 - Generation belongs to the coordinator and is checked once when an asynchronous command returns to its publication boundary.
 - Permit only one picker or structural mutation at a time; reject conflicts with `operation_in_progress`.
 - `open` and disposal cancel pending work with `operation_cancelled` and remove owned temporary files.
@@ -65,6 +69,9 @@ Implement `addPages`, `removePage`, and `movePage` on Android by combining the n
 - Add connected coverage for picker result parsing, cancellation, stale-generation suppression, and lifecycle cleanup.
 - Verify annotations and ink remain attached to their pages after move and neighboring-page removal.
 - Verify export contains the final page count and order after every supported structural operation.
+- Concurrently submit rendering and assembly from separate workers and verify
+  PDFium entry is serialized without corruption. Exercise open/close while
+  another worker renders or assembles, and run ThreadSanitizer where supported.
 
 ## Validation
 

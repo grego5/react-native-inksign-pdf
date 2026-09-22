@@ -19,6 +19,12 @@ enum class PdfiumErrorCode : std::uint8_t {
   InvalidPageIndex,
   PageOpenFailed,
   InvalidFallbackFont,
+  LastPageRequired,
+  InvalidAssemblyCommand,
+  SourceDocumentOpenFailed,
+  MutationFailed,
+  SaveFailed,
+  ValidationFailed,
 };
 
 struct PdfiumError final {
@@ -51,6 +57,7 @@ struct PdfiumPageMetadata final {
   std::size_t pageIndex = 0;
   double width = 0.0;
   double height = 0.0;
+  int rotation = 0;
 };
 
 struct PdfiumRenderRect final {

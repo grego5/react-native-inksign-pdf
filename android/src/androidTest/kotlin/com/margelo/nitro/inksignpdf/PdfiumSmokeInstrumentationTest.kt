@@ -1,8 +1,10 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
+import java.io.ByteArrayOutputStream
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -24,6 +26,22 @@ class PdfiumSmokeInstrumentationTest {
   @Test
   fun sharedSessionOwnsBytesAndTemporaryPageHandles() {
     assertTrue(NativeTestRuntime.pdfiumSessionLifecycleNative())
+  }
+
+  @Test
+  fun pageAssemblyPreservesOrderAndRejectsInvalidMutations() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val jpeg = ByteArrayOutputStream().use { output ->
+      val bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+      try {
+        check(bitmap.compress(Bitmap.CompressFormat.JPEG, 90, output))
+      } finally {
+        bitmap.recycle()
+      }
+      output.toByteArray()
+    }
+    val scratchPath = context.cacheDir.resolve("pdfium-assembly-smoke").absolutePath
+    assertTrue(NativeTestRuntime.pdfiumAssemblyNative(scratchPath, jpeg))
   }
 
   @Test

@@ -73,6 +73,12 @@ serialized coordinator boundary. There is no second structural state model,
 no optional pre-mutation source mode, and no platform-specific PDF mutation
 path.
 
+Every PDFium API call is additionally serialized by the process-wide shared
+`PdfiumLibraryState::apiMutex`, including initialization, destruction,
+rendering, inspection, session close, and assembly. Platform workers own
+session lifetime and ordering but must not introduce per-document PDFium locks;
+helpers called while the shared guard is held must not acquire it again.
+
 ## Implementation policy
 
 - Prefer replacing index-owned and immutable-document structures over wrapping

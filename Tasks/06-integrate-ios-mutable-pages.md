@@ -54,6 +54,10 @@ Implement `addPages`, `removePage`, and `movePage` on iOS using the native picke
 ## Correctness and lifecycle rules
 
 - Restrict UIKit, PDFKit view state, and document-state installation to the main actor. Keep image decoding, PDF assembly, and file coordination off the main actor.
+- Keep every PDFium API call behind the process-wide shared
+  `PdfiumLibraryState::apiMutex`. Platform workers own session lifetime and
+  ordering but must not add coordinator-owned or per-document PDFium locks;
+  helpers invoked while the shared guard is held must not acquire it again.
 - Generation belongs to the coordinator and is checked once when asynchronous work returns to its publication boundary.
 - Permit only one picker or structural operation at a time; reject conflicts with `operation_in_progress`.
 - `open` and disposal cancel pending work with `operation_cancelled` and clean owned artifacts.
@@ -66,6 +70,9 @@ Implement `addPages`, `removePage`, and `movePage` on iOS using the native picke
 - Exercise picker cancellation, provider-backed files, stale-generation suppression, and resource cleanup.
 - Verify ink and annotations stay with the same page after move and removal of another page.
 - Verify final export preserves the final count, order, dimensions, and page content.
+- Concurrently submit rendering and assembly from separate workers and verify
+  PDFium entry is serialized without corruption. Exercise open/close while
+  another worker renders or assembles, and run ThreadSanitizer where supported.
 
 ## Validation
 

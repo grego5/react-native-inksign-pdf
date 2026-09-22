@@ -45,6 +45,16 @@ stored state or the JavaScript boundary.
   resources and rendering work remain owned by their creating serial workers;
   worker handles and platform objects never enter JavaScript or returned
   snapshots.
+- The shared `PdfiumPageAssembler` owns no publication state. On its caller's
+  serial worker it applies one append, remove, or move command to copied
+  working-PDF bytes, keeps all PDFium handles and staged JPEG bytes inside the
+  operation, saves a non-incremental scratch candidate, and returns detached
+  page metadata only after reopening and validating the candidate.
+- All PDFium API calls, including initialization, destruction, session
+  operations, rendering, inspection, and assembly, are serialized by the
+  process-wide `PdfiumLibraryState::apiMutex`. Platform serial workers own
+  session lifetime and ordering but do not replace this PDFium-wide guard;
+  helpers called while it is held do not acquire it again.
 - UI state and callbacks are main/UI-thread-owned. PDF parsing, tile rendering,
   and export run on serial workers. The C++ engine is synchronous, caller-owned,
   and independent of UIKit, Android, and React Native.
@@ -67,17 +77,15 @@ stored state or the JavaScript boundary.
   colors are presentation-only; an unspecified editor fill contrasts with the
   saved text color. doubleTap configures an absolute zoom target, default 2.0,
   and optional edit-mode entry.
-- Methods: open, addPages, scanPages, removePage, movePage, nextPage,
+- Methods: open, addPages, removePage, movePage, nextPage,
   previousPage, getViewport, enterEditMode, enterViewMode, undo, redo, clear,
   insertAnnotationOn, insertAnnotationOff, increaseTextSize,
   decreaseTextSize, removeTextAnnotation, and finalize. Android debug builds
   also expose the debug-recording methods defined in the TypeScript spec.
 - `PageType` is `pdf` or `image`. `addPages(options?)` accepts both types when
   omitted, appends selected files in picker order, expands every selected PDF
-  in source order, and appends one page per image. `scanPages()` appends
-  scanner images in scanner order and returns the same `AddPagesResult` shape.
-  Cancellation resolves with zero added pages and leaves the active page and
-  state unchanged.
+  in source order, and appends one page per image. Cancellation resolves with
+  zero added pages and leaves the active page and state unchanged.
 - `removePage()` removes the active page and activates the page now at its
   index, or the preceding page when the removed page was last; the final page
   cannot be removed. `movePage(pageIndex)` accepts a destination in

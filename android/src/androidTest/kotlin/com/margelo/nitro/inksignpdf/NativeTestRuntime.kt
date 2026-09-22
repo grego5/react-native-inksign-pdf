@@ -11,6 +11,9 @@ internal object NativeTestRuntime {
   @JvmStatic
   external fun pdfiumSessionLifecycleNative(): Boolean
 
+  @JvmStatic
+  external fun pdfiumAssemblyNative(scratchPath: String, jpegBytes: ByteArray): Boolean
+
   fun initialize() {
     if (!NativeLoader.isInitialized()) {
       NativeLoader.init(SystemDelegate())
