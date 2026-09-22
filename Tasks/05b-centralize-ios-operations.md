@@ -26,4 +26,10 @@ Prepare the Task 6 mutation boundary by making the iOS coordinator the sole owne
 
 - Add focused tests for admission, cancellation, stale export, dirty aggregation, and artifact cleanup. Update the iOS lifecycle/export references and run focused iOS lifecycle and export validation plus `git diff --check -- ':!nitrogen/generated/**'`.
 
-Status: Planned
+Status: Complete
+
+The coordinator admits serialized open/finalize work, owns pending and published
+artifacts, aggregates dirty state, and guards immutable export publication.
+Focused coordinator lifecycle tests and the repository iOS lifecycle/export
+contract runner cover admission, stale publication, rollback, dirty state, and
+cleanup.

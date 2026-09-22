@@ -30,7 +30,7 @@ extension InkSignView {
     pageSwitchRequestID &+= 1
     let requestID = pageSwitchRequestID
     pendingPageSwitchID = requestID
-    state.activePageIndex = pageIndex
+    precondition(documentCoordinator.selectPage(id: state.pages[pageIndex].id) != nil)
     invalidateOverlayTransformCache()
     textInteractionOverlay.syncContent()
     canvasView.isInstallingDrawing = true

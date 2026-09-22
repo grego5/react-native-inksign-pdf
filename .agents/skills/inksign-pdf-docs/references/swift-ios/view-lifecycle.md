@@ -8,9 +8,10 @@
   working and output artifacts.
 - The coordinator admits one open, finalize, or structural operation at a time.
   Structural admission is the boundary for future picker staging and page
-  commands. A replacement open keeps the prior published document until the
-  new document reaches open readiness; failed or canceled replacement restores
-  the prior document.
+  commands. A new open cancels a pending open before admission; other conflicting
+  operations reject. A replacement open keeps the prior published document until
+  the new document reaches open readiness; failed or canceled replacement restores
+  the prior document, viewport, and editing mode.
 - `InkSignView` owns the page-input coordinator. The coordinator owns one
   main-thread picker request and stages Files, Photo Library, and caller-provided
   local sources into exact module cache artifacts before a structural mutation
@@ -21,8 +22,8 @@
 - `InkPdfView` is a leaf presentation component. It owns the current canonical
   focus, zoom, page frame, immutable `PageViewportTransform`, and PDFium tiles.
 - Each page has a stable native identity; its current index comes from its
-  position in the coordinator's ordered collection. The active page is stored
-  by identity. The Objective-C++ facade owns the native PDFium session and
+  position in the coordinator's ordered collection. The coordinator selects the
+  active page by identity. The Objective-C++ facade owns the native PDFium session and
   serializes all PDFium operations.
 - The text overlay owns the temporary editor, selection, dragging, and keyboard
   behavior. The page-turn lifecycle owns preview and handoff presentation.

@@ -163,15 +163,16 @@ extension InkSignView {
       emitChange(force: true)
       return true
     } catch {
+      let failed = pendingOpen
       pendingOpen = nil
       if let operation { documentCoordinator.settle(operation, succeeded: false) }
-      restoreDocumentAfterOpenFailure()
+      restoreDocumentAfterOpenFailure(pending: failed)
       pending.promise.reject(withError: error)
       return false
     }
   }
 
-  func restoreDocumentAfterOpenFailure() {
+  func restoreDocumentAfterOpenFailure(pending: PendingOpen? = nil) {
     guard let state = documentCoordinator.document else {
       documentView.removePage()
       setInteractionMode(editing: false, interactionsEnabled: false)
@@ -184,7 +185,10 @@ extension InkSignView {
                              session: state.pdfiumSession,
                              generation: documentCoordinator.generation)
     overlayDidDisplay(canvasView, for: state.activePage.page)
-    setInteractionMode(editing: false)
+    if let target = pending?.previousViewport {
+      _ = applyViewport(target: target)
+    }
+    setInteractionMode(editing: pending?.previousEditing ?? false)
   }
 
   func currentViewportSnapshot() throws -> Viewport {

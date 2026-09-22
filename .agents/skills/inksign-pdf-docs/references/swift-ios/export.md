@@ -5,16 +5,20 @@ the page history.
 
 ## Export flow
 
-1. On the main thread, capture the source URL, page geometry, committed
-   PencilKit drawings, committed text annotations, and document generation.
-   The active or uncommitted interaction is not included.
-2. On the export queue, create a new PDF and process each source page in order.
+1. The coordinator admits one finalize operation and captures the working
+   source URL, ordered page geometry, committed PencilKit drawings, committed
+   text annotations, and operation generation. The active or uncommitted
+   interaction is not included.
+2. On the export queue, copy the captured source into a unique immutable
+   snapshot artifact, then create a new PDF and process each source page in
+   order.
 3. Copy the source page into the new PDF with `CGContext.drawPDFPage`. The
    original page content is therefore retained; the page is not flattened into
    one image.
 4. Add the committed markup using the rules below.
 5. Reopen the result, verify page count, page order, media boxes, and rotations,
-   then atomically publish the verified file in the native cache directory.
+then atomically publish the verified file in the native cache directory while
+the coordinator still owns the current operation and generation.
 
 ## What remains vector
 
@@ -39,6 +43,7 @@ screen scale, and the temporary text editor do not affect placement or physical
 size.
 
 Export is non-consuming and uses unique cache files. The source and output must
-be different paths. Capture, writing, verification, publication, cancellation,
-and cleanup failures are reported as `invalid_output_path`,
+be different paths. Conflicting open or finalize operations are rejected.
+Capture, writing, verification, publication, cancellation, and cleanup failures
+are reported as `invalid_output_path`,
 `pdf_export_failed`, or `operation_cancelled` as appropriate.

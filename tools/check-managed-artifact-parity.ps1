@@ -29,6 +29,7 @@ $androidExport = Read-Source "android/src/main/java/com/margelo/nitro/inksignpdf
 $androidPackage = Read-Source "android/src/main/java/com/margelo/nitro/inksignpdf/ReactNativeInkSignPdfPackage.kt"
 $iosPolicy = Read-Source "ios/CacheArtifacts.swift"
 $iosView = Read-Source "ios/InkSignView.swift"
+$iosCoordinator = Read-Source "ios/DocumentState.swift"
 $iosDocument = Read-Source "ios/InkSignView+Document.swift"
 $iosExport = Read-Source "ios/InkSignView+Export.swift"
 $iosStartup = Read-Source "ios/ReactNativeInkSignPdfStartup.m"
@@ -64,9 +65,9 @@ Require $iosPolicy 'exportScratchPattern' 'iOS scratch classifier'
 Require $iosPolicy 'verificationScratchPattern' 'iOS verification classifier'
 Require $iosPolicy 'deleteExact' 'iOS exact deletion'
 Require $iosStartup 'constructor' 'iOS image startup hook'
-Require $iosView 'pendingOutputURLs|ownedOutputURLs' 'iOS request/view output ownership'
-Require $iosView 'exportQueue\.async' 'iOS off-main output retirement'
-Require $iosExport 'artifactPolicy\.allocateSignedOutput\(\)' 'iOS managed output allocation'
+Require $iosCoordinator 'pendingArtifacts|ownedOutputs' 'iOS coordinator output ownership'
+Require $iosCoordinator 'artifacts\.forEach\(artifactPolicy\.deleteExact\)' 'iOS coordinator disposal uses policy deletion'
+Require $iosCoordinator 'artifactPolicy\.allocateSignedOutput\(\)' 'iOS managed output allocation'
 Require $iosExport 'policy\.allocateExportScratch\(\)' 'iOS operation scratch allocation'
 Require $iosExport 'policy\.allocateVerificationScratch\(\)' 'iOS verification scratch allocation'
 Require $iosExport 'policy\.deleteExact' 'iOS operation scratch cleanup'

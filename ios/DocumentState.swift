@@ -27,6 +27,19 @@ final class InkSignPdfDocumentCoordinator {
     structuralDirty || document?.pages.contains { !$0.history.content.isEmpty } == true
   }
 
+  func selectPage(id: UUID) -> Int? {
+    guard let document, let index = document.index(of: id) else { return nil }
+    document.activePageID = id
+    return index
+  }
+
+  @discardableResult
+  func selectPage(at index: Int) -> Bool {
+    guard let document, document.pages.indices.contains(index) else { return false }
+    document.activePageID = document.pages[index].id
+    return true
+  }
+
   init(artifactPolicy: InkSignPdfCacheArtifactPolicy = .shared) {
     self.artifactPolicy = artifactPolicy
   }
@@ -197,7 +210,7 @@ final class InkSignPdfDocumentState {
   let document: PDFDocument
   let pdfiumSession: InkSignPdfPdfiumSession
   private(set) var pages: [InkSignPdfPageState]
-  private(set) var activePageID: UUID
+  fileprivate(set) var activePageID: UUID
 
   init(sourceURL: URL,
        workingURL: URL,
@@ -214,15 +227,14 @@ final class InkSignPdfDocumentState {
   }
 
   var activePageIndex: Int {
-    get { index(of: activePageID) ?? 0 }
-    set {
-      guard pages.indices.contains(newValue) else { return }
-      activePageID = pages[newValue].id
+    guard let index = index(of: activePageID) else {
+      preconditionFailure("active page ID is absent from the ordered pages")
     }
+    return index
   }
 
   var activePage: InkSignPdfPageState {
-    pages[index(of: activePageID) ?? 0]
+    pages[activePageIndex]
   }
 
   func index(of pageID: UUID) -> Int? {

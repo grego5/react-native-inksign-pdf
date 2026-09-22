@@ -108,6 +108,14 @@ extension InkSignView {
       promise.reject(withError: LoadError.cancelled)
       return
     }
+    if let pending = pendingOpen {
+      pendingOpen = nil
+      if let active = pending.operation {
+        documentCoordinator.settle(active, succeeded: false)
+      }
+      restoreDocumentAfterOpenFailure(pending: pending)
+      pending.promise.reject(withError: LoadError.cancelled)
+    }
     guard let operation = documentCoordinator.admit(.open) else {
       promise.reject(withError: LoadError.operationInProgress)
       return
@@ -115,6 +123,8 @@ extension InkSignView {
     pageInputCoordinator.cancelPending()
     cancelViewportAnimation()
     let token = operation.generation
+    let previousViewport = try? currentViewportSnapshot()
+    let previousEditing = editMode
     viewportRequestID &+= 1
     pageNavigationRequestID &+= 1
     pendingOpen = PendingOpen(token: token,
@@ -122,7 +132,12 @@ extension InkSignView {
                               promise: promise,
                               zoom: zoom,
                               focus: focus,
-                              fitToPage: fitToPage)
+                              fitToPage: fitToPage,
+                              previousViewport: previousViewport.map {
+                                ViewportTarget(zoom: CGFloat($0.zoom),
+                                               focus: CGPoint(x: $0.x, y: $0.y))
+                              },
+                              previousEditing: previousEditing)
     textInteractionOverlay.finishForLifecycle()
     cancelActiveStroke(clearLive: false)
     setInteractionMode(editing: false, interactionsEnabled: false)
@@ -142,9 +157,10 @@ extension InkSignView {
     let requestedFallbackFont = fallbackFont
 
     guard !path.isEmpty else {
+      let failed = pendingOpen
       pendingOpen = nil
       documentCoordinator.settle(operation, succeeded: false)
-      restoreDocumentAfterOpenFailure()
+      restoreDocumentAfterOpenFailure(pending: failed)
       promise.reject(withError: LoadError.invalidSourcePath)
       return
     }
@@ -269,11 +285,12 @@ extension InkSignView {
     DispatchQueue.main.async { [weak self] in
       guard let self, !self.disposed, self.documentCoordinator.generation == token,
             self.pendingOpen?.token == token else { return }
-      if let operation = self.pendingOpen?.operation {
+      let failed = self.pendingOpen
+      if let operation = failed?.operation {
         self.documentCoordinator.settle(operation, succeeded: false)
       }
       self.pendingOpen = nil
-      self.restoreDocumentAfterOpenFailure()
+      self.restoreDocumentAfterOpenFailure(pending: failed)
       promise.reject(withError: error)
     }
   }

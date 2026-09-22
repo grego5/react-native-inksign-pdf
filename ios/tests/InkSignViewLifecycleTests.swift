@@ -28,9 +28,9 @@ final class InkSignViewLifecycleTests: XCTestCase {
 
     XCTAssertEqual(document.activePage.id, activeID)
     XCTAssertEqual(document.index(of: activeID), 1)
-    document.activePageIndex = 2
+    XCTAssertTrue(fixture.view.documentCoordinator.selectPage(at: 2))
     XCTAssertEqual(document.activePage.id, document.pages[2].id)
-    document.activePageIndex = 1
+    XCTAssertTrue(fixture.view.documentCoordinator.selectPage(at: 1))
     XCTAssertTrue(FileManager.default.fileExists(atPath: workingURL.path))
 
     fixture.view.documentCoordinator.clearDocument()
@@ -73,6 +73,48 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertFalse(FileManager.default.fileExists(atPath: artifacts.source.path))
     XCTAssertFalse(FileManager.default.fileExists(atPath: artifacts.output.path))
     XCTAssertFalse(coordinator.isCurrent(finalize))
+  }
+
+  func testReplacementOpenCancelsPendingOpen() throws {
+    let fixture = makeFixture()
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let firstOperation = try XCTUnwrap(view.documentCoordinator.admit(.open))
+    let firstPromise = Promise<PageInfo>()
+    var firstError: Error?
+    firstPromise.catch { firstError = $0 }
+    view.pendingOpen = InkSignView.PendingOpen(token: firstOperation.generation,
+                                               operation: firstOperation,
+                                               promise: firstPromise,
+                                               zoom: nil,
+                                               focus: nil,
+                                               fitToPage: true)
+
+    view.beginLoad("", zoom: nil, focus: nil, fitToPage: true,
+                   promise: Promise<PageInfo>())
+
+    XCTAssertNotNil(firstError)
+    XCTAssertNil(view.pendingOpen)
+    XCTAssertNotNil(view.documentCoordinator.document)
+    XCTAssertFalse(view.documentCoordinator.isCurrent(firstOperation))
+  }
+
+  func testFailedReplacementRestoresViewportAndEditingMode() throws {
+    let fixture = makeFixture()
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let target = ViewportTarget(zoom: 2, focus: CGPoint(x: 140, y: 180))
+    XCTAssertTrue(view.applyViewport(target: target))
+    view.setInteractionMode(editing: true)
+
+    view.beginLoad("", zoom: nil, focus: nil, fitToPage: true,
+                   promise: Promise<PageInfo>())
+
+    let restored = try view.currentViewportSnapshot()
+    XCTAssertEqual(restored.zoom, 2, accuracy: 0.0001)
+    XCTAssertEqual(restored.x, 140, accuracy: 1)
+    XCTAssertEqual(restored.y, 180, accuracy: 1)
+    XCTAssertTrue(view.editMode)
   }
 
   func testStaleExportCannotPublishOutput() throws {
@@ -1250,8 +1292,8 @@ final class InkSignViewLifecycleTests: XCTestCase {
       document: document,
       pdfiumSession: pdfiumSession,
       pages: states)
-    state.activePageIndex = activePageIndex
     XCTAssertTrue(view.documentCoordinator.publish(state, generation: view.documentCoordinator.generation))
+    XCTAssertTrue(view.documentCoordinator.selectPage(at: activePageIndex))
     let controller = UIViewController()
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
     window.rootViewController = controller

@@ -61,6 +61,8 @@ final class InkSignView: HybridInkSignViewSpec {
     let zoom: Double?
     let focus: CGPoint?
     let fitToPage: Bool
+    var previousViewport: ViewportTarget? = nil
+    var previousEditing: Bool = false
   }
 
   let container = UIView()
