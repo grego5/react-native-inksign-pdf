@@ -6,6 +6,10 @@ Back to task index: [TASKS.md](../TASKS.md)
 
 Implement `addPages`, `removePage`, and `movePage` on iOS using the native picker, shared PDFium page assembly, stable page identity, and transactional replacement of PDFKit and PDFium document state.
 
+## Depends on
+
+- [Task 02](02-add-pdfium-page-assembly.md), [Task 04](04-add-ios-file-picker.md), and [Task 05b](05b-centralize-ios-operations.md). Task 05b includes the Task 05a coordinator ownership work.
+
 ## Non-goals
 
 - Do not add structural undo or redo.
@@ -23,33 +27,30 @@ Implement `addPages`, `removePage`, and `movePage` on iOS using the native picke
 
 ## Current state
 
-- The source PDFKit document, PDFium session, and page collection are fixed after open.
-- Page state and annotation history use the original numeric page index as identity.
-- Rendering and export rely on coordinated PDFKit, PDFium, and view state.
+- The coordinator owns a working PDF, stable-ID page records, current page ID, operation admission, and export snapshots.
+- The PDFKit document, PDFium session, and ordered page collection are fixed after open until this task adds structural publication.
 
 ## Implementation
 
-1. Replace the immutable/index-owned document state with one `MutableDocumentCoordinator`. It exclusively owns the working PDF URL, ordered stable-ID `PageRecord` collection, current page ID, generation, operation state, PDFKit document, and PDFium session. The view delegates and holds no parallel page model.
-2. During `open`, copy the caller's source into a module-owned working PDF before publishing it. All rendering, mutation, and export use that working PDF; remove branches that retain the source as the live document.
-3. Route `open`, `addPages`, `removePage`, `movePage`, and `finalize` through one serialized coordinator state machine. Before structural mutation, commit active text editing, reject an active incomplete ink gesture, and capture immutable command inputs.
-4. Normalize each selected image off the main thread with the ported
+1. Extend the coordinator from Tasks 05a and 05b to admit `addPages`, `removePage`, and `movePage` through its existing operation boundary. Before structural mutation, commit active text editing, reject an active incomplete ink gesture, and capture immutable command inputs.
+2. Normalize each selected image off the main thread with the ported
    `react-native-images-to-pdf` encoder: apply EXIF orientation, use a white
    background, size the page from the active page dimensions captured when the
    operation started, use `contain` fit without cropping, cap output at 200
    DPI, and use JPEG quality 0.72 when encoding is required. Return optimized
    JPEG data and placement metadata to PDFium; do not create an intermediate
    image PDF.
-5. Implement `addPages` by invoking the iOS picker, encoding each image to
+3. Implement `addPages` by invoking the iOS picker, encoding each image to
    optimized JPEG data, and appending selected items in order. A selected
    multipage PDF contributes every page in source order. PDFium creates image
    pages directly from the encoded JPEG data. Assign stable page states and
    activate the first appended page.
-7. Implement `removePage` for the current stable page ID. Reject removal of the sole page with `last_page_required`; otherwise remove only that page's state and select the page now at its index, or the preceding page when it was last.
-8. Implement `movePage(pageIndex)` by moving the current page in the working PDF and stable collection. Validate the destination range, make a same-index call a successful no-op, and retain the moved page as active.
-9. Produce a candidate artifact without mutating published state. Validate and open replacement PDFKit and PDFium documents, then atomically publish the candidate URL, sessions, ordered page records, active page ID, generation, and dirty state as one coordinator transition.
-10. A failed command discards its candidate, releases security scopes, and deletes staged files before leaving the coordinator boundary; published state was never partially mutated. Do not implement field-by-field rollback or fallback reconstruction.
-11. Keep structural dirty state independent of page-local undo and redo history.
-12. Update final export to use the current working PDF and page order before applying ink and annotations.
+4. Implement `removePage` for the current stable page ID. Reject removal of the sole page with `last_page_required`; otherwise remove only that page's state and select the page now at its index, or the preceding page when it was last.
+5. Implement `movePage(pageIndex)` by moving the current page in the working PDF and stable collection. Validate the destination range, make a same-index call a successful no-op, and retain the moved page as active.
+6. Produce a candidate artifact without mutating published state. Validate and open replacement PDFKit and PDFium documents, then atomically publish the candidate URL, sessions, ordered page records, active page ID, generation, and dirty state as one coordinator transition.
+7. A failed command discards its candidate, releases security scopes, and deletes staged files before leaving the coordinator boundary; published state was never partially mutated. Do not implement field-by-field rollback or fallback reconstruction.
+8. Keep structural dirty state independent of page-local undo and redo history.
+9. Verify final export snapshots reflect the current working PDF and page order before applying ink and annotations.
 
 ## Correctness and lifecycle rules
 

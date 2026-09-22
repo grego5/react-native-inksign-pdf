@@ -104,8 +104,12 @@ helpers called while the shared guard is held must not acquire it again.
 3. [Add the Android file picker and staging boundary](Tasks/03-add-android-file-picker.md)
 4. [Add the iOS file picker and staging boundary](Tasks/04-add-ios-file-picker.md)
 5. [Integrate mutable pages on Android](Tasks/05-integrate-android-mutable-pages.md)
+5a. [Establish iOS coordinator ownership](Tasks/05a-establish-ios-coordinator-ownership.md)
+5b. [Centralize iOS operations and export snapshots](Tasks/05b-centralize-ios-operations.md)
 6. [Integrate mutable pages on iOS](Tasks/06-integrate-ios-mutable-pages.md)
 7. [Document and validate the complete workflow](Tasks/07-document-and-validate-page-workflow.md)
 
-Tasks 3 and 4 may proceed after Task 1. Task 5 depends on Tasks 1 through 3;
-Task 6 depends on Tasks 1, 2, and 4. Task 7 depends on all prior tasks.
+Tasks 3 and 4 may proceed after Task 1. Task 5 depends on Tasks 1 through 3.
+Task 5a depends on Task 1 and may proceed alongside Tasks 2, 4, and 5.
+Task 5b depends on Task 5a. Task 6 depends on Tasks 2, 4, and 5b.
+Task 7 depends on all prior tasks.
