@@ -12,26 +12,37 @@ import java.util.UUID
  * Startup scanning and runtime allocation/deletion deliberately share this
  * policy so no caller-owned source path can become a cleanup candidate.
  */
+internal interface DocumentArtifactPolicy {
+  fun allocateSignedOutput(): File
+  fun allocateDebugRecording(): File
+  fun allocateExportScratch(): File
+  fun allocateStagedInput(): File
+  fun allocateWorkingPdf(): File
+  fun allocateMutationScratch(): File
+  fun validatedSignedOutput(path: String, source: File): File
+  fun deleteExact(file: File)
+}
+
 internal class CacheArtifactPolicy private constructor(
   val root: File,
   private val debugArtifactsEnabled: Boolean,
-) {
-  fun allocateSignedOutput(): File = allocateReservedFile("signed-", ".pdf")
+) : DocumentArtifactPolicy {
+  override fun allocateSignedOutput(): File = allocateReservedFile("signed-", ".pdf")
 
-  fun allocateDebugRecording(): File {
+  override fun allocateDebugRecording(): File {
     check(debugArtifactsEnabled) { "Stroke trace recording is available only in debug builds" }
     return allocateReservedFile("android-stroke-", ".csv")
   }
 
-  fun allocateExportScratch(): File = allocateReservedFile(".signed-", ".tmp")
+  override fun allocateExportScratch(): File = allocateReservedFile(".signed-", ".tmp")
 
-  fun allocateStagedInput(): File = allocateReservedFile(".input-", ".tmp")
+  override fun allocateStagedInput(): File = allocateReservedFile(".input-", ".tmp")
 
-  fun allocateWorkingPdf(): File = allocateReservedFile(".working-", ".pdf")
+  override fun allocateWorkingPdf(): File = allocateReservedFile(".working-", ".pdf")
 
-  fun allocateMutationScratch(): File = allocateReservedFile(".mutation-", ".tmp")
+  override fun allocateMutationScratch(): File = allocateReservedFile(".mutation-", ".tmp")
 
-  fun validatedSignedOutput(path: String, source: File): File {
+  override fun validatedSignedOutput(path: String, source: File): File {
     if (path.isBlank()) throw invalidOutputPath("The export path is invalid")
     val output = try {
       File(path).canonicalFile
@@ -49,7 +60,7 @@ internal class CacheArtifactPolicy private constructor(
     return output
   }
 
-  fun deleteExact(file: File) {
+  override fun deleteExact(file: File) {
     val candidate = try {
       file.canonicalFile
     } catch (_: IOException) {

@@ -14,6 +14,8 @@ class InkHistoryTest {
         PdfPageDimensions(300.0, 400.0),
         PdfPageDimensions(600.0, 800.0),
       ),
+      sessionWorker = PdfSessionWorker(),
+      artifactPolicy = TestDocumentArtifactPolicy(),
     )
     val first = outline(0f)
     val second = outline(20f)

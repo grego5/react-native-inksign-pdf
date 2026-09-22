@@ -58,6 +58,9 @@ stored state or the JavaScript boundary.
 - UI state and callbacks are main/UI-thread-owned. PDF parsing, tile rendering,
   and export run on serial workers. The C++ engine is synchronous, caller-owned,
   and independent of UIKit, Android, and React Native.
+- Android document lifecycle and page mutation are coordinated by
+  `MutableDocumentCoordinator`; see the Android lifecycle reference for
+  ownership and transaction rules.
 - Android and iOS text-field hints are immutable placement metadata. They stay
   outside content, history, dirty state, previews, export, and JavaScript.
 - Any worker result carries only the platform generation, page index, and an

@@ -177,7 +177,7 @@ private fun SurfaceView.endStroke(event: MotionEvent) {
     val outline = StrokeOutline.copyOf(frame.contours)
     // Final geometry becomes durable presentation/history state before the
     // replaceable front-buffer composition is discarded below.
-    activeHistory().append(outline)
+    documentCoordinator.appendActiveInk(outline)
     inkRenderer.addCompletedOutline(outline)
     notifyStateChange()
     if (shouldHandoff) {

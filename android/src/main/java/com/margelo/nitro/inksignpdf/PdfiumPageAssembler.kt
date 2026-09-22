@@ -10,7 +10,8 @@ internal enum class PdfiumAssemblyOperation(val value: Int) {
 
 internal data class PdfiumAppendRequest(
   val type: PageType,
-  val bytes: ByteArray,
+  val sourcePath: String? = null,
+  val imageBytes: ByteArray? = null,
   val pageWidth: Double = 0.0,
   val pageHeight: Double = 0.0,
   val placement: PdfiumImagePlacement = PdfiumImagePlacement(),
@@ -39,7 +40,14 @@ internal object PdfiumPageAssembler {
     request: PdfiumAssemblyRequest,
     scratch: File,
   ): List<PdfPageDimensions> {
-    val appendBytes = request.appendInputs.map { it.bytes }.toTypedArray()
+    request.appendInputs.forEach { item ->
+      when (item.type) {
+        PageType.PDF -> require(!item.sourcePath.isNullOrBlank() && item.imageBytes == null)
+        PageType.IMAGE -> require(item.sourcePath == null && item.imageBytes?.isNotEmpty() == true)
+      }
+    }
+    val appendPaths = request.appendInputs.map { it.sourcePath }.toTypedArray()
+    val appendBytes = request.appendInputs.map { it.imageBytes }.toTypedArray()
     val appendTypes = IntArray(request.appendInputs.size) { index ->
       when (request.appendInputs[index].type) {
         PageType.PDF -> 0
@@ -60,12 +68,9 @@ internal object PdfiumPageAssembler {
     }
     val flattened = try {
       nativeAssemble(
-        try {
-          input.readBytes()
-        } catch (error: Exception) {
-          throw PdfSessionException("invalid_source_path", "Unable to read the working PDF", error)
-        },
+        input.absolutePath,
         request.operation.value,
+        appendPaths,
         appendBytes,
         appendTypes,
         appendMetadata,
@@ -80,13 +85,17 @@ internal object PdfiumPageAssembler {
     } catch (error: IllegalStateException) {
       throw PdfSessionException("pdf_mutation_failed", error.message ?: "PDF mutation failed", error)
     }
+    return decodePageDimensions(flattened)
+  }
+
+  internal fun decodePageDimensions(flattened: DoubleArray): List<PdfPageDimensions> {
     if (flattened.size % 3 != 0 || flattened.isEmpty()) {
       throw PdfSessionException(
         "pdf_mutation_failed",
         "PDFium returned invalid mutation metadata",
       )
     }
-    return buildList(flattened.size / 3) { index ->
+    return List(flattened.size / 3) { index ->
       val offset = index * 3
       PdfPageDimensions(flattened[offset], flattened[offset + 1])
     }
@@ -94,9 +103,10 @@ internal object PdfiumPageAssembler {
 
   @JvmStatic
   private external fun nativeAssemble(
-    inputBytes: ByteArray,
+    inputPath: String,
     operation: Int,
-    appendBytes: Array<ByteArray>,
+    appendPaths: Array<String?>,
+    appendBytes: Array<ByteArray?>,
     appendTypes: IntArray,
     appendMetadata: DoubleArray,
     pageIndex: Int,

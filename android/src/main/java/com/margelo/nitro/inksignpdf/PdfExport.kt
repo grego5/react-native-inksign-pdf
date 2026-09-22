@@ -47,7 +47,7 @@ private data class PdfPageExportExpectation(
 internal object PdfExporter {
     fun export(
         snapshot: PdfExportSnapshot,
-        artifactPolicy: CacheArtifactPolicy,
+        artifactPolicy: DocumentArtifactPolicy,
         isStale: () -> Boolean,
     ): String {
         PdfApiSupport.requireSupported()

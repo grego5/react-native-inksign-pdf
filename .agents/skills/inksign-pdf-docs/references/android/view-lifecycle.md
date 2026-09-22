@@ -2,15 +2,20 @@
 
 ## Ownership
 
-- `HybridInkSignView` is the public Nitro/Fabric boundary. `SurfaceView` owns
-  UI-thread presentation, input routing, history projection, and cancellation.
-- `MutableDocumentCoordinator` owns the module-owned working PDF path, ordered
-  stable-ID page records, active page, structural dirty state, and document
-  generation. `InkDocumentController` owns viewport and tile state;
+- `HybridInkSignView` is the public Nitro/Fabric adapter. One persistent
+  `MutableDocumentCoordinator`, created at that boundary, owns the optional
+  published document, module-owned working artifacts, ordered stable-ID page
+  records, active page, structural dirty state, operation admission, and
+  document generations. It also delegates the current/prepared PDF session
+  lifecycle to `PdfSessionWorker`.
+- `SurfaceView` consumes coordinator queries and snapshots for UI-thread
+  presentation and routes page/history intents back through coordinator
+  commands. It owns viewport, tile presentation, input routing, and
+  cancellation only; `InkDocumentController` owns viewport and tile state;
   `PageNavigationController` owns navigation and handoff state.
 - `TextInteractionOverlay` owns the temporary editor, text gestures, keyboard,
-  and one-shot placement. `PdfSessionWorker` owns PDF readers and the native
-  PDFium raster session.
+  and one-shot placement. `PdfSessionWorker` owns serialized PDFium execution,
+  PDF readers, prepared sessions, and native session resources.
 - Worker results are accepted only when their document, page, and request
   identity are current.
 
@@ -32,15 +37,24 @@
   placement and clear stale editor/selection state before new state is installed.
 - Document replacement cancels active work, invalidates prior worker results,
   resets presentation, and installs only the current generation.
-- Opening copies the caller's PDF into a module-owned working artifact before
-  publication. Structural commands assemble a unique candidate from that
-  working artifact, open and validate it on the PDF worker, then publish the
-  candidate path, session metadata, stable page records, and active page as one
-  UI transition. Failed candidates leave published state unchanged.
-- Only one open, page-input staging, structural mutation, or export operation
-  is active at a time. Picker staging, image normalization, file I/O, PDFium
-  assembly, and session replacement stay off the UI thread; picker cancellation
-  and disposal remove request-owned temporary files.
+- Opening copies the caller's PDF into a coordinator-owned working artifact
+  before publication. Structural commands capture stable page identities and
+  immutable inputs, assemble and open a unique prepared candidate without
+  replacing the current render session, validate the complete page aggregate,
+  commit the prepared worker session, and publish the candidate path, stable
+  page records, active page, generation, and dirty state as one coordinator
+  transition. Failed preparation, validation, commit, cancellation, or stale
+  completion retains the published state and retires only the candidate.
+- Working and appended PDF inputs cross JNI as module-owned file paths; only
+  normalized JPEG image payloads cross as managed byte arrays.
+- The coordinator admits only one open, page-input staging, structural
+  mutation, or export operation at a time. Picker staging, image
+  normalization, file I/O, PDFium assembly, and session replacement stay off
+  the UI thread; picker cancellation, superseding open, and disposal retire
+  coordinator-owned temporary files.
+- Structural and export operations reserve coordinator admission before text
+  settlement or any other callback-producing UI preflight. Failed preflight
+  releases that reservation before returning an error.
 - PDFium page pixels are the only base-page presentation. Android annotation
   state is composited after tile publication and never participates in PDFium
   page parsing or text reconstruction.

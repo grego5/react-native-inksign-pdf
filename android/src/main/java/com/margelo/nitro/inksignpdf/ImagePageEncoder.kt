@@ -13,7 +13,7 @@ import kotlin.math.ceil
 import kotlin.math.min
 
 /** Converts one selected image into the page-sized JPEG consumed by PDFium. */
-internal object AndroidImagePageEncoder {
+internal object ImagePageEncoder {
   private const val DPI = 200.0
   private const val POINTS_PER_INCH = 72.0
   private const val JPEG_QUALITY = 72
@@ -121,7 +121,7 @@ internal object AndroidImagePageEncoder {
       }
       return PdfiumAppendRequest(
         type = PageType.IMAGE,
-        bytes = output.toByteArray(),
+        imageBytes = output.toByteArray(),
         pageWidth = page.width,
         pageHeight = page.height,
         placement = PdfiumImagePlacement(

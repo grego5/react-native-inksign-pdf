@@ -26,7 +26,7 @@ import org.junit.runner.RunWith
 class AndroidPageInputCoordinatorTest {
   @Test
   fun pickerIntentUsesBothMimeTypesWhenUnrestricted() {
-    val intent = AndroidPageInputCoordinator.buildPagePickerIntent(null)
+    val intent = PageInputCoordinator.buildPagePickerIntent(null)
 
     assertEquals(Intent.ACTION_OPEN_DOCUMENT, intent.action)
     assertEquals("*/*", intent.type)
@@ -41,11 +41,11 @@ class AndroidPageInputCoordinatorTest {
   fun pickerIntentRestrictsSingleType() {
     assertEquals(
       "application/pdf",
-      AndroidPageInputCoordinator.buildPagePickerIntent(PageType.PDF).type,
+      PageInputCoordinator.buildPagePickerIntent(PageType.PDF).type,
     )
     assertEquals(
       "image/*",
-      AndroidPageInputCoordinator.buildPagePickerIntent(PageType.IMAGE).type,
+      PageInputCoordinator.buildPagePickerIntent(PageType.IMAGE).type,
     )
   }
 
@@ -63,7 +63,7 @@ class AndroidPageInputCoordinatorTest {
 
     assertEquals(
       listOf(first, second, third),
-      AndroidPageInputCoordinator.extractOrderedUris(intent),
+      PageInputCoordinator.extractOrderedUris(intent),
     )
   }
 
@@ -86,7 +86,7 @@ class AndroidPageInputCoordinatorTest {
       )
       writeBytes(bytes.toByteArray())
     }
-    val coordinator = AndroidPageInputCoordinator(context, policy)
+    val coordinator = PageInputCoordinator(context, policy)
     var staged = emptyList<StagedPageInput>()
     try {
       instrumentation.runOnMainSync {
@@ -121,7 +121,7 @@ class AndroidPageInputCoordinatorTest {
         }
       }
     }
-    val coordinator = AndroidPageInputCoordinator(
+    val coordinator = PageInputCoordinator(
       context,
       CacheArtifactPolicy.initialize(context),
       registrar,
@@ -172,7 +172,7 @@ class AndroidPageInputCoordinatorTest {
         override fun unregister() = Unit
       }
     }
-    val coordinator = AndroidPageInputCoordinator(
+    val coordinator = PageInputCoordinator(
       context,
       CacheArtifactPolicy.initialize(context),
       registrar,
@@ -226,7 +226,7 @@ class AndroidPageInputCoordinatorTest {
         override fun unregister() = Unit
       }
     }
-    val coordinator = AndroidPageInputCoordinator(
+    val coordinator = PageInputCoordinator(
       context,
       CacheArtifactPolicy.initialize(context),
       registrar,
@@ -264,7 +264,7 @@ class AndroidPageInputCoordinatorTest {
         override fun unregister() = Unit
       }
     }
-    val coordinator = AndroidPageInputCoordinator(
+    val coordinator = PageInputCoordinator(
       context,
       CacheArtifactPolicy.initialize(context),
       registrar,
@@ -290,7 +290,7 @@ class AndroidPageInputCoordinatorTest {
   fun unreadableLocalSourceFailsWithStableError() {
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val instrumentation = InstrumentationRegistry.getInstrumentation()
-    val coordinator = AndroidPageInputCoordinator(
+    val coordinator = PageInputCoordinator(
       context,
       CacheArtifactPolicy.initialize(context),
     )
@@ -332,7 +332,7 @@ class AndroidPageInputCoordinatorTest {
       ?.map { it.name }
       ?.toSet()
       ?: emptySet()
-    val coordinator = AndroidPageInputCoordinator(context, policy)
+    val coordinator = PageInputCoordinator(context, policy)
     var result: Result<List<StagedPageInput>>? = null
 
     try {

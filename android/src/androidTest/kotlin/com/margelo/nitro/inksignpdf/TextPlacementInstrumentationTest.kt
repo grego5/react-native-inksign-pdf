@@ -171,7 +171,7 @@ internal class TextPlacementInstrumentationTest {
       )
       harness.surface.appendTextAnnotation(1L, 0, annotation)
       overlay.syncContent()
-      revisionBeforeHold = harness.surface.activeHistory().revision
+      revisionBeforeHold = harness.activeHistoryRevision()
       val point = checkNotNull(harness.surface.textPresentationSnapshot())
         .transform.map(annotation.position)
       dispatch(overlay, MotionEvent.ACTION_DOWN, point.x.toFloat(), point.y.toFloat(), 3_100L)
@@ -184,7 +184,7 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, point.x.toFloat(), point.y.toFloat(), 3_760L))
         assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
         assertEquals(null, overlay.editingAnnotationId())
-        assertEquals(revisionBeforeHold, harness.surface.activeHistory().revision)
+        assertEquals(revisionBeforeHold, harness.activeHistoryRevision())
         assertEquals(16.0, checkNotNull(harness.surface.textPresentationSnapshot())
           .annotations.single().fontSize, 0.0)
         assertEquals(17.0, overlay.increaseTextSize(), 0.0)
@@ -247,7 +247,7 @@ internal class TextPlacementInstrumentationTest {
   @Test
   fun outsideEditorDragPansViewportAndKeepsEditorActive() {
     harness.runOnMain {
-      harness.surface.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
         overlay.armPlacement(1L)
@@ -271,7 +271,7 @@ internal class TextPlacementInstrumentationTest {
   @Test
   fun mountedRtlEditorKeepsItsRightEdgeAcrossTypingAndDeletion() {
     harness.runOnMain {
-      harness.surface.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
         overlay.armPlacement(1L)
@@ -317,7 +317,7 @@ internal class TextPlacementInstrumentationTest {
   @Test
   fun nativeSoftWrapsBecomeExplicitTextWhenTheDraftSettles() {
     harness.runOnMain {
-      harness.surface.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
         overlay.armPlacement(1L)
@@ -348,7 +348,7 @@ internal class TextPlacementInstrumentationTest {
   @Test
   fun selectionVisibilityFollowsTheMovedRangeEndpoint() {
     harness.runOnMain {
-      harness.surface.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
         overlay.armPlacement(1L)
@@ -441,6 +441,11 @@ internal class TextPlacementInstrumentationTest {
       },
     )
     private val engine = InkEngine()
+    private val coordinator = MutableDocumentCoordinator(
+      sessionWorker = worker,
+      artifactPolicy = CacheArtifactPolicy.initialize(instrumentation.targetContext),
+    )
+    fun activeHistoryRevision(): Long = coordinator.activeHistoryRevision()
     lateinit var surface: SurfaceView
     val info = PdfSessionInfo(
       sourcePath = "text.pdf",
@@ -454,7 +459,13 @@ internal class TextPlacementInstrumentationTest {
     init {
       val created = java.util.concurrent.atomic.AtomicReference<SurfaceView>()
       instrumentation.runOnMainSync {
-        created.set(SurfaceView(instrumentation.targetContext, worker, engine))
+        created.set(
+          SurfaceView(
+            instrumentation.targetContext,
+            engine,
+            documentCoordinator = coordinator,
+          ),
+        )
         surface = created.get()
         surface.layout(0, 0, 300, 300)
       }
@@ -465,7 +476,7 @@ internal class TextPlacementInstrumentationTest {
         completed.countDown()
       }
       assertTrue(completed.await(5L, TimeUnit.SECONDS))
-      runOnMain { surface.setDocument(result.get().getOrThrow()) }
+      runOnMain { setDocument(result.get().getOrThrow()) }
     }
 
     fun createOverlay(): TextInteractionOverlay {
@@ -477,8 +488,14 @@ internal class TextPlacementInstrumentationTest {
       return overlay
     }
 
-    fun setDocument(next: PdfSessionInfo) {
-      surface.setDocument(next)
+    fun setDocument(
+      next: PdfSessionInfo,
+      zoom: Double? = null,
+      focus: PagePoint? = null,
+      fitToPage: Boolean = true,
+    ) {
+      surface.documentCoordinator.publishOpen(next)
+      surface.installDocumentPresentation(zoom, focus, fitToPage)
     }
 
     fun runOnMain(action: () -> Unit) = instrumentation.runOnMainSync(action)

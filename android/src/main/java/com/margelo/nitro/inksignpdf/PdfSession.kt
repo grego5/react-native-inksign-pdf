@@ -285,10 +285,13 @@ internal fun closeFailedPdfResources(
 internal class PdfSessionWorker(
   private val opener: PdfSessionOpener = PdfSession,
   threadFactory: ThreadFactory = PdfWorkerThreadFactory,
+  private val assembler: (File, PdfiumAssemblyRequest, File) -> List<PdfPageDimensions> =
+    PdfiumPageAssembler::assemble,
 ) : AutoCloseable {
   private val executor: ExecutorService = Executors.newSingleThreadExecutor(threadFactory)
   private val stateLock = Any()
   private var current: PdfSessionResource? = null
+  private var preparedMutation: PreparedMutation? = null
   @Volatile private var requestedGeneration = Long.MIN_VALUE
   @Volatile private var requestedTileEpoch = Long.MIN_VALUE
   @Volatile private var requestedPreviewEpoch = Long.MIN_VALUE
@@ -311,8 +314,8 @@ internal class PdfSessionWorker(
     replaceInternal(path, generation, null, completion)
   }
 
-  /** Applies one transactional PDFium mutation and installs its candidate session. */
-  fun mutate(
+  /** Assembles and validates a mutation without changing the published render session. */
+  fun prepareMutation(
     workingPath: String,
     candidatePath: String,
     generation: Long,
@@ -328,7 +331,7 @@ internal class PdfSessionWorker(
         requestedGeneration = generation
         try {
           executor.execute {
-            mutateOnWorker(
+            prepareMutationOnWorker(
               workingPath,
               candidatePath,
               generation,
@@ -347,6 +350,40 @@ internal class PdfSessionWorker(
     if (rejected) {
       retireCandidate(File(candidatePath))
       completion(Result.failure(cancelled(generation)))
+    }
+  }
+
+  /** Installs the previously prepared candidate after UI-owned validation succeeds. */
+  fun commitPreparedMutation(
+    candidatePath: String,
+    generation: Long,
+    completion: (Result<Unit>) -> Unit,
+  ) {
+    enqueueMutationControl(generation, completion) {
+      val prepared = preparedMutation
+      if (prepared == null || prepared.path != candidatePath || isStale(generation)) {
+        throw cancelled(generation)
+      }
+      preparedMutation = null
+      val previous = current
+      current = prepared.session
+      previous?.close()
+    }
+  }
+
+  /** Closes and retires an uncommitted candidate, or just retires its reserved file. */
+  fun discardPreparedMutation(candidatePath: String, retireCandidate: (File) -> Unit) {
+    try {
+      executor.execute {
+        val prepared = preparedMutation
+        if (prepared?.path == candidatePath) {
+          preparedMutation = null
+          prepared.session.close()
+        }
+        retireCandidate(File(candidatePath))
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      retireCandidate(File(candidatePath))
     }
   }
 
@@ -462,7 +499,7 @@ internal class PdfSessionWorker(
 
   fun export(
     snapshot: PdfExportSnapshot,
-    artifactPolicy: CacheArtifactPolicy,
+    artifactPolicy: DocumentArtifactPolicy,
     completion: (Result<String>) -> Unit,
   ) {
     if (closed) {
@@ -517,7 +554,7 @@ internal class PdfSessionWorker(
     completion(result)
   }
 
-  private fun mutateOnWorker(
+  private fun prepareMutationOnWorker(
     workingPath: String,
     candidatePath: String,
     generation: Long,
@@ -529,16 +566,18 @@ internal class PdfSessionWorker(
     val candidateFile = File(candidatePath)
     val result = try {
       if (isStale(generation)) throw cancelled(generation)
-      PdfiumPageAssembler.assemble(File(workingPath), request, candidateFile)
+      assembler(File(workingPath), request, candidateFile)
       if (isStale(generation)) throw cancelled(generation)
       val opened = opener.open(candidatePath, generation, fallbackFont)
       if (isStale(generation)) {
         opened.close()
         throw cancelled(generation)
       }
-      val previous = current
-      current = opened
-      previous?.close()
+      preparedMutation?.let { previous ->
+        previous.session.close()
+        previous.retire(File(previous.path))
+      }
+      preparedMutation = PreparedMutation(candidatePath, opened, retireCandidate)
       Result.success(opened.info)
     } catch (error: Throwable) {
       Result.failure<PdfSessionInfo>(error)
@@ -546,6 +585,32 @@ internal class PdfSessionWorker(
     if (result.isFailure) retireCandidate(candidateFile)
     completion(result)
   }
+
+  private fun enqueueMutationControl(
+    generation: Long,
+    completion: (Result<Unit>) -> Unit,
+    action: () -> Unit,
+  ) {
+    try {
+      executor.execute {
+        val result = try {
+          action()
+          Result.success(Unit)
+        } catch (error: Throwable) {
+          Result.failure(error)
+        }
+        completion(result)
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      completion(Result.failure(cancelled(generation)))
+    }
+  }
+
+  private data class PreparedMutation(
+    val path: String,
+    val session: PdfSessionResource,
+    val retire: (File) -> Unit,
+  )
 
   override fun close() {
     close(emptySet()) { }
@@ -584,6 +649,11 @@ internal class PdfSessionWorker(
   }
 
   private fun closeCurrent() {
+    preparedMutation?.let { prepared ->
+      preparedMutation = null
+      prepared.session.close()
+      prepared.retire(File(prepared.path))
+    }
     val session = current
     current = null
     session?.close()

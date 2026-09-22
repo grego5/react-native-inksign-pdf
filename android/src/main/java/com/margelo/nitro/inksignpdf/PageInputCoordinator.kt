@@ -47,7 +47,7 @@ internal fun interface PagePickerRegistrar {
  * File copying and image validation run on I/O, and all completed files are
  * returned as module-owned artifacts for the document coordinator to consume.
  */
-internal class AndroidPageInputCoordinator(
+internal class PageInputCoordinator(
   private val context: Context,
   private val artifactPolicy: CacheArtifactPolicy,
   private val pickerRegistrar: PagePickerRegistrar? = null,

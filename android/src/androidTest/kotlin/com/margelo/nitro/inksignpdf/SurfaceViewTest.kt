@@ -67,7 +67,7 @@ class SurfaceViewTest {
     ).fitZoom()
 
     harness.runOnMain {
-      harness.surface.setDocument(
+      harness.setDocument(
         info,
         zoom = 2.0,
         focus = PagePoint(120.0, 140.0),
@@ -118,7 +118,7 @@ class SurfaceViewTest {
   @Test
   fun selectedPreviewGatesPullAndReleaseUntilItIsReady() {
     FakePdfSession.holdPreviews()
-    harness.runOnMain { harness.surface.setDocument(harness.documentInfo()) }
+    harness.runOnMain { harness.setDocument(harness.documentInfo()) }
     harness.sendPageNavigationSwipe()
 
     harness.sendPageNavigationRelease()
@@ -151,7 +151,7 @@ class SurfaceViewTest {
   @Test
   fun inwardDragAtNavigableBoundaryRemainsOrdinaryViewportNavigation() {
     harness.runOnMain {
-      harness.surface.setDocument(
+      harness.setDocument(
         harness.documentInfo(),
         zoom = 2.0,
         focus = PagePoint(300.0, 150.0),
@@ -336,6 +336,7 @@ class SurfaceViewTest {
   fun clearedDocumentInfoUsesViewNotReadyBeforeFinalizeCapture() {
     var error: PdfSessionException? = null
     harness.runOnMain {
+      harness.surface.documentCoordinator.clearPublishedDocument()
       harness.surface.clearDocument()
       error = assertThrows(PdfSessionException::class.java) {
         harness.surface.currentDocumentInfo()
@@ -816,6 +817,10 @@ class SurfaceViewTest {
     val engine = InkEngine()
     val predictor = RecordingPredictor()
     val frontBuffer = RecordingFrontBufferHost()
+    val coordinator = MutableDocumentCoordinator(
+      sessionWorker = worker,
+      artifactPolicy = CacheArtifactPolicy.initialize(instrumentation.targetContext),
+    )
     val surface: SurfaceView
 
     init {
@@ -824,12 +829,12 @@ class SurfaceViewTest {
         createdSurface.set(
           SurfaceView(
             instrumentation.targetContext,
-            worker,
             engine,
             predictor = predictor,
             lowLatencyInk = frontBuffer,
             pageNavigationPreviewScheduler = previewScheduler,
             pageNavigationSettlementDriver = settlementDriver,
+            documentCoordinator = coordinator,
           ),
         )
       }
@@ -845,7 +850,7 @@ class SurfaceViewTest {
       val info = result.get().getOrThrow()
       runOnMain {
         surface.layout(0, 0, 300, 300)
-        surface.setDocument(info)
+        setDocument(info)
       }
     }
 
@@ -854,6 +859,16 @@ class SurfaceViewTest {
     }
 
     fun documentInfo(): PdfSessionInfo = FakePdfSession.open("test.pdf", 1L).info
+
+    fun setDocument(
+      info: PdfSessionInfo,
+      zoom: Double? = null,
+      focus: PagePoint? = null,
+      fitToPage: Boolean = true,
+    ) {
+      surface.documentCoordinator.publishOpen(info)
+      surface.installDocumentPresentation(zoom, focus, fitToPage)
+    }
 
     fun awaitPreparedPagePreview() {
       val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5L)

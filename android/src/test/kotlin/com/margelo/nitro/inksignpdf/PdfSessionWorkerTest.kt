@@ -12,6 +12,103 @@ import org.junit.Test
 
 class PdfSessionWorkerTest {
   @Test
+  fun preparedMutationDoesNotReplaceCurrentSessionUntilCommit() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource {
+        return FakeSession(path, generation).also { opened += it }
+      }
+    }
+    val scratch = File.createTempFile("prepared-mutation-", ".pdf")
+    val worker = PdfSessionWorker(
+      opener = opener,
+      assembler = { _, _, output ->
+        output.writeText("candidate")
+        listOf(PdfPageDimensions(300.0, 300.0))
+      },
+    )
+    try {
+      val initial = CountDownLatch(1)
+      worker.replace("working.pdf", 1L) { initial.countDown() }
+      assertTrue(initial.await(5L, TimeUnit.SECONDS))
+
+      val prepared = CountDownLatch(1)
+      worker.prepareMutation(
+        "working.pdf",
+        scratch.path,
+        1L,
+        PdfiumAssemblyRequest(PdfiumAssemblyOperation.REMOVE, pageIndex = 0),
+        null,
+        { it.delete() },
+      ) { result ->
+        assertTrue(result.isSuccess)
+        prepared.countDown()
+      }
+      assertTrue(prepared.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertFalse(opened[1].closed)
+
+      val committed = CountDownLatch(1)
+      worker.commitPreparedMutation(scratch.path, 1L) { result ->
+        assertTrue(result.isSuccess)
+        committed.countDown()
+      }
+      assertTrue(committed.await(5L, TimeUnit.SECONDS))
+      assertTrue(opened[0].closed)
+      assertFalse(opened[1].closed)
+    } finally {
+      worker.close()
+      scratch.delete()
+    }
+  }
+
+  @Test
+  fun discardedPreparedMutationRetainsCurrentSessionAndRetiresCandidate() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource {
+        return FakeSession(path, generation).also { opened += it }
+      }
+    }
+    val scratch = File.createTempFile("discarded-mutation-", ".pdf")
+    val retired = CountDownLatch(1)
+    val worker = PdfSessionWorker(
+      opener = opener,
+      assembler = { _, _, output ->
+        output.writeText("candidate")
+        listOf(PdfPageDimensions(300.0, 300.0))
+      },
+    )
+    try {
+      val initial = CountDownLatch(1)
+      worker.replace("working.pdf", 1L) { initial.countDown() }
+      assertTrue(initial.await(5L, TimeUnit.SECONDS))
+      val prepared = CountDownLatch(1)
+      worker.prepareMutation(
+        "working.pdf",
+        scratch.path,
+        1L,
+        PdfiumAssemblyRequest(PdfiumAssemblyOperation.MOVE, pageIndex = 0, destinationIndex = 0),
+        null,
+        { it.delete() },
+      ) { prepared.countDown() }
+      assertTrue(prepared.await(5L, TimeUnit.SECONDS))
+
+      worker.discardPreparedMutation(scratch.path) {
+        it.delete()
+        retired.countDown()
+      }
+      assertTrue(retired.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertTrue(opened[1].closed)
+      assertFalse(scratch.exists())
+    } finally {
+      worker.close()
+      scratch.delete()
+    }
+  }
+
+  @Test
   fun multiPageFakeSessionReportsOrderedDimensions() {
     val pages = listOf(
       PdfPageDimensions(300.0, 400.0),

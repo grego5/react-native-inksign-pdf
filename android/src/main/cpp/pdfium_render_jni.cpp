@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <cmath>
+#include <fstream>
 #include <limits>
 #include <span>
 #include <string>
@@ -30,42 +31,67 @@ struct ScopedBitmapUnlock final {
   ~ScopedBitmapUnlock() { AndroidBitmap_unlockPixels(env, bitmap); }
 };
 
+bool readFile(const std::string& path, std::vector<std::uint8_t>& bytes) {
+  std::ifstream input(path, std::ios::binary | std::ios::ate);
+  if (!input) return false;
+  const auto end = input.tellg();
+  const auto size = static_cast<std::streamoff>(end);
+  if (size <= 0 || static_cast<std::uint64_t>(size) >
+                      static_cast<std::uint64_t>((std::numeric_limits<int>::max)())) {
+    return false;
+  }
+  bytes.resize(static_cast<std::size_t>(size));
+  input.seekg(0, std::ios::beg);
+  return static_cast<bool>(input.read(
+      reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())));
+}
+
+bool readJavaPath(JNIEnv* env, jstring value, std::string& path) {
+  if (value == nullptr) return false;
+  const char* utf = env->GetStringUTFChars(value, nullptr);
+  if (utf == nullptr) return false;
+  path.assign(utf);
+  env->ReleaseStringUTFChars(value, utf);
+  return !path.empty();
+}
+
 }  // namespace
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_com_margelo_nitro_inksignpdf_PdfiumPageAssembler_nativeAssemble(
     JNIEnv* env,
     jclass,
-    jbyteArray inputBytes,
+    jstring inputPath,
     jint operation,
+    jobjectArray appendPaths,
     jobjectArray appendBytes,
     jintArray appendTypes,
     jdoubleArray appendMetadata,
     jint pageIndex,
     jint destinationIndex,
     jstring scratchPath) {
-  if (inputBytes == nullptr || scratchPath == nullptr || pageIndex < 0 ||
+  if (inputPath == nullptr || scratchPath == nullptr || pageIndex < 0 ||
       destinationIndex < 0 || operation < 0 || operation > 2) {
     env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
                   "Invalid PDFium assembly request");
     return nullptr;
   }
 
-  const auto inputLength = env->GetArrayLength(inputBytes);
-  if (inputLength <= 0) {
+  std::string inputFilePath;
+  std::vector<std::uint8_t> input;
+  if (!readJavaPath(env, inputPath, inputFilePath) ||
+      !readFile(inputFilePath, input)) {
     env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
-                  "PDFium assembly input is empty");
+                  "Unable to read PDFium assembly input");
     return nullptr;
   }
-  std::vector<std::uint8_t> input(static_cast<std::size_t>(inputLength));
-  env->GetByteArrayRegion(
-      inputBytes, 0, inputLength, reinterpret_cast<jbyte*>(input.data()));
-  if (env->ExceptionCheck()) return nullptr;
 
   const auto inputCount = appendBytes == nullptr
       ? 0
       : env->GetArrayLength(appendBytes);
-  if (inputCount > 0 && (appendTypes == nullptr || appendMetadata == nullptr ||
+  if (inputCount > 0 && (appendPaths == nullptr || appendTypes == nullptr ||
+                         appendMetadata == nullptr ||
+                         env->GetArrayLength(appendPaths) != inputCount ||
                          env->GetArrayLength(appendTypes) != inputCount ||
                          env->GetArrayLength(appendMetadata) != inputCount * 8)) {
     env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
@@ -90,36 +116,40 @@ Java_com_margelo_nitro_inksignpdf_PdfiumPageAssembler_nativeAssemble(
   command.destinationIndex = static_cast<std::size_t>(destinationIndex);
   command.appendInputs.reserve(static_cast<std::size_t>(inputCount));
   for (jsize index = 0; index < inputCount; ++index) {
-    auto* bytes = static_cast<jbyteArray>(
-        env->GetObjectArrayElement(appendBytes, index));
-    if (bytes == nullptr) {
-      env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
-                    "PDFium append input is null");
-      return nullptr;
-    }
-    const auto length = env->GetArrayLength(bytes);
-    if (length <= 0) {
-      env->DeleteLocalRef(bytes);
-      env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
-                    "PDFium append input is empty");
-      return nullptr;
-    }
     PdfiumAppendInput append;
     if (types[static_cast<std::size_t>(index)] == 0) {
       append.type = PdfiumAppendInputType::Pdf;
+      auto* pathValue = static_cast<jstring>(
+          env->GetObjectArrayElement(appendPaths, index));
+      std::string path;
+      const bool validPath = readJavaPath(env, pathValue, path);
+      if (pathValue != nullptr) env->DeleteLocalRef(pathValue);
+      if (!validPath || !readFile(path, append.bytes)) {
+        env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                      "Unable to read PDF append input");
+        return nullptr;
+      }
     } else if (types[static_cast<std::size_t>(index)] == 1) {
       append.type = PdfiumAppendInputType::Image;
-    } else {
+      auto* bytes = static_cast<jbyteArray>(
+          env->GetObjectArrayElement(appendBytes, index));
+      if (bytes == nullptr || env->GetArrayLength(bytes) <= 0) {
+        if (bytes != nullptr) env->DeleteLocalRef(bytes);
+        env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                      "PDFium image append input is empty");
+        return nullptr;
+      }
+      const auto length = env->GetArrayLength(bytes);
+      append.bytes.resize(static_cast<std::size_t>(length));
+      env->GetByteArrayRegion(
+          bytes, 0, length, reinterpret_cast<jbyte*>(append.bytes.data()));
       env->DeleteLocalRef(bytes);
+      if (env->ExceptionCheck()) return nullptr;
+    } else {
       env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
                     "PDFium append input type is invalid");
       return nullptr;
     }
-    append.bytes.resize(static_cast<std::size_t>(length));
-    env->GetByteArrayRegion(
-        bytes, 0, length, reinterpret_cast<jbyte*>(append.bytes.data()));
-    env->DeleteLocalRef(bytes);
-    if (env->ExceptionCheck()) return nullptr;
     const auto offset = static_cast<std::size_t>(index) * 8;
     append.pageWidth = metadata[offset];
     append.pageHeight = metadata[offset + 1];
