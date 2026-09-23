@@ -118,6 +118,8 @@ internal class MutableDocumentCoordinator(
 
   fun markStructuralDirty() { structuralDirty = true }
 
+  fun markStructuralClean() { structuralDirty = false }
+
   fun pageRecords(): List<PageRecord> = pages.map { page -> PageRecord(page.id, page.dimensions) }
 
   fun activePageId(): String = checkNotNull(activePageId)
@@ -340,7 +342,7 @@ internal class MutableDocumentCoordinator(
     activePageId = mutablePages.first().id
     sourcePath = request.workingFile.path
     generationValue = request.attemptId
-    structuralDirty = false
+    markStructuralClean()
     fallbackFont = request.fallbackFont
     untrackWorkingFile(request.workingFile)
     return previous
@@ -494,7 +496,7 @@ internal class MutableDocumentCoordinator(
     mutablePages.clear()
     activePageId = null
     sourcePath = ""
-    structuralDirty = false
+    markStructuralClean()
   }
 
   fun dispose() {

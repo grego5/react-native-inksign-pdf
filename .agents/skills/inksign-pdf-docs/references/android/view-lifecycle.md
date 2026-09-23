@@ -28,6 +28,15 @@ Page identities and their histories follow the pages through structural changes.
 Structural dirty state belongs to the document and remains separate from
 page-local undo and redo.
 
+Clearing a page records one undoable clear action: the page becomes empty and
+`canUndo` remains true. Dirty state reflects remaining ink across pages and
+document structure, so clearing the final ink in an otherwise clean document
+returns the document to clean state.
+
+Navigation previews retire a failed loading slot. The next gesture retries a
+missing preview only when its down-time page-edge eligibility matches that
+target; late preview callbacks cannot replace a newer slot.
+
 ## Presentation and disposal
 
 PDFium supplies the base page imagery; annotation presentation is layered above

@@ -368,6 +368,8 @@ class SurfaceViewTest {
   fun completedInkAndHistoryRemainLocalToEachPage() {
     val states = ArrayList<InkState>()
     harness.runOnMain {
+      // installCandidate models create; opened PDFs start from a clean baseline.
+      harness.surface.documentCoordinator.markStructuralClean()
       harness.surface.onStateChange = { states += it }
       harness.surface.setEditMode(true)
       dispatch(downEvent(80.0f, 100.0f, 1_000L))
@@ -394,7 +396,7 @@ class SurfaceViewTest {
       harness.surface.switchPage(1)
       harness.surface.clear()
       assertEquals(0, harness.surface.completedPagesSnapshot()[1].strokes.size)
-      assertEquals(InkState(false, false, false), states.last())
+      assertEquals(InkState(true, false, false), states.last())
     }
   }
 
@@ -402,6 +404,8 @@ class SurfaceViewTest {
   fun editModeAcceptsHistoricalFingerSamplesAndFinalizesTheStroke() {
     harness.runOnMain {
       val states = ArrayList<InkState>()
+      // installCandidate models create; opened PDFs start from a clean baseline.
+      harness.surface.documentCoordinator.markStructuralClean()
       harness.surface.onStateChange = { states += it }
       harness.surface.setEditMode(true)
 
@@ -613,17 +617,21 @@ class SurfaceViewTest {
         dispatch(
           motionEvent(
             MotionEvent.ACTION_MOVE,
-            150.0f + index * 10.0f,
+            150.0f + index * 5.0f,
             (150.0 + kotlin.math.sin(index * 0.45) * 18.0).toFloat(),
             1_000L + index * 100L,
           ),
         )
       }
-      dispatch(upEvent(390.0f, 150.0f, 3_500L))
+      dispatch(upEvent(280.0f, 150.0f, 3_500L))
 
       val beforeDelayedAcknowledgement = harness.surface.presentationDiagnostics()
       assertEquals(1, harness.surface.completedPagesSnapshot().first().strokes.size)
-      assertEquals(1, harness.frontBuffer.handoffRequests.size)
+      assertEquals(
+        "eligible in-viewport gesture must request handoff; diagnostics=${harness.surface.presentationDiagnostics()}",
+        1,
+        harness.frontBuffer.handoffRequests.size,
+      )
       assertFalse(beforeDelayedAcknowledgement.frontBufferOwnsActiveInk)
       assertEquals(0, beforeDelayedAcknowledgement.retainedCommittedContourCount)
       assertEquals(0, beforeDelayedAcknowledgement.retainedPredictionContourCount)
@@ -631,7 +639,11 @@ class SurfaceViewTest {
       assertEquals(0L, beforeDelayedAcknowledgement.stableBoundaryAcknowledged)
 
       val delayedIndex = harness.frontBuffer.queuedAcknowledgements.indexOfFirst { true }
-      assertTrue("expected a queued acknowledgement before Up", delayedIndex >= 0)
+      assertTrue(
+        "expected an acknowledgement for an accepted eligible gesture; " +
+          "requests=${harness.frontBuffer.requests.size}, handoffs=${harness.frontBuffer.handoffRequests.size}",
+        delayedIndex >= 0,
+      )
       val delayedAcknowledgement = harness.frontBuffer.queuedAcknowledgements[delayedIndex]
       assertEquals(
         harness.frontBuffer.handoffRequests.single().first,
@@ -647,7 +659,7 @@ class SurfaceViewTest {
       assertEquals(0L, afterDelayedAcknowledgement.stableBoundaryAcknowledged)
       assertEquals(1, harness.surface.completedPagesSnapshot().first().strokes.size)
       assertEquals(1, harness.frontBuffer.handoffRequests.size)
-      assertNotInProgress(harness.engine, 390.0, 150.0, 3.500)
+      assertNotInProgress(harness.engine, 280.0, 150.0, 3.500)
     }
   }
 

@@ -74,7 +74,10 @@ class PageNavigationControllerTest {
     assertFalse(harness.controller.previewDirections().contains(SwipeDirection.LEFT))
 
     harness.touch(down(150f, 100f))
-    assertEquals(requestCountBeforeFailure + 1, harness.scheduler.requestCount(SwipeDirection.LEFT))
+    assertEquals(
+      requestCountBeforeFailure + 1,
+      harness.scheduler.requestCount(SwipeDirection.LEFT),
+    )
     harness.scheduler.complete(SwipeDirection.LEFT)
     harness.touch(move(0f, 100f))
     harness.touch(up(0f, 100f))

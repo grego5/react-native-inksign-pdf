@@ -28,5 +28,8 @@
   mode change, and disposal.
 - Reject input without a presenter. Accept callbacks only for the current
   generation and sequence, and keep pending work bounded.
+- A successful terminal input commits its stroke and clears transient contour
+  state. A delayed acknowledgement for that same generation cannot restore
+  cleared committed or prediction contours after the handoff.
 - Page switches cancel active input and handoff, then rebuild display from
   that page's history. History is page-local; document dirty state is not.
