@@ -438,6 +438,14 @@ class HybridInkSignView internal constructor(
     }
   }
 
+  override fun setTextDirection(direction: TextDirection) {
+    runOnMainSync {
+      checkMainThread()
+      if (disposed) throw operationCancelled()
+      textOverlay.setTextDirection(direction)
+    }
+  }
+
   override fun insertAnnotationOff() {
     runOnMainSync {
       checkMainThread()
@@ -648,12 +656,7 @@ class HybridInkSignView internal constructor(
   private fun captureExport(): PdfExportSnapshot {
     checkMainThread()
     if (disposed) throw operationCancelled()
-    val captured = coordinator.captureExport(surface.strokeColor())
-    val snapshot = if (unicodeTextEntries(captured).any { it.fontKind != 0 }) {
-      captured.copy(unicodeFonts = PdfExportFonts.load(context))
-    } else {
-      captured
-    }
+    val snapshot = coordinator.captureExport(surface.strokeColor())
     return snapshot.also { snapshot ->
       synchronized(this) { pendingOutputs += File(snapshot.outputPath) }
     }

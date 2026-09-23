@@ -36,7 +36,7 @@ private fun firstStrongTextDirectionIsRtl(text: CharSequence): Boolean? {
   return null
 }
 
-private fun localeTextDirectionIsRtl(): Boolean {
+internal fun visibleDefaultTextDirectionIsRtl(): Boolean {
   return try {
     android.text.TextUtils.getLayoutDirectionFromLocale(Locale.getDefault()) == android.view.View.LAYOUT_DIRECTION_RTL
   } catch (_: RuntimeException) {
@@ -46,11 +46,11 @@ private fun localeTextDirectionIsRtl(): Boolean {
 
 /** Resolves the first-strong paragraph direction with locale fallback. */
 internal fun textIsRtl(text: CharSequence): Boolean = firstStrongTextDirectionIsRtl(text)
-  ?: localeTextDirectionIsRtl()
+  ?: visibleDefaultTextDirectionIsRtl()
 
 /** Uses a caller-owned direction when the text has no strong character. */
 internal fun textDirectionIsRtl(text: CharSequence, emptyDirectionRtl: Boolean? = null): Boolean =
-  firstStrongTextDirectionIsRtl(text) ?: emptyDirectionRtl ?: localeTextDirectionIsRtl()
+  firstStrongTextDirectionIsRtl(text) ?: emptyDirectionRtl ?: visibleDefaultTextDirectionIsRtl()
 
 /** Optional IME language hint for an empty new editor, not a content direction. */
 internal fun inputLanguageDirectionHint(languageTag: String?): Boolean? {
@@ -103,11 +103,9 @@ internal object TextLayoutSpec {
   const val breakStrategy = Layout.BREAK_STRATEGY_SIMPLE
   const val hyphenationFrequency = Layout.HYPHENATION_FREQUENCY_NONE
 
-  /** First-strong direction with the user's locale as the empty-text fallback. */
-  fun directionHeuristic(text: CharSequence): TextDirectionHeuristic {
-    return if (textIsRtl(text)) TextDirectionHeuristics.FIRSTSTRONG_RTL
-    else TextDirectionHeuristics.FIRSTSTRONG_LTR
-  }
+  /** Forces the saved paragraph base direction while Android resolves embedded bidi runs. */
+  fun directionHeuristic(baseDirectionRtl: Boolean): TextDirectionHeuristic =
+    if (baseDirectionRtl) TextDirectionHeuristics.RTL else TextDirectionHeuristics.LTR
 
   fun explicitLines(text: String): List<String> =
     text.split("\n", ignoreCase = false, limit = Int.MAX_VALUE)
@@ -142,7 +140,12 @@ internal object TextLayoutSpec {
   }
 
   /** Measures the live editor after applying its page-edge width constraint. */
-  fun measureWrapped(text: String, fontSize: Double, width: Double): TextIntrinsicSize {
+  fun measureWrapped(
+    text: String,
+    fontSize: Double,
+    width: Double,
+    baseDirectionRtl: Boolean = textIsRtl(text),
+  ): TextIntrinsicSize {
     require(width.isFinite() && width > 0.0)
     val layoutWidth = max(1, ceil(width).toInt())
     val layout = StaticLayout.Builder.obtain(
@@ -155,7 +158,7 @@ internal object TextLayoutSpec {
       .setIncludePad(includeFontPadding)
       .setBreakStrategy(breakStrategy)
       .setHyphenationFrequency(hyphenationFrequency)
-      .setTextDirection(directionHeuristic(text))
+      .setTextDirection(directionHeuristic(baseDirectionRtl))
       .build()
     return TextIntrinsicSize(width, max(layout.height.toDouble(), measure(text, fontSize).height))
   }
@@ -174,15 +177,14 @@ internal object TextLayoutSpec {
       .setIncludePad(includeFontPadding)
       .setBreakStrategy(breakStrategy)
       .setHyphenationFrequency(hyphenationFrequency)
-      .setTextDirection(directionHeuristic(annotation.text))
+      .setTextDirection(directionHeuristic(annotation.directionRtl))
       .build()
   }
 
   fun configureEditor(
     editor: TextView,
     fontSize: Double,
-    text: CharSequence = editor.text ?: "",
-    emptyDirectionRtl: Boolean? = null,
+    baseDirectionRtl: Boolean,
     horizontalPaddingPx: Int = 0,
     verticalPaddingPx: Int = 0,
     textColor: Int = Color.BLACK,
@@ -194,7 +196,7 @@ internal object TextLayoutSpec {
     editor.setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
     editor.breakStrategy = breakStrategy
     editor.hyphenationFrequency = hyphenationFrequency
-    configureEditorDirection(editor, text, emptyDirectionRtl)
+    configureEditorDirection(editor, baseDirectionRtl)
     editor.setPadding(
       horizontalPaddingPx,
       verticalPaddingPx,
@@ -205,18 +207,11 @@ internal object TextLayoutSpec {
 
   fun configureEditorDirection(
     editor: TextView,
-    text: CharSequence,
-    emptyDirectionRtl: Boolean? = null,
+    baseDirectionRtl: Boolean,
   ) {
-    val direction = if (firstStrongTextDirectionIsRtl(text) != null) {
-      TextView.TEXT_DIRECTION_FIRST_STRONG
-    } else if (textDirectionIsRtl(text, emptyDirectionRtl)) {
-      TextView.TEXT_DIRECTION_RTL
-    } else {
-      TextView.TEXT_DIRECTION_LTR
-    }
+    val direction = if (baseDirectionRtl) TextView.TEXT_DIRECTION_RTL else TextView.TEXT_DIRECTION_LTR
     if (editor.textDirection != direction) editor.textDirection = direction
-    val gravity = android.view.Gravity.TOP or if (textDirectionIsRtl(text, emptyDirectionRtl)) {
+    val gravity = android.view.Gravity.TOP or if (baseDirectionRtl) {
       android.view.Gravity.RIGHT
     } else {
       android.view.Gravity.LEFT

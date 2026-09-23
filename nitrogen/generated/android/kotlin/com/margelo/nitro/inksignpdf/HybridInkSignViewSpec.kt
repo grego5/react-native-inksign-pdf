@@ -185,6 +185,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun setTextDirection(direction: TextDirection): Unit
+
+  @DoNotStrip
+  @Keep
   abstract fun insertAnnotationOn(): Unit
   
   @DoNotStrip

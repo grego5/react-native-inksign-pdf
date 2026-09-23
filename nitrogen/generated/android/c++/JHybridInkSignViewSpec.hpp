@@ -95,6 +95,7 @@ namespace margelo::nitro::inksignpdf {
     void undo() override;
     void redo() override;
     void clear() override;
+    void setTextDirection(TextDirection direction) override;
     void insertAnnotationOn() override;
     void insertAnnotationOff() override;
     double increaseTextSize() override;

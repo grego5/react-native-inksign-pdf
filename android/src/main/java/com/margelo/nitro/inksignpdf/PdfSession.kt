@@ -182,8 +182,6 @@ internal class PdfSession private constructor(
       generation: Long,
       fallbackFont: PdfFallbackFont?,
     ): PdfSessionResource {
-      PdfApiSupport.requireSupported()
-
       val source = try {
         File(path).canonicalFile
       } catch (error: IOException) {

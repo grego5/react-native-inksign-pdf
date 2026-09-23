@@ -72,7 +72,6 @@ struct ProviderFontHandle final {
 class CallerFontSystemInfo final {
  public:
   CallerFontSystemInfo() : defaultInfo_(FPDF_GetDefaultSystemFontInfo()) {
-    if (defaultInfo_ == nullptr) return;
     api.version = 2;
     api.Release = &release;
     api.EnumFonts = &enumFonts;
@@ -95,7 +94,9 @@ class CallerFontSystemInfo final {
   CallerFontSystemInfo(const CallerFontSystemInfo&) = delete;
   CallerFontSystemInfo& operator=(const CallerFontSystemInfo&) = delete;
 
-  bool ready() const { return defaultInfo_ != nullptr; }
+  bool ready() const {
+    return api.MapFont != nullptr && api.GetFontData != nullptr;
+  }
   FPDF_SYSFONTINFO* interface() { return &api; }
 
  private:
@@ -149,9 +150,14 @@ class CallerFontSystemInfo final {
                        const char* face,
                        FPDF_BOOL* bExact) {
     auto* provider = from(info);
-    if (provider->defaultInfo_ == nullptr ||
-        provider->defaultInfo_->MapFont == nullptr) {
-      return nullptr;
+    if (provider->defaultInfo_ != nullptr &&
+        provider->defaultInfo_->MapFont != nullptr) {
+      if (void* font = provider->defaultInfo_->MapFont(
+              provider->defaultInfo_, weight, italic, charset, pitch_family,
+              face, bExact);
+          font != nullptr) {
+        return font;
+      }
     }
 
     if (const auto resource = provider->resourceFor(face, weight, italic);
@@ -160,25 +166,27 @@ class CallerFontSystemInfo final {
         return handle;
       }
     }
-
-    return provider->defaultInfo_->MapFont(
-        provider->defaultInfo_, weight, italic, charset, pitch_family, face,
-        bExact);
+    return nullptr;
   }
 
   static void* getFont(FPDF_SYSFONTINFO* info, const char* face) {
     auto* provider = from(info);
-    if (provider->defaultInfo_ == nullptr ||
-        provider->defaultInfo_->GetFont == nullptr) {
-      return nullptr;
+    if (provider->defaultInfo_ != nullptr &&
+        provider->defaultInfo_->GetFont != nullptr) {
+      if (void* font =
+              provider->defaultInfo_->GetFont(provider->defaultInfo_, face);
+          font != nullptr) {
+        return font;
+      }
     }
+
     if (const auto resource = provider->resourceFor(face, 400, false);
         resource != nullptr) {
       if (auto* handle = provider->createHandle(resource); handle != nullptr) {
         return handle;
       }
     }
-    return provider->defaultInfo_->GetFont(provider->defaultInfo_, face);
+    return nullptr;
   }
 
   static unsigned long getFontData(FPDF_SYSFONTINFO* info,

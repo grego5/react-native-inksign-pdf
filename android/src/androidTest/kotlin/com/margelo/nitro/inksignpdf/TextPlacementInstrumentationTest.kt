@@ -254,7 +254,7 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_600L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_610L))
         assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
-        assertEquals(1, overlay.childCount)
+        assertEquals(1, editorCount(overlay))
         val before = harness.surface.currentViewportState().focus
 
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 290f, 290f, 5_620L))
@@ -262,7 +262,7 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 240f, 290f, 5_660L))
 
         assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
-        assertEquals(1, overlay.childCount)
+        assertEquals(1, editorCount(overlay))
         assertTrue(harness.surface.currentViewportState().focus.x != before.x)
       } finally {
         overlay.dispose()
@@ -273,15 +273,16 @@ internal class TextPlacementInstrumentationTest {
   @Test
   fun mountedRtlEditorKeepsItsRightEdgeAcrossTypingAndDeletion() {
     harness.runOnMain {
-      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
-      val overlay = harness.createOverlay()
+        harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+        val overlay = harness.createOverlay()
       try {
+        overlay.setTextDirection(TextDirection.RTL)
         overlay.armPlacement(1L)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_000L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_010L))
         assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
-        assertEquals(1, overlay.childCount)
-        val editor = overlay.getChildAt(0) as EditText
+        assertEquals(1, editorCount(overlay))
+        val editor = editorView(overlay)
         assertTrue(editor.paddingLeft > 0)
         assertTrue(editor.paddingTop > 0)
         overlay.syncTransform()
@@ -289,7 +290,14 @@ internal class TextPlacementInstrumentationTest {
         val beforeRight = beforeTransform.inverse()
           .map(PagePoint(editor.right.toDouble(), editor.top.toDouble())).x
 
-        editor.setText("ש")
+        editor.setText("1")
+        overlay.syncTransform()
+        val oneTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
+        val oneRight = oneTransform.inverse()
+          .map(PagePoint(editor.right.toDouble(), editor.top.toDouble())).x
+        assertEquals(beforeRight, oneRight, 2.0)
+
+        editor.setText("Latin")
         overlay.syncTransform()
         val afterTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
         val afterRight = afterTransform.inverse()
@@ -313,6 +321,9 @@ internal class TextPlacementInstrumentationTest {
         editor.setText("")
         overlay.syncTransform()
         assertTrue(editor.width > 0 && editor.width < wideWidth)
+        editor.setText("1Latin שלום")
+        overlay.finishForLifecycle()
+        assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single().directionRtl)
       } finally {
         overlay.dispose()
       }
@@ -326,8 +337,9 @@ internal class TextPlacementInstrumentationTest {
       val overlay = harness.createOverlay()
       try {
         overlay.armPlacement(1L)
+        choosePlacementDirection(overlay, rtl = false)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 6_000L))
-        val editor = overlay.getChildAt(0) as EditText
+        val editor = editorView(overlay)
         editor.setText("abcdefghij".repeat(80))
         overlay.syncTransform()
         val nativeLineCount = checkNotNull(editor.layout).lineCount
@@ -356,19 +368,30 @@ internal class TextPlacementInstrumentationTest {
     harness.runOnMain {
       harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       overlay = harness.createOverlay()
+      overlay.setTextDirection(TextDirection.LTR)
       overlay.armPlacement(1L)
       assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 7_000L))
       assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 7_010L))
       assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
-      assertEquals(1, overlay.childCount)
+      assertEquals(1, editorCount(overlay))
     }
     try {
       harness.waitForViewportAnimationToFinish()
       harness.runOnMain {
-        val editor = overlay.getChildAt(0) as EditText
+        val editor = editorView(overlay)
+        editor.setText("שלום")
+        overlay.syncTransform()
+        val hebrewTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
+        val leftAnchorWithHebrew = hebrewTransform.inverse()
+          .map(PagePoint(editor.left.toDouble(), editor.top.toDouble())).x
+
         val text = "A".repeat(220)
         editor.setText(text)
         overlay.syncTransform()
+        val latinTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
+        val leftAnchorWithLatin = latinTransform.inverse()
+          .map(PagePoint(editor.left.toDouble(), editor.top.toDouble())).x
+        assertEquals(leftAnchorWithHebrew, leftAnchorWithLatin, 2.0)
 
         editor.setSelection(0, text.length)
         overlay.syncTransform()
@@ -385,6 +408,8 @@ internal class TextPlacementInstrumentationTest {
         editor.setSelection(1)
         overlay.syncTransform()
         assertCaretIsInsideView(editor, editor.selectionStart)
+        overlay.finishForLifecycle()
+        assertTrue(!checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single().directionRtl)
       }
     } finally {
       harness.runOnMain { overlay.dispose() }
@@ -412,7 +437,7 @@ internal class TextPlacementInstrumentationTest {
         dispatch(overlay, MotionEvent.ACTION_UP, point.x.toFloat() + 40f, point.y.toFloat(), 4_040L)
 
         assertEquals(InteractionMode.VIEW, overlay.interactionMode())
-        assertEquals(0, overlay.childCount)
+        assertEquals(0, editorCount(overlay))
       } finally {
         overlay.dispose()
       }
@@ -432,6 +457,19 @@ internal class TextPlacementInstrumentationTest {
     } finally {
       event.recycle()
     }
+  }
+
+  private fun editorCount(overlay: TextInteractionOverlay): Int =
+    (0 until overlay.childCount).count { overlay.getChildAt(it) is EditText }
+
+  private fun editorView(overlay: TextInteractionOverlay): EditText =
+    (0 until overlay.childCount)
+      .map(overlay::getChildAt)
+      .filterIsInstance<EditText>()
+      .single()
+
+  private fun choosePlacementDirection(overlay: TextInteractionOverlay, rtl: Boolean) {
+    overlay.setTextDirection(if (rtl) TextDirection.RTL else TextDirection.LTR)
   }
 
   private fun assertCaretIsInsideView(editor: EditText, offset: Int) {

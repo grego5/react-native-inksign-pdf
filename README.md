@@ -5,7 +5,7 @@
 - Add additional files to be added as pages. Can add/remove/reorder pages.
 - Can bring own scanner module and bridge it seamlessly by adding pages through path to the file in cacae directory.
 - Displays loaded PDF as background. Including swipe/method pagination.
-- Renders document with PDFium binaries, mainly to support option to provide fallback font, since this option unavailable in platform native pdf libraries. For example Acrobat Reader can handle missing fonts, many other pdf viewers just render blank space instead.
+- Uses PDFium on Android for document loading, rendering, page assembly, and PDF export. The optional `fallbackFont` applies to source-PDF rendering.
 - Supports velocity-driven ink, text annotations, and histroy.
 - Android using custom c++ InkEngine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
 - iOS basic compatibility using platform typical PencilKit, which is not as good but close. No web support.
@@ -19,7 +19,7 @@ draw a signature, save to new file. The brush doesn't scale with zoom level, but
 ## Requirements
 
 - Node.js 20
-- Android 12/API 31 with Android S extension 18
+- Android 7.0/API 24 or newer
 - iOS 15.1
 - A native iOS or Android project
 
@@ -60,6 +60,7 @@ import { Button, StyleSheet, Text, View } from 'react-native';
 import {
   InkSignView,
   type PageInfo,
+  type TextDirection,
   type InkSignViewHandle,
   type StateChangeEvent,
 } from '@grego5/react-native-inksign-pdf';
@@ -74,6 +75,7 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
     mode: 'view',
   });
   const [status, setStatus] = useState('Choose a PDF to begin');
+  const [textDirection, setTextDirection] = useState<TextDirection>('auto');
 
   async function openPdf() {
     try {
@@ -162,10 +164,19 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
           disabled={!page}
           onPress={() => {
             try {
+              pdf.current?.setTextDirection(textDirection);
               pdf.current?.insertAnnotationOn();
             } catch (error) {
               console.warn('Text placement failed', error);
             }
+          }}
+        />
+        <Button
+          title={`Text direction: ${textDirection.toUpperCase()}`}
+          onPress={() => {
+            setTextDirection((current) =>
+              current === 'auto' ? 'ltr' : current === 'ltr' ? 'rtl' : 'auto',
+            );
           }}
         />
         <Button title="Undo" disabled={!state.canUndo} onPress={() => pdf.current?.undo()} />
@@ -253,6 +264,7 @@ enterViewMode(viewport?)
 undo()
 redo()
 clear()
+setTextDirection(direction)
 insertAnnotationOn()
 insertAnnotationOff()
 increaseTextSize()
@@ -293,6 +305,12 @@ argument preserves the current viewport where applicable.
   viewport fixed.
 - `insertAnnotationOn()` arms one text placement; the next page tap opens the
   native text editor.
+- `setTextDirection('ltr' | 'rtl' | 'auto')` controls the base direction for
+  new text annotations. The React app owns the direction selector and should
+  call this method before placement or while placement is pending. `auto` uses
+  the active keyboard language when Android can report it, then the app's
+  visible default direction. Once the box is created, its direction and anchor
+  side stay fixed; RTL anchors the right edge and LTR anchors the left.
 - Text, ink, undo, redo, and clear are managed by the native view.
 - `onStateChange` reports `canUndo`, `canRedo`, `isDirty`, and one of
   `view`, `draw`, `textPlacement`, `textSelected`, or `textEditing`.
@@ -314,4 +332,3 @@ application's durable destination when it must outlive the signing view.
 - [Architecture and invariants](./.agents/skills/inksign-pdf-docs/references/architecture.md)
 - [Android input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/android/viewport-input.md)
 - [iOS input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md)
-

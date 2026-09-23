@@ -119,7 +119,12 @@ std::unique_ptr<PdfiumLibrary> PdfiumLibrary::acquire(PdfiumError& error) {
     config.m_v8EmbedderSlot = 0;
     FPDF_InitLibraryWithConfig(&config);
 
-    installSystemFontProvider();
+    if (!installSystemFontProvider()) {
+      FPDF_DestroyLibrary();
+      error = {PdfiumErrorCode::LibraryInitializationFailed,
+               "Unable to install the PDFium system font provider"};
+      return nullptr;
+    }
   }
   ++state.activeLeases;
   error = {};
@@ -208,48 +213,6 @@ PdfiumOpenResult PdfiumDocumentSession::open(
         : libraryError;
     return result;
   }
-
-  if (fallbackFont.has_value()) {
-    std::size_t analysisPageCount = 0;
-    FPDF_DOCUMENT analysisRaw = nullptr;
-    unsigned long loadError = 0;
-    auto& state = pdfiumLibraryState();
-    {
-      std::lock_guard apiLock(state.apiMutex);
-      analysisRaw = FPDF_LoadMemDocument(
-          documentBytes.data(),
-          static_cast<int>(documentBytes.size()),
-          password.empty() ? nullptr : password.c_str());
-      if (analysisRaw == nullptr) loadError = FPDF_GetLastError();
-    }
-    if (analysisRaw == nullptr) {
-      result.error = {PdfiumErrorCode::DocumentOpenFailed,
-                      "PDFium analysis document open failed (PDFium error " +
-                          std::to_string(loadError) + ")"};
-      return result;
-    }
-
-    ScopedDocument analysisDocument(analysisRaw);
-    {
-      std::lock_guard apiLock(state.apiMutex);
-      const int count = FPDF_GetPageCount(analysisDocument.get());
-      if (count > 0) analysisPageCount = static_cast<std::size_t>(count);
-    }
-    if (analysisPageCount == 0) {
-      result.error = {PdfiumErrorCode::DocumentOpenFailed,
-                      "PDFium analysis document contains no pages"};
-      return result;
-    }
-
-    {
-      std::lock_guard apiLock(state.apiMutex);
-      ScopedFontRegistry noRegistry(nullptr);
-      collectFontRequirements(analysisDocument.get(), analysisPageCount,
-                              *fontRegistry);
-    }
-  }
-
-  fontRegistry->resolve();
 
   FPDF_DOCUMENT renderingRaw = nullptr;
   unsigned long loadError = 0;

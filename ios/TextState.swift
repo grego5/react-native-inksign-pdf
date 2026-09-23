@@ -9,11 +9,12 @@ struct InkSignPdfTextAnnotation: Equatable {
   let text: String
   let bounds: CGRect
   let fontSize: CGFloat
+  let isRTL: Bool
   /// Canonical opaque RGB color captured with the annotation for export/rendering.
   let textColor: String
 
   init(id: String, text: String, bounds: CGRect, fontSize: CGFloat,
-       textColor: String = "#000000") {
+       textColor: String = "#000000", isRTL: Bool = false) {
     precondition(!id.isEmpty, "Text annotation ID must not be empty")
     precondition(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                  "Committed text annotation must not be blank")
@@ -27,6 +28,7 @@ struct InkSignPdfTextAnnotation: Equatable {
     self.text = text
     self.bounds = bounds
     self.fontSize = fontSize
+    self.isRTL = isRTL
     self.textColor = textColor
   }
 
@@ -40,7 +42,8 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     text: text,
                                     bounds: CGRect(origin: origin, size: size),
                                     fontSize: fontSize,
-                                    textColor: textColor)
+                                    textColor: textColor,
+                                    isRTL: isRTL)
   }
 
   func moving(to position: CGPoint, pageSize: CGSize) -> InkSignPdfTextAnnotation {
@@ -48,7 +51,8 @@ struct InkSignPdfTextAnnotation: Equatable {
     return InkSignPdfTextAnnotation(id: id, text: text,
                                     bounds: CGRect(origin: origin, size: bounds.size),
                                     fontSize: fontSize,
-                                    textColor: textColor)
+                                    textColor: textColor,
+                                    isRTL: isRTL)
   }
 
   func changingFontSize(to fontSize: CGFloat, pageSize: CGSize) -> InkSignPdfTextAnnotation {
@@ -57,7 +61,8 @@ struct InkSignPdfTextAnnotation: Equatable {
     return InkSignPdfTextAnnotation(id: id, text: text,
                                     bounds: CGRect(origin: origin, size: size),
                                     fontSize: fontSize,
-                                    textColor: textColor)
+                                    textColor: textColor,
+                                    isRTL: isRTL)
   }
 
   static func intrinsicSize(of text: String, fontSize: CGFloat) -> CGSize {

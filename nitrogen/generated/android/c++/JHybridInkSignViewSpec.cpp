@@ -29,6 +29,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 namespace margelo::nitro::inksignpdf { enum class PageType; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
 #include "PdfFallbackFont.hpp"
 #include <optional>
@@ -61,6 +63,8 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 #include <vector>
 #include "ImagePageSize.hpp"
 #include "JImagePageSize.hpp"
+#include "TextDirection.hpp"
+#include "JTextDirection.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -341,6 +345,10 @@ namespace margelo::nitro::inksignpdf {
   void JHybridInkSignViewSpec::clear() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clear");
     method(_javaPart);
+  }
+  void JHybridInkSignViewSpec::setTextDirection(TextDirection direction) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextDirection> /* direction */)>("setTextDirection");
+    method(_javaPart, JTextDirection::fromCpp(direction));
   }
   void JHybridInkSignViewSpec::insertAnnotationOn() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("insertAnnotationOn");

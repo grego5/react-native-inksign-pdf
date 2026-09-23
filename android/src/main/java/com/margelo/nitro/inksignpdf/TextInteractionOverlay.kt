@@ -34,6 +34,9 @@ internal const val minimumTextPresentationSizeDp = 40
 internal const val textEditorHorizontalPaddingRatio = 0.375
 internal const val textEditorVerticalPaddingRatio = 0.25
 
+internal fun textEditorPaddingPx(fontSizePx: Double, ratio: Double): Int =
+  max(1, ceil(fontSizePx * ratio).toInt())
+
 internal fun normalizeTextFontSize(value: Double?): Double =
   value
     ?.takeIf { it.isFinite() && it > 0.0 }
@@ -273,6 +276,8 @@ internal class TextInteractionOverlay(
     data class Placing(
       val generation: Long,
       val pageIndex: Int,
+      var directionRtl: Boolean,
+      var explicitDirectionRtl: Boolean? = null,
     ) : InteractionState
 
     data class Editing(
@@ -329,7 +334,6 @@ internal class TextInteractionOverlay(
     color = Color.TRANSPARENT
   }
   private val outlineInsetPx = dp(2).toFloat()
-  private val selectedOutlineInsetPx = dp(4).toFloat()
   private var pendingTouch: PendingTouch? = null
   private val annotationGesture = LongPressDragTracker(this) {
     (pendingTouch?.target as? TouchTarget.Annotation)?.let(::beginDragging)
@@ -347,6 +351,7 @@ internal class TextInteractionOverlay(
   private var suppressEditorTextChanges = false
   private var reconcilingEditorViewport = false
   private var reportedMode: InteractionMode? = null
+  private var requestedTextDirectionRtl: Boolean? = null
 
   var onInteractionModeChanged: (() -> Unit)? = null
 
@@ -474,9 +479,32 @@ internal class TextInteractionOverlay(
       )
     }
     lastPresentation = presentation
-    transitionTo(InteractionState.Placing(presentation.generation, presentation.pageIndex))
+    val explicitDirectionRtl = requestedTextDirectionRtl
+    val directionRtl = explicitDirectionRtl ?: currentInputLanguageDirectionHint()
+      ?: visibleDefaultTextDirectionIsRtl()
+    transitionTo(
+      InteractionState.Placing(
+        generation = presentation.generation,
+        pageIndex = presentation.pageIndex,
+        directionRtl = directionRtl,
+        explicitDirectionRtl = explicitDirectionRtl,
+      ),
+    )
     emitInteractionModeChanged()
     invalidate()
+  }
+
+  internal fun setTextDirection(direction: TextDirection) {
+    val isRtl = when (direction) {
+      TextDirection.LTR -> false
+      TextDirection.RTL -> true
+      TextDirection.AUTO -> null
+    }
+    requestedTextDirectionRtl = isRtl
+    val placement = interactionState as? InteractionState.Placing ?: return
+    placement.explicitDirectionRtl = isRtl
+    placement.directionRtl = isRtl ?: currentInputLanguageDirectionHint()
+      ?: visibleDefaultTextDirectionIsRtl()
   }
 
   internal fun cancelPendingPlacement() {
@@ -493,11 +521,17 @@ internal class TextInteractionOverlay(
     if (changed) emitInteractionModeChanged()
   }
 
-  private fun placeTextAt(pagePoint: PagePoint, presentation: TextPresentationSnapshot) {
+  private fun placeTextAt(
+    pagePoint: PagePoint,
+    presentation: TextPresentationSnapshot,
+    placement: InteractionState.Placing,
+  ) {
     val id = "text-${UUID.randomUUID()}"
     val size = editorSize("", defaultFontSize)
     val position = chooseTextPlacementPosition(pagePoint, size, presentation.page)
-    val isRtl = currentInputLanguageDirectionHint() ?: textIsRtl("")
+    val isRtl = placement.explicitDirectionRtl
+      ?: currentInputLanguageDirectionHint()
+      ?: placement.directionRtl
     val state = InteractionState.Editing(
       id = id,
       generation = presentation.generation,
@@ -584,8 +618,6 @@ internal class TextInteractionOverlay(
       editor = null
       transitionTo(InteractionState.Idle)
       surface.setKeyboardOcclusion(0.0)
-      removeAllViews()
-      editor = null
       ViewCompat.requestApplyInsets(this)
       emitInteractionModeChanged()
       return
@@ -706,7 +738,7 @@ internal class TextInteractionOverlay(
         annotation,
         presentation,
         pageScale,
-        if (selected) selectedOutlineInsetPx else outlineInsetPx,
+        selected,
       )
       if (selected && selectedBackgroundColor != null) {
         selectedBackgroundPaint.color = checkNotNull(selectedBackgroundColor)
@@ -745,7 +777,7 @@ internal class TextInteractionOverlay(
       ) return false
       transitionTo(InteractionState.Idle)
       consumingPlacementGesture = true
-      placeTextAt(pagePoint, presentation)
+      placeTextAt(pagePoint, presentation, placement)
       return true
     }
     if (consumingDismissalGesture) {
@@ -868,27 +900,7 @@ internal class TextInteractionOverlay(
         override fun afterTextChanged(s: Editable?) {
           if (!suppressEditorTextChanges && editor === this@apply) {
             val state = interactionState as? InteractionState.Editing ?: return
-            val nextDirectionRtl = textDirectionIsRtl(s ?: "", state.directionRtl)
-            if (nextDirectionRtl != state.directionRtl) {
-              val transform = lastPresentation?.transform
-              if (transform != null && width > 1) {
-                val frameEdge = if (nextDirectionRtl) {
-                  ViewPoint(right.toDouble(), top.toDouble())
-                } else {
-                  ViewPoint(left.toDouble(), top.toDouble())
-                }
-                state.anchorX = textEditorAnchorAfterDirectionChange(
-                  transform = transform,
-                  frameEdge = frameEdge,
-                  willBeRtl = nextDirectionRtl,
-                  paddingLeftPx = compoundPaddingLeft.toDouble(),
-                  paddingTopPx = compoundPaddingTop.toDouble(),
-                  paddingRightPx = compoundPaddingRight.toDouble(),
-                )
-              }
-              state.directionRtl = nextDirectionRtl
-            }
-            TextLayoutSpec.configureEditorDirection(this@apply, s ?: "", state.directionRtl)
+            TextLayoutSpec.configureEditorDirection(this@apply, state.directionRtl)
             requestLayout()
             lastPresentation?.let { reconcileEditorPresentation(this@apply, it) }
             scheduleCaretFollow()
@@ -911,7 +923,7 @@ internal class TextInteractionOverlay(
     entry.post {
       if (editor === entry) {
         val input = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-        input.showSoftInput(entry, InputMethodManager.SHOW_IMPLICIT)
+        input.showSoftInput(entry, 0)
       }
     }
     return entry
@@ -925,8 +937,8 @@ internal class TextInteractionOverlay(
       generation = presentation.generation,
       pageIndex = presentation.pageIndex,
       original = annotation,
-      anchorX = if (textIsRtl(annotation.text)) annotation.bounds.right else annotation.bounds.left,
-      directionRtl = textIsRtl(annotation.text),
+      anchorX = if (annotation.directionRtl) annotation.bounds.right else annotation.bounds.left,
+      directionRtl = annotation.directionRtl,
       positionY = annotation.position.y,
       fontSize = annotation.fontSize,
       textColor = annotation.textColor,
@@ -1157,6 +1169,7 @@ internal class TextInteractionOverlay(
       ),
       fontSize = state.fontSize,
       textColor = state.textColor,
+      directionRtl = state.directionRtl,
     )
   }
 
@@ -1188,6 +1201,7 @@ internal class TextInteractionOverlay(
       ),
       fontSize = fontSize,
       textColor = annotation.textColor,
+      directionRtl = annotation.directionRtl,
     )
   }
 
@@ -1211,8 +1225,10 @@ internal class TextInteractionOverlay(
         else -> false
       }
       val outline = textOutlineRect(
-        annotation, presentation, pageScale,
-        if (selected) selectedOutlineInsetPx else outlineInsetPx,
+        annotation,
+        presentation,
+        pageScale,
+        selected,
       )
       outline.inset(-selectedOutlinePaint.strokeWidth / 2f, -selectedOutlinePaint.strokeWidth / 2f)
       hit.union(outline)
@@ -1224,13 +1240,32 @@ internal class TextInteractionOverlay(
     annotation: TextAnnotation,
     presentation: TextPresentationSnapshot,
     pageScale: Double,
-    extraInsetPx: Float = outlineInsetPx,
-  ): RectF = textPresentationRect(
-    annotation.bounds,
-    presentation.transform,
-    insetPx = (annotation.fontSize * pageScale * 0.25).toFloat() + extraInsetPx,
-    minimumSizePx = 0f,
-  )
+    selected: Boolean,
+  ): RectF {
+    val bounds = textPresentationRect(
+      annotation.bounds,
+      presentation.transform,
+      insetPx = 0f,
+      minimumSizePx = 0f,
+    )
+    val fontSizePx = annotation.fontSize * pageScale
+    val horizontalInset = if (selected) {
+      textEditorPaddingPx(fontSizePx, textEditorHorizontalPaddingRatio).toFloat()
+    } else {
+      (fontSizePx * 0.25).toFloat() + outlineInsetPx
+    }
+    val verticalInset = if (selected) {
+      textEditorPaddingPx(fontSizePx, textEditorVerticalPaddingRatio).toFloat()
+    } else {
+      (fontSizePx * 0.25).toFloat() + outlineInsetPx
+    }
+    return RectF(
+      bounds.left - horizontalInset,
+      bounds.top - verticalInset,
+      bounds.right + horizontalInset,
+      bounds.bottom + verticalInset,
+    )
+  }
 
   private fun textPresentationRect(
     annotation: TextAnnotation,
@@ -1463,13 +1498,13 @@ internal class TextInteractionOverlay(
       anchorX,
       isRtl,
     )
-    return TextLayoutSpec.measureWrapped(text, fontSize, bounded.width)
+    return TextLayoutSpec.measureWrapped(text, fontSize, bounded.width, isRtl)
   }
 
   private fun configureEditorPreservingSelection(
     entry: TextEntryView,
     fontSize: Double,
-    emptyDirectionRtl: Boolean? = null,
+    directionRtl: Boolean,
     textColor: Int = defaultTextColor,
   ) {
     val start = entry.selectionStart.coerceAtLeast(0)
@@ -1477,10 +1512,9 @@ internal class TextInteractionOverlay(
     TextLayoutSpec.configureEditor(
       entry,
       fontSize,
-      entry.text ?: "",
-      emptyDirectionRtl,
-      editorPaddingPx(fontSize, textEditorHorizontalPaddingRatio),
-      editorPaddingPx(fontSize, textEditorVerticalPaddingRatio),
+      directionRtl,
+      textEditorPaddingPx(fontSize, textEditorHorizontalPaddingRatio),
+      textEditorPaddingPx(fontSize, textEditorVerticalPaddingRatio),
       textColor,
     )
     if (entry.text != null) {
@@ -1529,12 +1563,9 @@ internal class TextInteractionOverlay(
       setStroke(dp(1), stroke)
     }
 
-  private fun editorPaddingPx(fontSizePx: Double, ratio: Double): Int =
-    max(1, ceil(fontSizePx * ratio).toInt())
-
   private fun updateEditorPadding(entry: TextEntryView, fontSizePx: Double) {
-    val horizontal = editorPaddingPx(fontSizePx, textEditorHorizontalPaddingRatio)
-    val vertical = editorPaddingPx(fontSizePx, textEditorVerticalPaddingRatio)
+    val horizontal = textEditorPaddingPx(fontSizePx, textEditorHorizontalPaddingRatio)
+    val vertical = textEditorPaddingPx(fontSizePx, textEditorVerticalPaddingRatio)
     if (entry.paddingLeft != horizontal || entry.paddingTop != vertical) {
       entry.setPadding(horizontal, vertical, horizontal, vertical)
     }

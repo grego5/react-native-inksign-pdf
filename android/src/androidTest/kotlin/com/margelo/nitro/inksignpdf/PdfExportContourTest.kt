@@ -2,15 +2,22 @@ package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Rect
-import android.graphics.pdf.PdfRendererPreV
-import android.graphics.pdf.RenderParams
-import android.graphics.pdf.component.PdfPageTextObject
+import android.graphics.fonts.Font
+import android.graphics.text.PositionedGlyphs
+import android.graphics.text.TextRunShaper
 import android.os.Build
-import android.os.ParcelFileDescriptor
-import android.os.ext.SdkExtensions
+import android.text.TextDirectionHeuristics
+import android.text.TextPaint
+import android.text.TextShaper
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
+import java.io.FileInputStream
+import java.nio.ByteBuffer
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.text.PDFTextStripper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -23,15 +30,13 @@ internal class PdfExportContourTest {
     @Before
     fun initializeNativeRuntime() {
         NativeTestRuntime.initialize()
+        PDFBoxResourceLoader.init(
+            androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext,
+        )
     }
 
     @Test
     fun exporterWritesIndependentFilledContourObjectsAndRasterizedOverlap() {
-        assumeTrue(
-            "PdfRendererPreV requires Android S extension 18",
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                    SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 18,
-        )
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .targetContext
         val policy = CacheArtifactPolicy.initialize(context)
@@ -75,11 +80,6 @@ internal class PdfExportContourTest {
 
     @Test
     fun exporterPreservesFractionalContourCoordinatesInSavedGeometry() {
-        assumeTrue(
-            "PdfRendererPreV requires Android S extension 18",
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 18,
-        )
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .targetContext
         val policy = CacheArtifactPolicy.initialize(context)
@@ -123,11 +123,6 @@ internal class PdfExportContourTest {
 
     @Test
     fun exporterPreservesEveryPageAndPlacesInkOnMatchingPages() {
-        assumeTrue(
-            "PdfRendererPreV requires Android S extension 18",
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 18,
-        )
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .targetContext
         val policy = CacheArtifactPolicy.initialize(context)
@@ -173,15 +168,12 @@ internal class PdfExportContourTest {
             )
 
             PdfExporter.export(snapshot, policy) { false }
-            ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-                PdfRendererPreV(descriptor).use { renderer ->
-                    assertEquals(3, renderer.pageCount)
-                    pageSizes.forEachIndexed { pageIndex, size ->
-                        renderer.openPage(pageIndex).use { page ->
-                            assertEquals(size.first.toDouble(), page.width.toDouble(), 0.0)
-                            assertEquals(size.second.toDouble(), page.height.toDouble(), 0.0)
-                        }
-                    }
+            PdfiumRenderSession.open(output.readBytes()).use { renderer ->
+                assertEquals(3, renderer.pageCount)
+                pageSizes.forEachIndexed { pageIndex, size ->
+                    val page = renderer.pageSize(pageIndex)
+                    assertEquals(size.first.toDouble(), page.width, 0.0)
+                    assertEquals(size.second.toDouble(), page.height, 0.0)
                 }
             }
             pageSizes.forEachIndexed { pageIndex, size ->
@@ -202,11 +194,6 @@ internal class PdfExportContourTest {
 
     @Test
     fun exporterWritesUnicodeTextObjectsWithExplicitLinePlacement() {
-        assumeTrue(
-            "PdfRendererPreV requires Android S extension 18",
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 18,
-        )
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .targetContext
         val policy = CacheArtifactPolicy.initialize(context)
@@ -216,7 +203,7 @@ internal class PdfExportContourTest {
             writeBlankPdf(source, listOf(240 to 160))
             val annotation = TextAnnotation(
                 id = "text-1",
-                text = "Latin\n\nשלום العربية",
+                text = "Latin\n\nשלום العربية\nMixed Latin שלום العربية\nनमस्ते दुनिया",
                 bounds = PageRect(24.0, 32.0, 216.0, 84.0),
                 fontSize = 14.0,
             )
@@ -233,39 +220,236 @@ internal class PdfExportContourTest {
                 ),
                 generation = 1L,
                 color = Color.BLACK,
-                unicodeFonts = PdfExportFonts.load(context),
+            )
+
+            val resolved = PdfExportTextResolver.resolve(snapshot)
+            assertTrue("Text resolver must produce source-mapped runs", resolved.runs.isNotEmpty())
+            assertTrue("Every segment must retain the fixed LTR base direction", resolved.runs.all {
+                !it.baseDirectionRtl && it.boundsLeft == annotation.bounds.left.toFloat() &&
+                    it.boundsRight == annotation.bounds.right.toFloat()
+            })
+            PdfExporter.export(snapshot, policy) { false }
+            val extractedText = extractTextWithPdfBox(output)
+            val logicalText = extractedText.replace("\uFEFF", "")
+            assertEquals(
+                "PDFBox must extract the logical annotation text",
+                "Latin שלום العربية Mixed Latin שלום العربية नमस्ते दुनिया",
+                logicalText.replace(Regex("\\s+"), " ").trim(),
+            )
+
+            val bitmap = Bitmap.createBitmap(240, 160, Bitmap.Config.ARGB_8888)
+            try {
+                renderPage(output, bitmap)
+                val renderedBounds = requireNotNull(darkPixelBounds(bitmap, Rect(0, 20, 240, 100)))
+                assertTrue("Rendered text must reach the canonical top-edge band", renderedBounds.top in 24..40)
+                assertTrue(renderedBounds.bottom > renderedBounds.top + 12)
+                val rtlBounds = requireNotNull(darkPixelBounds(bitmap, Rect(0, 55, 240, 100)))
+                assertTrue("Rendered RTL text must produce pixels in its own line band", rtlBounds.width() > 20)
+                assertTrue("Rendered RTL text must have non-trivial glyph coverage", darkPixelCount(bitmap, Rect(0, 55, 240, 100)) > 30)
+            } finally {
+                bitmap.recycle()
+            }
+        } finally {
+            source.delete()
+            policy.deleteExact(output)
+        }
+    }
+
+    @Test
+    fun pre31BestEffortPathKeepsLogicalActualTextWithoutEmbeddingSystemFonts() {
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .targetContext
+        val policy = CacheArtifactPolicy.initialize(context)
+        val source = File.createTempFile("legacy-text-source-", ".pdf", context.cacheDir)
+        val candidate = policy.allocateExportScratch()
+        try {
+            writeBlankPdf(source, listOf(240 to 120))
+            val annotation = TextAnnotation(
+                id = "legacy-text-1",
+                text = "abc שלום العربية",
+                bounds = PageRect(24.0, 28.0, 216.0, 72.0),
+                fontSize = 14.0,
+                directionRtl = true,
+            )
+            val snapshot = PdfExportSnapshot(
+                sourcePath = source.path,
+                outputPath = candidate.path,
+                pages = listOf(
+                    PdfPageExportSnapshot(
+                        pageIndex = 0,
+                        dimensions = PdfPageDimensions(240.0, 120.0),
+                        strokes = emptyList(),
+                        textAnnotations = listOf(annotation),
+                    ),
+                ),
+                generation = 1L,
+                color = Color.BLACK,
+            )
+
+            val resolved = PdfExportTextResolver.resolve(
+                snapshot,
+                apiLevel = Build.VERSION_CODES.R,
+            )
+            assertTrue("Pre-31 exports must not package Android font resources", resolved.fonts.isEmpty())
+            assertEquals(1, resolved.runs.size)
+            assertEquals(-1, resolved.runs.single().fontIndex)
+            assertTrue("The saved annotation direction must reach the legacy run", resolved.runs.single().baseDirectionRtl)
+            PdfiumNativePdfExporter.export(snapshot, resolved, candidate)
+
+            val expectedActualTextHex = annotation.text
+                .map { it.code.toString(16).uppercase().padStart(4, '0') }
+                .joinToString(separator = "")
+            val actualTextHex = Regex("/ActualText<FEFF([0-9A-F]+)>")
+                .find(readPageContent(candidate))
+                ?.groupValues
+                ?.get(1)
+            assertEquals(
+                "The legacy fallback must store logical text as UTF-16 ActualText",
+                expectedActualTextHex,
+                actualTextHex,
+            )
+        } finally {
+            source.delete()
+            policy.deleteExact(candidate)
+        }
+    }
+
+    @Test
+    fun androidFontResolutionProvidesPerGlyphDataAndPdfiumAcceptsAnEmbeddableSelection() {
+        assumeTrue("TextRunShaper requires API 31", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 18f }
+        val samples = listOf(
+            "Latin sample" to false,
+            "שלום עולם" to true,
+            "العربية" to true,
+            "नमस्ते दुनिया" to false,
+        )
+        val selectedFonts = linkedMapOf<Pair<Int, Int>, SelectedFontProbe>()
+        val shapedRuns = mutableListOf<Pair<String, PositionedGlyphs>>()
+        samples.forEach { (text, isRtl) ->
+            val glyphs = TextRunShaper.shapeTextRun(
+                text,
+                0,
+                text.length,
+                0,
+                text.length,
+                0f,
+                0f,
+                isRtl,
+                paint,
+            )
+            assertTrue("Android must shape $text", glyphs.glyphCount() > 0)
+            assertTrue("Android must measure $text", glyphs.advance > 0f)
+            shapedRuns += text to glyphs
+            for (index in 0 until glyphs.glyphCount()) {
+                val font = glyphs.getFont(index)
+                val key = font.sourceIdentifier to font.ttcIndex
+                selectedFonts.getOrPut(key) { probe(font) }
+                assertTrue("Glyph position must be finite for $text", glyphs.getGlyphX(index).isFinite())
+                assertTrue("Glyph baseline must be finite for $text", glyphs.getGlyphY(index).isFinite())
+            }
+        }
+
+        val mixedText = "Latin שלום العربية"
+        val mixedGlyphs = mutableListOf<Triple<Int, Int, PositionedGlyphs>>()
+        TextShaper.shapeText(
+            mixedText,
+            0,
+            mixedText.length,
+            TextDirectionHeuristics.FIRSTSTRONG_LTR,
+            paint,
+        ) { start, count, glyphs, _ ->
+            mixedGlyphs += Triple(start, count, glyphs)
+            for (index in 0 until glyphs.glyphCount()) {
+                val font = glyphs.getFont(index)
+                selectedFonts.getOrPut(font.sourceIdentifier to font.ttcIndex) { probe(font) }
+            }
+        }
+        assertTrue("TextShaper must split mixed-direction text into visual runs", mixedGlyphs.size >= 2)
+        assertTrue("Android must resolve real font buffers", selectedFonts.values.all { it.bytes.isNotEmpty() })
+
+        val fontSummary = selectedFonts.values.joinToString { selected ->
+            "ttc=${selected.collectionIndex},bytes=${selected.bytes.size},fsType=${selected.fsType}"
+        }
+        println("Android selected-font prototype: api=${Build.VERSION.SDK_INT}, fonts=[$fontSummary]")
+        println("Android shaping prototype: ${shapedRuns.joinToString { (text, glyphs) ->
+            "${text.codePointCount(0, text.length)} chars/${glyphs.glyphCount()} glyphs/advance=${glyphs.advance}"
+        }}; mixedRuns=${mixedGlyphs.joinToString { (start, count, glyphs) ->
+            val range = mixedText.substring(start, start + count)
+            "$start+$count '$range' glyphs=${glyphs.glyphCount()} offset=${glyphs.offsetX}," +
+                "x=${(0 until glyphs.glyphCount()).joinToString { glyphIndex ->
+                    "${glyphs.getGlyphId(glyphIndex)}@${glyphs.getGlyphX(glyphIndex)}"
+                }}"
+        }}")
+
+        val arabicLigature = "لا"
+        val shapedLigature = TextRunShaper.shapeTextRun(
+            arabicLigature, 0, arabicLigature.length, 0, arabicLigature.length, 0f, 0f, true, paint,
+        )
+        val isolatedArabicTargets = (0 until arabicLigature.length).map { index ->
+            TextRunShaper.shapeTextRun(
+                arabicLigature, index, 1, 0, arabicLigature.length, 0f, 0f, true, paint,
+            )
+        }
+        println("Arabic lam-alef prototype: full=${shapedLigature.glyphCount()}," +
+            "per-target=${isolatedArabicTargets.joinToString { it.glyphCount().toString() }}")
+
+        val embeddableHebrew = shapedRuns
+            .first { it.first == "שלום עולם" }
+            .second
+            .let { it.getFont(0) }
+            .let(::probe)
+        assumeTrue(
+            "Selected Hebrew font cannot be embedded under its fsType or needs TTC extraction",
+            embeddableHebrew.collectionIndex == 0 && embeddableHebrew.canEmbed,
+        )
+
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .targetContext
+        val policy = CacheArtifactPolicy.initialize(context)
+        val source = File.createTempFile("selected-font-source-", ".pdf", context.cacheDir)
+        val output = policy.allocateSignedOutput()
+        try {
+            writeBlankPdf(source, listOf(240 to 100))
+            val snapshot = PdfExportSnapshot(
+                sourcePath = source.path,
+                outputPath = output.path,
+                pages = listOf(
+                    PdfPageExportSnapshot(
+                        pageIndex = 0,
+                        dimensions = PdfPageDimensions(240.0, 100.0),
+                        strokes = emptyList(),
+                        textAnnotations = listOf(
+                            TextAnnotation(
+                                id = "selected-font",
+                                text = "שלום עולם",
+                                bounds = PageRect(20.0, 28.0, 220.0, 62.0),
+                                fontSize = 18.0,
+                                directionRtl = true,
+                            ),
+                        ),
+                    ),
+                ),
+                generation = 1L,
+                color = Color.BLACK,
             )
 
             PdfExporter.export(snapshot, policy) { false }
-            ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-                PdfRendererPreV(descriptor).use { renderer ->
-                    renderer.openPage(0).use { page ->
-                        val textObjects = page.getPageObjects()
-                            .map { it.second }
-                            .filterIsInstance<PdfPageTextObject>()
-                        assertTrue(textObjects.any { it.text == "Latin" })
-                        val latinObject = textObjects.single { it.text == "Latin" }
-                        assertEquals(24.0f, latinObject.matrix[2], 0.001f)
-                        assertTrue(latinObject.matrix[5] > 32.0f)
-
-                        val extractedText = page.getTextContents().joinToString(separator = "") { it.text }
-                        val logicalText = restoreLogicalRtlRuns(extractedText)
-                        assertEquals("Latin שלום العربية", logicalText.replace(Regex("\\s+"), " ").trim())
-
-                        val bitmap = Bitmap.createBitmap(240, 160, Bitmap.Config.ARGB_8888)
-                        try {
-                            renderPage(output, bitmap)
-                            val renderedBounds = requireNotNull(darkPixelBounds(bitmap, Rect(0, 20, 240, 100)))
-                            assertTrue("Rendered text must reach the canonical top-edge band", renderedBounds.top in 24..40)
-                            assertTrue(renderedBounds.bottom > renderedBounds.top + 12)
-                            val rtlBounds = requireNotNull(darkPixelBounds(bitmap, Rect(0, 55, 240, 100)))
-                            assertTrue("Rendered RTL text must produce pixels in its own line band", rtlBounds.width() > 20)
-                            assertTrue("Rendered RTL text must have non-trivial glyph coverage", darkPixelCount(bitmap, Rect(0, 55, 240, 100)) > 30)
-                        } finally {
-                            bitmap.recycle()
-                        }
-                    }
-                }
+            val extracted = extractTextWithPdfBox(output)
+            val logicalText = extracted.replace("\uFEFF", "")
+            assertTrue(
+                "PDFium must retain the selected-font Hebrew text; extracted=$extracted",
+                logicalText.contains("שלום"),
+            )
+            val bitmap = Bitmap.createBitmap(240, 100, Bitmap.Config.ARGB_8888)
+            try {
+                renderPage(output, bitmap)
+                assertTrue(
+                    "PDFium must render the selected-font Hebrew text",
+                    darkPixelCount(bitmap, Rect(10, 18, 230, 72)) > 25,
+                )
+            } finally {
+                bitmap.recycle()
             }
         } finally {
             source.delete()
@@ -275,11 +459,6 @@ internal class PdfExportContourTest {
 
     @Test
     fun exporterCountsExistingSourceTextSeparatelyFromAddedText() {
-        assumeTrue(
-            "PdfRendererPreV requires Android S extension 18",
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S) >= 18,
-        )
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .targetContext
         val policy = CacheArtifactPolicy.initialize(context)
@@ -287,9 +466,7 @@ internal class PdfExportContourTest {
         val output = policy.allocateSignedOutput()
         try {
             writePdfWithTextObject(source, 240, 160, "Source")
-            val sourceTextCount = countTextObjects(source)
-            assertTrue("The source fixture must expose its text object", sourceTextCount > 0)
-            assertEquals(listOf("Source"), textObjectContents(source))
+            assertEquals("Source", extractTextWithPdfBox(source).trim())
             val annotation = TextAnnotation(
                 id = "text-1",
                 text = "Added",
@@ -314,7 +491,11 @@ internal class PdfExportContourTest {
                 policy,
             ) { false }
 
-            assertEquals(sourceTextCount + 1, countTextObjects(output))
+            val exportedText = extractTextWithPdfBox(output).replace("\uFEFF", "")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+            assertTrue("Existing source text must remain extractable: $exportedText", exportedText.contains("Source"))
+            assertTrue("Added vector text must be extractable: $exportedText", exportedText.contains("Added"))
         } finally {
             source.delete()
             policy.deleteExact(output)
@@ -337,6 +518,61 @@ internal class PdfExportContourTest {
         pageSizes.indices.forEach { objects += "<< /Length 0 >>\nstream\nendstream" }
         writePdfObjects(file, objects)
     }
+
+    private data class SelectedFontProbe(
+        val bytes: ByteArray,
+        val collectionIndex: Int,
+        val fsType: Int?,
+        val canEmbed: Boolean,
+    )
+
+    private fun probe(font: Font): SelectedFontProbe {
+        val buffer: ByteBuffer = font.buffer.duplicate()
+        val bytes = ByteArray(buffer.remaining()).also(buffer::get)
+        val fsType = readOpenTypeFsType(bytes, font.ttcIndex)
+        val permission = fsType?.and(0x000E)
+        val canEmbed = (permission == 0 || permission == 0x0008) &&
+            fsType?.and(0x0200) == 0 &&
+            fsType?.and(0x0100) == 0
+        return SelectedFontProbe(bytes, font.ttcIndex, fsType, canEmbed)
+    }
+
+    private fun readOpenTypeFsType(bytes: ByteArray, collectionIndex: Int): Int? {
+        return try {
+            if (bytes.size < 12) return null
+            val isCollection = bytes.copyOfRange(0, 4)
+                .contentEquals(byteArrayOf(0x74, 0x74, 0x63, 0x66))
+            val fontOffset = if (isCollection) {
+                readU32(bytes, 12 + collectionIndex * 4).toInt()
+            } else {
+                if (collectionIndex != 0) return null
+                0
+            }
+            val tableCount = readU16(bytes, fontOffset + 4)
+            for (index in 0 until tableCount) {
+                val record = fontOffset + 12 + index * 16
+                if (record + 16 > bytes.size) return null
+                if (bytes.copyOfRange(record, record + 4)
+                        .contentEquals(byteArrayOf(0x4F, 0x53, 0x2F, 0x32))) {
+                    val tableOffset = readU32(bytes, record + 8).toInt()
+                    if (tableOffset + 10 > bytes.size) return null
+                    return readU16(bytes, tableOffset + 8)
+                }
+            }
+            null
+        } catch (_: IndexOutOfBoundsException) {
+            null
+        }
+    }
+
+    private fun readU16(bytes: ByteArray, offset: Int): Int =
+        ((bytes[offset].toInt() and 0xFF) shl 8) or (bytes[offset + 1].toInt() and 0xFF)
+
+    private fun readU32(bytes: ByteArray, offset: Int): Long =
+        ((bytes[offset].toLong() and 0xFF) shl 24) or
+            ((bytes[offset + 1].toLong() and 0xFF) shl 16) or
+            ((bytes[offset + 2].toLong() and 0xFF) shl 8) or
+            (bytes[offset + 3].toLong() and 0xFF)
 
     private fun writePdfWithTextObject(file: File, width: Int, height: Int, text: String) {
         val content = "BT /F1 12 Tf 8 140 Td ($text) Tj ET\n"
@@ -367,28 +603,21 @@ internal class PdfExportContourTest {
         file.writeBytes(pdf.toString().toByteArray(Charsets.ISO_8859_1))
     }
 
-    private fun countTextObjects(file: File, pageIndex: Int = 0): Int {
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            PdfRendererPreV(descriptor).use { renderer ->
-                renderer.openPage(pageIndex).use { page ->
-                    return page.getPageObjects().count { it.second is PdfPageTextObject }
-                }
+    private fun extractTextWithPdfBox(file: File): String =
+        FileInputStream(file).use { input ->
+            PDDocument.load(input).use { document ->
+                PDFTextStripper().getText(document)
             }
         }
-    }
 
-    private fun textObjectContents(file: File, pageIndex: Int = 0): List<String> {
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            PdfRendererPreV(descriptor).use { renderer ->
-                renderer.openPage(pageIndex).use { page ->
-                    return page.getPageObjects()
-                        .map { it.second }
-                        .filterIsInstance<PdfPageTextObject>()
-                        .map { it.text }
+    private fun readPageContent(file: File): String =
+        FileInputStream(file).use { input ->
+            PDDocument.load(input).use { document ->
+                document.getPage(0).contents.use { content ->
+                    String(content.readBytes(), Charsets.ISO_8859_1)
                 }
             }
         }
-    }
 
     private fun darkPixelBounds(bitmap: Bitmap, region: Rect): Rect? {
         var bounds: Rect? = null
@@ -416,42 +645,20 @@ internal class PdfExportContourTest {
     }
 
     private fun renderPage(file: File, bitmap: Bitmap, pageIndex: Int = 0) {
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            PdfRendererPreV(descriptor).use { renderer ->
-                renderer.openPage(pageIndex).use { page ->
-                    page.render(
-                        bitmap,
-                        null,
-                        null,
-                        RenderParams.Builder(RenderParams.RENDER_MODE_FOR_DISPLAY).build(),
-                    )
-                }
-            }
+        PdfiumRenderSession.open(file.readBytes()).use { renderer ->
+            val page = renderer.pageSize(pageIndex)
+            val scaleX = bitmap.width / page.width
+            val scaleY = bitmap.height / page.height
+            check(
+                renderer.renderPageIntoBitmap(
+                    pageIndex = pageIndex,
+                    bitmap = bitmap,
+                    pageToDevice = PdfiumAffineMatrix(scaleX, 0.0, 0.0, scaleY, 0.0, 0.0),
+                    clip = PdfiumRect(0.0, 0.0, bitmap.width.toDouble(), bitmap.height.toDouble()),
+                    background = Color.WHITE,
+                ),
+            ) { "PDFium could not render page $pageIndex" }
         }
     }
 
-    private fun restoreLogicalRtlRuns(text: String): String {
-        val codePoints = text.codePoints().toArray()
-        val restored = StringBuilder(text.length)
-        var index = 0
-        while (index < codePoints.size) {
-            if (!isRtlCodePoint(codePoints[index])) {
-                restored.appendCodePoint(codePoints[index++])
-                continue
-            }
-            var end = index + 1
-            while (end < codePoints.size && isRtlCodePoint(codePoints[end])) end += 1
-            for (position in end - 1 downTo index) restored.appendCodePoint(codePoints[position])
-            index = end
-        }
-        return restored.toString()
-    }
-
-    private fun isRtlCodePoint(codePoint: Int): Boolean = when (Character.getDirectionality(codePoint)) {
-        Character.DIRECTIONALITY_RIGHT_TO_LEFT,
-        Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
-        Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING,
-        Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE -> true
-        else -> false
-    }
 }

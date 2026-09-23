@@ -28,6 +28,8 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
@@ -44,6 +46,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "PageType.hpp"
 #include "PdfFallbackFont.hpp"
 #include "StateChangeEvent.hpp"
+#include "TextDirection.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
 #include <NitroModules/Promise.hpp>
