@@ -7,8 +7,9 @@ document coordinator. The coordinator owns the published document, ordered
 pages, active page, dirty state, and module-created working artifacts.
 
 `SurfaceView` owns Android presentation and input routing. `PdfSessionWorker`
-owns serialized PDFium sessions and document work. The text overlay owns
-temporary editor state.
+owns serialized PDFium sessions and document work. PDF open, page assembly,
+rendering, and export use PDFium; Android owns file staging and bitmap surfaces.
+The text overlay owns temporary editor state.
 
 ## Publication
 

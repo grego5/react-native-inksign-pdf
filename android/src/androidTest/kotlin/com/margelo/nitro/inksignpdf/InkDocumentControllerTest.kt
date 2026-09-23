@@ -92,10 +92,20 @@ class InkDocumentControllerTest {
 
   @Test
   fun alreadyCachedLatestLevelSwapsWithoutWorkerRendering() {
-    val harness = ControllerHarness(page = PdfPageDimensions(500.0, 500.0))
+    val harness = ControllerHarness(page = PdfPageDimensions(500.0, 500.0), viewportSize = 64)
     try {
       harness.runOnMain {
-        harness.controller.setZoomForTest(1.0, PagePoint(250.0, 250.0))
+        harness.controller.setZoomForTest(0.1, PagePoint(272.0, 272.0))
+      }
+      harness.awaitState { state ->
+        !state.transitionPending && state.activeVisibleKeys.all { key ->
+          state.displayedVisibleKeys.contains(key)
+        }
+      }
+      val cachedLevel = harness.state().activeVisibleKeys
+
+      harness.runOnMain {
+        harness.controller.setZoomForTest(1.0, PagePoint(272.0, 272.0))
       }
       harness.awaitState { state ->
         !state.transitionPending && state.activeVisibleKeys.all { key ->
@@ -103,15 +113,18 @@ class InkDocumentControllerTest {
         }
       }
       val target = harness.state().activeVisibleKeys
+      assertNotEquals(cachedLevel, target)
+      val renderCountBeforeRestore = harness.session.renderedRequestCount
 
       harness.runOnMain {
-        harness.controller.setZoomForTest(0.1, PagePoint(250.0, 250.0))
+        harness.controller.setZoomForTest(0.1, PagePoint(272.0, 272.0))
       }
       val restored = harness.state()
 
-      assertFalse(restored.transitionPending)
+      assertFalse("cached latest level should swap immediately: $restored", restored.transitionPending)
       assertEquals(restored.activeVisibleKeys, restored.displayedVisibleKeys)
-      assertNotEquals(target, restored.activeVisibleKeys)
+      assertEquals(cachedLevel, restored.activeVisibleKeys)
+      assertEquals(renderCountBeforeRestore, harness.session.renderedRequestCount)
     } finally {
       harness.close()
     }
@@ -360,6 +373,7 @@ class InkDocumentControllerTest {
   private inner class ControllerHarness(
     private val page: PdfPageDimensions,
     private val pages: List<PdfPageDimensions> = listOf(page),
+    private val viewportSize: Int = 512,
   ) {
     private var activePageIndex = 0
     private var pageSwitchId = 1L
@@ -389,7 +403,7 @@ class InkDocumentControllerTest {
           currentPageIndex = { activePageIndex },
           currentPageSwitchId = { pageSwitchId },
         )
-        controller.onSizeChanged(512, 512)
+        controller.onSizeChanged(viewportSize, viewportSize)
         controller.setPage(info.pages[0])
       }
       awaitState { !it.transitionPending && it.pendingKeys.isEmpty() }
@@ -506,6 +520,8 @@ class InkDocumentControllerTest {
   ) : PdfSessionResource {
     override val info = PdfSessionInfo("controller-test.pdf", pages, 1L)
     val cachedBitmaps = Collections.synchronizedList(ArrayList<Bitmap>())
+    @Volatile var renderedRequestCount = 0
+      private set
     @Volatile var renderLimit = Int.MAX_VALUE
     @Volatile private var blockNext = false
     @Volatile private var renderStarted: CountDownLatch? = null
@@ -536,6 +552,7 @@ class InkDocumentControllerTest {
         }
         requests.take(renderLimit).forEach { request ->
           beforeEach()
+          renderedRequestCount += 1
           val bitmap = Bitmap.createBitmap(
             request.widthPx,
             request.heightPx,

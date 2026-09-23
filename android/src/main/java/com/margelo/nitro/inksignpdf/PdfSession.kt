@@ -1,8 +1,6 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
-import android.graphics.pdf.PdfRendererPreV
-import android.os.ParcelFileDescriptor
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutorService
@@ -271,19 +269,6 @@ internal class PdfSession private constructor(
       }
     }
 
-  }
-}
-
-/** Closes a partially opened PDF without closing a descriptor twice. */
-internal fun closeFailedPdfResources(
-  renderer: PdfRendererPreV?,
-  descriptor: ParcelFileDescriptor,
-  temporarySource: File? = null,
-) {
-  try {
-    if (renderer != null) renderer.close() else descriptor.close()
-  } finally {
-    temporarySource?.delete()
   }
 }
 
