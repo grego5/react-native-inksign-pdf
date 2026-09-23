@@ -19,6 +19,7 @@ export interface PageInfo {
 }
 
 export type PageType = 'pdf' | 'image'
+export type TextDirection = 'ltr' | 'rtl' | 'auto'
 
 /** Image page dimensions in PDF points. */
 export interface ImagePageSize {
@@ -119,6 +120,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   undo(): void
   redo(): void
   clear(): void
+  /** Sets the base direction for new text annotations; `auto` follows the active IME subtype or app default. */
+  setTextDirection(direction: TextDirection): void
   /** Arms one-shot native text placement at the next valid page tap. */
   insertAnnotationOn(): void
   /** Cancels a pending one-shot text placement, if any. */

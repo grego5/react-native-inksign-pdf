@@ -25,13 +25,11 @@ class FontSubstitutionRegistry final {
   FontSubstitutionRegistry(const FontSubstitutionRegistry&) = delete;
   FontSubstitutionRegistry& operator=(const FontSubstitutionRegistry&) = delete;
 
-  void require();
   bool setSuppliedFont(const std::string& path,
                        std::size_t collectionIndex,
                        std::string* errorMessage);
-  void resolve();
 
-std::shared_ptr<const PdfiumResolvedFont> resolveFont(
+  std::shared_ptr<const PdfiumResolvedFont> resolveFont(
       std::string_view face,
       int weight,
       FPDF_BOOL italic) const;
@@ -44,10 +42,6 @@ std::shared_ptr<const PdfiumResolvedFont> resolveActiveFont(
     const char* face,
     int weight,
     FPDF_BOOL italic);
-
-void collectFontRequirements(FPDF_DOCUMENT document,
-                             std::size_t pageCount,
-                             FontSubstitutionRegistry& registry);
 
 class ScopedFontRegistry final {
  public:

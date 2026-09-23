@@ -6,12 +6,12 @@
   "main": "index.ts",
   "dependencies": {
     "@grego5/react-native-inksign-pdf": "file:../",
-    "expo": "^58.0.0-preview.5",
+    "expo": "^58.0.0-preview.6",
     "expo-asset": "~58.0.3",
-    "expo-dev-client": "~58.0.5",
+    "expo-dev-client": "~58.0.6",
     "expo-file-system": "~58.0.0",
-    "expo-modules-core": "~58.0.5",
-    "expo-sharing": "~58.0.8",
+    "expo-modules-core": "~58.0.6",
+    "expo-sharing": "~58.0.9",
     "expo-system-ui": "~58.0.2",
     "react": "19.3.0",
     "react-native": "0.88.0-rc.1",
@@ -31,7 +31,7 @@
     "android:prebuild": "expo prebuild --platform android --no-install",
     "android:clean": "expo prebuild --platform android --clean --no-install",
     "android": "expo run:android",
-    "android:release": "expo run:android --variant release",
+    "android:release": "expo run:android --variant release --no-install",
     "eas:android:debug": "eas build --platform android --profile debug",
     "eas:android:preview:tracing": "eas build --platform android --profile preview-tracing",
     "eas:android:preview": "eas build --platform android --profile preview",
@@ -39,6 +39,7 @@
     "eas:ios:preview": "eas build --platform ios --profile preview"
   },
   "allowScripts": {
-    "file:../../..": true
+    "file:../": true
   }
 }
+

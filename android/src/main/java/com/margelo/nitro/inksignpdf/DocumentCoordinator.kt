@@ -410,6 +410,7 @@ internal class MutableDocumentCoordinator(
     candidate: java.io.File,
     generation: Long,
     request: PdfiumAssemblyRequest,
+    fontFallback: PdfFallbackFont? = fallbackFont,
     retireCandidate: (java.io.File) -> Unit,
     completion: (Result<PdfSessionInfo>) -> Unit,
   ) {
@@ -424,7 +425,7 @@ internal class MutableDocumentCoordinator(
       candidatePath = candidate.path,
       generation = generation,
       request = request,
-      fallbackFont = fallbackFont,
+      fallbackFont = fontFallback,
       retireCandidate = retireCandidate,
       completion = completion,
     )
@@ -447,6 +448,7 @@ internal class MutableDocumentCoordinator(
     candidateBuilder: (PdfSessionInfo) -> StructuralCandidate,
     validate: (PdfSessionInfo, StructuralCandidate) -> Unit,
     present: () -> T,
+    fontFallback: PdfFallbackFont? = fallbackFont,
   ): T {
     ensureCurrent(generation)
     val candidate = allocateMutationCandidate()
@@ -454,7 +456,14 @@ internal class MutableDocumentCoordinator(
     var published = false
     try {
       val info = awaitWorkerResult(generation) { completion ->
-        prepareMutation(candidate, generation, request, policy::deleteExact, completion)
+        prepareMutation(
+          candidate,
+          generation,
+          request,
+          fontFallback,
+          policy::deleteExact,
+          completion,
+        )
       }
       ensureCurrent(generation)
       val pageCandidate = candidateBuilder(info)
@@ -465,6 +474,7 @@ internal class MutableDocumentCoordinator(
       }
       ensureCurrent(generation)
       val oldWorking = publishStructuralCandidate(info, pageCandidate)
+      fallbackFont = fontFallback
       published = true
       untrackWorkingFile(candidate)
       oldWorking?.let(policy::deleteExact)

@@ -39,6 +39,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func undo() throws -> Void
   func redo() throws -> Void
   func clear() throws -> Void
+  func setTextDirection(direction: TextDirection) throws -> Void
   func insertAnnotationOn() throws -> Void
   func insertAnnotationOff() throws -> Void
   func increaseTextSize() throws -> Double

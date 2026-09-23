@@ -29,6 +29,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
 #include "PdfFallbackFont.hpp"
 #include <optional>
@@ -42,6 +44,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
 #include "Viewport.hpp"
+#include "TextDirection.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -115,6 +118,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void undo() = 0;
       virtual void redo() = 0;
       virtual void clear() = 0;
+      virtual void setTextDirection(TextDirection direction) = 0;
       virtual void insertAnnotationOn() = 0;
       virtual void insertAnnotationOff() = 0;
       virtual double increaseTextSize() = 0;

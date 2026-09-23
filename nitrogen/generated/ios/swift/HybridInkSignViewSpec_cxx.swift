@@ -137,7 +137,7 @@ open class HybridInkSignViewSpec_cxx {
       self.__implementation.fallbackFont = newValue.value
     }
   }
-  
+
   public final var strokeColor: bridge.std__optional_std__string_ {
     @inline(__always)
     get {
@@ -649,6 +649,17 @@ open class HybridInkSignViewSpec_cxx {
     }
   }
   
+  @inline(__always)
+  public final func setTextDirection(direction: Int32) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.setTextDirection(direction: margelo.nitro.inksignpdf.TextDirection(rawValue: direction)!)
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+
   @inline(__always)
   public final func insertAnnotationOn() -> bridge.Result_void_ {
     do {

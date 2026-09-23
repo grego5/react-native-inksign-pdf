@@ -56,8 +56,9 @@ enum InkSignPdfTextRenderer {
             annotation.fontSize.isFinite,
             annotation.fontSize > 0,
             let lines = makeLines(for: annotation.text,
-                                   fontSize: annotation.fontSize,
-                                   color: color ?? parseColor(annotation.textColor) ?? .black) else {
+            fontSize: annotation.fontSize,
+            color: color ?? parseColor(annotation.textColor) ?? .black,
+            baseDirectionRtl: annotation.isRTL) else {
         context.restoreGState()
         return false
       }
@@ -170,7 +171,10 @@ enum InkSignPdfTextRenderer {
         annotation.bounds.height.isFinite &&
         annotation.fontSize.isFinite &&
         annotation.fontSize > 0 &&
-        makeLines(for: annotation.text, fontSize: annotation.fontSize, color: .black) != nil
+        makeLines(for: annotation.text,
+                  fontSize: annotation.fontSize,
+                  color: .black,
+                  baseDirectionRtl: annotation.isRTL) != nil
     }
   }
 
@@ -206,14 +210,19 @@ enum InkSignPdfTextRenderer {
   private static func makeLines(
     for text: String,
     fontSize: CGFloat,
-    color: UIColor
+    color: UIColor,
+    baseDirectionRtl: Bool = false
   ) -> [CTLine]? {
     guard fontSize.isFinite, fontSize > 0 else { return nil }
     let font = UIFont.systemFont(ofSize: fontSize)
     let ctFont = CTFontCreateWithName(font.fontName as CFString, font.pointSize, nil)
+    let paragraphStyle = NSMutableParagraphStyle()
+    paragraphStyle.baseWritingDirection = baseDirectionRtl ? .rightToLeft : .leftToRight
+    paragraphStyle.alignment = baseDirectionRtl ? .right : .left
     let attributes: [NSAttributedString.Key: Any] = [
       NSAttributedString.Key(kCTFontAttributeName as String): ctFont,
       NSAttributedString.Key(kCTForegroundColorAttributeName as String): color.cgColor,
+      NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraphStyle,
     ]
     return text.components(separatedBy: "\n").map {
       CTLineCreateWithAttributedString(NSAttributedString(string: $0,

@@ -106,6 +106,20 @@ class TextInteractionContractTest {
   }
 
   @Test
+  fun selectedOutlineUsesTheEditorPixelPaddingAtEveryZoom() {
+    val fontSizePx = 16.0 * 7.0
+
+    assertEquals(
+      42,
+      textEditorPaddingPx(fontSizePx, textEditorHorizontalPaddingRatio),
+    )
+    assertEquals(
+      28,
+      textEditorPaddingPx(fontSizePx, textEditorVerticalPaddingRatio),
+    )
+  }
+
+  @Test
   fun editorMinimumAndWideLineStopsAtThePageEdge() {
     val empty = textEditorPageBoundedSize(
       TextIntrinsicSize(20.0, 18.0),

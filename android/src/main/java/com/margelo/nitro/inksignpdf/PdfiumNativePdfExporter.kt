@@ -1,28 +1,10 @@
 package com.margelo.nitro.inksignpdf
 
-import android.content.Context
 import java.io.File
 
-internal data class PdfExportFontData(
-  val hebrew: ByteArray,
-  val arabic: ByteArray,
-)
-
-internal object PdfExportFonts {
-  fun load(context: Context): PdfExportFontData {
-    fun readAsset(name: String): ByteArray =
-      context.assets.open("fonts/$name").use { it.readBytes() }
-
-    return PdfExportFontData(
-      hebrew = readAsset("NotoSansHebrew-Regular.ttf"),
-      arabic = readAsset("NotoNaskhArabic-Regular.ttf"),
-    )
-  }
-}
-
-/** Serializes all exported PDF page objects and validates the saved candidate in PDFium. */
+/** Serializes resolved PDFium text runs and validates the saved candidate. */
 internal object PdfiumNativePdfExporter {
-  fun export(snapshot: PdfExportSnapshot, destination: File) {
+  fun export(snapshot: PdfExportSnapshot, text: PdfiumTextSnapshot, destination: File) {
     val pageIndices = IntArray(snapshot.pages.size) { snapshot.pages[it].pageIndex }
     val pageDimensions = DoubleArray(snapshot.pages.size * 2) { index ->
       val page = snapshot.pages[index / 2]
@@ -52,28 +34,33 @@ internal object PdfiumNativePdfExporter {
         else -> command.c2y
       }
     }
-    val textEntries = unicodeTextEntries(snapshot)
-    val textPageIndices = IntArray(textEntries.size) { textEntries[it].pageIndex }
-    val texts = Array(textEntries.size) { textEntries[it].text }
-    val textFontKinds = IntArray(textEntries.size) { textEntries[it].fontKind }
-    val textGeometry = FloatArray(textEntries.size * 3) { index ->
-      val entry = textEntries[index / 3]
-      when (index % 3) {
-        0 -> entry.x
-        1 -> entry.baselineFromTop
-        else -> entry.fontSize
+
+    val textRuns = text.runs
+    val textRunPageIndices = IntArray(textRuns.size) { textRuns[it].pageIndex }
+    val textRunLineIds = IntArray(textRuns.size) { textRuns[it].lineId }
+    val textRunTexts = Array(textRuns.size) { textRuns[it].text }
+    val textRunSourceRanges = IntArray(textRuns.size * 2) { index ->
+      val run = textRuns[index / 2]
+      if (index % 2 == 0) run.sourceStart else run.sourceLength
+    }
+    val textRunBidiLevels = IntArray(textRuns.size) { textRuns[it].bidiLevel }
+    val textRunVisualOrder = IntArray(textRuns.size) { textRuns[it].visualOrder }
+    val textRunBaseDirections = IntArray(textRuns.size) {
+      if (textRuns[it].baseDirectionRtl) 1 else 0
+    }
+    val textRunFontIndices = IntArray(textRuns.size) { textRuns[it].fontIndex }
+    val textRunGeometry = FloatArray(textRuns.size * 5) { index ->
+      val run = textRuns[index / 5]
+      when (index % 5) {
+        0 -> run.boundsLeft
+        1 -> run.boundsRight
+        2 -> run.baselineFromTop
+        3 -> run.fontSize
+        else -> run.estimatedAdvance
       }
     }
-    val textColors = IntArray(textEntries.size) { textEntries[it].color }
-    val needsHebrew = textFontKinds.any { it == 1 }
-    val needsArabic = textFontKinds.any { it == 2 }
-    val fonts = snapshot.unicodeFonts
-    check(!needsHebrew || fonts?.hebrew?.isNotEmpty() == true) {
-      "Hebrew export font is unavailable"
-    }
-    check(!needsArabic || fonts?.arabic?.isNotEmpty() == true) {
-      "Arabic export font is unavailable"
-    }
+    val textRunColors = IntArray(textRuns.size) { textRuns[it].color }
+    val fontResources = Array(text.fonts.size) { text.fonts[it].bytes.copyOf() }
 
     nativeExport(
       snapshot.sourcePath,
@@ -84,14 +71,18 @@ internal object PdfiumNativePdfExporter {
       pathCommandOffsets,
       pathCommandTypes,
       pathCoordinates,
-      textPageIndices,
-      texts,
-      textFontKinds,
-      textGeometry,
-      textColors,
+      textRunPageIndices,
+      textRunLineIds,
+      textRunTexts,
+      textRunSourceRanges,
+      textRunBidiLevels,
+      textRunVisualOrder,
+      textRunBaseDirections,
+      textRunFontIndices,
+      textRunGeometry,
+      textRunColors,
+      fontResources,
       snapshot.color,
-      fonts?.hebrew ?: ByteArray(0),
-      fonts?.arabic ?: ByteArray(0),
     )
   }
 
@@ -104,13 +95,17 @@ internal object PdfiumNativePdfExporter {
     pathCommandOffsets: IntArray,
     pathCommandTypes: IntArray,
     pathCoordinates: FloatArray,
-    textPageIndices: IntArray,
-    texts: Array<String>,
-    textFontKinds: IntArray,
-    textGeometry: FloatArray,
-    textColors: IntArray,
+    textRunPageIndices: IntArray,
+    textRunLineIds: IntArray,
+    textRunTexts: Array<String>,
+    textRunSourceRanges: IntArray,
+    textRunBidiLevels: IntArray,
+    textRunVisualOrder: IntArray,
+    textRunBaseDirections: IntArray,
+    textRunFontIndices: IntArray,
+    textRunGeometry: FloatArray,
+    textRunColors: IntArray,
+    fontResources: Array<ByteArray>,
     inkColor: Int,
-    hebrewFont: ByteArray,
-    arabicFont: ByteArray,
   )
 }

@@ -36,6 +36,8 @@ internal data class TextAnnotation(
   val fontSize: Double,
   /** Opaque ARGB text color captured when the annotation was created. */
   val textColor: Int = Color.BLACK,
+  /** Fixed paragraph base direction selected before this annotation was created. */
+  val directionRtl: Boolean = false,
 ) {
   init {
     require(id.isNotBlank()) { "Text annotation ID must not be blank" }

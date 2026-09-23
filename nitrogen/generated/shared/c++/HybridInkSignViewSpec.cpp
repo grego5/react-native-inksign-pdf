@@ -56,6 +56,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("undo", &HybridInkSignViewSpec::undo);
       prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
       prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
+      prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);
       prototype.registerHybridMethod("insertAnnotationOn", &HybridInkSignViewSpec::insertAnnotationOn);
       prototype.registerHybridMethod("insertAnnotationOff", &HybridInkSignViewSpec::insertAnnotationOff);
       prototype.registerHybridMethod("increaseTextSize", &HybridInkSignViewSpec::increaseTextSize);

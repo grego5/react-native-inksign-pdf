@@ -26,6 +26,13 @@ extension InkSignView {
     }
   }
 
+  func setTextDirection(direction: TextDirection) throws {
+    try performOnMainSync {
+      guard !self.disposed else { throw TextError.cancelled }
+      self.textInteractionOverlay.setTextDirection(direction)
+    }
+  }
+
   func increaseTextSize() throws -> Double {
     try performOnMainSync { try self.textInteractionOverlay.increaseTextSize() }
   }

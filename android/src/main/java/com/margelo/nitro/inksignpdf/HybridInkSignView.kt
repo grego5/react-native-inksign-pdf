@@ -245,6 +245,7 @@ class HybridInkSignView internal constructor(
 
   override fun addPages(options: AddPagesOptions?): Promise<AddPagesResult> {
     return launchPromise {
+      val fontFallbackSnapshot = fallbackFont
       val requestedImageSize = options?.imagePageSize?.let {
         if (!it.width.isFinite() || it.width <= 0.0 ||
           !it.height.isFinite() || it.height <= 0.0
@@ -305,6 +306,7 @@ class HybridInkSignView internal constructor(
               addedPageCount = (coordinator.pageCount - oldPageCount).toDouble(),
             )
           },
+          fontFallback = fontFallbackSnapshot,
         )
       } finally {
         pageInputCoordinator.release(staged)
@@ -435,6 +437,14 @@ class HybridInkSignView internal constructor(
         if (disposed || requestID != viewportRequestID) throw operationCancelled()
         textOverlay.armPlacement(coordinator.generation)
       }
+    }
+  }
+
+  override fun setTextDirection(direction: TextDirection) {
+    runOnMainSync {
+      checkMainThread()
+      if (disposed) throw operationCancelled()
+      textOverlay.setTextDirection(direction)
     }
   }
 
@@ -648,12 +658,7 @@ class HybridInkSignView internal constructor(
   private fun captureExport(): PdfExportSnapshot {
     checkMainThread()
     if (disposed) throw operationCancelled()
-    val captured = coordinator.captureExport(surface.strokeColor())
-    val snapshot = if (unicodeTextEntries(captured).any { it.fontKind != 0 }) {
-      captured.copy(unicodeFonts = PdfExportFonts.load(context))
-    } else {
-      captured
-    }
+    val snapshot = coordinator.captureExport(surface.strokeColor())
     return snapshot.also { snapshot ->
       synchronized(this) { pendingOutputs += File(snapshot.outputPath) }
     }
