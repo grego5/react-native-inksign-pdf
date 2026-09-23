@@ -31,7 +31,7 @@ final class InkSignViewStabilizationTests: XCTestCase {
         assertPoint(viewport.canonicalPoint(fromPDF: pdf), equals: canonical)
         assertPoint(viewport.viewPoint(fromPDF: pdf), equals: view)
         assertPoint(viewport.pdfPoint(fromView: view), equals: pdf)
-        assertPoint(viewport.pdfToView.applying(pdf), equals: view)
+        assertPoint(pdf.applying(viewport.pdfToView), equals: view)
       }
     }
   }
@@ -88,14 +88,14 @@ final class InkSignViewStabilizationTests: XCTestCase {
       focus: CGPoint(x: 150, y: 100),
       generation: 13))
     let pdf = viewport.pdfPoint(fromCanonical: CGPoint(x: 40, y: 60))
-    let display = viewport.pdfToDisplay.applying(pdf)
+    let display = pdf.applying(viewport.pdfToDisplay)
     let tileOrigin = CGPoint(x: 37, y: 29)
     let renderZoom: CGFloat = 2.125
     let density: CGFloat = 2
-    let device = viewport.pdfToDeviceTransform(canonicalTileOrigin: tileOrigin,
-                                                renderZoom: renderZoom,
-                                                density: density)
-      .applying(pdf)
+    let device = pdf.applying(viewport.pdfToDeviceTransform(
+      canonicalTileOrigin: tileOrigin,
+      renderZoom: renderZoom,
+      density: density))
     let expected = CGPoint(x: (display.x - tileOrigin.x) * renderZoom * density,
                            y: (display.y - tileOrigin.y) * renderZoom * density)
 
@@ -130,8 +130,8 @@ final class InkSignViewStabilizationTests: XCTestCase {
   func testTilePlannerRejectsInvalidDimensionsWithoutAllocation() {
     XCTAssertNil(InkSignPdfTilePlan(pageSize: .zero, viewportZoom: 1, density: 2))
     XCTAssertNil(InkSignPdfTilePlan(
-      pageSize: CGSize(width: .greatestFiniteMagnitude,
-                       height: .greatestFiniteMagnitude),
+      pageSize: CGSize(width: CGFloat.greatestFiniteMagnitude,
+                       height: CGFloat.greatestFiniteMagnitude),
       viewportZoom: 16,
       density: 3))
     XCTAssertNil(InkSignPdfTilePlan(pageSize: CGSize(width: 100, height: 100),

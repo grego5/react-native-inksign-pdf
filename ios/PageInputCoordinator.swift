@@ -400,26 +400,33 @@ final class InkSignPdfPageInputCoordinator: NSObject {
     }
   }
 
-  private func stagePhotos(_ results: [PHPickerResult], for request: Request) {
-    guard !results.isEmpty else {
+  func finishPhotoPicking(itemProviders: [NSItemProvider], from picker: PHPickerViewController) {
+    guard let request = activeRequest, request.controller === picker else { return }
+    controllerDismisser(picker, false)
+    request.controller = nil
+    stagePhotos(itemProviders, for: request)
+  }
+
+  private func stagePhotos(_ itemProviders: [NSItemProvider], for request: Request) {
+    guard !itemProviders.isEmpty else {
       complete(request, with: .success([]))
       return
     }
     let policy = artifactPolicy
     let group = DispatchGroup()
     let lock = NSLock()
-    var staged = Array<InkSignPdfStagedPageInput?>(repeating: nil, count: results.count)
+    var staged = Array<InkSignPdfStagedPageInput?>(repeating: nil, count: itemProviders.count)
     var firstError: Error?
-    for (index, result) in results.enumerated() {
+    for (index, provider) in itemProviders.enumerated() {
       group.enter()
-      guard result.itemProvider.hasItemConformingToTypeIdentifier(UTType.image.identifier) else {
+      guard provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) else {
         lock.lock()
         if firstError == nil { firstError = PageInputError.unreadableItem }
         lock.unlock()
         group.leave()
         continue
       }
-      result.itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) {
+      provider.loadFileRepresentation(forTypeIdentifier: UTType.image.identifier) {
         [weak self] temporaryURL, error in
         defer { group.leave() }
         guard let self, !request.isCancelled() else { return }
@@ -452,7 +459,7 @@ final class InkSignPdfPageInputCoordinator: NSObject {
       let error = firstError
       let ordered = staged.compactMap { $0 }
       lock.unlock()
-      guard error == nil, ordered.count == results.count else {
+      guard error == nil, ordered.count == itemProviders.count else {
         self.cleanup(request.takeStagedURLs())
         self.complete(request, with: .failure(error ?? PageInputError.unreadableItem))
         return
@@ -593,10 +600,7 @@ extension InkSignPdfPageInputCoordinator: UIDocumentPickerDelegate {
 
 extension InkSignPdfPageInputCoordinator: PHPickerViewControllerDelegate {
   func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
-    guard let request = activeRequest, request.controller === picker else { return }
-    controllerDismisser(picker, false)
-    request.controller = nil
-    stagePhotos(results, for: request)
+    finishPhotoPicking(itemProviders: results.map(\.itemProvider), from: picker)
   }
 }
 

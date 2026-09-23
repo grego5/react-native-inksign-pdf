@@ -507,7 +507,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     applyWritingDirection(to: textView, isRTL: presentationState.isRTL)
     layoutEditor()
     if let pagePoint, let pageSize = owner?.documentCoordinator.document?.activePage.geometry.mediaBox.size {
-      let contentSize = editorContentSize(text: textView.text ?? "",
+      let contentText = textView.text?.isEmpty == true ? "M" : (textView.text ?? "")
+      let contentSize = editorContentSize(text: contentText,
                                           fontSize: presentationState.fontSize)
       let origin = clampedPosition(CGPoint(x: pagePoint.x - contentSize.width / 2,
                                            y: pagePoint.y - contentSize.height / 2),

@@ -26,6 +26,9 @@ final class MutablePageImageEncoderTests: XCTestCase {
     defer { session.close() }
     XCTAssertEqual(document.pageCount, 2)
     XCTAssertEqual(sizes.count, 2)
+    let imagePage = try XCTUnwrap(document.page(at: 1))
+    XCTAssertEqual(imagePage.bounds(for: .mediaBox).width, 612, accuracy: 0.5)
+    XCTAssertEqual(imagePage.bounds(for: .mediaBox).height, 792, accuracy: 0.5)
     var imagePageSize = CGSize.zero
     try session.pageSize(for: 1, into: &imagePageSize)
     XCTAssertEqual(imagePageSize.width, 612, accuracy: 0.5)
@@ -209,8 +212,10 @@ final class MutablePageImageEncoderTests: XCTestCase {
     XCTAssertGreaterThan(pixels[10 * decoded.width * 4], 235, "top letterbox should be white")
     let center = (200 * decoded.width + 100) * 4
     XCTAssertGreaterThan(pixels[center + 1], 140, "the contained image should remain visible")
-    XCTAssertEqual(encoded["a"] as? Double, 72)
-    XCTAssertEqual(encoded["d"] as? Double, 144)
+    XCTAssertEqual(encoded["pageWidth"] as? CGFloat, 72)
+    XCTAssertEqual(encoded["pageHeight"] as? CGFloat, 144)
+    XCTAssertEqual(encoded["a"] as? CGFloat, 72)
+    XCTAssertEqual(encoded["d"] as? CGFloat, 144)
   }
 
   func testEncoderAppliesExifRotationBeforeFit() throws {
@@ -251,7 +256,8 @@ final class MutablePageImageEncoderTests: XCTestCase {
                                                             nil) else {
       throw InkSignView.MutablePageError.unsupportedContent
     }
-    CGImageDestinationAddImage(image, destination, [kCGImagePropertyOrientation: orientation] as CFDictionary)
+    CGImageDestinationAddImage(destination, image,
+                              [kCGImagePropertyOrientation: orientation] as CFDictionary)
     guard CGImageDestinationFinalize(destination) else {
       throw InkSignView.MutablePageError.unsupportedContent
     }

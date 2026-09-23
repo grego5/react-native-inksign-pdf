@@ -162,7 +162,9 @@ extension InkSignView {
         throw ExportError.failed
       }
       context = pageContext
-      pageContext.beginPDFPage([kCGPDFContextMediaBox as String: captured.geometry.mediaBox] as CFDictionary)
+      var mediaBox = captured.geometry.mediaBox
+      let mediaBoxData = withUnsafeBytes(of: &mediaBox) { Data($0) }
+      pageContext.beginPDFPage([kCGPDFContextMediaBox as String: mediaBoxData] as CFDictionary)
       pageContext.saveGState()
       let sourceTransform = sourcePage.getDrawingTransform(
         .mediaBox,

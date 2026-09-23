@@ -117,34 +117,29 @@ jobs:
           test -n "$simulator"
           simulator_name="${simulator%%|*}"
           simulator_udid="${simulator##*|}"
+          simulator_arch="$(uname -m)"
           echo "Selected iOS Simulator: $simulator_name ($simulator_udid)"
           echo "IOS_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           echo "IOS_SCHEME=$scheme" >> "$GITHUB_ENV"
-          echo "IOS_DESTINATION=platform=iOS Simulator,id=$simulator_udid" >> "$GITHUB_ENV"
+          echo "IOS_DESTINATION=platform=iOS Simulator,id=$simulator_udid,arch=$simulator_arch" >> "$GITHUB_ENV"
 
           case "${{ inputs.focus }}" in
             stabilization)
-              test_classes="InkSignViewStabilizationTests"
               test_args="-only-testing:__TEST_TARGET__/InkSignViewStabilizationTests"
               ;;
             pdfium)
-              test_classes="PdfiumSmokeTests"
               test_args="-only-testing:__TEST_TARGET__/PdfiumSmokeTests"
               ;;
             page-input)
-              test_classes="PageInputCoordinatorTests"
               test_args="-only-testing:__TEST_TARGET__/PageInputCoordinatorTests"
               ;;
             lifecycle)
-              test_classes="InkSignViewLifecycleTests,MutablePageImageEncoderTests"
               test_args="-only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
               ;;
             all)
-              test_classes="InkSignViewStabilizationTests,PdfiumSmokeTests,PageInputCoordinatorTests,InkSignViewLifecycleTests,MutablePageImageEncoderTests"
               test_args=""
               ;;
             build-only)
-              test_classes=""
               test_args=""
               ;;
             *)
@@ -152,7 +147,6 @@ jobs:
               exit 1
               ;;
           esac
-          echo "IOS_TEST_CLASSES=$test_classes" >> "$GITHUB_ENV"
           echo "IOS_TEST_ARGS_TEMPLATE=$test_args" >> "$GITHUB_ENV"
 
       - name: Build for testing
@@ -167,32 +161,10 @@ jobs:
             -resultBundlePath "$RUNNER_TEMP/ios-build.xcresult" \
             build-for-testing 2>&1 | tee "$RUNNER_TEMP/ios-build.log"
 
-      - name: Enumerate selected tests
+      - name: Prepare selected tests
         if: inputs.focus != 'build-only'
-        working-directory: ${{ github.workspace }}
         run: |
-          set -o pipefail
-          xcodebuild \
-            -enumerate-tests \
-            -test-enumeration-format json \
-            -workspace "$IOS_WORKSPACE" \
-            -scheme "$IOS_SCHEME" \
-            -destination "$IOS_DESTINATION" \
-            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
-            > "$RUNNER_TEMP/ios-tests.json"
-          for test_class in ${IOS_TEST_CLASSES//,/ }; do
-            jq -e --arg class "$test_class" \
-              '[.. | objects | (.identifier?, .name?, .className?) |
-                select(type == "string" and contains($class))] | length > 0' \
-              "$RUNNER_TEMP/ios-tests.json" > /dev/null
-          done
-          first_class="${IOS_TEST_CLASSES%%,*}"
-          test_target="$(jq -r --arg class "$first_class" \
-            '[.. | strings | select(contains($class)) | split("/") |
-              select(length >= 2) | .[0]] | .[0] // empty' \
-            "$RUNNER_TEMP/ios-tests.json")"
-          test -n "$test_target"
-          test_args="${IOS_TEST_ARGS_TEMPLATE//__TEST_TARGET__/$test_target}"
+          test_args="${IOS_TEST_ARGS_TEMPLATE//__TEST_TARGET__/$IOS_SCHEME}"
           echo "IOS_TEST_ARGS=$test_args" >> "$GITHUB_ENV"
 
       - name: Run selected tests
@@ -217,11 +189,9 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          xcrun xcresulttool get test-results summary \
-            --path "$RUNNER_TEMP/ios-tests.xcresult" \
-            --format json > "$RUNNER_TEMP/ios-test-summary.json"
-          executed="$(jq '[.. | objects | .testsCount? // empty | numbers] |
-            max // 0' "$RUNNER_TEMP/ios-test-summary.json")"
+          executed="$(sed -nE 's/.*Executed ([0-9]+) tests,.*/\1/p' \
+            "$RUNNER_TEMP/ios-tests.log" | sort -n | tail -n 1)"
+          test -n "$executed"
           test "$executed" -gt 0
 
       - name: Upload Xcode diagnostics
@@ -232,6 +202,5 @@ jobs:
           path: |
             ${{ runner.temp }}/ios-*.xcresult
             ${{ runner.temp }}/ios-*.log
-            ${{ runner.temp }}/ios-tests.json
             ${{ runner.temp }}/ios-test-summary.json
           if-no-files-found: ignore

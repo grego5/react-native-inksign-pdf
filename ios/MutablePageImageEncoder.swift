@@ -63,7 +63,8 @@ enum InkSignPdfMutablePageImageEncoder {
       data, UTType.jpeg.identifier as CFString, 1, nil) else {
       throw InkSignView.MutablePageError.unsupportedContent
     }
-    CGImageDestinationAddImage(normalized, destination, [kCGImageDestinationLossyCompressionQuality: 0.72] as CFDictionary)
+    CGImageDestinationAddImage(destination, normalized,
+                              [kCGImageDestinationLossyCompressionQuality: 0.72] as CFDictionary)
     guard CGImageDestinationFinalize(destination) else {
       throw InkSignView.MutablePageError.unsupportedContent
     }

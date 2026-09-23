@@ -65,7 +65,7 @@ struct PageViewportTransform {
     let canonicalToDisplay = Self.canonicalToDisplayTransform(
       pageSize: geometry.mediaBox.size,
       rotation: rotation)
-    let displayFocus = canonicalToDisplay.applying(canonicalFocus)
+    let displayFocus = canonicalFocus.applying(canonicalToDisplay)
     let pageOrigin = CGPoint(
       x: bounds.midX - displayFocus.x * zoom,
       y: bounds.midY - displayFocus.y * zoom)
@@ -154,11 +154,11 @@ struct PageViewportTransform {
           let displayToCanonical = canonicalToDisplay.invertedIfFinite else {
       return canonicalFocus
     }
-    let displayAnchor = canonicalToDisplay.applying(anchor)
+    let displayAnchor = anchor.applying(canonicalToDisplay)
     let targetDisplayFocus = CGPoint(
       x: displayAnchor.x - (viewPoint.x - viewBounds.midX) / zoom,
       y: displayAnchor.y - (viewPoint.y - viewBounds.midY) / zoom)
-    let target = displayToCanonical.applying(targetDisplayFocus)
+    let target = targetDisplayFocus.applying(displayToCanonical)
     return Self.clampedFocus(target,
                              geometry: geometry,
                              rotation: rotation,

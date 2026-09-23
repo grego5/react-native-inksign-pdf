@@ -288,6 +288,9 @@ if ($null -ne $gradle.UserHome) {
     $gradleArguments += @("-g", $gradle.UserHome)
 }
 $gradleArguments += @("-p", $androidProject)
+if ($Mode -eq "build" -or $Mode -eq "connected") {
+    $gradleArguments += "-PreactNativeArchitectures=arm64-v8a,x86_64"
+}
 if ($Mode -eq "jvm") {
     $gradleArguments += "${moduleProject}:testDebugUnitTest"
     if (-not [string]::IsNullOrWhiteSpace($Test)) {

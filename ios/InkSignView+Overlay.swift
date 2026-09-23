@@ -78,7 +78,7 @@ extension InkSignView {
       invalidateOverlayTransformCache()
       return
     }
-    let documentOrigin = overlay.convert(.zero, from: documentView)
+    let documentOrigin = overlay.convert(CGPoint.zero, from: documentView)
     let documentXAxis = overlay.convert(CGPoint(x: 1, y: 0), from: documentView)
     let documentYAxis = overlay.convert(CGPoint(x: 0, y: 1), from: documentView)
     let documentToOverlay = CGAffineTransform(

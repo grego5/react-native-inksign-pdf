@@ -69,36 +69,13 @@ not invoke the InkEngine downloader. The npm package contains the release pin,
 C ABI headers, and PDFium inputs, but no InkEngine archives or Google
 Ink/Abseil source trees.
 
-## iOS artifacts and validation
+## iOS validation
 
-The manually dispatched `.github/workflows/build-and-publish-pdfium.yml`
-workflow builds the static PDFium slices `ios-arm64` for devices and
-`ios-arm64-simulator` for Apple Silicon simulators, then packages both in one
-XCFramework release asset. Its validation checks both XCFramework variants and
-the static PDFium symbols.
-
-The manually dispatched `.github/workflows/ios-validation.yml` workflow runs
-the iOS test suite on a simulator. Use `stabilization`, `pdfium`,
-`page-input`, or `lifecycle` for focused validation and `all` when the complete
-iOS boundary is affected. `build-only` checks project and framework
-integration without executing tests.
-
-The manually dispatched `.github/workflows/ios-adhoc.yml` workflow archives
-the example application with the `iphoneos` SDK and produces the installable
-device build. Use it to validate the device slice and before a release that
-will be installed on hardware. Physical-device interaction and performance
-remain a manual check.
-
-Select the narrowest applicable simulator focus for a change. PDFium,
-XCFramework, Podspec, linker, or release changes require simulator validation
-and a device archive; the release workflow itself validates both packaged
-architectures.
-
-## Dispatching GitHub Actions from an agent
-
-Dispatch with `gh` through an escalated `exec_command`; the sandbox can block
-the authenticated GitHub request. Set `sandbox_permissions` to
-`require_escalated` on the command itself:
+The iOS boundary has three validation layers: simulator tests for native
+behavior, a device archive for device integration, and PDFium packaging checks
+for the bundled native dependency. Use the narrowest simulator focus for a
+change; broaden validation when PDFium, packaging, or platform integration
+changes. Visual fidelity and device interaction remain separate runtime checks.
 
 ## Validation commands
 
@@ -150,4 +127,3 @@ When a tool returns a live process/session:
 
 Use the runner's final `PASS` or `FAIL` line as the result. The heartbeat is
 the liveness signal; intermediate polling is not validation.
-

@@ -1,20 +1,11 @@
 # Android PDF export
 
-`MutableDocumentCoordinator` captures one immutable export snapshot of the
-current working PDF's committed page histories on the UI thread. `PdfExporter`
-consumes that snapshot on the serial export worker through a separate export
-session. Export uses committed content and publishes a verified result without
-replacing the caller's source or the published working artifact.
+Export uses a snapshot of committed page content from the published working
+document. PDFium work stays on the export worker, and the result is written as a
+separate document.
 
-- Source pages, order, dimensions, and rotations are preserved.
-- Completed cubic contours are written as separate opaque vector fill paths.
-  The published page-space cubics are used directly; paths are not refit or
-  flattened into a bitmap.
-- Committed text is written as deterministic PDF text using its canonical
-  position, size, and saved color. Temporary editor and selection state is
-  excluded.
-- The rewritten document is checked against the captured page structure and
-  expected added paths/text before publication.
-- A verified result is atomically published as a unique `signed-*.pdf` in the
-  native cache root. Export is non-consuming; stale or disposed requests clean
-  up their own temporary and reserved outputs.
+Original PDF pages and their order are preserved. Committed ink and text are
+added as vector PDF content; active gestures and editor state are excluded. The
+candidate is validated before publication. Export does not replace the caller's
+source or the working document, and stale or cancelled work cannot publish an
+output.

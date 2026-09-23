@@ -1,3 +1,4 @@
+import PhotosUI
 import UIKit
 import XCTest
 @testable import ReactNativeInkSignPdf
@@ -32,7 +33,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     XCTAssertEqual(staged.map(\.url.lastPathComponent).count, 2)
     XCTAssertNotEqual(staged[0].url, pdf)
     XCTAssertNotEqual(staged[1].url, image)
-    staged.forEach(InkSignPdfCacheArtifactPolicy.shared.deleteExact)
+    staged.forEach { InkSignPdfCacheArtifactPolicy.shared.deleteExact($0.url) }
   }
 
   func testUnsupportedLocalSourceRejectsWithStableErrorAndCleansArtifacts() throws {
@@ -302,7 +303,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     wait(for: [completed], timeout: 5)
     XCTAssertEqual(starts, 1)
     XCTAssertEqual(stops, 1)
-    staged.forEach(InkSignPdfCacheArtifactPolicy.shared.deleteExact)
+    staged.forEach { InkSignPdfCacheArtifactPolicy.shared.deleteExact($0.url) }
   }
 
   func testPhotoProviderResultsArePublishedInPickerOrder() throws {
@@ -353,9 +354,9 @@ final class PageInputCoordinatorTests: XCTestCase {
       choosePhotos?()
     }
     wait(for: [pickerPresented], timeout: 2)
-    let results = [imageResult(for: firstURL), imageResult(for: secondURL)]
+    let providers = [imageProvider(for: firstURL), imageProvider(for: secondURL)]
     if let picker {
-      runOnMain { coordinator.picker(picker, didFinishPicking: results) }
+      runOnMain { coordinator.finishPhotoPicking(itemProviders: providers, from: picker) }
     }
     wait(for: [completed], timeout: 5)
 
@@ -365,7 +366,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     let stagedSecondData = try Data(contentsOf: staged[1].url)
     XCTAssertEqual(stagedFirstData, firstData)
     XCTAssertEqual(stagedSecondData, secondData)
-    staged.forEach(InkSignPdfCacheArtifactPolicy.shared.deleteExact)
+    staged.forEach { InkSignPdfCacheArtifactPolicy.shared.deleteExact($0.url) }
   }
 
   func testPartialPhotoProviderFailureCleansEarlierStagedFiles() throws {
@@ -413,12 +414,12 @@ final class PageInputCoordinatorTests: XCTestCase {
       choosePhotos?()
     }
     wait(for: [pickerPresented], timeout: 2)
-    let results = [
-      imageResult(for: sourceURL),
-      PHPickerResult(itemProvider: NSItemProvider(), assetIdentifier: nil)
+    let providers = [
+      imageProvider(for: sourceURL),
+      NSItemProvider()
     ]
     if let picker {
-      runOnMain { coordinator.picker(picker, didFinishPicking: results) }
+      runOnMain { coordinator.finishPhotoPicking(itemProviders: providers, from: picker) }
     }
     wait(for: [completed], timeout: 5)
 
@@ -434,16 +435,16 @@ final class PageInputCoordinatorTests: XCTestCase {
     XCTAssertEqual(after, before)
   }
 
-  private func imageResult(for url: URL) -> PHPickerResult {
+  private func imageProvider(for url: URL) -> NSItemProvider {
     let provider = NSItemProvider()
     provider.registerFileRepresentation(
       forTypeIdentifier: UTType.image.identifier,
       fileOptions: [],
       visibility: .all) { completion in
-        completion(url, nil)
+        completion(url, false, nil)
         return nil
       }
-    return PHPickerResult(itemProvider: provider, assetIdentifier: nil)
+    return provider
   }
 
   private func runOnMain(_ work: @escaping () -> Void) {

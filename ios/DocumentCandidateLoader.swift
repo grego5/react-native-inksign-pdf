@@ -19,7 +19,7 @@ enum InkSignPdfDocumentCandidateError: Error {
 enum InkSignPdfDocumentCandidateLoader {
   static func load(url: URL,
                    fallbackFontPath: String?,
-                   collectionIndex: Int,
+                   collectionIndex: Double,
                    expectedPageSizes: [CGSize]? = nil) throws -> InkSignPdfDocumentCandidate {
     guard let document = PDFDocument(url: url) else { throw InkSignPdfDocumentCandidateError.unreadable }
     guard document.pageCount > 0 else { throw InkSignPdfDocumentCandidateError.empty }

@@ -56,7 +56,7 @@ final class InkSignPdfCanvasViewDelegate: NSObject, PKCanvasViewDelegate {
 final class InkSignView: HybridInkSignViewSpec {
   struct PendingOpen {
     let token: UInt64
-    let operation: InkSignPdfDocumentCoordinator.OperationToken? = nil
+    let operation: InkSignPdfDocumentCoordinator.OperationToken?
     let promise: Promise<PageInfo>
     let zoom: Double?
     let focus: CGPoint?

@@ -46,7 +46,7 @@ extension InkSignView {
       guard let context = self.beginStructuralOperation(promise: promise,
                                                        requiresDocument: false) else { return }
       let inputOptions = InkSignPdfPageInputOptions(
-        type: options?.type.map { InkSignPdfPageInputType(rawValue: $0.stringValue)! },
+        type: options?.type.map { InkSignPdfPageInputType(rawValue: $0.stringValue) },
         sources: options?.sources)
       self.pageInputCoordinator.stage(options: inputOptions) { [weak self] result in
         guard let self else {

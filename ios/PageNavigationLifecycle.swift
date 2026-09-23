@@ -712,8 +712,8 @@ final class InkSignPdfPageTurnLifecycle {
                                                                  y: bounds.midY))
     let right = viewport.clampedCanonicalPoint(fromView: CGPoint(x: bounds.maxX,
                                                                   y: bounds.midY))
-    let leftAxis = viewport.canonicalToDisplay.applying(left).x
-    let rightAxis = viewport.canonicalToDisplay.applying(right).x
+    let leftAxis = left.applying(viewport.canonicalToDisplay).x
+    let rightAxis = right.applying(viewport.canonicalToDisplay).x
     let pageLength = viewport.displaySize.width
     let visibleLength = abs(rightAxis - leftAxis)
     let pointsPerPoint = visibleLength / bounds.width

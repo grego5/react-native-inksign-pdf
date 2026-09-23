@@ -1,3 +1,4 @@
+import CoreGraphics
 import PDFKit
 import NitroModules
 import PencilKit
@@ -202,6 +203,26 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let afterRemove = try XCTUnwrap(view.documentCoordinator.document)
     XCTAssertEqual(afterRemove.pages.map(\.geometry.mediaBox.width), [300, 500])
     XCTAssertEqual(afterRemove.activePageIndex, 0)
+    XCTAssertEqual(Int(afterRemove.pdfiumSession.pageCount), 2)
+    var firstWorkingPageSize = CGSize.zero
+    var secondWorkingPageSize = CGSize.zero
+    try afterRemove.pdfiumSession.pageSize(for: 0, into: &firstWorkingPageSize)
+    try afterRemove.pdfiumSession.pageSize(for: 1, into: &secondWorkingPageSize)
+    XCTAssertEqual(firstWorkingPageSize.width, 300, accuracy: 0.5)
+    XCTAssertEqual(firstWorkingPageSize.height, 400, accuracy: 0.5)
+    XCTAssertEqual(secondWorkingPageSize.width, 500, accuracy: 0.5)
+    XCTAssertEqual(secondWorkingPageSize.height, 400, accuracy: 0.5)
+    let workingPdf = try XCTUnwrap(CGPDFDocument(afterRemove.workingURL as CFURL),
+                                   "the published working PDF must remain readable by the exporter")
+    XCTAssertEqual(workingPdf.numberOfPages, 2)
+    XCTAssertEqual(try XCTUnwrap(workingPdf.page(at: 1)).getBoxRect(.mediaBox).width,
+                   300, accuracy: 0.5)
+    XCTAssertEqual(try XCTUnwrap(workingPdf.page(at: 1)).getBoxRect(.mediaBox).height,
+                   400, accuracy: 0.5)
+    XCTAssertEqual(try XCTUnwrap(workingPdf.page(at: 2)).getBoxRect(.mediaBox).width,
+                   500, accuracy: 0.5)
+    XCTAssertEqual(try XCTUnwrap(workingPdf.page(at: 2)).getBoxRect(.mediaBox).height,
+                   400, accuracy: 0.5)
 
     let exported = expectation(description: "export page order")
     let output = try view.finalize()
@@ -209,7 +230,27 @@ final class InkSignViewLifecycleTests: XCTestCase {
       let pdf = PDFDocument(url: URL(fileURLWithPath: path))
       XCTAssertEqual(pdf?.pageCount, 2)
       XCTAssertEqual(pdf?.page(at: 0)?.bounds(for: .mediaBox).width, 300)
+      XCTAssertEqual(pdf?.page(at: 0)?.bounds(for: .mediaBox).height, 400)
       XCTAssertEqual(pdf?.page(at: 1)?.bounds(for: .mediaBox).width, 500)
+      XCTAssertEqual(pdf?.page(at: 1)?.bounds(for: .mediaBox).height, 400)
+      do {
+        let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        let session = try InkSignPdfPdfiumSession(data: data,
+                                                  fallbackFontPath: nil,
+                                                  collectionIndex: 0)
+        defer { session.close() }
+        XCTAssertEqual(Int(session.pageCount), 2)
+        var firstPageSize = CGSize.zero
+        var secondPageSize = CGSize.zero
+        try session.pageSize(for: 0, into: &firstPageSize)
+        try session.pageSize(for: 1, into: &secondPageSize)
+        XCTAssertEqual(firstPageSize.width, 300, accuracy: 0.5)
+        XCTAssertEqual(firstPageSize.height, 400, accuracy: 0.5)
+        XCTAssertEqual(secondPageSize.width, 500, accuracy: 0.5)
+        XCTAssertEqual(secondPageSize.height, 400, accuracy: 0.5)
+      } catch {
+        XCTFail("PDFium could not verify the exported page order: \(error)")
+      }
       exported.fulfill()
     }
     output.catch { error in XCTFail("export failed: \(error)"); exported.fulfill() }
@@ -365,7 +406,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let fixture = makeFixture()
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
-    let target = ViewportTarget(zoom: 2, focus: CGPoint(x: 140, y: 180))
+    let target = ViewportTarget(zoom: 3, focus: CGPoint(x: 140, y: 180))
     XCTAssertTrue(view.applyViewport(target: target))
     view.setInteractionMode(editing: true)
 
@@ -373,7 +414,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
                    promise: Promise<PageInfo>())
 
     let restored = try view.currentViewportSnapshot()
-    XCTAssertEqual(restored.zoom, 2, accuracy: 0.0001)
+    XCTAssertEqual(restored.zoom, 3, accuracy: 0.0001)
     XCTAssertEqual(restored.x, 140, accuracy: 1)
     XCTAssertEqual(restored.y, 180, accuracy: 1)
     XCTAssertTrue(view.editMode)
@@ -471,6 +512,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     promise.catch { _ in rejectionCount += 1 }
     fixture.view.pendingOpen = InkSignView.PendingOpen(
       token: fixture.view.documentCoordinator.generation,
+      operation: nil,
       promise: promise,
       zoom: 2,
       focus: CGPoint(x: 150, y: 200),
@@ -704,11 +746,12 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let fixture = makeFixture()
     defer { fixture.window.isHidden = true }
     fixture.view.pageTurnLifecycle.cancelUncommittedTurn()
+    let initialSubmissionCount = fixture.previewScheduler.submittedRequests.count
 
     fixture.view.pageTurnLifecycle.stableContextChanged()
-    XCTAssertEqual(fixture.previewScheduler.submittedRequests.count, 1)
+    XCTAssertEqual(fixture.previewScheduler.submittedRequests.count - initialSubmissionCount, 1)
     fixture.view.pageTurnLifecycle.stableContextChanged()
-    XCTAssertEqual(fixture.previewScheduler.submittedRequests.count, 1)
+    XCTAssertEqual(fixture.previewScheduler.submittedRequests.count - initialSubmissionCount, 1)
     fixture.previewScheduler.completeAll()
     XCTAssertNotNil(preparedPreview(.left, in: fixture.view))
   }
@@ -717,15 +760,16 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
     defer { fixture.window.isHidden = true }
     fixture.view.pageTurnLifecycle.cancelUncommittedTurn()
+    let initialSubmissionCount = fixture.previewScheduler.submittedRequests.count
 
     fixture.view.pageTurnLifecycle.stableContextChanged()
-    XCTAssertEqual(fixture.previewScheduler.submittedRequests.count, 2)
+    XCTAssertEqual(fixture.previewScheduler.submittedRequests.count - initialSubmissionCount, 2)
     XCTAssertNotNil(renderingRequest(.left, in: fixture.view))
     XCTAssertNotNil(renderingRequest(.right, in: fixture.view))
     fixture.previewScheduler.completeNext()
     XCTAssertNotNil(renderingRequest(.right, in: fixture.view))
     fixture.previewScheduler.completeNext()
-    XCTAssertEqual(fixture.previewScheduler.submittedRequests.count, 2)
+    XCTAssertEqual(fixture.previewScheduler.submittedRequests.count - initialSubmissionCount, 2)
   }
 
   func testChangingOnePreviewIdentityResubmitsOnlyThatDirection() {
@@ -806,7 +850,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertEqual(preparedPreview(.left, in: fixture.view)?.key, replacement.key)
   }
 
-  func testTextAnnotationUsesExplicitLinesAndClipsCanonicalPosition() {
+  func testTextAnnotationKeepsCenteredIntrinsicBoundsWhenContentExceedsPage() {
     let annotation = makeCenteredTextAnnotation(
       id: "text",
       text: "one\n\ntwo",
@@ -816,7 +860,11 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertEqual(annotation.text, "one\n\ntwo")
     XCTAssertGreaterThan(annotation.intrinsicSize.height, 2 * 16)
     XCTAssertLessThanOrEqual(annotation.bounds.maxX, 80)
-    XCTAssertLessThanOrEqual(annotation.bounds.maxY, 40)
+    XCTAssertGreaterThan(annotation.intrinsicSize.height, 40)
+    XCTAssertEqual(annotation.bounds.midY, 20, accuracy: 0.001)
+    XCTAssertEqual(annotation.bounds.maxY,
+                   (40 + annotation.intrinsicSize.height) / 2,
+                   accuracy: 0.001)
     XCTAssertEqual(annotation.position.x, (80 - annotation.intrinsicSize.width) / 2,
                    accuracy: 0.001)
   }
@@ -859,11 +907,11 @@ final class InkSignViewLifecycleTests: XCTestCase {
       .appendingPathComponent("InkSignPdfTextRenderer-\(UUID().uuidString).pdf")
     defer { try? FileManager.default.removeItem(at: url) }
 
+    var pageBox = mediaBox
     guard let consumer = CGDataConsumer(url: url as CFURL),
-          var pageBox: CGRect = mediaBox,
           let context = CGContext(consumer: consumer,
                                   mediaBox: &pageBox,
-                                  auxiliaryInfo: nil) else {
+                                  nil) else {
       return XCTFail("PDF context should be available")
     }
     context.beginPDFPage([kCGPDFContextMediaBox as String: mediaBox] as CFDictionary)
@@ -1190,7 +1238,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     fixture.view.pageTurnLifecycle.pullChanged(translation: CGPoint(x: -64, y: 0))
     XCTAssertEqual(fixture.view.documentView.transform.a, 1, accuracy: 0.001)
 
-    fixture.view.pageTurnLifecycle.pullChanged(translation: CGPoint(x: -146, y: 0))
+    fixture.view.pageTurnLifecycle.pullChanged(translation: CGPoint(x: -120, y: 0))
     XCTAssertLessThan(fixture.view.documentView.transform.a, 1)
     XCTAssertGreaterThan(fixture.view.documentView.transform.a, 0.96)
   }
@@ -1204,7 +1252,9 @@ final class InkSignViewLifecycleTests: XCTestCase {
     fixture.view.pageTurnLifecycle.pullChanged(translation: CGPoint(x: -180, y: 0))
     fixture.view.pageTurnLifecycle.pullEnded()
     fixture.animationFactory.lastDriver?.complete()
-    XCTAssertNotNil(fixture.view.pendingPageSwitchID)
+    XCTAssertNil(fixture.view.pendingPageSwitchID)
+    XCTAssertEqual(completionCount, 1)
+    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
     fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
     XCTAssertEqual(completionCount, 1)
     XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
@@ -1353,7 +1403,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertTrue(fixture.view.pageTurnLifecycle.previewView.isHidden)
   }
 
-  func testPageSwitchWaitsForOverlayHandoffBeforeCompleting() throws {
+  func testPageSwitchCompletesAfterRetainedOverlayHandoff() throws {
     let fixture = makeFixture()
     defer { fixture.window.isHidden = true }
     var completionCount = 0
@@ -1365,7 +1415,9 @@ final class InkSignViewLifecycleTests: XCTestCase {
       }
     }
 
-    XCTAssertNotNil(fixture.view.pendingPageSwitchID)
+    XCTAssertNil(fixture.view.pendingPageSwitchID)
+    XCTAssertEqual(completionCount, 1)
+    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
 
     fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
 
@@ -1374,80 +1426,43 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
   }
 
-  func testCommittedOverlayDetachmentPreservesSnapshotAndSwitchIdentity() {
+  func testOverlayDetachmentAfterCommittedPageTurnDoesNotResettleIt() {
     let fixture = makeFixture()
     defer { fixture.window.isHidden = true }
+    var completionCount = 0
+    fixture.view.onPageChange = { _ in completionCount += 1 }
     XCTAssertTrue(beginPull(in: fixture.view))
     fixture.view.pageTurnLifecycle.pullChanged(translation: CGPoint(x: -180, y: 0))
     fixture.view.pageTurnLifecycle.pullEnded()
     fixture.animationFactory.lastDriver?.complete()
-
-    guard let switchID = fixture.view.pendingPageSwitchID,
-          case .committed(let handoff) = fixture.view.pageTurnLifecycle.phase,
-          handoff.progress == .waiting(switchID) else {
-      return XCTFail("armed gesture should wait for the matching live target")
-    }
-    let retainedKey = handoff.preview.key
-    XCTAssertFalse(fixture.view.pageTurnLifecycle.previewView.isHidden)
-
-    fixture.view.pageTurnLifecycle.overlayDetached()
-
-    guard case .committed(let detachedHandoff) = fixture.view.pageTurnLifecycle.phase else {
-      return XCTFail("overlay detachment must preserve the committed handoff")
-    }
-    XCTAssertEqual(detachedHandoff.progress, .waiting(switchID))
-    XCTAssertEqual(detachedHandoff.preview.key, retainedKey)
-    XCTAssertFalse(fixture.view.pageTurnLifecycle.previewView.isHidden)
-
-    fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
 
     XCTAssertNil(fixture.view.pendingPageSwitchID)
     XCTAssertTrue(isIdle(fixture.view.pageTurnLifecycle))
     XCTAssertTrue(fixture.view.pageTurnLifecycle.previewView.isHidden)
     XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
-  }
+    XCTAssertEqual(completionCount, 1)
+    let completedSwitchID = fixture.view.pageSwitchRequestID
+    XCTAssertFalse(fixture.view.pageTurnLifecycle.pageSwitchReady(switchID: completedSwitchID &+ 1))
+    fixture.view.pageTurnLifecycle.pageSwitchCancelled(switchID: completedSwitchID &+ 1)
+    fixture.view.pageTurnLifecycle.pageSwitchFailed(switchID: completedSwitchID &+ 1)
 
-  func testStaleSwitchIDsCannotCompleteCommittedHandoff() {
-    let fixture = makeFixture()
-    defer { fixture.window.isHidden = true }
-    XCTAssertTrue(beginPull(in: fixture.view))
-    fixture.view.pageTurnLifecycle.pullChanged(translation: CGPoint(x: -180, y: 0))
-    fixture.view.pageTurnLifecycle.pullEnded()
-    fixture.animationFactory.lastDriver?.complete()
-
-    guard let switchID = fixture.view.pendingPageSwitchID else {
-      return XCTFail("armed turn should create a pending switch")
-    }
-    XCTAssertFalse(fixture.view.pageTurnLifecycle.pageSwitchReady(switchID: switchID &+ 1))
-    fixture.view.pageTurnLifecycle.pageSwitchCancelled(switchID: switchID &+ 1)
-    fixture.view.pageTurnLifecycle.pageSwitchFailed(switchID: switchID &+ 1)
-    guard case .committed = fixture.view.pageTurnLifecycle.phase else {
-      return XCTFail("stale switch IDs must not release the handoff")
-    }
-
+    fixture.view.overlayDidEndDisplaying(fixture.view.canvasView, for: fixture.pages[1])
     fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
+
     XCTAssertTrue(isIdle(fixture.view.pageTurnLifecycle))
+    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(completionCount, 1)
   }
 
-  func testPendingPageSwitchCancellationIsExactlyOnceAgainstDelayedCallback() throws {
+  func testCompletedPageSwitchIgnoresCancellationAndLateOverlayCallback() throws {
     let fixture = makeFixture()
     defer { fixture.window.isHidden = true }
     var completionCount = 0
+    var switchResult: Result<PageInfo, Error>?
 
     try fixture.view.switchPage(to: 1) { result in
       completionCount += 1
-      guard case .failure(let error) = result else {
-        XCTFail("cancellation must fail the pending request")
-        return
-      }
-      guard let viewportError = error as? InkSignView.ViewportError else {
-        XCTFail("cancellation must use the viewport cancellation error")
-        return
-      }
-      guard case .cancelled = viewportError else {
-        XCTFail("cancellation must use the viewport cancellation error")
-        return
-      }
+      switchResult = result
     }
 
     fixture.view.cancelPendingPageSwitch()
@@ -1456,25 +1471,33 @@ final class InkSignViewLifecycleTests: XCTestCase {
 
     XCTAssertNil(fixture.view.pendingPageSwitchID)
     XCTAssertEqual(completionCount, 1)
+    guard case .success(let pageInfo) = switchResult else {
+      return XCTFail("the installed target page should complete successfully")
+    }
+    XCTAssertEqual(pageInfo.pageIndex, 1)
   }
 
-  func testDocumentReplacementCancelsPendingPageSwitchExactlyOnce() throws {
+  func testNewerQueuedPageNavigationPublishesOnlyItsResult() throws {
+    let fixture = makeFixture(pageCount: 3)
+    defer { fixture.window.isHidden = true }
+    var pageChanges = [PageInfo]()
+    fixture.view.onPageChange = { pageChanges.append($0) }
+
+    try fixture.view.nextPage()
+    try fixture.view.nextPage()
+    drainMainQueue()
+
+    XCTAssertEqual(pageChanges.map(\.pageIndex), [1])
+    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+  }
+
+  func testDocumentReplacementInvalidatesQueuedPageNavigation() throws {
     let fixture = makeFixture()
     defer { fixture.window.isHidden = true }
     var completionCount = 0
+    fixture.view.onPageChange = { _ in completionCount += 1 }
 
-    try fixture.view.switchPage(to: 1) { result in
-      completionCount += 1
-      guard case .failure(let error) = result,
-            let viewportError = error as? InkSignView.ViewportError else {
-        XCTFail("replacement must cancel the pending request")
-        return
-      }
-      guard case .cancelled = viewportError else {
-        XCTFail("replacement must cancel the pending request")
-        return
-      }
-    }
+    try fixture.view.nextPage()
 
     fixture.view.beginLoad(
       "",
@@ -1482,34 +1505,26 @@ final class InkSignViewLifecycleTests: XCTestCase {
       focus: nil,
       fitToPage: true,
       promise: Promise<PageInfo>())
-    fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
+    drainMainQueue()
 
-    XCTAssertEqual(completionCount, 1)
+    XCTAssertEqual(completionCount, 0)
     XCTAssertNil(fixture.view.pendingPageSwitchID)
+    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[0])
   }
 
-  func testDisposalCancelsPendingPageSwitchExactlyOnce() throws {
+  func testDisposalInvalidatesQueuedPageNavigation() throws {
     let fixture = makeFixture()
     defer { fixture.window.isHidden = true }
     var completionCount = 0
+    fixture.view.onPageChange = { _ in completionCount += 1 }
 
-    try fixture.view.switchPage(to: 1) { result in
-      completionCount += 1
-      guard case .failure(let error) = result,
-            let viewportError = error as? InkSignView.ViewportError else {
-        XCTFail("disposal must cancel the pending request")
-        return
-      }
-      guard case .cancelled = viewportError else {
-        XCTFail("disposal must cancel the pending request")
-        return
-      }
-    }
+    try fixture.view.nextPage()
 
     fixture.view.dispose()
     fixture.view.dispose()
+    drainMainQueue()
 
-    XCTAssertEqual(completionCount, 1)
+    XCTAssertEqual(completionCount, 0)
     XCTAssertNil(fixture.view.pendingPageSwitchID)
   }
 
@@ -1583,6 +1598,12 @@ final class InkSignViewLifecycleTests: XCTestCase {
     view.pageTurnLifecycle.stableContextChanged()
     previewScheduler.completeAll()
     return (view, window, pages, previewScheduler, animationFactory)
+  }
+
+  private func drainMainQueue() {
+    let drained = expectation(description: "queued navigation callbacks")
+    DispatchQueue.main.async { drained.fulfill() }
+    wait(for: [drained], timeout: 1)
   }
 
   private func preparedPreview(
