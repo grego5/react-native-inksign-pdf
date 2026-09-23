@@ -14,6 +14,7 @@ extension InkSignView {
     case invalidPageIndex
     case assemblyFailed
     case unsupportedContent
+    case invalidImagePageSize
 
     var errorDescription: String? {
       switch self {
@@ -25,6 +26,7 @@ extension InkSignView {
       case .invalidPageIndex: return "invalid_page_index: The destination page index is invalid"
       case .assemblyFailed: return "pdf_mutation_failed: Unable to assemble the updated PDF"
       case .unsupportedContent: return "unsupported_content: The selected image is unreadable"
+      case .invalidImagePageSize: return "invalid_image_page_size: Image page dimensions must be finite positive PDF points"
       }
     }
   }
@@ -32,6 +34,15 @@ extension InkSignView {
   func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult> {
     let promise = Promise<AddPagesResult>()
     performOnMain {
+      let requestedImageSize = options?.imagePageSize.map {
+        CGSize(width: CGFloat($0.width), height: CGFloat($0.height))
+      }
+      if let requestedImageSize,
+         !requestedImageSize.width.isFinite || requestedImageSize.width <= 0 ||
+         !requestedImageSize.height.isFinite || requestedImageSize.height <= 0 {
+        promise.reject(withError: MutablePageError.invalidImagePageSize)
+        return
+      }
       guard let context = self.beginStructuralOperation(promise: promise,
                                                        requiresDocument: false) else { return }
       let inputOptions = InkSignPdfPageInputOptions(
@@ -54,7 +65,8 @@ extension InkSignView {
               self.documentCoordinator.settle(context.operation, succeeded: true)
               promise.resolve(withResult: AddPagesResult(pageInfo: info, addedPageCount: 0))
             } else {
-              self.finishStructuralFailure(context, error: MutablePageError.notReady, promise: promise)
+              self.documentCoordinator.settle(context.operation, succeeded: true)
+              promise.resolve(withResult: AddPagesResult(pageInfo: nil, addedPageCount: 0))
             }
             return
           }
@@ -65,6 +77,9 @@ extension InkSignView {
           self.assembleStructuralCandidate(context,
                                            staged: staged,
                                            command: .append,
+                                           imageGeometry: requestedImageSize.map {
+                                             PageGeometry(mediaBox: CGRect(origin: .zero, size: $0), rotation: 0)
+                                           },
                                            promise: promise) { pageInfo, count in
             promise.resolve(withResult: AddPagesResult(pageInfo: pageInfo,
                                                        addedPageCount: Double(count)))
@@ -200,7 +215,7 @@ extension InkSignView {
     let activePageID = oldState?.activePageID ?? UUID()
     let activePageIndex = oldState?.activePageIndex ?? 0
     let activeGeometry = oldState?.activePage.geometry ??
-      PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 612, height: 792), rotation: 0)
+      PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 595.28, height: 841.89), rotation: 0)
     return StructuralContext(operation: operation,
                              coordinator: documentCoordinator,
                              oldState: oldState,
@@ -235,6 +250,7 @@ extension InkSignView {
     _ context: StructuralContext,
     staged: [InkSignPdfStagedPageInput],
     command: StructuralCommand,
+    imageGeometry: PageGeometry? = nil,
     promise: Promise<T>,
     resolve: @escaping (PageInfo, Int) -> Void
   ) {
@@ -245,7 +261,7 @@ extension InkSignView {
       pages: context.pages,
       activePageID: context.activePageID,
       activePageIndex: context.activePageIndex,
-      imageGeometry: context.activeGeometry,
+      imageGeometry: imageGeometry ?? context.activeGeometry,
       fallbackFont: fallbackFont)
     loadQueue.async { [weak self] in
       defer { coordinator.releaseStagedInputs(staged) }

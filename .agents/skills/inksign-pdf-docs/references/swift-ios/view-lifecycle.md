@@ -66,8 +66,9 @@
   with white background, contain fit, a 200 DPI cap, and 0.72 JPEG quality.
   Selected PDFs contribute their pages in selection order.
 - With an open document, PDFium assembles a detached candidate from the current
-  working PDF. Without one, `addPages` creates a PDF directly from the staged
-  inputs; image pages use letter-size geometry. The candidate must reopen in
+  working PDF using `APPEND`. Without one, `addPages` creates a PDF through the
+  shared `CREATE` operation. Images use `imagePageSize`, the active page size,
+  or portrait A4 (595.28 × 841.89 points). The candidate must reopen in
   both PDFKit and PDFium and have matching page counts before the coordinator
   publishes its file, sessions, page records, active page identity, generation,
   and structural dirty state together.
