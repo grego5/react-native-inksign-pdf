@@ -30,11 +30,14 @@
 
 // Forward declaration of `PageType` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PageType; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 
 #include "PageType.hpp"
 #include <optional>
 #include <string>
 #include <vector>
+#include "ImagePageSize.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -45,10 +48,11 @@ namespace margelo::nitro::inksignpdf {
   public:
     std::optional<PageType> type     SWIFT_PRIVATE;
     std::optional<std::vector<std::string>> sources     SWIFT_PRIVATE;
+    std::optional<ImagePageSize> imagePageSize     SWIFT_PRIVATE;
 
   public:
     AddPagesOptions() = default;
-    explicit AddPagesOptions(std::optional<PageType> type, std::optional<std::vector<std::string>> sources): type(type), sources(sources) {}
+    explicit AddPagesOptions(std::optional<PageType> type, std::optional<std::vector<std::string>> sources, std::optional<ImagePageSize> imagePageSize): type(type), sources(sources), imagePageSize(imagePageSize) {}
 
   public:
     friend bool operator==(const AddPagesOptions& lhs, const AddPagesOptions& rhs) = default;
@@ -65,13 +69,15 @@ namespace margelo::nitro {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::AddPagesOptions(
         JSIConverter<std::optional<margelo::nitro::inksignpdf::PageType>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "type"))),
-        JSIConverter<std::optional<std::vector<std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources")))
+        JSIConverter<std::optional<std::vector<std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources"))),
+        JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::AddPagesOptions& arg) {
       jsi::Object obj(runtime);
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "type"), JSIConverter<std::optional<margelo::nitro::inksignpdf::PageType>>::toJSI(runtime, arg.type));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "sources"), JSIConverter<std::optional<std::vector<std::string>>>::toJSI(runtime, arg.sources));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize"), JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::toJSI(runtime, arg.imagePageSize));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -84,6 +90,7 @@ namespace margelo::nitro {
       }
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::PageType>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "type")))) return false;
       if (!JSIConverter<std::optional<std::vector<std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources")))) return false;
+      if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize")))) return false;
       return true;
     }
   };

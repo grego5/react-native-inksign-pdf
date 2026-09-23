@@ -12,6 +12,7 @@
 
 #include "JPageInfo.hpp"
 #include "PageInfo.hpp"
+#include <optional>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -37,7 +38,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto fieldAddedPageCount = clazz->getField<double>("addedPageCount");
       double addedPageCount = this->getFieldValue(fieldAddedPageCount);
       return AddPagesResult(
-        pageInfo->toCpp(),
+        pageInfo != nullptr ? std::make_optional(pageInfo->toCpp()) : std::nullopt,
         addedPageCount
       );
     }
@@ -53,7 +54,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
-        JPageInfo::fromCpp(value.pageInfo),
+        value.pageInfo.has_value() ? JPageInfo::fromCpp(value.pageInfo.value()) : nullptr,
         value.addedPageCount
       );
     }

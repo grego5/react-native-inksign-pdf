@@ -27,6 +27,8 @@ namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `PageType` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PageType; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 
 #include "PdfFallbackFont.hpp"
 #include <optional>
@@ -57,6 +59,8 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 #include "PageType.hpp"
 #include "JPageType.hpp"
 #include <vector>
+#include "ImagePageSize.hpp"
+#include "JImagePageSize.hpp"
 
 namespace margelo::nitro::inksignpdf {
 

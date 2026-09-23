@@ -10,6 +10,8 @@
 #include <fbjni/fbjni.h>
 #include "AddPagesOptions.hpp"
 
+#include "ImagePageSize.hpp"
+#include "JImagePageSize.hpp"
 #include "JPageType.hpp"
 #include "PageType.hpp"
 #include <optional>
@@ -39,6 +41,8 @@ namespace margelo::nitro::inksignpdf {
       jni::local_ref<JPageType> type = this->getFieldValue(fieldType);
       static const auto fieldSources = clazz->getField<jni::JArrayClass<jni::JString>>("sources");
       jni::local_ref<jni::JArrayClass<jni::JString>> sources = this->getFieldValue(fieldSources);
+      static const auto fieldImagePageSize = clazz->getField<JImagePageSize>("imagePageSize");
+      jni::local_ref<JImagePageSize> imagePageSize = this->getFieldValue(fieldImagePageSize);
       return AddPagesOptions(
         type != nullptr ? std::make_optional(type->toCpp()) : std::nullopt,
         sources != nullptr ? std::make_optional([&](auto&& __input) {
@@ -50,7 +54,8 @@ namespace margelo::nitro::inksignpdf {
             __vector.push_back(__element->toStdString());
           }
           return __vector;
-        }(sources)) : std::nullopt
+        }(sources)) : std::nullopt,
+        imagePageSize != nullptr ? std::make_optional(imagePageSize->toCpp()) : std::nullopt
       );
     }
 
@@ -60,7 +65,7 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JAddPagesOptions::javaobject> fromCpp(const AddPagesOptions& value) {
-      using JSignature = JAddPagesOptions(jni::alias_ref<JPageType>, jni::alias_ref<jni::JArrayClass<jni::JString>>);
+      using JSignature = JAddPagesOptions(jni::alias_ref<JPageType>, jni::alias_ref<jni::JArrayClass<jni::JString>>, jni::alias_ref<JImagePageSize>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -75,7 +80,8 @@ namespace margelo::nitro::inksignpdf {
             __array->setElement(__i, *__elementJni);
           }
           return __array;
-        }(value.sources.value()) : nullptr
+        }(value.sources.value()) : nullptr,
+        value.imagePageSize.has_value() ? JImagePageSize::fromCpp(value.imagePageSize.value()) : nullptr
       );
     }
   };

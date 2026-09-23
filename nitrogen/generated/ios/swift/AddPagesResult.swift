@@ -18,13 +18,19 @@ public extension AddPagesResult {
   /**
    * Create a new instance of `AddPagesResult`.
    */
-  init(pageInfo: PageInfo, addedPageCount: Double) {
-    self.init(pageInfo, addedPageCount)
+  init(pageInfo: PageInfo?, addedPageCount: Double) {
+    self.init({ () -> bridge.std__optional_PageInfo_ in
+      if let __unwrappedValue = pageInfo {
+        return bridge.create_std__optional_PageInfo_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), addedPageCount)
   }
 
   @inline(__always)
-  var pageInfo: PageInfo {
-    return self.__pageInfo
+  var pageInfo: PageInfo? {
+    return self.__pageInfo.value
   }
   
   @inline(__always)

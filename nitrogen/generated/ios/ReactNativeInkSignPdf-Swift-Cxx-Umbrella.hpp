@@ -16,6 +16,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `PageInfo` to properly resolve imports.
@@ -36,6 +38,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "AddPagesResult.hpp"
 #include "DoubleTapOptions.hpp"
 #include "HybridInkSignViewSpec.hpp"
+#include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
 #include "PageInfo.hpp"
 #include "PageType.hpp"

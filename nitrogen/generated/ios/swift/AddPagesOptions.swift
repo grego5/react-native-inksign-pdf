@@ -18,7 +18,7 @@ public extension AddPagesOptions {
   /**
    * Create a new instance of `AddPagesOptions`.
    */
-  init(type: PageType?, sources: [String]?) {
+  init(type: PageType?, sources: [String]?, imagePageSize: ImagePageSize?) {
     self.init({ () -> bridge.std__optional_PageType_ in
       if let __unwrappedValue = type {
         return bridge.create_std__optional_PageType_(__unwrappedValue)
@@ -34,6 +34,12 @@ public extension AddPagesOptions {
           }
           return __vector
         }())
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_ImagePageSize_ in
+      if let __unwrappedValue = imagePageSize {
+        return bridge.create_std__optional_ImagePageSize_(__unwrappedValue)
       } else {
         return .init()
       }
@@ -55,5 +61,10 @@ public extension AddPagesOptions {
         return nil
       }
     }()
+  }
+  
+  @inline(__always)
+  var imagePageSize: ImagePageSize? {
+    return self.__imagePageSize.value
   }
 }

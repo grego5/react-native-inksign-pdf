@@ -30,6 +30,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `PageType` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PageType; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 
@@ -47,6 +49,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "AddPagesOptions.hpp"
 #include "PageType.hpp"
 #include <vector>
+#include "ImagePageSize.hpp"
 #include "Viewport.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"

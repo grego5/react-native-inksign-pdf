@@ -32,6 +32,7 @@
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
 
 #include "PageInfo.hpp"
+#include <optional>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -40,12 +41,12 @@ namespace margelo::nitro::inksignpdf {
    */
   struct AddPagesResult final {
   public:
-    PageInfo pageInfo     SWIFT_PRIVATE;
+    std::optional<PageInfo> pageInfo     SWIFT_PRIVATE;
     double addedPageCount     SWIFT_PRIVATE;
 
   public:
     AddPagesResult() = default;
-    explicit AddPagesResult(PageInfo pageInfo, double addedPageCount): pageInfo(pageInfo), addedPageCount(addedPageCount) {}
+    explicit AddPagesResult(std::optional<PageInfo> pageInfo, double addedPageCount): pageInfo(pageInfo), addedPageCount(addedPageCount) {}
 
   public:
     friend bool operator==(const AddPagesResult& lhs, const AddPagesResult& rhs) = default;
@@ -61,13 +62,13 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::AddPagesResult fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::AddPagesResult(
-        JSIConverter<margelo::nitro::inksignpdf::PageInfo>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageInfo"))),
+        JSIConverter<std::optional<margelo::nitro::inksignpdf::PageInfo>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageInfo"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "addedPageCount")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::AddPagesResult& arg) {
       jsi::Object obj(runtime);
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageInfo"), JSIConverter<margelo::nitro::inksignpdf::PageInfo>::toJSI(runtime, arg.pageInfo));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageInfo"), JSIConverter<std::optional<margelo::nitro::inksignpdf::PageInfo>>::toJSI(runtime, arg.pageInfo));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "addedPageCount"), JSIConverter<double>::toJSI(runtime, arg.addedPageCount));
       return obj;
     }
@@ -79,7 +80,7 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
-      if (!JSIConverter<margelo::nitro::inksignpdf::PageInfo>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageInfo")))) return false;
+      if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::PageInfo>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageInfo")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "addedPageCount")))) return false;
       return true;
     }

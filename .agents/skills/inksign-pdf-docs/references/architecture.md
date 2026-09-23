@@ -46,8 +46,8 @@ stored state or the JavaScript boundary.
   worker handles and platform objects never enter JavaScript or returned
   snapshots.
 - The shared `PdfiumPageAssembler` owns no publication state. On its caller's
-  serial worker it applies one append, remove, or move command to copied
-  working-PDF bytes, keeps all PDFium handles and staged JPEG bytes inside the
+  serial worker it applies one create, append, remove, or move command to
+  detached input bytes, keeps all PDFium handles and staged JPEG bytes inside the
   operation, saves a non-incremental scratch candidate, and returns detached
   page metadata only after reopening and validating the candidate.
 - All PDFium API calls, including initialization, destruction, session
@@ -86,9 +86,13 @@ stored state or the JavaScript boundary.
   decreaseTextSize, removeTextAnnotation, and finalize. Android debug builds
   also expose the debug-recording methods defined in the TypeScript spec.
 - `PageType` is `pdf` or `image`. `addPages(options?)` accepts both types when
-  omitted, appends selected files in picker order, expands every selected PDF
-  in source order, and appends one page per image. Cancellation resolves with
-  zero added pages and leaves the active page and state unchanged.
+  omitted, preserves picker/source order, expands every selected PDF in source
+  order, and adds one page per image. `imagePageSize` supplies finite positive
+  PDF-point dimensions for every image; otherwise images use the active page
+  size or portrait A4 (595.28 × 841.89 points) when creating the first document.
+  A successful first import creates a dirty document with its first added page
+  active. Cancellation and empty sources resolve with zero added pages, leave
+  state unchanged, and omit `pageInfo` when no document exists.
 - `removePage()` removes the active page and activates the page now at its
   index, or the preceding page when the removed page was last; the final page
   cannot be removed. `movePage(pageIndex)` accepts a destination in

@@ -20,17 +20,25 @@ export interface PageInfo {
 
 export type PageType = 'pdf' | 'image'
 
+/** Image page dimensions in PDF points. */
+export interface ImagePageSize {
+  width: number
+  height: number
+}
+
 export interface AddPagesOptions {
   /** Restricts the native picker. Omission permits both `pdf` and `image`. */
   type?: PageType
   /** Ordered local file paths or file URLs to import without presenting a picker. */
   sources?: string[]
+  /** Dimensions used for every imported image. Defaults to the active page size or portrait A4. */
+  imagePageSize?: ImagePageSize
 }
 
 export interface AddPagesResult {
-  /** Metadata for the page active after the operation. */
-  pageInfo: PageInfo
-  /** Number of pages appended. Cancellation resolves with zero. */
+  /** Metadata for the active page; omitted when cancellation leaves no document. */
+  pageInfo?: PageInfo
+  /** Number of pages added. Cancellation and empty sources resolve with zero. */
   addedPageCount: number
 }
 

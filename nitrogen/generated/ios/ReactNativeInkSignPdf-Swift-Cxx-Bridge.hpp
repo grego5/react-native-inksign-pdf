@@ -16,6 +16,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `PageInfo` to properly resolve imports.
@@ -40,6 +42,7 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "AddPagesResult.hpp"
 #include "DoubleTapOptions.hpp"
 #include "HybridInkSignViewSpec.hpp"
+#include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
 #include "PageInfo.hpp"
 #include "PageType.hpp"
@@ -261,6 +264,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::optional<PageInfo>
+  /**
+   * Specialized version of `std::optional<PageInfo>`.
+   */
+  using std__optional_PageInfo_ = std::optional<PageInfo>;
+  inline std::optional<PageInfo> create_std__optional_PageInfo_(const PageInfo& value) noexcept {
+    return std::optional<PageInfo>(value);
+  }
+  inline bool has_value_std__optional_PageInfo_(const std::optional<PageInfo>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline PageInfo get_std__optional_PageInfo_(const std::optional<PageInfo>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::shared_ptr<Promise<AddPagesResult>>
   /**
    * Specialized version of `std::shared_ptr<Promise<AddPagesResult>>`.
@@ -333,6 +351,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline std::vector<std::string> get_std__optional_std__vector_std__string__(const std::optional<std::vector<std::string>>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<ImagePageSize>
+  /**
+   * Specialized version of `std::optional<ImagePageSize>`.
+   */
+  using std__optional_ImagePageSize_ = std::optional<ImagePageSize>;
+  inline std::optional<ImagePageSize> create_std__optional_ImagePageSize_(const ImagePageSize& value) noexcept {
+    return std::optional<ImagePageSize>(value);
+  }
+  inline bool has_value_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline ImagePageSize get_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
     return optional.value();
   }
   
