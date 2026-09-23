@@ -648,7 +648,13 @@ class HybridInkSignView internal constructor(
   private fun captureExport(): PdfExportSnapshot {
     checkMainThread()
     if (disposed) throw operationCancelled()
-    return coordinator.captureExport(surface.strokeColor()).also { snapshot ->
+    val captured = coordinator.captureExport(surface.strokeColor())
+    val snapshot = if (unicodeTextEntries(captured).any { it.fontKind != 0 }) {
+      captured.copy(unicodeFonts = PdfExportFonts.load(context))
+    } else {
+      captured
+    }
+    return snapshot.also { snapshot ->
       synchronized(this) { pendingOutputs += File(snapshot.outputPath) }
     }
   }

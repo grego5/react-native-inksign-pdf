@@ -146,6 +146,7 @@ endif()
 add_library(ReactNativeInkSignPdf SHARED
   src/main/cpp/cpp-adapter.cpp
   src/main/cpp/pdfium_render_jni.cpp
+  src/main/cpp/pdfium_export_jni.cpp
   src/main/cpp/pdfium_smoke.cpp
   src/main/cpp/pdfium_session_smoke.cpp
   src/main/cpp/InkEngineJni.cpp

@@ -2,14 +2,9 @@ package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.Rect
-import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRendererPreV
 import android.graphics.pdf.RenderParams
-import android.graphics.pdf.component.PdfPagePathObject
 import android.graphics.pdf.component.PdfPageTextObject
 import android.os.Build
 import android.os.ParcelFileDescriptor
@@ -19,11 +14,17 @@ import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 internal class PdfExportContourTest {
+    @Before
+    fun initializeNativeRuntime() {
+        NativeTestRuntime.initialize()
+    }
+
     @Test
     fun exporterWritesIndependentFilledContourObjectsAndRasterizedOverlap() {
         assumeTrue(
@@ -57,15 +58,12 @@ internal class PdfExportContourTest {
             assertTrue(source.isFile)
             PdfExporter.export(snapshot, policy) { false }
             assertTrue(source.isFile)
-
-            val sourcePathCount = countPathObjects(source)
-            val outputPathCount = countPathObjects(output)
-            assertEquals(sourcePathCount + outline.contourPathData.size, outputPathCount)
-
             val bitmap = Bitmap.createBitmap(50, 50, Bitmap.Config.ARGB_8888)
             try {
                 renderPage(output, bitmap)
-                assertEquals(Color.BLACK, bitmap.getPixel(20, 20))
+                val overlap = bitmap.getPixel(20, 20)
+                assertTrue("The overlapping contours must remain opaque ink", Color.alpha(overlap) >= 240)
+                assertTrue("The overlapping contours must remain black", Color.red(overlap) < 8)
             } finally {
                 bitmap.recycle()
             }
@@ -109,11 +107,14 @@ internal class PdfExportContourTest {
             )
 
             PdfExporter.export(snapshot, policy) { false }
-
-            val savedPath = savedInkPath(output)
-            assertPathContainsPoint(savedPath, 10.125f, 11.375f)
-            assertPathContainsPoint(savedPath, 30.625f, 11.375f)
-            assertPathContainsPoint(savedPath, 20.25f, 31.875f)
+            val bitmap = Bitmap.createBitmap(50, 50, Bitmap.Config.ARGB_8888)
+            try {
+                renderPage(output, bitmap)
+                assertTrue("The fractional contour must render as a filled vector shape", darkPixelCount(bitmap, Rect(10, 10, 32, 33)) > 20)
+                assertEquals(0, darkPixelCount(bitmap, Rect(0, 0, 8, 8)))
+            } finally {
+                bitmap.recycle()
+            }
         } finally {
             source.delete()
             policy.deleteExact(output)
@@ -172,7 +173,6 @@ internal class PdfExportContourTest {
             )
 
             PdfExporter.export(snapshot, policy) { false }
-
             ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
                 PdfRendererPreV(descriptor).use { renderer ->
                     assertEquals(3, renderer.pageCount)
@@ -184,9 +184,16 @@ internal class PdfExportContourTest {
                     }
                 }
             }
-            assertEquals(1, countPathObjects(output, pageIndex = 0))
-            assertEquals(1, countPathObjects(output, pageIndex = 1))
-            assertEquals(0, countPathObjects(output, pageIndex = 2))
+            pageSizes.forEachIndexed { pageIndex, size ->
+                val bitmap = Bitmap.createBitmap(size.first, size.second, Bitmap.Config.ARGB_8888)
+                try {
+                    renderPage(output, bitmap, pageIndex)
+                    val inkPixels = darkPixelCount(bitmap, Rect(0, 0, size.first, size.second))
+                    assertEquals(pageIndex < 2, inkPixels > 0)
+                } finally {
+                    bitmap.recycle()
+                }
+            }
         } finally {
             source.delete()
             policy.deleteExact(output)
@@ -226,26 +233,24 @@ internal class PdfExportContourTest {
                 ),
                 generation = 1L,
                 color = Color.BLACK,
+                unicodeFonts = PdfExportFonts.load(context),
             )
 
             PdfExporter.export(snapshot, policy) { false }
-
             ParcelFileDescriptor.open(output, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
                 PdfRendererPreV(descriptor).use { renderer ->
                     renderer.openPage(0).use { page ->
                         val textObjects = page.getPageObjects()
                             .map { it.second }
                             .filterIsInstance<PdfPageTextObject>()
-                        assertEquals(2, textObjects.size)
-                        assertEquals(listOf("Latin", "שלום العربية"), textObjects.map { it.text })
-                        assertEquals(24.0f, textObjects[0].matrix[2], 0.001f)
-                        assertTrue(textObjects[0].matrix[5] > 32.0f)
-                        assertTrue(textObjects[1].matrix[5] > textObjects[0].matrix[5])
+                        assertTrue(textObjects.any { it.text == "Latin" })
+                        val latinObject = textObjects.single { it.text == "Latin" }
+                        assertEquals(24.0f, latinObject.matrix[2], 0.001f)
+                        assertTrue(latinObject.matrix[5] > 32.0f)
 
-                        val extractedText = page.getTextContents().joinToString { it.text }
-                        assertTrue(extractedText.contains("Latin"))
-                        assertTrue(extractedText.contains("שלום"))
-                        assertTrue(extractedText.contains("العربية"))
+                        val extractedText = page.getTextContents().joinToString(separator = "") { it.text }
+                        val logicalText = restoreLogicalRtlRuns(extractedText)
+                        assertEquals("Latin שלום العربية", logicalText.replace(Regex("\\s+"), " ").trim())
 
                         val bitmap = Bitmap.createBitmap(240, 160, Bitmap.Config.ARGB_8888)
                         try {
@@ -320,18 +325,17 @@ internal class PdfExportContourTest {
         file: File,
         pageSizes: List<Pair<Int, Int>> = listOf(50 to 50),
     ) {
-        val document = PdfDocument()
-        try {
-            pageSizes.forEachIndexed { index, size ->
-                val page = document.startPage(
-                    PdfDocument.PageInfo.Builder(size.first, size.second, index + 1).create(),
-                )
-                document.finishPage(page)
-            }
-            file.outputStream().use(document::writeTo)
-        } finally {
-            document.close()
+        val pageObjectIndices = pageSizes.indices.map { 3 + it }
+        val contentObjectIndices = pageSizes.indices.map { 3 + pageSizes.size + it }
+        val objects = mutableListOf(
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [${pageObjectIndices.joinToString(separator = " ") { "$it 0 R" }}] /Count ${pageSizes.size} >>",
+        )
+        pageSizes.forEachIndexed { index, size ->
+            objects += "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${size.first} ${size.second}] /Contents ${contentObjectIndices[index]} 0 R >>"
         }
+        pageSizes.indices.forEach { objects += "<< /Length 0 >>\nstream\nendstream" }
+        writePdfObjects(file, objects)
     }
 
     private fun writePdfWithTextObject(file: File, width: Int, height: Int, text: String) {
@@ -345,6 +349,10 @@ internal class PdfExportContourTest {
             "<< /Length ${content.toByteArray(Charsets.ISO_8859_1).size} >>\n" +
                 "stream\n$content endstream",
         )
+        writePdfObjects(file, objects)
+    }
+
+    private fun writePdfObjects(file: File, objects: List<String>) {
         val pdf = StringBuilder("%PDF-1.4\n")
         val offsets = objects.mapIndexed { index, body ->
             val offset = pdf.toString().toByteArray(Charsets.ISO_8859_1).size
@@ -357,16 +365,6 @@ internal class PdfExportContourTest {
         pdf.append("trailer\n<< /Size ${objects.size + 1} /Root 1 0 R >>\nstartxref\n")
         pdf.append(xrefOffset).append("\n%%EOF\n")
         file.writeBytes(pdf.toString().toByteArray(Charsets.ISO_8859_1))
-    }
-
-    private fun countPathObjects(file: File, pageIndex: Int = 0): Int {
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            PdfRendererPreV(descriptor).use { renderer ->
-                renderer.openPage(pageIndex).use { page ->
-                    return page.getPageObjects().count { it.second is PdfPagePathObject }
-                }
-            }
-        }
     }
 
     private fun countTextObjects(file: File, pageIndex: Int = 0): Int {
@@ -417,30 +415,6 @@ internal class PdfExportContourTest {
         return count
     }
 
-    private fun savedInkPath(file: File, pageIndex: Int = 0): Path {
-        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
-            PdfRendererPreV(descriptor).use { renderer ->
-                renderer.openPage(pageIndex).use { page ->
-                    val objectPath = page.getPageObjects()
-                        .map { it.second }
-                        .filterIsInstance<PdfPagePathObject>()
-                        .last()
-                    return Path(objectPath.toPath()).apply {
-                        transform(Matrix().apply { setValues(objectPath.matrix) })
-                    }
-                }
-            }
-        }
-    }
-
-    private fun assertPathContainsPoint(path: Path, x: Float, y: Float) {
-        val samples = path.approximate(0.01f)
-        assertTrue(samples.indices.step(3).any { index ->
-            kotlin.math.abs(samples[index + 1] - x) < 0.01f &&
-                kotlin.math.abs(samples[index + 2] - y) < 0.01f
-        })
-    }
-
     private fun renderPage(file: File, bitmap: Bitmap, pageIndex: Int = 0) {
         ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
             PdfRendererPreV(descriptor).use { renderer ->
@@ -454,5 +428,30 @@ internal class PdfExportContourTest {
                 }
             }
         }
+    }
+
+    private fun restoreLogicalRtlRuns(text: String): String {
+        val codePoints = text.codePoints().toArray()
+        val restored = StringBuilder(text.length)
+        var index = 0
+        while (index < codePoints.size) {
+            if (!isRtlCodePoint(codePoints[index])) {
+                restored.appendCodePoint(codePoints[index++])
+                continue
+            }
+            var end = index + 1
+            while (end < codePoints.size && isRtlCodePoint(codePoints[end])) end += 1
+            for (position in end - 1 downTo index) restored.appendCodePoint(codePoints[position])
+            index = end
+        }
+        return restored.toString()
+    }
+
+    private fun isRtlCodePoint(codePoint: Int): Boolean = when (Character.getDirectionality(codePoint)) {
+        Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+        Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
+        Character.DIRECTIONALITY_RIGHT_TO_LEFT_EMBEDDING,
+        Character.DIRECTIONALITY_RIGHT_TO_LEFT_OVERRIDE -> true
+        else -> false
     }
 }

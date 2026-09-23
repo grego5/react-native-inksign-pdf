@@ -45,3 +45,10 @@ validation steps, and iOS is explicitly experimental until runtime-tested.
 PDFium is distributed under its BSD license. The package also includes the
 licenses for its bundled third-party dependencies under
 `core/third_party/pdfium/licenses/`.
+
+## Noto fonts
+
+Android PDF export embeds Noto Sans Hebrew and Noto Naskh Arabic from
+`android/src/main/assets/fonts/`. They are Copyright 2022 The Noto Project
+Authors and distributed under the SIL Open Font License 1.1; the full license
+text is in `android/src/main/assets/fonts/OFL.txt`.
