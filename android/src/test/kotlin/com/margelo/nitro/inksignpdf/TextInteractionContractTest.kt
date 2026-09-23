@@ -155,8 +155,23 @@ class TextInteractionContractTest {
       textEditorPageBounds(500.0, 20.0, TextIntrinsicSize(400.0, 24.0), true),
     )
     assertEquals(500.0, textEditorPageBounds(500.0, 20.0, TextIntrinsicSize(80.0, 24.0), true).right, 0.0)
-    assertEquals(500.0, textEditorAnchorAfterDirectionChange(420.0, 80.0, false, true), 0.0)
-    assertEquals(420.0, textEditorAnchorAfterDirectionChange(500.0, 80.0, true, false), 0.0)
+    val transform = PageTransform(2.0, 0.0, 0.0, 2.0, 10.0, 20.0)
+    assertEquals(
+      500.0,
+      textEditorAnchorAfterDirectionChange(
+        transform, ViewPoint(1_018.0, 54.0), true,
+        paddingLeftPx = 8.0, paddingTopPx = 6.0, paddingRightPx = 8.0,
+      ),
+      0.0,
+    )
+    assertEquals(
+      420.0,
+      textEditorAnchorAfterDirectionChange(
+        transform, ViewPoint(842.0, 54.0), false,
+        paddingLeftPx = 8.0, paddingTopPx = 6.0, paddingRightPx = 8.0,
+      ),
+      0.0,
+    )
   }
 
   @Test

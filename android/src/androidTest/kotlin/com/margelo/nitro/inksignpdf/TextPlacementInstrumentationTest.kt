@@ -252,7 +252,9 @@ internal class TextPlacementInstrumentationTest {
       try {
         overlay.armPlacement(1L)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_600L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_610L))
         assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(1, overlay.childCount)
         val before = harness.surface.currentViewportState().focus
 
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 290f, 290f, 5_620L))
@@ -276,6 +278,9 @@ internal class TextPlacementInstrumentationTest {
       try {
         overlay.armPlacement(1L)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_000L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_010L))
+        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(1, overlay.childCount)
         val editor = overlay.getChildAt(0) as EditText
         assertTrue(editor.paddingLeft > 0)
         assertTrue(editor.paddingTop > 0)
@@ -347,12 +352,19 @@ internal class TextPlacementInstrumentationTest {
 
   @Test
   fun selectionVisibilityFollowsTheMovedRangeEndpoint() {
+    lateinit var overlay: TextInteractionOverlay
     harness.runOnMain {
       harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
-      val overlay = harness.createOverlay()
-      try {
-        overlay.armPlacement(1L)
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 7_000L))
+      overlay = harness.createOverlay()
+      overlay.armPlacement(1L)
+      assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 7_000L))
+      assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 7_010L))
+      assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+      assertEquals(1, overlay.childCount)
+    }
+    try {
+      harness.waitForViewportAnimationToFinish()
+      harness.runOnMain {
         val editor = overlay.getChildAt(0) as EditText
         val text = "A".repeat(220)
         editor.setText(text)
@@ -364,6 +376,7 @@ internal class TextPlacementInstrumentationTest {
         assertCaretIsInsideView(editor, editor.selectionEnd)
 
         editor.setSelection(1, text.length)
+        assertCaretIsOutsideView(editor, editor.selectionStart)
         overlay.syncTransform()
         val startFocus = harness.surface.currentViewportState().focus.x
         assertTrue(startFocus < endFocus)
@@ -372,9 +385,9 @@ internal class TextPlacementInstrumentationTest {
         editor.setSelection(1)
         overlay.syncTransform()
         assertCaretIsInsideView(editor, editor.selectionStart)
-      } finally {
-        overlay.dispose()
       }
+    } finally {
+      harness.runOnMain { overlay.dispose() }
     }
   }
 
@@ -422,15 +435,31 @@ internal class TextPlacementInstrumentationTest {
   }
 
   private fun assertCaretIsInsideView(editor: EditText, offset: Int) {
+    val (caretX, caretTop) = caretViewPosition(editor, offset)
+    val layout = checkNotNull(editor.layout)
+    val focus = harness.surface.currentViewportState().focus
+    val details = "caret=($caretX,$caretTop) offset=$offset line=${layout.getLineForOffset(offset)} " +
+      "editor=[${editor.left},${editor.top},${editor.right},${editor.bottom}] " +
+      "scroll=(${editor.scrollX},${editor.scrollY}) focus=(${focus.x},${focus.y})"
+    assertTrue("Caret must be inside the overlay; $details", caretX >= 8 && caretX <= 292)
+    assertTrue("Caret must be inside the overlay; $details", caretTop >= 8 && caretTop <= 292)
+  }
+
+  private fun assertCaretIsOutsideView(editor: EditText, offset: Int) {
+    val (caretX, caretTop) = caretViewPosition(editor, offset)
+    assertTrue(
+      "The moved selection endpoint must start outside the overlay, got x=$caretX y=$caretTop",
+      caretX < 8 || caretX > 292 || caretTop < 8 || caretTop > 292,
+    )
+  }
+
+  private fun caretViewPosition(editor: EditText, offset: Int): Pair<Int, Int> {
     val layout = checkNotNull(editor.layout)
     val line = layout.getLineForOffset(offset)
     val caretX = editor.left + editor.paddingLeft +
       layout.getPrimaryHorizontal(offset).toInt() - editor.scrollX
     val caretTop = editor.top + editor.paddingTop + layout.getLineTop(line) - editor.scrollY
-    assertTrue(caretX >= 8)
-    assertTrue(caretX <= 292)
-    assertTrue(caretTop >= 8)
-    assertTrue(caretTop <= 292)
+    return caretX to caretTop
   }
 
   private inner class TextSurfaceHarness {
@@ -506,6 +535,17 @@ internal class TextPlacementInstrumentationTest {
     }
 
     fun runOnMain(action: () -> Unit) = instrumentation.runOnMainSync(action)
+
+    fun waitForViewportAnimationToFinish(timeoutMs: Long = 5_000L) {
+      val deadline = android.os.SystemClock.uptimeMillis() + timeoutMs
+      while (android.os.SystemClock.uptimeMillis() < deadline) {
+        val animating = java.util.concurrent.atomic.AtomicBoolean()
+        instrumentation.runOnMainSync { animating.set(surface.isTextFocusAnimating()) }
+        if (!animating.get()) return
+        android.os.SystemClock.sleep(16L)
+      }
+      throw AssertionError("Text focus animation did not settle before the selection visibility check")
+    }
 
     fun close() {
       runOnMain { surface.clearDocument() }

@@ -22,6 +22,13 @@
   interactions create none.
 - Text-owned streams do not enter ink or navigation. Placement consumes one
   valid in-page tap after inverse-transforming it into page coordinates.
+- Editor frames and active selection endpoints are reconciled through the
+  shared page-to-view transform. Direction changes preserve the padded frame
+  edge, and caret visibility may adjust viewport focus without changing the
+  stored page anchor.
+- After the placement tap ends, a drag that starts outside the editor pans the
+  viewport while the editor remains active; the completed placement stream is
+  required before a later drag can be routed this way.
 
 ## Ink and navigation input
 

@@ -235,14 +235,19 @@ internal fun textEditorFrameBounds(
 
 /** Flips the anchored edge without moving the current editor rectangle. */
 internal fun textEditorAnchorAfterDirectionChange(
-  anchorX: Double,
-  width: Double,
-  wasRtl: Boolean,
+  transform: PageTransform,
+  frameEdge: ViewPoint,
   willBeRtl: Boolean,
-): Double = when {
-  wasRtl == willBeRtl -> anchorX
-  willBeRtl -> anchorX + width
-  else -> anchorX - width
+  paddingLeftPx: Double,
+  paddingTopPx: Double,
+  paddingRightPx: Double,
+): Double {
+  val anchorInView = if (willBeRtl) {
+    ViewPoint(frameEdge.x - paddingRightPx, frameEdge.y + paddingTopPx)
+  } else {
+    ViewPoint(frameEdge.x + paddingLeftPx, frameEdge.y + paddingTopPx)
+  }
+  return transform.unmap(anchorInView).x
 }
 
 internal fun localImeOverlapPx(
@@ -865,13 +870,22 @@ internal class TextInteractionOverlay(
             val state = interactionState as? InteractionState.Editing ?: return
             val nextDirectionRtl = textDirectionIsRtl(s ?: "", state.directionRtl)
             if (nextDirectionRtl != state.directionRtl) {
-              val scale = lastPresentation?.transform?.uniformScale() ?: density
-              val oldWidth = if (width > 1 && scale > 0.0) width / scale else {
-                editorSize("", state.fontSize).width
+              val transform = lastPresentation?.transform
+              if (transform != null && width > 1) {
+                val frameEdge = if (nextDirectionRtl) {
+                  ViewPoint(right.toDouble(), top.toDouble())
+                } else {
+                  ViewPoint(left.toDouble(), top.toDouble())
+                }
+                state.anchorX = textEditorAnchorAfterDirectionChange(
+                  transform = transform,
+                  frameEdge = frameEdge,
+                  willBeRtl = nextDirectionRtl,
+                  paddingLeftPx = compoundPaddingLeft.toDouble(),
+                  paddingTopPx = compoundPaddingTop.toDouble(),
+                  paddingRightPx = compoundPaddingRight.toDouble(),
+                )
               }
-              state.anchorX = textEditorAnchorAfterDirectionChange(
-                state.anchorX, oldWidth, state.directionRtl, nextDirectionRtl,
-              )
               state.directionRtl = nextDirectionRtl
             }
             TextLayoutSpec.configureEditorDirection(this@apply, s ?: "", state.directionRtl)
