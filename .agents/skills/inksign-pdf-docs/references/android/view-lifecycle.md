@@ -35,8 +35,10 @@
   or window-focus loss settles text input and cancels active ink/navigation.
 - Mode changes, page changes, replacement, and disposal cancel pending text
   placement and clear stale editor/selection state before new state is installed.
-- Document replacement cancels active work, invalidates prior worker results,
-  resets presentation, and installs only the current generation.
+- Document replacement cancels active work and invalidates prior worker results.
+  The previous published document, worker session, and presentation remain
+  usable until the replacement candidate is ready; failed replacement restores
+  its generation, viewport, and editing mode.
 - Opening copies the caller's PDF into a coordinator-owned working artifact
   before publication. Structural commands capture stable page identities and
   immutable inputs, assemble and open a unique prepared candidate without
@@ -45,6 +47,10 @@
   page records, active page, generation, and dirty state as one coordinator
   transition. Failed preparation, validation, commit, cancellation, or stale
   completion retains the published state and retires only the candidate.
+- `addPages` creates through the shared `CREATE` assembler operation when no
+  document exists. It uses `imagePageSize`, the active page size, or portrait
+  A4 for images, activates the first created page, and marks the new document
+  structurally dirty. Empty selection does not settle text or change state.
 - Working and appended PDF inputs cross JNI as module-owned file paths; only
   normalized JPEG image payloads cross as managed byte arrays.
 - The coordinator admits only one open, page-input staging, structural

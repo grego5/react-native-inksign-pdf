@@ -285,13 +285,14 @@ internal fun closeFailedPdfResources(
 internal class PdfSessionWorker(
   private val opener: PdfSessionOpener = PdfSession,
   threadFactory: ThreadFactory = PdfWorkerThreadFactory,
-  private val assembler: (File, PdfiumAssemblyRequest, File) -> List<PdfPageDimensions> =
+  private val assembler: (File?, PdfiumAssemblyRequest, File) -> List<PdfPageDimensions> =
     PdfiumPageAssembler::assemble,
 ) : AutoCloseable {
   private val executor: ExecutorService = Executors.newSingleThreadExecutor(threadFactory)
   private val stateLock = Any()
   private var current: PdfSessionResource? = null
   private var preparedMutation: PreparedMutation? = null
+  private var preparedOpen: PreparedOpen? = null
   @Volatile private var requestedGeneration = Long.MIN_VALUE
   @Volatile private var requestedTileEpoch = Long.MIN_VALUE
   @Volatile private var requestedPreviewEpoch = Long.MIN_VALUE
@@ -314,9 +315,49 @@ internal class PdfSessionWorker(
     replaceInternal(path, generation, null, completion)
   }
 
+  /** Retires the previous render session after UI presentation has accepted an open candidate. */
+  fun finishReplacement(generation: Long, completion: (Result<Unit>) -> Unit) {
+    enqueueMutationControl(generation, completion) {
+      val previous = preparedOpen
+      if (previous?.generation == generation) {
+        preparedOpen = null
+        previous.session?.close()
+      }
+    }
+  }
+
+  /** Restores the previous render session when open presentation cannot be installed. */
+  fun rollbackReplacement(generation: Long, restoredGeneration: Long, completion: (Result<Unit>) -> Unit) {
+    try {
+      executor.execute {
+        val result = try {
+          val previous = preparedOpen
+          if (previous != null) {
+            preparedOpen = null
+            current?.close()
+            current = previous.session
+          }
+          synchronized(stateLock) {
+            if (!closed && (requestedGeneration == generation || requestedGeneration == Long.MIN_VALUE)) {
+              requestedGeneration = restoredGeneration
+              requestedTileEpoch = Long.MIN_VALUE
+              requestedPreviewEpoch = Long.MIN_VALUE
+            }
+          }
+          Result.success(Unit)
+        } catch (error: Throwable) {
+          Result.failure(error)
+        }
+        completion(result)
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      completion(Result.failure(cancelled(generation)))
+    }
+  }
+
   /** Assembles and validates a mutation without changing the published render session. */
   fun prepareMutation(
-    workingPath: String,
+    workingPath: String?,
     candidatePath: String,
     generation: Long,
     request: PdfiumAssemblyRequest,
@@ -530,7 +571,6 @@ internal class PdfSessionWorker(
     fallbackFont: PdfFallbackFont?,
     completion: (Result<PdfSessionInfo>) -> Unit,
   ) {
-    closeCurrent()
     if (isStale(generation)) {
       completion(Result.failure(cancelled(generation)))
       return
@@ -544,7 +584,16 @@ internal class PdfSessionWorker(
         opened.close()
         Result.failure(cancelled(generation))
       } else {
+        preparedOpen?.let { previous ->
+          if (previous.generation != generation) {
+            current?.close()
+            current = previous.session
+            preparedOpen = null
+          }
+        }
+        val previous = current
         current = opened
+        preparedOpen = PreparedOpen(generation, previous)
         Result.success(opened.info)
       }
     } catch (error: Exception) {
@@ -555,7 +604,7 @@ internal class PdfSessionWorker(
   }
 
   private fun prepareMutationOnWorker(
-    workingPath: String,
+    workingPath: String?,
     candidatePath: String,
     generation: Long,
     request: PdfiumAssemblyRequest,
@@ -566,7 +615,7 @@ internal class PdfSessionWorker(
     val candidateFile = File(candidatePath)
     val result = try {
       if (isStale(generation)) throw cancelled(generation)
-      assembler(File(workingPath), request, candidateFile)
+      assembler(workingPath?.let(::File), request, candidateFile)
       if (isStale(generation)) throw cancelled(generation)
       val opened = opener.open(candidatePath, generation, fallbackFont)
       if (isStale(generation)) {
@@ -657,7 +706,11 @@ internal class PdfSessionWorker(
     val session = current
     current = null
     session?.close()
+    preparedOpen?.session?.close()
+    preparedOpen = null
   }
+
+  private data class PreparedOpen(val generation: Long, val session: PdfSessionResource?)
 
   private fun cancelled(generation: Long): PdfSessionException {
     return PdfSessionException(

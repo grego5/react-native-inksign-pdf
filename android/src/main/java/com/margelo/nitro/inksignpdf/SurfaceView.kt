@@ -188,6 +188,7 @@ internal class SurfaceView(
     zoom: Double? = null,
     focus: PagePoint? = null,
     fitToPage: Boolean = true,
+    notifyState: Boolean = false,
   ) {
     requireOnUiThread()
     if (disposed) return
@@ -205,7 +206,9 @@ internal class SurfaceView(
       fitToPage = fitToPage,
     )
     rebuildCommittedTextLayer()
+    val previousState = lastReportedState
     lastReportedState = reportedState()
+    if (notifyState && lastReportedState != previousState) onStateChange?.invoke(lastReportedState)
     invalidate()
     onTextContentChanged?.invoke()
   }
@@ -234,11 +237,7 @@ internal class SurfaceView(
   ) {
     requireOnUiThread()
     if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
-    val state = documentCoordinator.takeIf { it.hasDocument } ?: throw PdfSessionException(
-      "view_not_ready",
-      "A PDF must be opened before changing pages",
-    )
-    if (state.generation != info.generation || info.pageCount != candidatePages.size ||
+    if (documentCoordinator.generation != info.generation || info.pageCount != candidatePages.size ||
       candidatePages.none { it.id == activePageId } ||
       candidatePages.any { it.dimensions.width <= 0.0 || it.dimensions.height <= 0.0 }
     ) {
@@ -635,6 +634,11 @@ internal class SurfaceView(
       )
     }
     return documentController.currentViewportState()
+  }
+
+  fun refreshVisibleTiles() {
+    requireOnUiThread()
+    if (!disposed && documentCoordinator.hasDocument) documentController.refreshVisibleTiles()
   }
 
   fun setPenConfiguration(

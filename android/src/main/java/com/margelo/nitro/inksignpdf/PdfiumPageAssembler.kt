@@ -6,6 +6,7 @@ internal enum class PdfiumAssemblyOperation(val value: Int) {
   APPEND(0),
   REMOVE(1),
   MOVE(2),
+  CREATE(3),
 }
 
 internal data class PdfiumAppendRequest(
@@ -36,7 +37,7 @@ internal data class PdfiumAssemblyRequest(
 /** Synchronous JNI boundary for one worker-owned, transactional PDF mutation. */
 internal object PdfiumPageAssembler {
   fun assemble(
-    input: File,
+    input: File?,
     request: PdfiumAssemblyRequest,
     scratch: File,
   ): List<PdfPageDimensions> {
@@ -68,7 +69,7 @@ internal object PdfiumPageAssembler {
     }
     val flattened = try {
       nativeAssemble(
-        input.absolutePath,
+        input?.path ?: "",
         request.operation.value,
         appendPaths,
         appendBytes,

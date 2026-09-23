@@ -12,6 +12,94 @@ import org.junit.Test
 
 class PdfSessionWorkerTest {
   @Test
+  fun failedReplacementKeepsPreviousSessionAndCanRestoreItsGeneration() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource {
+        if (path == "invalid.pdf") throw PdfSessionException("pdf_load_failed", "invalid PDF")
+        return FakeSession(path, generation).also(opened::add)
+      }
+    }
+    val worker = PdfSessionWorker(opener = opener)
+    try {
+      val initial = CountDownLatch(1)
+      worker.replace("working.pdf", 1L) { assertTrue(it.isSuccess); initial.countDown() }
+      assertTrue(initial.await(5L, TimeUnit.SECONDS))
+      val initialCommitted = CountDownLatch(1)
+      worker.finishReplacement(1L) { assertTrue(it.isSuccess); initialCommitted.countDown() }
+      assertTrue(initialCommitted.await(5L, TimeUnit.SECONDS))
+
+      val replacement = CountDownLatch(1)
+      worker.replace("invalid.pdf", 2L) { result ->
+        assertTrue(result.isFailure)
+        replacement.countDown()
+      }
+      assertTrue(replacement.await(5L, TimeUnit.SECONDS))
+      val restored = CountDownLatch(1)
+      worker.rollbackReplacement(2L, 1L) { result ->
+        assertTrue(result.isSuccess)
+        restored.countDown()
+      }
+      assertTrue(restored.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened.single().closed)
+
+      worker.updateTileEpoch(1L, 1L)
+      val rendered = CountDownLatch(1)
+      val renderResult = AtomicReference<Result<List<PdfTile>>>()
+      worker.renderTiles(1L, 1L, listOf(testTileRequest(pageIndex = 0))) {
+        renderResult.set(it)
+        rendered.countDown()
+      }
+      assertTrue(rendered.await(5L, TimeUnit.SECONDS))
+      assertTrue(renderResult.get().isSuccess)
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
+  fun failedPresentationCanRollBackAReadyReplacementSession() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource =
+        FakeSession(path, generation).also(opened::add)
+    }
+    val worker = PdfSessionWorker(opener = opener)
+    try {
+      val initial = CountDownLatch(1)
+      worker.replace("working.pdf", 1L) { assertTrue(it.isSuccess); initial.countDown() }
+      assertTrue(initial.await(5L, TimeUnit.SECONDS))
+      val committedInitial = CountDownLatch(1)
+      worker.finishReplacement(1L) { committedInitial.countDown() }
+      assertTrue(committedInitial.await(5L, TimeUnit.SECONDS))
+
+      val replacement = CountDownLatch(1)
+      worker.replace("candidate.pdf", 2L) { assertTrue(it.isSuccess); replacement.countDown() }
+      assertTrue(replacement.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertFalse(opened[1].closed)
+
+      val rolledBack = CountDownLatch(1)
+      worker.rollbackReplacement(2L, 1L) { assertTrue(it.isSuccess); rolledBack.countDown() }
+      assertTrue(rolledBack.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertTrue(opened[1].closed)
+
+      worker.updateTileEpoch(1L, 1L)
+      val rendered = CountDownLatch(1)
+      val renderResult = AtomicReference<Result<List<PdfTile>>>()
+      worker.renderTiles(1L, 1L, listOf(testTileRequest(pageIndex = 0))) {
+        renderResult.set(it)
+        rendered.countDown()
+      }
+      assertTrue(rendered.await(5L, TimeUnit.SECONDS))
+      assertTrue(renderResult.get().isSuccess)
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
   fun preparedMutationDoesNotReplaceCurrentSessionUntilCommit() {
     val opened = mutableListOf<FakeSession>()
     val opener = object : PdfSessionOpener {

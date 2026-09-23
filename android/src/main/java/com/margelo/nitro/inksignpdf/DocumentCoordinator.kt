@@ -20,6 +20,7 @@ internal class MutableDocumentCoordinator(
   }.toMutableList()
   private var activePageId: String? = mutablePages.firstOrNull()?.id
   private var generationValue = generation
+  private var publishedGenerationValue = generation
   private var operationSequence = 0L
   private var activeOperation: Long? = null
   private val workingFiles = LinkedHashSet<java.io.File>()
@@ -206,6 +207,12 @@ internal class MutableDocumentCoordinator(
     val fallbackFont: PdfFallbackFont?,
     val workingFile: java.io.File,
     val previousWorkingFile: java.io.File?,
+    val previousGeneration: Long,
+    val previousPages: List<InkPageState>,
+    val previousActivePageId: String?,
+    val previousSourcePath: String,
+    val previousStructuralDirty: Boolean,
+    val previousFallbackFont: PdfFallbackFont?,
     val operationID: Long,
   )
 
@@ -214,11 +221,13 @@ internal class MutableDocumentCoordinator(
     fallbackFont: PdfFallbackFont?,
     resetPresentation: () -> Unit,
     installPresentation: () -> T,
+    restorePresentation: () -> Unit = {},
+    refreshPresentation: () -> Unit = {},
   ): T {
     val request = beginOpen(fallbackFont)
     var statePublished = false
+    var presentationReset = false
     try {
-      resetPresentation()
       withContext(Dispatchers.IO) {
         val source = try {
           java.io.File(sourcePath).canonicalFile
@@ -237,48 +246,74 @@ internal class MutableDocumentCoordinator(
       if (info.generation != request.generation) throw cancelled()
       publishOpen(info)
       this.fallbackFont = request.fallbackFont
+      presentationReset = true
+      resetPresentation()
+      val value = installPresentation()
+      awaitWorkerResult<Unit>(request.generation) { completion ->
+        sessionWorker.finishReplacement(request.generation, completion)
+      }
+      ensureCurrent(request.generation)
+      publishedGenerationValue = request.generation
       statePublished = true
-      return installPresentation()
+      request.previousWorkingFile?.let { previous -> runCatching { retireWorkingFile(previous) } }
+      return value
     } finally {
-      if (!statePublished) retireWorkingFile(request.workingFile)
-      request.previousWorkingFile?.let(::retireWorkingFile)
+      if (!statePublished) {
+        if (generationValue == request.generation) {
+          runCatching {
+            awaitWorkerResult<Unit>(request.generation) { completion ->
+              sessionWorker.rollbackReplacement(request.generation, request.previousGeneration, completion)
+            }
+          }
+          mutablePages.clear()
+          mutablePages.addAll(request.previousPages)
+          activePageId = request.previousActivePageId
+          this.sourcePath = request.previousSourcePath
+          structuralDirty = request.previousStructuralDirty
+          this.fallbackFont = request.previousFallbackFont
+          generationValue = request.previousGeneration
+          if (presentationReset) runCatching { restorePresentation() }
+          else runCatching { refreshPresentation() }
+        }
+        retireWorkingFile(request.workingFile)
+      }
       endOperation(request.operationID)
     }
   }
 
   private fun beginOpen(fallbackFont: PdfFallbackFont?): OpenRequest {
     check(!disposed) { "PDF coordinator was disposed" }
+    val previousGeneration = publishedGenerationValue
     val previousWorkingFile = currentWorkingFile()
+    val previousPages = mutablePages.toList()
+    val previousActivePageId = activePageId
+    val previousSourcePath = sourcePath
+    val previousStructuralDirty = structuralDirty
+    val previousFallbackFont = fallbackFont
+    val workingFile = artifactPolicy.allocateWorkingPdf()
     sessionWorker.cancel(generationValue)
     generationValue += 1L
     activeOperation = nextOperation()
-    mutablePages.clear()
-    activePageId = null
-    sourcePath = ""
-    structuralDirty = false
-    this.fallbackFont = null
-    val workingFile = try {
-      artifactPolicy.allocateWorkingPdf()
-    } catch (error: Throwable) {
-      activeOperation = null
-      throw error
-    }
     trackWorkingFile(workingFile)
     previousWorkingFile?.let(::trackWorkingFile)
-    return OpenRequest(generation, fallbackFont, workingFile, previousWorkingFile, checkNotNull(activeOperation))
+    return OpenRequest(generation, fallbackFont, workingFile, previousWorkingFile,
+      previousGeneration, previousPages, previousActivePageId, previousSourcePath,
+      previousStructuralDirty, previousFallbackFont, checkNotNull(activeOperation))
   }
 
-  fun beginOperation(): Long {
+  fun beginOperation(requireDocument: Boolean = true): Long {
     check(!disposed) { "PDF coordinator was disposed" }
     if (activeOperation != null) {
       throw PdfSessionException("operation_in_progress", "Another document operation is already active")
     }
-    check(hasDocument) { "A PDF must be opened before changing pages" }
+    if (requireDocument) check(hasDocument) { "A PDF must be opened before changing pages" }
     return nextOperation()
   }
 
-  fun beginOperation(preflight: () -> Unit): Long {
-    val operation = beginOperation()
+  fun beginOperation(preflight: () -> Unit): Long = beginOperation(requireDocument = true, preflight = preflight)
+
+  fun beginOperation(requireDocument: Boolean, preflight: () -> Unit): Long {
+    val operation = beginOperation(requireDocument)
     try {
       preflight()
       return operation
@@ -314,7 +349,12 @@ internal class MutableDocumentCoordinator(
   ) {
     ensureCurrent(generation)
     sessionWorker.prepareMutation(
-      workingPath = checkNotNull(currentWorkingFile()).path,
+      workingPath = if (request.operation == PdfiumAssemblyOperation.CREATE) {
+        check(!hasDocument && currentWorkingFile() == null) { "CREATE requires an empty coordinator" }
+        null
+      } else {
+        checkNotNull(currentWorkingFile()).path
+      },
       candidatePath = candidate.path,
       generation = generation,
       request = request,
@@ -361,7 +401,7 @@ internal class MutableDocumentCoordinator(
       val oldWorking = publishStructuralCandidate(info, pageCandidate)
       published = true
       untrackWorkingFile(candidate)
-      policy.deleteExact(oldWorking)
+      oldWorking?.let(policy::deleteExact)
       return present()
     } finally {
       if (!published) discardPreparedMutation(candidate, policy::deleteExact)
@@ -394,11 +434,11 @@ internal class MutableDocumentCoordinator(
     return previous
   }
 
-  fun publishStructuralCandidate(info: PdfSessionInfo, candidate: StructuralCandidate): java.io.File {
+  fun publishStructuralCandidate(info: PdfSessionInfo, candidate: StructuralCandidate): java.io.File? {
     ensureNotDisposed()
     require(info.generation == generation)
     require(info.pageCount == candidate.pages.size)
-    val previous = checkNotNull(currentWorkingFile())
+    val previous = currentWorkingFile()
     installCandidate(info.sourcePath, candidate.pages, candidate.activePageId)
     untrackWorkingFile(java.io.File(info.sourcePath))
     return previous
