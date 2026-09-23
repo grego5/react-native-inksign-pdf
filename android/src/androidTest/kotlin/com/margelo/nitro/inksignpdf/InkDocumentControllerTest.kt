@@ -29,7 +29,7 @@ class InkDocumentControllerTest {
       val before = harness.state()
 
       harness.runOnMain {
-        harness.controller.setZoomForTest(1.0, PagePoint(100.0, 100.0))
+        harness.controller.setZoomForTest(0.1, PagePoint(100.0, 100.0))
       }
       val after = harness.state()
 
@@ -49,7 +49,7 @@ class InkDocumentControllerTest {
       val started = harness.session.blockNextRender()
 
       harness.runOnMain {
-        harness.controller.setZoomForTest(0.1, PagePoint(2500.0, 2500.0))
+        harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0))
       }
       assertTrue(started.await(5L, TimeUnit.SECONDS))
       val during = harness.state()
@@ -77,7 +77,7 @@ class InkDocumentControllerTest {
       harness.session.renderLimit = 1
 
       harness.runOnMain {
-        harness.controller.setZoomForTest(0.1, PagePoint(2500.0, 2500.0))
+        harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0))
       }
       harness.awaitState { it.transitionPending && it.pendingKeys.isEmpty() }
       val after = harness.state()
@@ -95,7 +95,7 @@ class InkDocumentControllerTest {
     val harness = ControllerHarness(page = PdfPageDimensions(500.0, 500.0))
     try {
       harness.runOnMain {
-        harness.controller.setZoomForTest(0.1, PagePoint(250.0, 250.0))
+        harness.controller.setZoomForTest(1.0, PagePoint(250.0, 250.0))
       }
       harness.awaitState { state ->
         !state.transitionPending && state.activeVisibleKeys.all { key ->
@@ -105,7 +105,7 @@ class InkDocumentControllerTest {
       val target = harness.state().activeVisibleKeys
 
       harness.runOnMain {
-        harness.controller.setZoomForTest(1.0, PagePoint(250.0, 250.0))
+        harness.controller.setZoomForTest(0.1, PagePoint(250.0, 250.0))
       }
       val restored = harness.state()
 
@@ -124,7 +124,7 @@ class InkDocumentControllerTest {
       val initial = harness.state()
       val started = harness.session.blockNextRender()
       harness.runOnMain {
-        harness.controller.setZoomForTest(0.1, PagePoint(2500.0, 2500.0))
+        harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0))
       }
       assertTrue(started.await(5L, TimeUnit.SECONDS))
 
@@ -150,7 +150,7 @@ class InkDocumentControllerTest {
     try {
       val started = harness.session.blockNextRender()
       harness.runOnMain {
-        harness.controller.setZoomForTest(0.1, PagePoint(2500.0, 2500.0))
+        harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0))
       }
       assertTrue(started.await(5L, TimeUnit.SECONDS))
 

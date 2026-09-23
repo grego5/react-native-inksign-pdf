@@ -281,9 +281,10 @@ internal class PdfExportContourTest {
         val source = File.createTempFile("source-text-export-", ".pdf", context.cacheDir)
         val output = policy.allocateSignedOutput()
         try {
-            writeBlankPdf(source, listOf(240 to 160), includeSourceText = true)
+            writePdfWithTextObject(source, 240, 160, "Source")
             val sourceTextCount = countTextObjects(source)
             assertTrue("The source fixture must expose its text object", sourceTextCount > 0)
+            assertEquals(listOf("Source"), textObjectContents(source))
             val annotation = TextAnnotation(
                 id = "text-1",
                 text = "Added",
@@ -318,7 +319,6 @@ internal class PdfExportContourTest {
     private fun writeBlankPdf(
         file: File,
         pageSizes: List<Pair<Int, Int>> = listOf(50 to 50),
-        includeSourceText: Boolean = false,
     ) {
         val document = PdfDocument()
         try {
@@ -326,23 +326,37 @@ internal class PdfExportContourTest {
                 val page = document.startPage(
                     PdfDocument.PageInfo.Builder(size.first, size.second, index + 1).create(),
                 )
-                if (includeSourceText && index == 0) {
-                    page.canvas.drawText(
-                        "Source",
-                        8f,
-                        20f,
-                        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                            color = Color.BLACK
-                            textSize = 12f
-                        },
-                    )
-                }
                 document.finishPage(page)
             }
             file.outputStream().use(document::writeTo)
         } finally {
             document.close()
         }
+    }
+
+    private fun writePdfWithTextObject(file: File, width: Int, height: Int, text: String) {
+        val content = "BT /F1 12 Tf 8 140 Td ($text) Tj ET\n"
+        val objects = listOf(
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $width $height] " +
+                "/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+            "<< /Length ${content.toByteArray(Charsets.ISO_8859_1).size} >>\n" +
+                "stream\n$content endstream",
+        )
+        val pdf = StringBuilder("%PDF-1.4\n")
+        val offsets = objects.mapIndexed { index, body ->
+            val offset = pdf.toString().toByteArray(Charsets.ISO_8859_1).size
+            pdf.append("${index + 1} 0 obj\n$body\nendobj\n")
+            offset
+        }
+        val xrefOffset = pdf.toString().toByteArray(Charsets.ISO_8859_1).size
+        pdf.append("xref\n0 ${objects.size + 1}\n0000000000 65535 f \n")
+        offsets.forEach { offset -> pdf.append("%010d 00000 n \n".format(offset)) }
+        pdf.append("trailer\n<< /Size ${objects.size + 1} /Root 1 0 R >>\nstartxref\n")
+        pdf.append(xrefOffset).append("\n%%EOF\n")
+        file.writeBytes(pdf.toString().toByteArray(Charsets.ISO_8859_1))
     }
 
     private fun countPathObjects(file: File, pageIndex: Int = 0): Int {
@@ -360,6 +374,19 @@ internal class PdfExportContourTest {
             PdfRendererPreV(descriptor).use { renderer ->
                 renderer.openPage(pageIndex).use { page ->
                     return page.getPageObjects().count { it.second is PdfPageTextObject }
+                }
+            }
+        }
+    }
+
+    private fun textObjectContents(file: File, pageIndex: Int = 0): List<String> {
+        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY).use { descriptor ->
+            PdfRendererPreV(descriptor).use { renderer ->
+                renderer.openPage(pageIndex).use { page ->
+                    return page.getPageObjects()
+                        .map { it.second }
+                        .filterIsInstance<PdfPageTextObject>()
+                        .map { it.text }
                 }
             }
         }

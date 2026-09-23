@@ -187,13 +187,28 @@ class SurfaceViewTest {
 
   @Test
   fun belowThresholdTransferredSwipeSnapsBackWithoutSwitching() {
+    val driver = ManualSettlementDriver()
+    harness.close()
+    harness = SurfaceHarness(settlementDriver = driver)
     harness.awaitPreparedPagePreview()
+    val density = InstrumentationRegistry.getInstrumentation().targetContext
+      .resources.displayMetrics.density
+    val dragDistance = 8.0f * density + 1.0f
     harness.runOnMain {
       dispatch(downEvent(150.0f, 150.0f, 14_000L))
-      dispatch(motionEvent(MotionEvent.ACTION_MOVE, 130.0f, 150.0f, 14_020L))
-      dispatch(upEvent(130.0f, 150.0f, 14_040L))
+      dispatch(motionEvent(MotionEvent.ACTION_MOVE, 150.0f - dragDistance, 150.0f, 14_020L))
+      assertTrue(harness.surface.pageNavigationState().state is NavigationState.Dragging)
+      assertTrue(harness.surface.pageNavigationState().previewPresented)
+      dispatch(upEvent(150.0f - dragDistance, 150.0f, 14_040L))
 
       assertEquals(0, harness.surface.currentPageInfo().pageIndex)
+      assertTrue(harness.surface.pageNavigationState().state is NavigationState.Settling)
+      assertEquals(1, driver.pendingCount())
+      assertTrue(harness.surface.pageNavigationState().previewPresented)
+
+      driver.finish(0)
+      assertEquals(NavigationState.Idle, harness.surface.pageNavigationState().state)
+      assertFalse(harness.surface.pageNavigationState().previewPresented)
     }
   }
 
@@ -218,11 +233,14 @@ class SurfaceViewTest {
     harness.close()
     harness = SurfaceHarness(settlementDriver = driver)
     harness.awaitPreparedPagePreview()
+    val density = InstrumentationRegistry.getInstrumentation().targetContext
+      .resources.displayMetrics.density
+    val dragDistance = 8.0f * density + 1.0f
 
     harness.runOnMain {
       dispatch(downEvent(150.0f, 150.0f, 16_000L))
-      dispatch(motionEvent(MotionEvent.ACTION_MOVE, 130.0f, 150.0f, 16_020L))
-      dispatch(upEvent(130.0f, 150.0f, 16_040L))
+      dispatch(motionEvent(MotionEvent.ACTION_MOVE, 150.0f - dragDistance, 150.0f, 16_020L))
+      dispatch(upEvent(150.0f - dragDistance, 150.0f, 16_040L))
       assertEquals(NavigationState.Settling::class, harness.surface.pageNavigationState().state::class)
       assertEquals(1, driver.pendingCount())
 
