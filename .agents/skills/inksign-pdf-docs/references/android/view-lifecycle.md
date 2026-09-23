@@ -19,6 +19,11 @@ page, and worker session together only after validation. Until then, the current
 document remains published. A failed, cancelled, or stale operation cannot
 partially replace it.
 
+The PDFium assembler reopens each saved candidate before publication and checks
+its page count, order, dimensions, and rotation. Image page dimensions are
+compared at the precision PDFium can serialize and report; published page
+dimensions come from the reopened candidate.
+
 Page identities and their histories follow the pages through structural changes.
 Structural dirty state belongs to the document and remains separate from
 page-local undo and redo.

@@ -30,7 +30,11 @@ class HybridInkSignViewCreatePagesTest {
       viewRef.set(HybridInkSignView(context))
       promiseRef.set(
         viewRef.get().addPages(
-          AddPagesOptions(PageType.IMAGE, arrayOf(image.absolutePath), null),
+          AddPagesOptions(
+            PageType.IMAGE,
+            arrayOf(image.absolutePath),
+            ImagePageSize(width = 595.28, height = 841.89),
+          ),
         ),
       )
     }
@@ -51,6 +55,8 @@ class HybridInkSignViewCreatePagesTest {
       assertNotNull(added.pageInfo)
       assertEquals(1.0, added.pageInfo!!.pageCount, 0.0)
       assertEquals(0.0, added.pageInfo!!.pageIndex, 0.0)
+      assertEquals(595.28, added.pageInfo!!.width, 0.0001)
+      assertEquals(841.89, added.pageInfo!!.height, 0.0001)
     } finally {
       instrumentation.runOnMainSync { viewRef.get().onDropView() }
       image.delete()

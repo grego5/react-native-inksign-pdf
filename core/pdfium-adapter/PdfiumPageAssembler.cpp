@@ -398,8 +398,12 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
         }
         operationError = appendImage(destination, expectedPages.size(), input);
         if (!operationError) break;
+        // PDFium's saved page dimensions are reported at float precision. Compare
+        // the candidate against the dimensions its PDF page can actually encode.
         expectedPages.push_back(
-            {expectedPages.size(), input.pageWidth, input.pageHeight, 0});
+            {expectedPages.size(),
+             static_cast<double>(static_cast<float>(input.pageWidth)),
+             static_cast<double>(static_cast<float>(input.pageHeight)), 0});
       }
     }
 
@@ -465,7 +469,16 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
   for (std::size_t index = 0; index < actualPages.size(); ++index) {
     if (!sameMetadata(expectedPages[index], actualPages[index])) {
       result.error = {PdfiumErrorCode::ValidationFailed,
-                      "Saved PDFium assembly page order does not match"};
+                      "Saved PDFium assembly page order does not match at index " +
+                          std::to_string(index) + ": expected " +
+                          std::to_string(expectedPages[index].width) + "x" +
+                          std::to_string(expectedPages[index].height) +
+                          " rotation " +
+                          std::to_string(expectedPages[index].rotation) +
+                          ", got " + std::to_string(actualPages[index].width) +
+                          "x" + std::to_string(actualPages[index].height) +
+                          " rotation " +
+                          std::to_string(actualPages[index].rotation)};
       return result;
     }
   }
