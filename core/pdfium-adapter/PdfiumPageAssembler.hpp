@@ -13,6 +13,7 @@ enum class PdfiumPageAssemblyOperation : std::uint8_t {
   Append,
   Remove,
   Move,
+  Create,
 };
 
 enum class PdfiumAppendInputType : std::uint8_t {
@@ -29,7 +30,7 @@ struct PdfiumImagePlacement final {
   double f = 0.0;
 };
 
-/** One native-owned source staged for an append command. */
+/** One native-owned source staged for an append or create command. */
 struct PdfiumAppendInput final {
   PdfiumAppendInputType type = PdfiumAppendInputType::Pdf;
   std::vector<std::uint8_t> bytes;

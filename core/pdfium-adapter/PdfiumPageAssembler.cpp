@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <limits>
@@ -275,8 +276,10 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
   PdfiumPageAssemblyResult result;
   if (scratchPath.empty() ||
       (inputBytes.empty() &&
-       command.operation != PdfiumPageAssemblyOperation::Append)) {
-    result.error = invalidInput("assembly input and scratch path are required");
+       command.operation != PdfiumPageAssemblyOperation::Create) ||
+      (!inputBytes.empty() &&
+       command.operation == PdfiumPageAssemblyOperation::Create)) {
+    result.error = invalidInput("assembly source and scratch path do not match the operation");
     return result;
   }
 
@@ -316,18 +319,21 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
     }
 
     if (operationError &&
-        command.operation == PdfiumPageAssemblyOperation::Append &&
+        (command.operation == PdfiumPageAssemblyOperation::Append ||
+         command.operation == PdfiumPageAssemblyOperation::Create) &&
         command.appendInputs.empty()) {
-      operationError = invalidCommand("append command contains no inputs");
+      operationError = invalidCommand("append or create command contains no inputs");
     }
     if (operationError &&
         command.operation != PdfiumPageAssemblyOperation::Append &&
+        command.operation != PdfiumPageAssemblyOperation::Create &&
         !command.appendInputs.empty()) {
       operationError = invalidCommand(
           "non-append command contains append inputs");
     }
     if (operationError &&
         command.operation != PdfiumPageAssemblyOperation::Append &&
+        command.operation != PdfiumPageAssemblyOperation::Create &&
         command.operation != PdfiumPageAssemblyOperation::Remove &&
         command.operation != PdfiumPageAssemblyOperation::Move) {
       operationError = invalidCommand("assembly operation is invalid");
@@ -350,7 +356,8 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
     }
 
     if (operationError &&
-        command.operation == PdfiumPageAssemblyOperation::Append) {
+        (command.operation == PdfiumPageAssemblyOperation::Append ||
+         command.operation == PdfiumPageAssemblyOperation::Create)) {
       for (const auto& input : command.appendInputs) {
         if (input.type == PdfiumAppendInputType::Pdf) {
           FPDF_DOCUMENT source = nullptr;
@@ -466,6 +473,7 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
 
   const auto writeError = writeScratch(scratchPath, writer.bytes);
   if (!writeError) {
+    std::remove(scratchPath.c_str());
     result.error = writeError;
     return result;
   }

@@ -248,6 +248,9 @@ extern "C" bool ReactNativeInkSignPdfPdfiumAssemblySmoke(
     return false;
   }
   const std::string appendPath = std::string(scratchPath) + ".append.pdf";
+  const std::string createPath = std::string(scratchPath) + ".create.pdf";
+  const std::string createImagePath = std::string(scratchPath) + ".create-image.pdf";
+  const std::string createPdfPath = std::string(scratchPath) + ".create-pdf.pdf";
   const std::string movePath = std::string(scratchPath) + ".move.pdf";
   const std::string backwardPath = std::string(scratchPath) + ".backward.pdf";
   const std::string removePath = std::string(scratchPath) + ".remove.pdf";
@@ -258,7 +261,7 @@ extern "C" bool ReactNativeInkSignPdfPdfiumAssemblySmoke(
   const std::string lastRemovePath =
       std::string(scratchPath) + ".last-remove.pdf";
   for (const auto& path :
-       {appendPath, movePath, backwardPath, removePath, invalidPath, solePath,
+       {appendPath, createPath, createImagePath, createPdfPath, movePath, backwardPath, removePath, invalidPath, solePath,
         firstRemovePath, lastRemovePath}) {
     std::remove(path.c_str());
   }
@@ -272,6 +275,37 @@ extern "C" bool ReactNativeInkSignPdfPdfiumAssemblySmoke(
   image.pageWidth = 80.0;
   image.pageHeight = 90.0;
   image.placement = {40.0, 0.0, 0.0, 20.0, 10.0, 15.0};
+
+  PdfiumPageAssemblyCommand create;
+  create.operation = PdfiumPageAssemblyOperation::Create;
+  create.appendInputs.push_back(source);
+  create.appendInputs.push_back(image);
+  const auto created = PdfiumPageAssembler::assemble(
+      {}, std::move(create), createPath);
+  if (!created ||
+      !matchesSizes(created.pages, {{200, 100}, {300, 100}, {80, 90}}) ||
+      readFile(createPath).empty()) {
+    return false;
+  }
+  PdfiumPageAssemblyCommand imageOnlyCreate;
+  imageOnlyCreate.operation = PdfiumPageAssemblyOperation::Create;
+  imageOnlyCreate.appendInputs.push_back(image);
+  const auto imageOnly = PdfiumPageAssembler::assemble(
+      {}, std::move(imageOnlyCreate), createImagePath);
+  if (!imageOnly || !matchesSizes(imageOnly.pages, {{80, 90}})) return false;
+  PdfiumPageAssemblyCommand pdfOnlyCreate;
+  pdfOnlyCreate.operation = PdfiumPageAssemblyOperation::Create;
+  pdfOnlyCreate.appendInputs.push_back(source);
+  const auto pdfOnly = PdfiumPageAssembler::assemble(
+      {}, std::move(pdfOnlyCreate), createPdfPath);
+  if (!pdfOnly || !matchesSizes(pdfOnly.pages, {{200, 100}, {300, 100}})) {
+    return false;
+  }
+  PdfiumPageAssemblyCommand emptyCreate;
+  emptyCreate.operation = PdfiumPageAssemblyOperation::Create;
+  const auto rejectedEmptyCreate = PdfiumPageAssembler::assemble(
+      {}, std::move(emptyCreate), solePath);
+  if (rejectedEmptyCreate || !readFile(solePath).empty()) return false;
 
   PdfiumPageAssemblyCommand append;
   append.operation = PdfiumPageAssemblyOperation::Append;
@@ -384,7 +418,7 @@ extern "C" bool ReactNativeInkSignPdfPdfiumAssemblySmoke(
   }
 
   for (const auto& path :
-       {appendPath, movePath, backwardPath, removePath, invalidPath, solePath,
+       {appendPath, createPath, createImagePath, createPdfPath, movePath, backwardPath, removePath, invalidPath, solePath,
         firstRemovePath, lastRemovePath}) {
     std::remove(path.c_str());
   }

@@ -70,17 +70,24 @@ Java_com_margelo_nitro_inksignpdf_PdfiumPageAssembler_nativeAssemble(
     jint pageIndex,
     jint destinationIndex,
     jstring scratchPath) {
-  if (inputPath == nullptr || scratchPath == nullptr || pageIndex < 0 ||
-      destinationIndex < 0 || operation < 0 || operation > 2) {
+  if (scratchPath == nullptr || pageIndex < 0 || destinationIndex < 0 ||
+      operation < 0 || operation > 3 || (operation != 3 && inputPath == nullptr)) {
     env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
                   "Invalid PDFium assembly request");
+    return nullptr;
+  }
+  if (operation == 3 && inputPath != nullptr &&
+      env->GetStringLength(inputPath) != 0) {
+    env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                  "CREATE assembly must not have a current document");
     return nullptr;
   }
 
   std::string inputFilePath;
   std::vector<std::uint8_t> input;
-  if (!readJavaPath(env, inputPath, inputFilePath) ||
-      !readFile(inputFilePath, input)) {
+  if (operation != 3 &&
+      (!readJavaPath(env, inputPath, inputFilePath) ||
+       !readFile(inputFilePath, input))) {
     env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
                   "Unable to read PDFium assembly input");
     return nullptr;

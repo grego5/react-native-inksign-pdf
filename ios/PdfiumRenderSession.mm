@@ -81,7 +81,8 @@ NSArray<NSValue *> *assemblePDFData(
     NSError **error) {
   if (data == nil || (data.length == 0 && !allowsEmptyBase) || scratchURL == nil ||
       !scratchURL.isFileURL || scratchURL.path.length == 0 ||
-      operation < 0 || operation > 2) {
+      operation < 0 || operation > 3 ||
+      (operation == 3) != allowsEmptyBase) {
     PdfiumError invalid{PdfiumErrorCode::InvalidInput,
                         "Invalid PDF page assembly input"};
     assignError(error, invalid);
@@ -170,7 +171,7 @@ NSArray<NSValue *> *assemblePDFData(
                                             scratchURL:(NSURL *)scratchURL
                                                  error:(NSError **)error {
   return assemblePDFData([NSData data],
-                         static_cast<NSInteger>(PdfiumPageAssemblyOperation::Append),
+                         static_cast<NSInteger>(PdfiumPageAssemblyOperation::Create),
                          0, 0, appendInputs, scratchURL, YES, error);
 }
 
