@@ -1,7 +1,9 @@
 package com.margelo.nitro.inksignpdf
 
 import java.util.LinkedHashSet
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
@@ -20,7 +22,8 @@ internal class MutableDocumentCoordinator(
   }.toMutableList()
   private var activePageId: String? = mutablePages.firstOrNull()?.id
   private var generationValue = generation
-  private var publishedGenerationValue = generation
+  private var latestOpenAttemptId: Long? = null
+  private val openStateLock = Any()
   private var operationSequence = 0L
   private var activeOperation: Long? = null
   private val workingFiles = LinkedHashSet<java.io.File>()
@@ -203,30 +206,31 @@ internal class MutableDocumentCoordinator(
   fun presentationSnapshot(): Snapshot = snapshot()
 
   private data class OpenRequest(
-    val generation: Long,
+    val attemptId: Long,
     val fallbackFont: PdfFallbackFont?,
     val workingFile: java.io.File,
-    val previousWorkingFile: java.io.File?,
-    val previousGeneration: Long,
-    val previousPages: List<InkPageState>,
-    val previousActivePageId: String?,
-    val previousSourcePath: String,
-    val previousStructuralDirty: Boolean,
-    val previousFallbackFont: PdfFallbackFont?,
     val operationID: Long,
   )
 
-  suspend fun <T> executeOpen(
+  private data class CommittedOpenState(
+    val pages: List<InkPageState>,
+    val activePageId: String?,
+    val sourcePath: String,
+    val generation: Long,
+    val structuralDirty: Boolean,
+    val fallbackFont: PdfFallbackFont?,
+  )
+
+  suspend fun <P, T> executeOpen(
     sourcePath: String,
     fallbackFont: PdfFallbackFont?,
-    resetPresentation: () -> Unit,
-    installPresentation: () -> T,
+    preparePresentation: (PdfSessionInfo) -> P,
+    installPresentation: (P) -> T,
     restorePresentation: () -> Unit = {},
-    refreshPresentation: () -> Unit = {},
   ): T {
     val request = beginOpen(fallbackFont)
-    var statePublished = false
-    var presentationReset = false
+    var committed = false
+    var pendingWorkerCommit: CompletableDeferred<Result<Unit>>? = null
     try {
       withContext(Dispatchers.IO) {
         val source = try {
@@ -239,41 +243,53 @@ internal class MutableDocumentCoordinator(
         }
         source.copyTo(request.workingFile, overwrite = true)
       }
-      val info = awaitWorkerResult(request.generation) { completion ->
-        replaceSession(request.workingFile.path, request.generation, request.fallbackFont, completion)
+      val info = awaitWorkerResult(request.attemptId) { completion ->
+        sessionWorker.prepareOpen(
+          request.attemptId,
+          request.workingFile.path,
+          request.fallbackFont,
+          completion,
+        )
       }
-      ensureCurrent(request.generation)
-      if (info.generation != request.generation) throw cancelled()
-      publishOpen(info)
-      this.fallbackFont = request.fallbackFont
-      presentationReset = true
-      resetPresentation()
-      val value = installPresentation()
-      awaitWorkerResult<Unit>(request.generation) { completion ->
-        sessionWorker.finishReplacement(request.generation, completion)
+      ensureCurrentOpen(request.attemptId)
+      if (info.generation != request.attemptId) throw cancelled()
+      validateOpenCandidate(info)
+      val presentation = preparePresentation(info)
+      ensureCurrentOpen(request.attemptId)
+
+      val workerCommit = CompletableDeferred<Result<Unit>>()
+      val gate = OpenCommitGate()
+      val committedPresentation = synchronized(openStateLock) {
+        ensureCurrentOpen(request.attemptId)
+        if (!sessionWorker.commitPreparedOpen(request.attemptId, gate, workerCommit::complete)) {
+          throw cancelled()
+        }
+        pendingWorkerCommit = workerCommit
+        val previousState = captureCommittedOpenState()
+        try {
+          val previousWorkingFile = publishOpenCandidate(request, info)
+          val value = installPresentation(presentation)
+          gate.accept()
+          committed = true
+          previousWorkingFile to value
+        } catch (error: Throwable) {
+          restoreCommittedOpenState(previousState)
+          runCatching { restorePresentation() }
+          gate.reject()
+          throw error
+        }
       }
-      ensureCurrent(request.generation)
-      publishedGenerationValue = request.generation
-      statePublished = true
-      request.previousWorkingFile?.let { previous -> runCatching { retireWorkingFile(previous) } }
+      workerCommit.await().getOrThrow()
+      val (previousWorkingFile, value) = committedPresentation
+      previousWorkingFile?.let { previous -> runCatching { retireWorkingFile(previous) } }
       return value
     } finally {
-      if (!statePublished) {
-        if (generationValue == request.generation) {
-          runCatching {
-            awaitWorkerResult<Unit>(request.generation) { completion ->
-              sessionWorker.rollbackReplacement(request.generation, request.previousGeneration, completion)
-            }
+      if (!committed) {
+        withContext(NonCancellable) { pendingWorkerCommit?.await() }
+        runCatching {
+          awaitWorkerResult<Unit>(request.attemptId) { completion ->
+            sessionWorker.discardPreparedOpen(request.attemptId, completion)
           }
-          mutablePages.clear()
-          mutablePages.addAll(request.previousPages)
-          activePageId = request.previousActivePageId
-          this.sourcePath = request.previousSourcePath
-          structuralDirty = request.previousStructuralDirty
-          this.fallbackFont = request.previousFallbackFont
-          generationValue = request.previousGeneration
-          if (presentationReset) runCatching { restorePresentation() }
-          else runCatching { refreshPresentation() }
         }
         retireWorkingFile(request.workingFile)
       }
@@ -282,23 +298,71 @@ internal class MutableDocumentCoordinator(
   }
 
   private fun beginOpen(fallbackFont: PdfFallbackFont?): OpenRequest {
-    check(!disposed) { "PDF coordinator was disposed" }
-    val previousGeneration = publishedGenerationValue
-    val previousWorkingFile = currentWorkingFile()
-    val previousPages = mutablePages.toList()
-    val previousActivePageId = activePageId
-    val previousSourcePath = sourcePath
-    val previousStructuralDirty = structuralDirty
-    val previousFallbackFont = fallbackFont
-    val workingFile = artifactPolicy.allocateWorkingPdf()
-    sessionWorker.cancel(generationValue)
-    generationValue += 1L
-    activeOperation = nextOperation()
-    trackWorkingFile(workingFile)
-    previousWorkingFile?.let(::trackWorkingFile)
-    return OpenRequest(generation, fallbackFont, workingFile, previousWorkingFile,
-      previousGeneration, previousPages, previousActivePageId, previousSourcePath,
-      previousStructuralDirty, previousFallbackFont, checkNotNull(activeOperation))
+    return synchronized(openStateLock) {
+      check(!disposed) { "PDF coordinator was disposed" }
+      val workingFile = artifactPolicy.allocateWorkingPdf()
+      try {
+        val attemptId = sessionWorker.reserveOpenAttemptId(generationValue)
+        latestOpenAttemptId = attemptId
+        activeOperation = nextOperation()
+        trackWorkingFile(workingFile)
+        currentWorkingFile()?.let(::trackWorkingFile)
+        OpenRequest(attemptId, fallbackFont, workingFile, checkNotNull(activeOperation))
+      } catch (error: Throwable) {
+        artifactPolicy.deleteExact(workingFile)
+        throw error
+      }
+    }
+  }
+
+  private fun ensureCurrentOpen(attemptId: Long) {
+    synchronized(openStateLock) {
+      if (disposed || latestOpenAttemptId != attemptId) throw cancelled()
+    }
+  }
+
+  private fun validateOpenCandidate(info: PdfSessionInfo) {
+    if (info.pages.isEmpty() || info.pages.any {
+        !it.width.isFinite() || it.width <= 0.0 || !it.height.isFinite() || it.height <= 0.0
+      }
+    ) {
+      throw PdfSessionException("pdf_load_failed", "The opened PDF contains invalid page dimensions")
+    }
+  }
+
+  private fun publishOpenCandidate(request: OpenRequest, info: PdfSessionInfo): java.io.File? {
+    ensureNotDisposed()
+    ensureCurrentOpen(request.attemptId)
+    check(info.generation == request.attemptId)
+    val previous = currentWorkingFile()
+    mutablePages.clear()
+    mutablePages.addAll(info.pages.map { InkPageState(PageRecord.newId(), it) })
+    activePageId = mutablePages.first().id
+    sourcePath = request.workingFile.path
+    generationValue = request.attemptId
+    structuralDirty = false
+    fallbackFont = request.fallbackFont
+    untrackWorkingFile(request.workingFile)
+    return previous
+  }
+
+  private fun captureCommittedOpenState() = CommittedOpenState(
+    pages = mutablePages.toList(),
+    activePageId = activePageId,
+    sourcePath = sourcePath,
+    generation = generationValue,
+    structuralDirty = structuralDirty,
+    fallbackFont = fallbackFont,
+  )
+
+  private fun restoreCommittedOpenState(state: CommittedOpenState) {
+    mutablePages.clear()
+    mutablePages.addAll(state.pages)
+    activePageId = state.activePageId
+    sourcePath = state.sourcePath
+    generationValue = state.generation
+    structuralDirty = state.structuralDirty
+    fallbackFont = state.fallbackFont
   }
 
   fun beginOperation(requireDocument: Boolean = true): Long {
@@ -408,30 +472,12 @@ internal class MutableDocumentCoordinator(
     }
   }
 
-  fun replaceSession(path: String, generation: Long, fallbackFont: PdfFallbackFont?, completion: (Result<PdfSessionInfo>) -> Unit) {
-    sessionWorker.replace(path, generation, fallbackFont, completion)
-  }
-
   fun exportSession(snapshot: PdfExportSnapshot, completion: (Result<String>) -> Unit) {
     sessionWorker.export(snapshot, artifactPolicy, completion)
   }
 
   fun closeSession(outputs: Collection<java.io.File>, retireOutput: (java.io.File) -> Unit) {
     sessionWorker.close(outputs, retireOutput)
-  }
-
-  fun publishOpen(info: PdfSessionInfo): java.io.File? {
-    ensureNotDisposed()
-    require(info.pages.isNotEmpty())
-    val previous = currentWorkingFile()
-    mutablePages.clear()
-    mutablePages.addAll(info.pages.map { InkPageState(PageRecord.newId(), it) })
-    activePageId = mutablePages.first().id
-    sourcePath = info.sourcePath
-    generationValue = info.generation
-    structuralDirty = false
-    untrackWorkingFile(java.io.File(info.sourcePath))
-    return previous
   }
 
   fun publishStructuralCandidate(info: PdfSessionInfo, candidate: StructuralCandidate): java.io.File? {
@@ -454,6 +500,7 @@ internal class MutableDocumentCoordinator(
   fun dispose() {
     if (disposed) return
     disposed = true
+    latestOpenAttemptId = null
     sessionWorker.cancel(generationValue)
     generationValue += 1L
     activeOperation = null

@@ -35,10 +35,14 @@
   or window-focus loss settles text input and cancels active ink/navigation.
 - Mode changes, page changes, replacement, and disposal cancel pending text
   placement and clear stale editor/selection state before new state is installed.
-- Document replacement cancels active work and invalidates prior worker results.
-  The previous published document, worker session, and presentation remain
-  usable until the replacement candidate is ready; failed replacement restores
-  its generation, viewport, and editing mode.
+- Document replacement leaves the committed document, worker session, and
+  presentation in place while an open candidate is prepared. Each open gets a
+  never-reused attempt ID. Only the latest attempt may commit; failed or stale
+  attempts discard their candidate without rewinding the attempt ID.
+  Presentation is prepared before the commit. A queued worker commit waits for
+  presentation installation; if installation fails, the coordinator and view
+  restore the committed document before the worker session can change. State
+  callbacks run after commit and report the replacement document's reset state.
 - Opening copies the caller's PDF into a coordinator-owned working artifact
   before publication. Structural commands capture stable page identities and
   immutable inputs, assemble and open a unique prepared candidate without

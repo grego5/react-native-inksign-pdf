@@ -2,7 +2,7 @@ import { type ConfigPlugin, withGradleProperties } from '@expo/config-plugins';
 
 const gradleProperties = {
   'android.cmakeVersion': '4.1.2',
-  reactNativeArchitectures: 'arm64-v8a',
+  reactNativeArchitectures: 'arm64-v8a,x86_64',
 };
 
 const withGradleConfig: ConfigPlugin = (config) =>

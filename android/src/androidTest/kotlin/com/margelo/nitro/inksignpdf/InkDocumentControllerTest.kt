@@ -365,14 +365,18 @@ class InkDocumentControllerTest {
     private var pageSwitchId = 1L
     val session = FakeSession(pages)
     private val worker = PdfSessionWorker(opener = FakeSessionOpener(session))
+    private val generation = worker.reserveOpenAttemptId(0L)
     lateinit var controller: InkDocumentController
-    private val info = PdfSessionInfo("controller-test.pdf", pages, 1L)
+    private val info = PdfSessionInfo("controller-test.pdf", pages, generation)
 
     init {
       val opened = CountDownLatch(1)
-      worker.replace("controller-test.pdf", 1L) { result ->
+      worker.prepareOpen(generation, "controller-test.pdf", null) { result ->
         assertTrue(result.isSuccess)
-        opened.countDown()
+        assertTrue(worker.commitPreparedOpen(generation) { committed ->
+          assertTrue(committed.isSuccess)
+          opened.countDown()
+        })
       }
       assertTrue(opened.await(5L, TimeUnit.SECONDS))
       runOnMain {
@@ -381,7 +385,7 @@ class InkDocumentControllerTest {
           worker,
           {},
           {},
-          currentDocumentGeneration = { 1L },
+          currentDocumentGeneration = { generation },
           currentPageIndex = { activePageIndex },
           currentPageSwitchId = { pageSwitchId },
         )

@@ -11,6 +11,11 @@ import android.view.MotionEvent
 import android.view.HapticFeedbackConstants
 import kotlin.math.max
 
+internal data class PreparedDocumentPresentation(
+  val dimensions: PdfPageDimensions,
+  val viewport: OpenViewport,
+)
+
 /**
  * The single Android presentation surface for PDF rendering, navigation, and
  * edit-mode ink input.
@@ -190,6 +195,47 @@ internal class SurfaceView(
     fitToPage: Boolean = true,
     notifyState: Boolean = false,
   ) {
+    val dimensions = documentCoordinator.pageSnapshot(0).dimensions
+    installDocumentPresentationForPage(dimensions, zoom, focus, fitToPage, notifyState)
+  }
+
+  fun prepareDocumentPresentation(
+    dimensions: PdfPageDimensions,
+    viewport: OpenViewport,
+  ): PreparedDocumentPresentation {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    if (!dimensions.width.isFinite() || dimensions.width <= 0.0 ||
+      !dimensions.height.isFinite() || dimensions.height <= 0.0
+    ) {
+      throw PdfSessionException("pdf_load_failed", "The opened PDF contains invalid page dimensions")
+    }
+    return PreparedDocumentPresentation(dimensions, viewport)
+  }
+
+  fun installDocumentPresentation(
+    prepared: PreparedDocumentPresentation,
+    notifyState: Boolean = false,
+    notifyContent: Boolean = true,
+  ) {
+    installDocumentPresentationForPage(
+      prepared.dimensions,
+      prepared.viewport.zoom,
+      prepared.viewport.focus,
+      prepared.viewport.fitToPage,
+      notifyState,
+      notifyContent,
+    )
+  }
+
+  private fun installDocumentPresentationForPage(
+    dimensions: PdfPageDimensions,
+    zoom: Double?,
+    focus: PagePoint?,
+    fitToPage: Boolean,
+    notifyState: Boolean,
+    notifyContent: Boolean = true,
+  ) {
     requireOnUiThread()
     if (disposed) return
     cancelActiveStroke()
@@ -200,7 +246,7 @@ internal class SurfaceView(
     clearActivePresentation()
     pageSwitchRequestId += 1L
     documentController.setPage(
-      dimensions = documentCoordinator.pageSnapshot(0).dimensions,
+      dimensions = dimensions,
       zoom = zoom,
       focus = focus,
       fitToPage = fitToPage,
@@ -210,7 +256,7 @@ internal class SurfaceView(
     lastReportedState = reportedState()
     if (notifyState && lastReportedState != previousState) onStateChange?.invoke(lastReportedState)
     invalidate()
-    onTextContentChanged?.invoke()
+    if (notifyContent) onTextContentChanged?.invoke()
   }
 
   fun clearDocument() {
@@ -268,13 +314,18 @@ internal class SurfaceView(
     }
   }
 
-  fun requireStructuralMutationReady() {
+  fun requireStructuralMutationReady(creatingDocument: Boolean = false) {
     requireOnUiThread()
     if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
-    if (!documentCoordinator.hasDocument) {
+    if (documentCoordinator.hasDocument == creatingDocument) {
+      val message = if (creatingDocument) {
+        "The view already has a document"
+      } else {
+        "A PDF must be opened before changing pages"
+      }
       throw PdfSessionException(
         "view_not_ready",
-        "A PDF must be opened before changing pages",
+        message,
       )
     }
     if (activePointerId != noPointer) {

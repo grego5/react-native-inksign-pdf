@@ -435,13 +435,19 @@ internal class TextPlacementInstrumentationTest {
 
   private inner class TextSurfaceHarness {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val pages = listOf(
+      PdfPageDimensions(300.0, 300.0),
+      PdfPageDimensions(300.0, 300.0),
+    )
     private val worker = PdfSessionWorker(
-      opener = PdfSessionOpener { _, generation ->
-        EmptyPdfResource(info.copy(generation = generation))
+      opener = PdfSessionOpener { path, openedGeneration ->
+        EmptyPdfResource(PdfSessionInfo(path, pages, openedGeneration))
       },
     )
+    private val generation = worker.reserveOpenAttemptId(0L)
     private val engine = InkEngine()
     private val coordinator = MutableDocumentCoordinator(
+      generation = generation,
       sessionWorker = worker,
       artifactPolicy = CacheArtifactPolicy.initialize(instrumentation.targetContext),
     )
@@ -449,11 +455,8 @@ internal class TextPlacementInstrumentationTest {
     lateinit var surface: SurfaceView
     val info = PdfSessionInfo(
       sourcePath = "text.pdf",
-      pages = listOf(
-        PdfPageDimensions(300.0, 300.0),
-        PdfPageDimensions(300.0, 300.0),
-      ),
-      generation = 1L,
+      pages = pages,
+      generation = generation,
     )
 
     init {
@@ -471,9 +474,12 @@ internal class TextPlacementInstrumentationTest {
       }
       val result = java.util.concurrent.atomic.AtomicReference<Result<PdfSessionInfo>>()
       val completed = CountDownLatch(1)
-      worker.replace("text.pdf", 1L) {
-        result.set(it)
-        completed.countDown()
+      worker.prepareOpen(generation, "text.pdf", null) { prepared ->
+        result.set(prepared)
+        assertTrue(worker.commitPreparedOpen(generation) { committed ->
+          if (committed.isFailure) result.set(Result.failure(checkNotNull(committed.exceptionOrNull())))
+          completed.countDown()
+        })
       }
       assertTrue(completed.await(5L, TimeUnit.SECONDS))
       runOnMain { setDocument(result.get().getOrThrow()) }
@@ -494,7 +500,8 @@ internal class TextPlacementInstrumentationTest {
       focus: PagePoint? = null,
       fitToPage: Boolean = true,
     ) {
-      surface.documentCoordinator.publishOpen(next)
+      val pages = next.pages.map(::InkPageState)
+      surface.documentCoordinator.installCandidate(next.sourcePath, pages, pages.first().id)
       surface.installDocumentPresentation(zoom, focus, fitToPage)
     }
 

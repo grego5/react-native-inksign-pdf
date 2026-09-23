@@ -814,10 +814,12 @@ class SurfaceViewTest {
   ) {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val worker = PdfSessionWorker(opener = FakePdfSession)
+    private val generation = worker.reserveOpenAttemptId(0L)
     val engine = InkEngine()
     val predictor = RecordingPredictor()
     val frontBuffer = RecordingFrontBufferHost()
     val coordinator = MutableDocumentCoordinator(
+      generation = generation,
       sessionWorker = worker,
       artifactPolicy = CacheArtifactPolicy.initialize(instrumentation.targetContext),
     )
@@ -842,9 +844,12 @@ class SurfaceViewTest {
 
       val result = AtomicReference<Result<PdfSessionInfo>>()
       val completed = CountDownLatch(1)
-      worker.replace("test.pdf", generation = 1L) {
-        result.set(it)
-        completed.countDown()
+      worker.prepareOpen(generation, "test.pdf", null) { prepared ->
+        result.set(prepared)
+        assertTrue(worker.commitPreparedOpen(generation) { committed ->
+          if (committed.isFailure) result.set(Result.failure(checkNotNull(committed.exceptionOrNull())))
+          completed.countDown()
+        })
       }
       assertTrue(completed.await(5L, TimeUnit.SECONDS))
       val info = result.get().getOrThrow()
@@ -866,7 +871,8 @@ class SurfaceViewTest {
       focus: PagePoint? = null,
       fitToPage: Boolean = true,
     ) {
-      surface.documentCoordinator.publishOpen(info)
+      val pages = info.pages.map(::InkPageState)
+      surface.documentCoordinator.installCandidate(info.sourcePath, pages, pages.first().id)
       surface.installDocumentPresentation(zoom, focus, fitToPage)
     }
 
