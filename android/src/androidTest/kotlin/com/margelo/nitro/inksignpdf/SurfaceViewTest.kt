@@ -67,7 +67,7 @@ class SurfaceViewTest {
     ).fitZoom()
 
     harness.runOnMain {
-      harness.surface.setDocument(
+      harness.setDocument(
         info,
         zoom = 2.0,
         focus = PagePoint(120.0, 140.0),
@@ -118,7 +118,11 @@ class SurfaceViewTest {
   @Test
   fun selectedPreviewGatesPullAndReleaseUntilItIsReady() {
     FakePdfSession.holdPreviews()
-    harness.runOnMain { harness.surface.setDocument(harness.documentInfo()) }
+    harness.runOnMain { harness.setDocument(harness.documentInfo()) }
+    assertTrue(
+      "preview rendering must be held before sending the gated gesture",
+      FakePdfSession.awaitPreviewStarted(),
+    )
     harness.sendPageNavigationSwipe()
 
     harness.sendPageNavigationRelease()
@@ -151,7 +155,7 @@ class SurfaceViewTest {
   @Test
   fun inwardDragAtNavigableBoundaryRemainsOrdinaryViewportNavigation() {
     harness.runOnMain {
-      harness.surface.setDocument(
+      harness.setDocument(
         harness.documentInfo(),
         zoom = 2.0,
         focus = PagePoint(300.0, 150.0),
@@ -187,13 +191,28 @@ class SurfaceViewTest {
 
   @Test
   fun belowThresholdTransferredSwipeSnapsBackWithoutSwitching() {
+    val driver = ManualSettlementDriver()
+    harness.close()
+    harness = SurfaceHarness(settlementDriver = driver)
     harness.awaitPreparedPagePreview()
+    val density = InstrumentationRegistry.getInstrumentation().targetContext
+      .resources.displayMetrics.density
+    val dragDistance = 8.0f * density + 1.0f
     harness.runOnMain {
       dispatch(downEvent(150.0f, 150.0f, 14_000L))
-      dispatch(motionEvent(MotionEvent.ACTION_MOVE, 130.0f, 150.0f, 14_020L))
-      dispatch(upEvent(130.0f, 150.0f, 14_040L))
+      dispatch(motionEvent(MotionEvent.ACTION_MOVE, 150.0f - dragDistance, 150.0f, 14_020L))
+      assertTrue(harness.surface.pageNavigationState().state is NavigationState.Dragging)
+      assertTrue(harness.surface.pageNavigationState().previewPresented)
+      dispatch(upEvent(150.0f - dragDistance, 150.0f, 14_040L))
 
       assertEquals(0, harness.surface.currentPageInfo().pageIndex)
+      assertTrue(harness.surface.pageNavigationState().state is NavigationState.Settling)
+      assertEquals(1, driver.pendingCount())
+      assertTrue(harness.surface.pageNavigationState().previewPresented)
+
+      driver.finish(0)
+      assertEquals(NavigationState.Idle, harness.surface.pageNavigationState().state)
+      assertFalse(harness.surface.pageNavigationState().previewPresented)
     }
   }
 
@@ -218,11 +237,14 @@ class SurfaceViewTest {
     harness.close()
     harness = SurfaceHarness(settlementDriver = driver)
     harness.awaitPreparedPagePreview()
+    val density = InstrumentationRegistry.getInstrumentation().targetContext
+      .resources.displayMetrics.density
+    val dragDistance = 8.0f * density + 1.0f
 
     harness.runOnMain {
       dispatch(downEvent(150.0f, 150.0f, 16_000L))
-      dispatch(motionEvent(MotionEvent.ACTION_MOVE, 130.0f, 150.0f, 16_020L))
-      dispatch(upEvent(130.0f, 150.0f, 16_040L))
+      dispatch(motionEvent(MotionEvent.ACTION_MOVE, 150.0f - dragDistance, 150.0f, 16_020L))
+      dispatch(upEvent(150.0f - dragDistance, 150.0f, 16_040L))
       assertEquals(NavigationState.Settling::class, harness.surface.pageNavigationState().state::class)
       assertEquals(1, driver.pendingCount())
 
@@ -336,6 +358,7 @@ class SurfaceViewTest {
   fun clearedDocumentInfoUsesViewNotReadyBeforeFinalizeCapture() {
     var error: PdfSessionException? = null
     harness.runOnMain {
+      harness.surface.documentCoordinator.clearPublishedDocument()
       harness.surface.clearDocument()
       error = assertThrows(PdfSessionException::class.java) {
         harness.surface.currentDocumentInfo()
@@ -349,6 +372,8 @@ class SurfaceViewTest {
   fun completedInkAndHistoryRemainLocalToEachPage() {
     val states = ArrayList<InkState>()
     harness.runOnMain {
+      // installCandidate models create; opened PDFs start from a clean baseline.
+      harness.surface.documentCoordinator.markStructuralClean()
       harness.surface.onStateChange = { states += it }
       harness.surface.setEditMode(true)
       dispatch(downEvent(80.0f, 100.0f, 1_000L))
@@ -375,7 +400,7 @@ class SurfaceViewTest {
       harness.surface.switchPage(1)
       harness.surface.clear()
       assertEquals(0, harness.surface.completedPagesSnapshot()[1].strokes.size)
-      assertEquals(InkState(false, false, false), states.last())
+      assertEquals(InkState(true, false, false), states.last())
     }
   }
 
@@ -383,6 +408,8 @@ class SurfaceViewTest {
   fun editModeAcceptsHistoricalFingerSamplesAndFinalizesTheStroke() {
     harness.runOnMain {
       val states = ArrayList<InkState>()
+      // installCandidate models create; opened PDFs start from a clean baseline.
+      harness.surface.documentCoordinator.markStructuralClean()
       harness.surface.onStateChange = { states += it }
       harness.surface.setEditMode(true)
 
@@ -594,17 +621,21 @@ class SurfaceViewTest {
         dispatch(
           motionEvent(
             MotionEvent.ACTION_MOVE,
-            150.0f + index * 10.0f,
+            150.0f + index * 5.0f,
             (150.0 + kotlin.math.sin(index * 0.45) * 18.0).toFloat(),
             1_000L + index * 100L,
           ),
         )
       }
-      dispatch(upEvent(390.0f, 150.0f, 3_500L))
+      dispatch(upEvent(280.0f, 150.0f, 3_500L))
 
       val beforeDelayedAcknowledgement = harness.surface.presentationDiagnostics()
       assertEquals(1, harness.surface.completedPagesSnapshot().first().strokes.size)
-      assertEquals(1, harness.frontBuffer.handoffRequests.size)
+      assertEquals(
+        "eligible in-viewport gesture must request handoff; diagnostics=${harness.surface.presentationDiagnostics()}",
+        1,
+        harness.frontBuffer.handoffRequests.size,
+      )
       assertFalse(beforeDelayedAcknowledgement.frontBufferOwnsActiveInk)
       assertEquals(0, beforeDelayedAcknowledgement.retainedCommittedContourCount)
       assertEquals(0, beforeDelayedAcknowledgement.retainedPredictionContourCount)
@@ -612,7 +643,11 @@ class SurfaceViewTest {
       assertEquals(0L, beforeDelayedAcknowledgement.stableBoundaryAcknowledged)
 
       val delayedIndex = harness.frontBuffer.queuedAcknowledgements.indexOfFirst { true }
-      assertTrue("expected a queued acknowledgement before Up", delayedIndex >= 0)
+      assertTrue(
+        "expected an acknowledgement for an accepted eligible gesture; " +
+          "requests=${harness.frontBuffer.requests.size}, handoffs=${harness.frontBuffer.handoffRequests.size}",
+        delayedIndex >= 0,
+      )
       val delayedAcknowledgement = harness.frontBuffer.queuedAcknowledgements[delayedIndex]
       assertEquals(
         harness.frontBuffer.handoffRequests.single().first,
@@ -628,7 +663,7 @@ class SurfaceViewTest {
       assertEquals(0L, afterDelayedAcknowledgement.stableBoundaryAcknowledged)
       assertEquals(1, harness.surface.completedPagesSnapshot().first().strokes.size)
       assertEquals(1, harness.frontBuffer.handoffRequests.size)
-      assertNotInProgress(harness.engine, 390.0, 150.0, 3.500)
+      assertNotInProgress(harness.engine, 280.0, 150.0, 3.500)
     }
   }
 
@@ -813,9 +848,15 @@ class SurfaceViewTest {
   ) {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val worker = PdfSessionWorker(opener = FakePdfSession)
+    private val generation = worker.reserveOpenAttemptId(0L)
     val engine = InkEngine()
     val predictor = RecordingPredictor()
     val frontBuffer = RecordingFrontBufferHost()
+    val coordinator = MutableDocumentCoordinator(
+      generation = generation,
+      sessionWorker = worker,
+      artifactPolicy = CacheArtifactPolicy.initialize(instrumentation.targetContext),
+    )
     val surface: SurfaceView
 
     init {
@@ -824,12 +865,12 @@ class SurfaceViewTest {
         createdSurface.set(
           SurfaceView(
             instrumentation.targetContext,
-            worker,
             engine,
             predictor = predictor,
             lowLatencyInk = frontBuffer,
             pageNavigationPreviewScheduler = previewScheduler,
             pageNavigationSettlementDriver = settlementDriver,
+            documentCoordinator = coordinator,
           ),
         )
       }
@@ -837,15 +878,18 @@ class SurfaceViewTest {
 
       val result = AtomicReference<Result<PdfSessionInfo>>()
       val completed = CountDownLatch(1)
-      worker.replace("test.pdf", generation = 1L) {
-        result.set(it)
-        completed.countDown()
+      worker.prepareOpen(generation, "test.pdf", null) { prepared ->
+        result.set(prepared)
+        assertTrue(worker.commitPreparedOpen(generation) { committed ->
+          if (committed.isFailure) result.set(Result.failure(checkNotNull(committed.exceptionOrNull())))
+          completed.countDown()
+        })
       }
       assertTrue(completed.await(5L, TimeUnit.SECONDS))
       val info = result.get().getOrThrow()
       runOnMain {
         surface.layout(0, 0, 300, 300)
-        surface.setDocument(info)
+        setDocument(info)
       }
     }
 
@@ -854,6 +898,17 @@ class SurfaceViewTest {
     }
 
     fun documentInfo(): PdfSessionInfo = FakePdfSession.open("test.pdf", 1L).info
+
+    fun setDocument(
+      info: PdfSessionInfo,
+      zoom: Double? = null,
+      focus: PagePoint? = null,
+      fitToPage: Boolean = true,
+    ) {
+      val pages = info.pages.map(::InkPageState)
+      surface.documentCoordinator.installCandidate(info.sourcePath, pages, pages.first().id)
+      surface.installDocumentPresentation(zoom, focus, fitToPage)
+    }
 
     fun awaitPreparedPagePreview() {
       val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5L)
@@ -1085,6 +1140,8 @@ class SurfaceViewTest {
       delayPreviews = false
       previewRelease.countDown()
     }
+
+    fun awaitPreviewStarted(): Boolean = previewStarted.await(5L, TimeUnit.SECONDS)
 
     fun holdNextVisible(): CountDownLatch {
       visibleStarted = CountDownLatch(1)

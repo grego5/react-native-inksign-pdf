@@ -1,7 +1,7 @@
 # PDFium package
 
 This directory contains the public PDFium headers, licenses, and provenance
-metadata used by the native compatibility-text implementation. The source is
+metadata used by the native rendering and page-assembly adapters. The source is
 pinned to PDFium `154.0.8021.0` on `chromium/8021`; see `manifest.json` for the
 exact revision and build provenance.
 

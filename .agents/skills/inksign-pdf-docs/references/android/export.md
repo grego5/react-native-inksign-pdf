@@ -1,18 +1,27 @@
 # Android PDF export
 
-`PdfExporter` snapshots committed page history on the UI thread and writes the
-result from a worker-owned PDF session. It never reads rolling or predicted
-geometry and never modifies the source PDF.
+Export uses a snapshot of committed page content from the published working
+document. PDF parsing, page-object creation, candidate validation, and
+serialization use PDFium on the export worker. Instrumentation uses PDFium for
+raster and page metadata checks and PDFBox for independent logical-text extraction.
 
-- Source pages, order, dimensions, and rotations are preserved.
-- Completed cubic contours are written as separate opaque vector fill paths.
-  The published page-space cubics are used directly; paths are not refit or
-  flattened into a bitmap.
-- Committed text is written as deterministic PDF text using its canonical
-  position, size, and saved color. Temporary editor and selection state is
-  excluded.
-- The rewritten document is checked against the captured page structure and
-  expected added paths/text before publication.
-- A verified result is atomically published as a unique `signed-*.pdf` in the
-  native cache root. Export is non-consuming; stale or disposed requests clean
-  up their own temporary and reserved outputs.
+Original PDF pages and their order are preserved. Committed ink and text are
+added as vector PDF content; active gestures and editor state are excluded.
+Android chooses annotation fonts from system fallback. On API 31 and newer the
+export snapshot includes selected font data; PDFium's HarfBuzz shapes each run
+and supplies glyph-cluster mappings, explicit positions, and embedded font
+objects when the font's embedding permissions allow it. A line-level
+`ActualText` mapping keeps extraction in logical Unicode order for mixed RTL and
+LTR text. Text direction is fixed when the annotation is placed and stored with
+the annotation; the React app selects it with the view ref method.
+
+Android does not expose selected font bytes on API 24–30. Those releases use
+PDFium's standard-font fallback as a best-effort path. Missing glyph coverage or
+embedding permission alone does not reject finalize; affected glyphs may be
+blank or partial.
+
+PDFium reopens the serialized candidate before publication and checks page
+metadata, vector-object counts, path geometry, text-object font sizes, and text
+placements against the export snapshot. Export does not replace the caller's
+source or the working document, and stale or cancelled work cannot publish an
+output.

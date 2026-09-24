@@ -12,6 +12,183 @@ import org.junit.Test
 
 class PdfSessionWorkerTest {
   @Test
+  fun failedOpenCandidateLeavesCommittedSessionRenderableAndAttemptIdsAreNeverReused() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource {
+        if (path == "invalid.pdf") throw PdfSessionException("pdf_load_failed", "invalid PDF")
+        return FakeSession(path, generation).also(opened::add)
+      }
+    }
+    val worker = PdfSessionWorker(opener = opener)
+    try {
+      val committedId = openAndCommit(worker, "working.pdf", afterGeneration = 0L).generation
+
+      val replacement = CountDownLatch(1)
+      val failedAttempt = worker.reserveOpenAttemptId(committedId)
+      worker.prepareOpen(failedAttempt, "invalid.pdf", null) { result ->
+        assertTrue(result.isFailure)
+        replacement.countDown()
+      }
+      assertTrue(replacement.await(5L, TimeUnit.SECONDS))
+      val discarded = CountDownLatch(1)
+      worker.discardPreparedOpen(failedAttempt) { result ->
+        assertTrue(result.isSuccess)
+        discarded.countDown()
+      }
+      assertTrue(discarded.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened.single().closed)
+      assertTrue(worker.reserveOpenAttemptId(committedId) > failedAttempt)
+
+      worker.updateTileEpoch(committedId, 1L)
+      val rendered = CountDownLatch(1)
+      val renderResult = AtomicReference<Result<List<PdfTile>>>()
+      worker.renderTiles(committedId, 1L, listOf(testTileRequest(pageIndex = 0))) {
+        renderResult.set(it)
+        rendered.countDown()
+      }
+      assertTrue(rendered.await(5L, TimeUnit.SECONDS))
+      assertTrue(renderResult.get().isSuccess)
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
+  fun discardingReadyOpenCandidateKeepsCommittedSessionRenderable() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource =
+        FakeSession(path, generation).also(opened::add)
+    }
+    val worker = PdfSessionWorker(opener = opener)
+    try {
+      val committedId = openAndCommit(worker, "working.pdf", afterGeneration = 0L).generation
+
+      val replacement = CountDownLatch(1)
+      val candidateId = worker.reserveOpenAttemptId(committedId)
+      worker.prepareOpen(candidateId, "candidate.pdf", null) {
+        assertTrue(it.isSuccess)
+        replacement.countDown()
+      }
+      assertTrue(replacement.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertFalse(opened[1].closed)
+
+      val discarded = CountDownLatch(1)
+      worker.discardPreparedOpen(candidateId) { assertTrue(it.isSuccess); discarded.countDown() }
+      assertTrue(discarded.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertTrue(opened[1].closed)
+
+      worker.updateTileEpoch(committedId, 1L)
+      val rendered = CountDownLatch(1)
+      val renderResult = AtomicReference<Result<List<PdfTile>>>()
+      worker.renderTiles(committedId, 1L, listOf(testTileRequest(pageIndex = 0))) {
+        renderResult.set(it)
+        rendered.countDown()
+      }
+      assertTrue(rendered.await(5L, TimeUnit.SECONDS))
+      assertTrue(renderResult.get().isSuccess)
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
+  fun preparedMutationDoesNotReplaceCurrentSessionUntilCommit() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource {
+        return FakeSession(path, generation).also { opened += it }
+      }
+    }
+    val scratch = File.createTempFile("prepared-mutation-", ".pdf")
+    val worker = PdfSessionWorker(
+      opener = opener,
+      assembler = { _, _, output ->
+        output.writeText("candidate")
+        listOf(PdfPageDimensions(300.0, 300.0))
+      },
+    )
+    try {
+      val initialInfo = openAndCommit(worker, "working.pdf", afterGeneration = 0L)
+
+      val prepared = CountDownLatch(1)
+      worker.prepareMutation(
+        "working.pdf",
+        scratch.path,
+        initialInfo.generation,
+        PdfiumAssemblyRequest(PdfiumAssemblyOperation.REMOVE, pageIndex = 0),
+        null,
+        { it.delete() },
+      ) { result ->
+        assertTrue(result.isSuccess)
+        prepared.countDown()
+      }
+      assertTrue(prepared.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertFalse(opened[1].closed)
+
+      val committed = CountDownLatch(1)
+      worker.commitPreparedMutation(scratch.path, initialInfo.generation) { result ->
+        assertTrue(result.isSuccess)
+        committed.countDown()
+      }
+      assertTrue(committed.await(5L, TimeUnit.SECONDS))
+      assertTrue(opened[0].closed)
+      assertFalse(opened[1].closed)
+    } finally {
+      worker.close()
+      scratch.delete()
+    }
+  }
+
+  @Test
+  fun discardedPreparedMutationRetainsCurrentSessionAndRetiresCandidate() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource {
+        return FakeSession(path, generation).also { opened += it }
+      }
+    }
+    val scratch = File.createTempFile("discarded-mutation-", ".pdf")
+    val retired = CountDownLatch(1)
+    val worker = PdfSessionWorker(
+      opener = opener,
+      assembler = { _, _, output ->
+        output.writeText("candidate")
+        listOf(PdfPageDimensions(300.0, 300.0))
+      },
+    )
+    try {
+      val initialInfo = openAndCommit(worker, "working.pdf", afterGeneration = 0L)
+      val prepared = CountDownLatch(1)
+      worker.prepareMutation(
+        "working.pdf",
+        scratch.path,
+        initialInfo.generation,
+        PdfiumAssemblyRequest(PdfiumAssemblyOperation.MOVE, pageIndex = 0, destinationIndex = 0),
+        null,
+        { it.delete() },
+      ) { prepared.countDown() }
+      assertTrue(prepared.await(5L, TimeUnit.SECONDS))
+
+      worker.discardPreparedMutation(scratch.path) {
+        it.delete()
+        retired.countDown()
+      }
+      assertTrue(retired.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertTrue(opened[1].closed)
+      assertFalse(scratch.exists())
+    } finally {
+      worker.close()
+      scratch.delete()
+    }
+  }
+
+  @Test
   fun multiPageFakeSessionReportsOrderedDimensions() {
     val pages = listOf(
       PdfPageDimensions(300.0, 400.0),
@@ -20,16 +197,9 @@ class PdfSessionWorkerTest {
     val opener = RecordingSessionOpener(pages = pages)
     val worker = PdfSessionWorker(opener = opener)
     try {
-      val result = AtomicReference<Result<PdfSessionInfo>>()
-      val completed = CountDownLatch(1)
-      worker.replace("multi-page.pdf", generation = 7L) {
-        result.set(it)
-        completed.countDown()
-      }
-
-      assertTrue(completed.await(5L, TimeUnit.SECONDS))
-      assertEquals(pages, result.get().getOrThrow().pages)
-      assertEquals(2, result.get().getOrThrow().pageCount)
+      val info = openAndCommit(worker, "multi-page.pdf", afterGeneration = 6L)
+      assertEquals(pages, info.pages)
+      assertEquals(2, info.pageCount)
     } finally {
       worker.close()
     }
@@ -40,18 +210,13 @@ class PdfSessionWorkerTest {
     val opener = RecordingSessionOpener()
     val worker = PdfSessionWorker(opener = opener)
     try {
-      val opened = CountDownLatch(1)
-      worker.replace("preview.pdf", generation = 1L) { result ->
-        assertTrue(result.isSuccess)
-        opened.countDown()
-      }
-      assertTrue(opened.await(5L, TimeUnit.SECONDS))
+      val info = openAndCommit(worker, "preview.pdf", afterGeneration = 0L)
 
-      worker.updatePreviewEpoch(generation = 1L, previewEpoch = 2L)
+      worker.updatePreviewEpoch(generation = info.generation, previewEpoch = 2L)
       val result = AtomicReference<Result<PdfTile>>()
       val completed = CountDownLatch(1)
       worker.renderPreview(
-        generation = 1L,
+        generation = info.generation,
         previewEpoch = 1L,
         request = testTileRequest(pageIndex = 0),
       ) {
@@ -72,30 +237,29 @@ class PdfSessionWorkerTest {
     val opener = RecordingSessionOpener()
     val worker = PdfSessionWorker(opener = opener)
     try {
-      val opened = CountDownLatch(1)
-      worker.replace("old.pdf", generation = 1L) {
-        assertTrue(it.isSuccess)
-        opened.countDown()
-      }
-      assertTrue(opened.await(5L, TimeUnit.SECONDS))
+      val oldInfo = openAndCommit(worker, "old.pdf", afterGeneration = 0L)
 
       val replacement = CountDownLatch(1)
-      worker.replace("new.pdf", generation = 2L) {
-        assertTrue(it.isSuccess)
+      val newAttemptId = worker.reserveOpenAttemptId(oldInfo.generation)
+      worker.prepareOpen(newAttemptId, "new.pdf", null) { result ->
+        assertTrue(result.isSuccess)
         replacement.countDown()
       }
-      val staleResult = AtomicReference<Result<List<PdfTile>>>()
-      val staleCompleted = CountDownLatch(1)
-      worker.renderTiles(1L, 1L, listOf(testTileRequest(pageIndex = 0))) {
-        staleResult.set(it)
-        staleCompleted.countDown()
-      }
-
       assertTrue(replacement.await(5L, TimeUnit.SECONDS))
-      assertTrue(staleCompleted.await(5L, TimeUnit.SECONDS))
+
+      val oldRender = render(worker, oldInfo.generation, 1L)
+      assertTrue(oldRender.isSuccess)
+      val newCommitted = CountDownLatch(1)
+      assertTrue(worker.commitPreparedOpen(newAttemptId) {
+        assertTrue(it.isSuccess)
+        newCommitted.countDown()
+      })
+      assertTrue(newCommitted.await(5L, TimeUnit.SECONDS))
+
+      val staleResult = render(worker, oldInfo.generation, 2L)
       assertEquals(
         "operation_cancelled",
-        (staleResult.get().exceptionOrNull() as PdfSessionException).code,
+        (staleResult.exceptionOrNull() as PdfSessionException).code,
       )
     } finally {
       worker.close()
@@ -130,17 +294,19 @@ class PdfSessionWorkerTest {
     val opener = BlockingSessionOpener()
     val worker = PdfSessionWorker(opener = opener)
     try {
+      val oldAttemptId = worker.reserveOpenAttemptId(afterGeneration = 0L)
       val oldResult = AtomicReference<Result<PdfSessionInfo>>()
       val oldCompleted = CountDownLatch(1)
-      worker.replace("old.pdf", generation = 1L) {
+      worker.prepareOpen(oldAttemptId, "old.pdf", null) {
         oldResult.set(it)
         oldCompleted.countDown()
       }
       assertTrue(opener.oldOpenStarted.await(5L, TimeUnit.SECONDS))
 
+      val latestAttemptId = worker.reserveOpenAttemptId(afterGeneration = 0L)
       val newResult = AtomicReference<Result<PdfSessionInfo>>()
       val newCompleted = CountDownLatch(1)
-      worker.replace("new.pdf", generation = 2L) {
+      worker.prepareOpen(latestAttemptId, "new.pdf", null) {
         newResult.set(it)
         newCompleted.countDown()
       }
@@ -153,6 +319,13 @@ class PdfSessionWorkerTest {
       assertEquals("operation_cancelled", oldError.code)
       assertTrue(opener.oldResource.get().closed)
       assertEquals("new.pdf", newResult.get().getOrThrow().sourcePath)
+      val committed = CountDownLatch(1)
+      assertTrue(worker.commitPreparedOpen(latestAttemptId) {
+        assertTrue(it.isSuccess)
+        committed.countDown()
+      })
+      assertTrue(committed.await(5L, TimeUnit.SECONDS))
+      assertTrue(render(worker, latestAttemptId, 1L).isSuccess)
     } finally {
       worker.close()
     }
@@ -165,7 +338,8 @@ class PdfSessionWorkerTest {
     try {
       val result = AtomicReference<Result<PdfSessionInfo>>()
       val completed = CountDownLatch(1)
-      worker.replace("old.pdf", generation = 1L) {
+      val attemptId = worker.reserveOpenAttemptId(afterGeneration = 0L)
+      worker.prepareOpen(attemptId, "old.pdf", null) {
         result.set(it)
         completed.countDown()
       }
@@ -187,35 +361,19 @@ class PdfSessionWorkerTest {
   fun replacementLeavesCallerSourcesUntouched() {
     val sourceA = File.createTempFile("inksignpdf-source-", ".pdf")
     val sourceB = File.createTempFile("inksignpdf-source-", ".pdf")
-    val opener = BlockingSessionOpener()
+    val opener = RecordingSessionOpener()
     val worker = PdfSessionWorker(opener = opener)
     try {
-      val firstCompleted = CountDownLatch(1)
-      worker.replace("old.pdf", generation = 1L) {
-        firstCompleted.countDown()
-      }
-      assertTrue(opener.oldOpenStarted.await(5L, TimeUnit.SECONDS))
-
-      val staleCompleted = CountDownLatch(1)
-      val staleResult = AtomicReference<Result<PdfSessionInfo>>()
-      worker.replace("new.pdf", generation = 2L) {
-        staleResult.set(it)
-        staleCompleted.countDown()
-      }
-
-      val newestCompleted = CountDownLatch(1)
-      val newestResult = AtomicReference<Result<PdfSessionInfo>>()
-      worker.replace("latest.pdf", generation = 3L) {
-        newestResult.set(it)
-        newestCompleted.countDown()
-      }
-      opener.releaseOld.countDown()
-
-      assertTrue(firstCompleted.await(5L, TimeUnit.SECONDS))
-      assertTrue(staleCompleted.await(5L, TimeUnit.SECONDS))
-      assertTrue(newestCompleted.await(5L, TimeUnit.SECONDS))
-      assertEquals("operation_cancelled", (staleResult.get().exceptionOrNull() as PdfSessionException).code)
-      assertEquals("latest.pdf", newestResult.get().getOrThrow().sourcePath)
+      val initial = openAndCommit(worker, sourceA.absolutePath, afterGeneration = 0L)
+      val replacementId = worker.reserveOpenAttemptId(initial.generation)
+      val replacement = prepare(worker, replacementId, sourceB.absolutePath)
+      assertEquals(sourceB.absolutePath, replacement.sourcePath)
+      val committed = CountDownLatch(1)
+      assertTrue(worker.commitPreparedOpen(replacementId) {
+        assertTrue(it.isSuccess)
+        committed.countDown()
+      })
+      assertTrue(committed.await(5L, TimeUnit.SECONDS))
       assertTrue(sourceA.exists())
       assertTrue(sourceB.exists())
       worker.close()
@@ -237,11 +395,7 @@ class PdfSessionWorkerTest {
     })
     val worker = PdfSessionWorker(opener = opener)
     try {
-      val completed = CountDownLatch(1)
-      worker.replace("current.pdf", generation = 1L) {
-        completed.countDown()
-      }
-      assertTrue(completed.await(5L, TimeUnit.SECONDS))
+      openAndCommit(worker, "current.pdf", afterGeneration = 0L)
 
       worker.close()
       assertTrue(opener.resource.get().closedSignal.await(5L, TimeUnit.SECONDS))
@@ -258,14 +412,7 @@ class PdfSessionWorkerTest {
     val opener = RecordingSessionOpener()
     val worker = PdfSessionWorker(opener = opener)
     try {
-      val result = AtomicReference<Result<PdfSessionInfo>>()
-      val completed = CountDownLatch(1)
-      worker.replace("current.pdf", generation = 1L) {
-        result.set(it)
-        completed.countDown()
-      }
-      assertTrue(completed.await(5L, TimeUnit.SECONDS))
-      assertTrue(result.get().isSuccess)
+      openAndCommit(worker, "current.pdf", afterGeneration = 0L)
 
       worker.close()
 
@@ -274,6 +421,51 @@ class PdfSessionWorkerTest {
     } finally {
       worker.close()
     }
+  }
+
+  private fun openAndCommit(
+    worker: PdfSessionWorker,
+    path: String,
+    afterGeneration: Long,
+    fallbackFont: PdfFallbackFont? = null,
+  ): PdfSessionInfo {
+    val attemptId = worker.reserveOpenAttemptId(afterGeneration)
+    val info = prepare(worker, attemptId, path, fallbackFont)
+    val committed = CountDownLatch(1)
+    assertTrue(worker.commitPreparedOpen(attemptId) { result ->
+      assertTrue(result.isSuccess)
+      committed.countDown()
+    })
+    assertTrue(committed.await(5L, TimeUnit.SECONDS))
+    return info
+  }
+
+  private fun prepare(
+    worker: PdfSessionWorker,
+    attemptId: Long,
+    path: String,
+    fallbackFont: PdfFallbackFont? = null,
+  ): PdfSessionInfo {
+    val result = AtomicReference<Result<PdfSessionInfo>>()
+    val completed = CountDownLatch(1)
+    worker.prepareOpen(attemptId, path, fallbackFont) {
+      result.set(it)
+      completed.countDown()
+    }
+    assertTrue(completed.await(5L, TimeUnit.SECONDS))
+    return result.get().getOrThrow()
+  }
+
+  private fun render(worker: PdfSessionWorker, generation: Long, tileEpoch: Long): Result<List<PdfTile>> {
+    worker.updateTileEpoch(generation, tileEpoch)
+    val result = AtomicReference<Result<List<PdfTile>>>()
+    val completed = CountDownLatch(1)
+    worker.renderTiles(generation, tileEpoch, listOf(testTileRequest(pageIndex = 0))) {
+      result.set(it)
+      completed.countDown()
+    }
+    assertTrue(completed.await(5L, TimeUnit.SECONDS))
+    return result.get()
   }
 
   private class BlockingSessionOpener : PdfSessionOpener {

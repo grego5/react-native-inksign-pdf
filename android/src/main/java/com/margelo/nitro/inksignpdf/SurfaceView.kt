@@ -11,6 +11,11 @@ import android.view.MotionEvent
 import android.view.HapticFeedbackConstants
 import kotlin.math.max
 
+internal data class PreparedDocumentPresentation(
+  val dimensions: PdfPageDimensions,
+  val viewport: OpenViewport,
+)
+
 /**
  * The single Android presentation surface for PDF rendering, navigation, and
  * edit-mode ink input.
@@ -23,7 +28,6 @@ import kotlin.math.max
  */
 internal class SurfaceView(
   context: Context,
-  internal val sessionWorker: PdfSessionWorker,
   internal val inkEngine: InkEngine,
   internal val traceRecorder: StrokeTraceRecorder = createStrokeTraceRecorder(),
   predictor: InputPredictor? = null,
@@ -31,6 +35,7 @@ internal class SurfaceView(
     UnavailableLowLatencyInkHost,
   private val pageNavigationPreviewScheduler: PageNavigationPreviewScheduler? = null,
   private val pageNavigationSettlementDriver: PageNavigationSettlementDriver? = null,
+  internal val documentCoordinator: MutableDocumentCoordinator,
 ) : android.view.View(context) {
   internal companion object {
     internal const val CANCELLATION_NONE = 0
@@ -58,16 +63,16 @@ internal class SurfaceView(
   }
   private val pagePreviewMatrix = Matrix()
   internal val inkRenderer = InkRenderer()
-  internal var documentState: InkDocumentState? = null
+  internal val sessionWorker: PdfSessionWorker = documentCoordinator.sessionWorker
   private var pageSwitchRequestId = 0L
   internal val documentController = InkDocumentController(
     context = context,
     sessionWorker = sessionWorker,
     requestInvalidate = { invalidate() },
     requestAnimation = { postInvalidateOnAnimation() },
-    currentDocumentGeneration = { documentState?.generation },
-    currentPageIndex = { documentState?.activePageIndex },
-    currentPageSwitchId = { pageSwitchRequestId.takeIf { documentState != null } },
+    currentDocumentGeneration = { documentCoordinator.generation.takeIf { documentCoordinator.hasDocument } },
+    currentPageIndex = { documentCoordinator.activePageIndex.takeIf { documentCoordinator.hasDocument } },
+    currentPageSwitchId = { pageSwitchRequestId.takeIf { documentCoordinator.hasDocument } },
   )
   internal val pageNavigationController = PageNavigationController(
     sessionWorker = sessionWorker,
@@ -75,18 +80,21 @@ internal class SurfaceView(
     requestAnimation = { postInvalidateOnAnimation() },
     currentContext = ::pageNavigationContext,
     currentViewportState = { documentController.viewportSnapshot() },
-    targetPage = { index -> documentState?.page(index)?.dimensions },
+    targetPage = { index ->
+      if (documentCoordinator.hasDocument) documentCoordinator.pageSnapshot(index).dimensions else null
+    },
     targetInkPaths = { index ->
-      documentState?.page(index)?.history?.snapshot()?.flatMap { it.contourPathData } ?: emptyList()
+      if (documentCoordinator.hasDocument) documentCoordinator.pageSnapshot(index).content
+        .mapNotNull { it.inkOutlineOrNull() }
+        .flatMap { it.contourPathData } else emptyList()
     },
     targetTextAnnotations = { index ->
-      documentState?.page(index)?.history?.contentSnapshot()?.mapNotNull { content ->
-        (content as? PageContent.Text)?.annotation
-      } ?: emptyList()
+      if (documentCoordinator.hasDocument) documentCoordinator.pageSnapshot(index).content
+        .mapNotNull { it.textAnnotationOrNull() } else emptyList()
     },
     fitZoomFor = documentController::usableFitZoomFor,
     previewPreparationAllowed = {
-      documentState != null && !editMode && pageNavigationWindowFocus &&
+      documentCoordinator.hasDocument && !editMode && pageNavigationWindowFocus &&
         documentController.isVisibleTileCoverageComplete()
     },
     installCommittedPage = { handoff ->
@@ -181,11 +189,52 @@ internal class SurfaceView(
     documentController.onVisibleTilesFailed = ::onVisibleTilesFailed
   }
 
-  fun setDocument(
-    info: PdfSessionInfo,
+  fun installDocumentPresentation(
     zoom: Double? = null,
     focus: PagePoint? = null,
     fitToPage: Boolean = true,
+    notifyState: Boolean = false,
+  ) {
+    val dimensions = documentCoordinator.pageSnapshot(0).dimensions
+    installDocumentPresentationForPage(dimensions, zoom, focus, fitToPage, notifyState)
+  }
+
+  fun prepareDocumentPresentation(
+    dimensions: PdfPageDimensions,
+    viewport: OpenViewport,
+  ): PreparedDocumentPresentation {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    if (!dimensions.width.isFinite() || dimensions.width <= 0.0 ||
+      !dimensions.height.isFinite() || dimensions.height <= 0.0
+    ) {
+      throw PdfSessionException("pdf_load_failed", "The opened PDF contains invalid page dimensions")
+    }
+    return PreparedDocumentPresentation(dimensions, viewport)
+  }
+
+  fun installDocumentPresentation(
+    prepared: PreparedDocumentPresentation,
+    notifyState: Boolean = false,
+    notifyContent: Boolean = true,
+  ) {
+    installDocumentPresentationForPage(
+      prepared.dimensions,
+      prepared.viewport.zoom,
+      prepared.viewport.focus,
+      prepared.viewport.fitToPage,
+      notifyState,
+      notifyContent,
+    )
+  }
+
+  private fun installDocumentPresentationForPage(
+    dimensions: PdfPageDimensions,
+    zoom: Double?,
+    focus: PagePoint?,
+    fitToPage: Boolean,
+    notifyState: Boolean,
+    notifyContent: Boolean = true,
   ) {
     requireOnUiThread()
     if (disposed) return
@@ -195,22 +244,19 @@ internal class SurfaceView(
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()
     clearActivePresentation()
-    documentState = InkDocumentState(
-      sourcePath = info.sourcePath,
-      generation = info.generation,
-      pages = info.pages,
-    )
     pageSwitchRequestId += 1L
     documentController.setPage(
-      dimensions = checkNotNull(documentState).page(0).dimensions,
+      dimensions = dimensions,
       zoom = zoom,
       focus = focus,
       fitToPage = fitToPage,
     )
     rebuildCommittedTextLayer()
+    val previousState = lastReportedState
     lastReportedState = reportedState()
+    if (notifyState && lastReportedState != previousState) onStateChange?.invoke(lastReportedState)
     invalidate()
-    onTextContentChanged?.invoke()
+    if (notifyContent) onTextContentChanged?.invoke()
   }
 
   fun clearDocument() {
@@ -222,12 +268,72 @@ internal class SurfaceView(
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()
     clearActivePresentation()
-    documentState = null
     pageSwitchRequestId += 1L
     documentController.clearDocument()
     committedTextLayer = TextRenderLayer.empty()
     invalidate()
     onTextContentChanged?.invoke()
+  }
+
+  /** Publishes one fully validated structural candidate as a single UI transaction. */
+  fun validateStructuralCandidate(
+    info: PdfSessionInfo,
+    candidatePages: List<InkPageState>,
+    activePageId: String,
+  ) {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    if (documentCoordinator.generation != info.generation || info.pageCount != candidatePages.size ||
+      candidatePages.none { it.id == activePageId } ||
+      candidatePages.any { it.dimensions.width <= 0.0 || it.dimensions.height <= 0.0 }
+    ) {
+      throw PdfSessionException(
+        "operation_cancelled",
+        "The structural candidate belongs to a superseded document",
+      )
+    }
+  }
+
+  /** Installs a coordinator-published candidate through a non-failing presentation path. */
+  fun installStructuralPresentation(): PdfPageInfo {
+    requireOnUiThread()
+    val state = documentCoordinator
+    val snapshot = state.presentationSnapshot()
+    cancelActiveStroke()
+    pageNavigationController.cancel()
+    pageSwitchRequestId += 1L
+    val active = snapshot.pages[snapshot.activePageIndex]
+    documentController.setPage(dimensions = active.dimensions, fitToPage = true)
+    inkRenderer.setCompletedHistory(active.content.mapNotNull { it.inkOutlineOrNull() })
+    rebuildCommittedTextLayer()
+    runCatching { notifyStateChange() }
+    invalidate()
+    runCatching { onTextContentChanged?.invoke() }
+    return currentPageInfo().also { pageInfo ->
+      runCatching { onPageChange?.invoke(pageInfo) }
+    }
+  }
+
+  fun requireStructuralMutationReady(creatingDocument: Boolean = false) {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    if (documentCoordinator.hasDocument == creatingDocument) {
+      val message = if (creatingDocument) {
+        "The view already has a document"
+      } else {
+        "A PDF must be opened before changing pages"
+      }
+      throw PdfSessionException(
+        "view_not_ready",
+        message,
+      )
+    }
+    if (activePointerId != noPointer) {
+      throw PdfSessionException(
+        "operation_in_progress",
+        "A stroke is still being completed",
+      )
+    }
   }
 
   fun currentDocumentInfo(): PdfSessionInfo {
@@ -238,7 +344,7 @@ internal class SurfaceView(
         "PDF view was disposed",
       )
     }
-    val state = documentState ?: throw PdfSessionException(
+    val state = documentCoordinator.takeIf { it.hasDocument } ?: throw PdfSessionException(
       "view_not_ready",
       "A PDF must be opened before document inspection",
     )
@@ -253,14 +359,14 @@ internal class SurfaceView(
         "PDF view was disposed",
       )
     }
-    val state = documentState ?: throw PdfSessionException(
+    val state = documentCoordinator.takeIf { it.hasDocument } ?: throw PdfSessionException(
       "view_not_ready",
       "A PDF must be opened before page navigation",
     )
     return PdfPageInfo(
       pageIndex = state.activePageIndex,
       pageCount = state.pageCount,
-      dimensions = state.page(state.activePageIndex).dimensions,
+      dimensions = state.pageSnapshot(state.activePageIndex).dimensions,
     )
   }
 
@@ -279,7 +385,7 @@ internal class SurfaceView(
         "PDF view was disposed",
       )
     }
-    val state = documentState ?: throw PdfSessionException(
+    val state = documentCoordinator.takeIf { it.hasDocument } ?: throw PdfSessionException(
       "view_not_ready",
       "A PDF must be opened before page navigation",
     )
@@ -287,14 +393,13 @@ internal class SurfaceView(
     require(pageIndex in 0 until state.pageCount) { "Invalid PDF page index: $pageIndex" }
     if (pageIndex == state.activePageIndex) return currentPageInfo()
     cancelActiveStroke()
-    state.setActivePage(pageIndex)
+    val target = state.activatePage(pageIndex)
     pageSwitchRequestId += 1L
-    val target = state.page(pageIndex)
     documentController.setPage(
       dimensions = target.dimensions,
       fitToPage = true,
     )
-    inkRenderer.setCompletedHistory(target.history.snapshot())
+    inkRenderer.setCompletedHistory(target.content.mapNotNull { it.inkOutlineOrNull() })
     rebuildCommittedTextLayer()
     notifyStateChange()
     invalidate()
@@ -304,11 +409,11 @@ internal class SurfaceView(
 
   private fun installCommittedPageSwitch(handoff: PageSwitchHandoff): Boolean {
     requireOnUiThread()
-    val state = documentState ?: return false
+    val state = documentCoordinator.takeIf { it.hasDocument } ?: return false
     if (state.generation != handoff.documentGeneration ||
       state.activePageIndex != handoff.sourcePageIndex ||
       pageSwitchRequestId + 1L != handoff.pageSwitchId ||
-      handoff.targetPageIndex !in state.pages.indices
+      handoff.targetPageIndex !in 0 until state.pageCount
     ) return false
     try {
       documentController.requireViewportCommandReady()
@@ -316,11 +421,10 @@ internal class SurfaceView(
       return false
     }
     cancelActiveStroke()
-    state.setActivePage(handoff.targetPageIndex)
+    val target = state.activatePage(handoff.targetPageIndex)
     pageSwitchRequestId = handoff.pageSwitchId
-    val target = state.page(handoff.targetPageIndex)
     documentController.setPage(dimensions = target.dimensions, fitToPage = true)
-    inkRenderer.setCompletedHistory(target.history.snapshot())
+    inkRenderer.setCompletedHistory(target.content.mapNotNull { it.inkOutlineOrNull() })
     rebuildCommittedTextLayer()
     notifyStateChange()
     invalidate()
@@ -404,7 +508,7 @@ internal class SurfaceView(
 
   private fun onVisibleTilesReady() {
     requireOnUiThread()
-    val document = documentState ?: return
+    val document = documentCoordinator.takeIf { it.hasDocument } ?: return
     pageNavigationController.onVisibleTilesReady(
       document.generation,
       document.activePageIndex,
@@ -426,7 +530,7 @@ internal class SurfaceView(
 
   private fun pageNavigationContext(): NavigationContext? {
     requireOnUiThread()
-    val document = documentState ?: return null
+    val document = documentCoordinator.takeIf { it.hasDocument } ?: return null
     if (editMode || width <= 0 || height <= 0) return null
     val viewport = documentController.viewportSnapshot() ?: return null
     val rtl = layoutDirection == android.view.View.LAYOUT_DIRECTION_RTL
@@ -448,7 +552,7 @@ internal class SurfaceView(
       density = resources.displayMetrics.density.toDouble(),
       layoutDirection = layoutDirection,
       eligibleTargets = eligibleTargets,
-      targetContentRevisions = eligibleTargets.values.associateWith { document.page(it).history.revision },
+      targetContentRevisions = eligibleTargets.values.associateWith(document::pageHistoryRevision),
     )
   }
 
@@ -494,7 +598,7 @@ internal class SurfaceView(
     if (disposed) {
       throw PdfSessionException("operation_cancelled", "PDF view was disposed")
     }
-    if (documentState == null) {
+    if (!documentCoordinator.hasDocument) {
       throw PdfSessionException(
         "view_not_ready",
         "A PDF must be opened before adding text",
@@ -506,26 +610,24 @@ internal class SurfaceView(
   internal fun textPresentationSnapshot(): TextPresentationSnapshot? {
     requireOnUiThread()
     if (disposed) return null
-    val state = documentState ?: return null
+    val state = documentCoordinator.takeIf { it.hasDocument } ?: return null
     val transform = documentController.pageToViewTransform() ?: return null
-    val page = state.page(state.activePageIndex)
+    val page = state.pageSnapshot(state.activePageIndex)
     return TextPresentationSnapshot(
       generation = state.generation,
       pageIndex = state.activePageIndex,
       page = page.dimensions,
       transform = transform,
-      annotations = page.history.contentSnapshot().mapNotNull { content ->
-        (content as? PageContent.Text)?.annotation
-      },
+      annotations = page.content.mapNotNull { it.textAnnotationOrNull() },
     )
   }
 
   internal fun textTransformSnapshot(): TextTransformSnapshot? {
     requireOnUiThread()
     if (disposed) return null
-    val state = documentState ?: return null
+    val state = documentCoordinator.takeIf { it.hasDocument } ?: return null
     val transform = documentController.pageToViewTransform() ?: return null
-    val page = state.page(state.activePageIndex)
+    val page = state.pageSnapshot(state.activePageIndex)
     return TextTransformSnapshot(
       generation = state.generation,
       pageIndex = state.activePageIndex,
@@ -540,7 +642,7 @@ internal class SurfaceView(
     annotation: TextAnnotation,
   ) {
     validateTextMutation(generation, pageIndex)
-    activeHistory().appendText(annotation)
+    documentCoordinator.appendActiveText(annotation)
     rebuildCommittedTextLayer()
     notifyStateChange()
     invalidate()
@@ -554,7 +656,7 @@ internal class SurfaceView(
     after: TextAnnotation,
   ) {
     validateTextMutation(generation, pageIndex)
-    activeHistory().replaceText(before, after)
+    documentCoordinator.replaceActiveText(before, after)
     rebuildCommittedTextLayer()
     notifyStateChange()
     invalidate()
@@ -567,7 +669,7 @@ internal class SurfaceView(
     annotation: TextAnnotation,
   ) {
     validateTextMutation(generation, pageIndex)
-    activeHistory().removeTextAnnotation(annotation)
+    documentCoordinator.removeActiveText(annotation)
     rebuildCommittedTextLayer()
     notifyStateChange()
     invalidate()
@@ -583,6 +685,11 @@ internal class SurfaceView(
       )
     }
     return documentController.currentViewportState()
+  }
+
+  fun refreshVisibleTiles() {
+    requireOnUiThread()
+    if (!disposed && documentCoordinator.hasDocument) documentController.refreshVisibleTiles()
   }
 
   fun setPenConfiguration(
@@ -612,7 +719,7 @@ internal class SurfaceView(
       if (disposed) return@runOnUi
       pageNavigationController.cancel()
       cancelActiveStroke()
-      presentHistoryMutation(activeHistory().undoMutation())
+      presentHistoryMutation(documentCoordinator.undoActiveHistory())
     }
   }
 
@@ -621,7 +728,7 @@ internal class SurfaceView(
       if (disposed) return@runOnUi
       pageNavigationController.cancel()
       cancelActiveStroke()
-      presentHistoryMutation(activeHistory().redoMutation())
+      presentHistoryMutation(documentCoordinator.redoActiveHistory())
     }
   }
 
@@ -630,16 +737,13 @@ internal class SurfaceView(
       if (disposed) return@runOnUi
       pageNavigationController.cancel()
       cancelActiveStroke()
-      presentHistoryMutation(activeHistory().clearMutation())
+      presentHistoryMutation(documentCoordinator.clearActiveHistory())
     }
   }
 
   fun completedPagesSnapshot(): List<PdfPageContentSnapshot> {
     requireOnUiThread()
-    val state = checkNotNull(documentState)
-    return state.pages.mapIndexed { pageIndex, page ->
-      PdfPageContentSnapshot(pageIndex, page.dimensions, page.history.contentSnapshot())
-    }
+    return documentCoordinator.completedPagesSnapshot()
   }
 
   internal fun rendererDiagnostics(): InkRendererDiagnostics {
@@ -854,7 +958,6 @@ internal class SurfaceView(
     documentController.dispose()
     onPageChange = null
     resetDocumentHistories()
-    documentState = null
     pageSwitchRequestId += 1L
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()

@@ -1,41 +1,48 @@
-# Android view lifecycle
+# Android document lifecycle
 
 ## Ownership
 
-- `HybridInkSignView` is the public Nitro/Fabric boundary. `SurfaceView` owns
-  UI-thread presentation, input routing, history projection, and cancellation.
-- `InkDocumentState` owns the source path, ordered pages, active page, and
-  document generation. `InkDocumentController` owns viewport and tile state;
-  `PageNavigationController` owns navigation and handoff state.
-- `TextInteractionOverlay` owns the temporary editor, text gestures, keyboard,
-  and one-shot placement. `PdfSessionWorker` owns PDF readers and the native
-  PDFium raster session.
-- Worker results are accepted only when their document, page, and request
-  identity are current.
+`HybridInkSignView` adapts the Nitro/Fabric API and owns the long-lived
+document coordinator. The coordinator owns the published document, ordered
+pages, active page, dirty state, and module-created working artifacts.
 
-## Invariants
+`SurfaceView` owns Android presentation and input routing. `PdfSessionWorker`
+owns serialized PDFium sessions and document work. PDF open, page assembly,
+rendering, and export use PDFium; Android owns file staging and bitmap surfaces.
+The text overlay owns temporary editor state.
 
-- Committed ink and text are ordered entries in one history per page. Undo/redo
-  describes the active page; dirty state is aggregated across the document.
-- The overlay has at most one temporary editor and one transient interaction.
-  Empty drafts are discarded and non-empty settlement creates one history
-  mutation.
-- Undo, redo, clear, and text settlement are one UI-thread state transaction;
-  reentrant callbacks cannot create a second mutation or intermediate snapshot.
+## Publication
 
-## Lifecycle rules
+Opening a document creates a module-owned working copy; the caller's source
+remains untouched. Replacement and page changes are prepared as detached
+candidates. The coordinator publishes the candidate document, page order, active
+page, and worker session together only after validation. Until then, the current
+document remains published. A failed, cancelled, or stale operation cannot
+partially replace it.
 
-- Viewport and navigation work require an attached, laid-out view. Detachment
-  or window-focus loss settles text input and cancels active ink/navigation.
-- Mode changes, page changes, replacement, and disposal cancel pending text
-  placement and clear stale editor/selection state before new state is installed.
-- Document replacement cancels active work, invalidates prior worker results,
-  resets presentation, and installs only the current generation.
-- PDFium page pixels are the only base-page presentation. Android annotation
-  state is composited after tile publication and never participates in PDFium
-  page parsing or text reconstruction.
-- Disposal is UI-thread-owned and idempotent. It cancels input/navigation,
-  invalidates the generation, clears callbacks/presentation, and closes worker
-  resources.
-- The source PDF is read-only and is never replaced or deleted by lifecycle
-  operations; export output ownership is defined in [export.md](export.md).
+The PDFium assembler reopens each saved candidate before publication and checks
+its page count, order, dimensions, and rotation. Image page dimensions are
+compared at the precision PDFium can serialize and report; published page
+dimensions come from the reopened candidate.
+
+Page identities and their histories follow the pages through structural changes.
+Structural dirty state belongs to the document and remains separate from
+page-local undo and redo.
+
+Clearing a page records one undoable clear action: the page becomes empty and
+`canUndo` remains true. Dirty state reflects remaining ink across pages and
+document structure, so clearing the final ink in an otherwise clean document
+returns the document to clean state.
+
+Navigation previews retire a failed loading slot. The next gesture retries a
+missing preview only when its down-time page-edge eligibility matches that
+target; late preview callbacks cannot replace a newer slot.
+
+## Presentation and disposal
+
+PDFium supplies the base page imagery; annotation presentation is layered above
+it. Active input and editor state are temporary until committed to page history.
+Disposal invalidates pending work, clears UI callbacks and presentation, and
+releases native resources.
+
+See [export.md](export.md) for the separate export snapshot and output contract.

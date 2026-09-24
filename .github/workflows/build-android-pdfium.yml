@@ -1,0 +1,138 @@
+name: Build Android PDFium static archives
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PDFIUM_WORKFLOW_REV: 9dd99a8991bed3a2f37658a31bcd5b403800fd03
+  PDFIUM_UPSTREAM_BRANCH: chromium/8021
+  PDFIUM_VERSION: 154.0.8021.0
+  PDFIUM_ANDROID_NDK: 27.1.12297006
+
+jobs:
+  build:
+    name: Build Android ${{ matrix.abi }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            cpu: arm64
+            expected-machine: AARCH64
+          - abi: x86_64
+            cpu: x64
+            expected-machine: X86_64
+
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v7
+
+      - name: Check out the pinned PDFium build workflow
+        uses: actions/checkout@v7
+        with:
+          repository: bblanchon/pdfium-binaries
+          ref: ${{ env.PDFIUM_WORKFLOW_REV }}
+          path: .pdfium-binaries
+          fetch-depth: 1
+
+      - name: Set up Android SDK and install NDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          sdkmanager_path="$(find "$sdk_root/cmdline-tools" "$sdk_root/tools" \
+            -type f -name sdkmanager -perm -111 -print -quit 2>/dev/null || true)"
+          if [ -z "$sdkmanager_path" ]; then
+            echo "Android sdkmanager was not found under $sdk_root"
+            exit 1
+          fi
+          sdkmanager_dir="$(dirname "$sdkmanager_path")"
+          export ANDROID_HOME="$sdk_root"
+          export ANDROID_SDK_ROOT="$sdk_root"
+          export PATH="$sdkmanager_dir:$sdk_root/platform-tools:$PATH"
+          {
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+            echo "PATH=$PATH"
+          } >> "$GITHUB_ENV"
+          yes | "$sdkmanager_path" --sdk_root="$sdk_root" --licenses >/dev/null || true
+          "$sdkmanager_path" --sdk_root="$sdk_root" \
+            "platform-tools" \
+            "ndk;${PDFIUM_ANDROID_NDK}"
+
+      - name: Initialize PDFium build environment
+        working-directory: .pdfium-binaries
+        run: ./steps/00-environment.sh
+
+      - name: Build static PDFium archive
+        working-directory: .pdfium-binaries
+        env:
+          PDFium_BUILD_TYPE: static
+          PDFium_TARGET_OS: android
+          PDFium_TARGET_CPU: ${{ matrix.cpu }}
+          PDFium_TARGET_ENVIRONMENT: device
+          PDFium_BRANCH: ${{ env.PDFIUM_UPSTREAM_BRANCH }}
+          PDFium_IS_DEBUG: false
+          PDFium_ENABLE_V8: false
+          PDFium_VERSION: ${{ env.PDFIUM_VERSION }}
+        run: |
+          set -euxo pipefail
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/$PDFIUM_ANDROID_NDK"
+          export ANDROID_NDK_HOME="$ANDROID_NDK_ROOT"
+          test -x "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
+          "$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++" --version
+          export PATH="$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/bin:$PATH"
+          if [ ! -f depot_tools/gclient ]; then
+            git clone --quiet https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          fi
+          export PATH="$PWD/depot_tools:$PATH"
+          ./steps/02-checkout.sh
+          ./steps/03-patch.sh
+          ./steps/04-install-extras.sh
+          grep -Fq "Pkg.Revision = ${PDFIUM_ANDROID_NDK}" "$ANDROID_NDK_ROOT/source.properties"
+          ndk_source_path="$PDFium_SOURCE_DIR/third_party/inksign_android_ndk"
+          test ! -e "$ndk_source_path"
+          ln -s "$ANDROID_NDK_ROOT" "$ndk_source_path"
+          android_config="$PDFium_SOURCE_DIR/build/config/android/config.gni"
+          grep -Fq 'android_ndk_root = "//third_party/android_toolchain/ndk"' "$android_config"
+          sed -i 's|android_ndk_root = "//third_party/android_toolchain/ndk"|android_ndk_root = "//third_party/inksign_android_ndk"|' "$android_config"
+          grep -Fq 'android_ndk_root = "//third_party/inksign_android_ndk"' "$android_config"
+          ./steps/05-configure.sh
+          printf '\nuse_custom_libcxx = false\n' >> "$PDFium_BUILD_DIR/args.gn"
+          (
+            cd "$PDFium_SOURCE_DIR"
+            gn gen "$PDFium_BUILD_DIR"
+          )
+          test -f "$PDFium_BUILD_DIR/build.ninja"
+          grep -R -F -q --include='*.ninja' 'third_party/inksign_android_ndk' "$PDFium_BUILD_DIR"
+          ./steps/06-build.sh
+          ./steps/07-stage.sh
+
+      - name: Validate and stage the archive
+        working-directory: .pdfium-binaries
+        run: |
+          set -euxo pipefail
+          test -f staging/lib/libpdfium.a
+          file staging/lib/libpdfium.a
+          ar -t staging/lib/libpdfium.a > "$RUNNER_TEMP/pdfium-members.txt"
+          llvm_nm="$ANDROID_SDK_ROOT/ndk/$PDFIUM_ANDROID_NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm"
+          test -x "$llvm_nm"
+          "$llvm_nm" staging/lib/libpdfium.a > "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q '\.o$' "$RUNNER_TEMP/pdfium-members.txt"
+          grep -q 'FPDF_InitLibraryWithConfig' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDF_DestroyLibrary' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDFText_LoadPage' "$RUNNER_TEMP/pdfium-symbols.txt"
+          grep -q 'FPDFPage_New' "$RUNNER_TEMP/pdfium-symbols.txt"
+          mkdir -p "$GITHUB_WORKSPACE/pdfium-android-slices/${{ matrix.abi }}"
+          cp staging/lib/libpdfium.a "$GITHUB_WORKSPACE/pdfium-android-slices/${{ matrix.abi }}/libpdfium.a"
+
+      - name: Upload Android static slice
+        uses: actions/upload-artifact@v7
+        with:
+          name: pdfium-static-android-${{ matrix.abi }}
+          path: pdfium-android-slices/${{ matrix.abi }}
+          if-no-files-found: error

@@ -1,13 +1,22 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
-import android.graphics.pdf.PdfRendererPreV
-import android.os.ParcelFileDescriptor
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
+import java.util.concurrent.CountDownLatch
+
+/** Holds a queued open commit until the UI has installed or rejected its presentation. */
+internal class OpenCommitGate {
+  private val ready = CountDownLatch(1)
+  @Volatile private var accepted = false
+
+  fun accept() { accepted = true; ready.countDown() }
+  fun reject() { ready.countDown() }
+  fun awaitDecision(): Boolean { ready.await(); return accepted }
+}
 
 internal const val pdfiumAndroidDisplayFlags = 0x13
 
@@ -173,8 +182,6 @@ internal class PdfSession private constructor(
       generation: Long,
       fallbackFont: PdfFallbackFont?,
     ): PdfSessionResource {
-      PdfApiSupport.requireSupported()
-
       val source = try {
         File(path).canonicalFile
       } catch (error: IOException) {
@@ -263,19 +270,6 @@ internal class PdfSession private constructor(
   }
 }
 
-/** Closes a partially opened PDF without closing a descriptor twice. */
-internal fun closeFailedPdfResources(
-  renderer: PdfRendererPreV?,
-  descriptor: ParcelFileDescriptor,
-  temporarySource: File? = null,
-) {
-  try {
-    if (renderer != null) renderer.close() else descriptor.close()
-  } finally {
-    temporarySource?.delete()
-  }
-}
-
 /**
  * Serializes all PDF session work and keeps every session resource on its
  * owning worker. A newer generation invalidates an in-flight open before its
@@ -285,36 +279,145 @@ internal fun closeFailedPdfResources(
 internal class PdfSessionWorker(
   private val opener: PdfSessionOpener = PdfSession,
   threadFactory: ThreadFactory = PdfWorkerThreadFactory,
+  private val assembler: (File?, PdfiumAssemblyRequest, File) -> List<PdfPageDimensions> =
+    PdfiumPageAssembler::assemble,
 ) : AutoCloseable {
   private val executor: ExecutorService = Executors.newSingleThreadExecutor(threadFactory)
   private val stateLock = Any()
   private var current: PdfSessionResource? = null
+  private var preparedMutation: PreparedMutation? = null
+  private val preparedOpenSessions = mutableMapOf<Long, PdfSessionResource>()
+  private val acceptedOpenAttemptIds = HashSet<Long>()
+  private val discardedOpenAttemptIds = HashSet<Long>()
+  private var openAttemptSequence = 0L
+  private var latestOpenAttemptId = Long.MIN_VALUE
   @Volatile private var requestedGeneration = Long.MIN_VALUE
   @Volatile private var requestedTileEpoch = Long.MIN_VALUE
   @Volatile private var requestedPreviewEpoch = Long.MIN_VALUE
   @Volatile private var closed = false
 
-  fun replace(
+  /** Reserves a never-reused open identity without changing the committed render session. */
+  fun reserveOpenAttemptId(afterGeneration: Long): Long = synchronized(stateLock) {
+    check(!closed) { "PDF session worker is closed" }
+    val floor = maxOf(openAttemptSequence, afterGeneration)
+    check(floor < Long.MAX_VALUE) { "PDF open attempt IDs are exhausted" }
+    (floor + 1L).also {
+      openAttemptSequence = it
+      latestOpenAttemptId = it
+    }
+  }
+
+  /** Opens a candidate session while the current committed session remains renderable. */
+  fun prepareOpen(
+    attemptId: Long,
     path: String,
-    generation: Long,
     fallbackFont: PdfFallbackFont?,
     completion: (Result<PdfSessionInfo>) -> Unit,
   ) {
-    replaceInternal(path, generation, fallbackFont, completion)
+    val rejected = synchronized(stateLock) {
+      if (closed || latestOpenAttemptId != attemptId || discardedOpenAttemptIds.contains(attemptId)) {
+        true
+      } else {
+        try {
+          executor.execute { prepareOpenOnWorker(attemptId, path, fallbackFont, completion) }
+          false
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+          true
+        }
+      }
+    }
+    if (rejected) completion(Result.failure(cancelled(attemptId)))
   }
 
-  fun replace(
-    path: String,
-    generation: Long,
-    completion: (Result<PdfSessionInfo>) -> Unit,
-  ) {
-    replaceInternal(path, generation, null, completion)
+  /**
+   * Enqueues the commit only while this attempt is still latest. A true return
+   * reserves the commit in worker order before any newer open can be queued.
+   */
+  fun commitPreparedOpen(
+    attemptId: Long,
+    completion: (Result<Unit>) -> Unit,
+  ): Boolean = commitPreparedOpen(attemptId, OpenCommitGate().apply { accept() }, completion)
+
+  fun commitPreparedOpen(
+    attemptId: Long,
+    gate: OpenCommitGate,
+    completion: (Result<Unit>) -> Unit,
+  ): Boolean = synchronized(stateLock) {
+    if (closed || latestOpenAttemptId != attemptId || attemptId !in preparedOpenSessions) {
+      return@synchronized false
+    }
+    acceptedOpenAttemptIds += attemptId
+    try {
+      executor.execute {
+        val result = try {
+          if (!gate.awaitDecision()) throw cancelled(attemptId)
+          val candidate = synchronized(stateLock) {
+            check(acceptedOpenAttemptIds.remove(attemptId)) { "Open candidate was not accepted" }
+            preparedOpenSessions.remove(attemptId)
+          } ?: throw cancelled(attemptId)
+          val previous = current
+          current = candidate
+          requestedGeneration = attemptId
+          requestedTileEpoch = Long.MIN_VALUE
+          requestedPreviewEpoch = Long.MIN_VALUE
+          runCatching { previous?.close() }
+          Result.success(Unit)
+        } catch (error: Throwable) {
+          synchronized(stateLock) {
+            acceptedOpenAttemptIds.remove(attemptId)
+            preparedOpenSessions.remove(attemptId)
+          }?.let { runCatching { it.close() } }
+          Result.failure(error)
+        }
+        completion(result)
+      }
+      true
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      acceptedOpenAttemptIds -= attemptId
+      false
+    }
   }
 
-  private fun replaceInternal(
-    path: String,
+  /** Discards one uncommitted open candidate without touching the current session. */
+  fun discardPreparedOpen(attemptId: Long, completion: (Result<Unit>) -> Unit) {
+    val discard = synchronized(stateLock) {
+      if (attemptId in acceptedOpenAttemptIds) false else {
+        discardedOpenAttemptIds += attemptId
+        true
+      }
+    }
+    if (!discard) {
+      completion(Result.failure(cancelled(attemptId)))
+      return
+    }
+    try {
+      executor.execute {
+        val result = try {
+          val candidate = synchronized(stateLock) {
+            preparedOpenSessions.remove(attemptId).also {
+              discardedOpenAttemptIds -= attemptId
+            }
+          }
+          candidate?.close()
+          Result.success(Unit)
+        } catch (error: Throwable) {
+          Result.failure(error)
+        }
+        completion(result)
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      completion(Result.success(Unit))
+    }
+  }
+
+  /** Assembles and validates a mutation without changing the published render session. */
+  fun prepareMutation(
+    workingPath: String?,
+    candidatePath: String,
     generation: Long,
+    request: PdfiumAssemblyRequest,
     fallbackFont: PdfFallbackFont?,
+    retireCandidate: (File) -> Unit,
     completion: (Result<PdfSessionInfo>) -> Unit,
   ) {
     val rejected = synchronized(stateLock) {
@@ -322,11 +425,17 @@ internal class PdfSessionWorker(
         true
       } else {
         requestedGeneration = generation
-        requestedTileEpoch = Long.MIN_VALUE
-        requestedPreviewEpoch = Long.MIN_VALUE
         try {
           executor.execute {
-            replaceOnWorker(path, generation, fallbackFont, completion)
+            prepareMutationOnWorker(
+              workingPath,
+              candidatePath,
+              generation,
+              request,
+              fallbackFont,
+              retireCandidate,
+              completion,
+            )
           }
           false
         } catch (_: java.util.concurrent.RejectedExecutionException) {
@@ -335,8 +444,83 @@ internal class PdfSessionWorker(
       }
     }
     if (rejected) {
+      retireCandidate(File(candidatePath))
       completion(Result.failure(cancelled(generation)))
     }
+  }
+
+  /** Installs the previously prepared candidate after UI-owned validation succeeds. */
+  fun commitPreparedMutation(
+    candidatePath: String,
+    generation: Long,
+    completion: (Result<Unit>) -> Unit,
+  ) {
+    enqueueMutationControl(generation, completion) {
+      val prepared = preparedMutation
+      if (prepared == null || prepared.path != candidatePath || isStale(generation)) {
+        throw cancelled(generation)
+      }
+      preparedMutation = null
+      val previous = current
+      current = prepared.session
+      previous?.close()
+    }
+  }
+
+  /** Closes and retires an uncommitted candidate, or just retires its reserved file. */
+  fun discardPreparedMutation(candidatePath: String, retireCandidate: (File) -> Unit) {
+    try {
+      executor.execute {
+        val prepared = preparedMutation
+        if (prepared?.path == candidatePath) {
+          preparedMutation = null
+          prepared.session.close()
+        }
+        retireCandidate(File(candidatePath))
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      retireCandidate(File(candidatePath))
+    }
+  }
+
+  private fun prepareOpenOnWorker(
+    attemptId: Long,
+    path: String,
+    fallbackFont: PdfFallbackFont?,
+    completion: (Result<PdfSessionInfo>) -> Unit,
+  ) {
+    var candidate: PdfSessionResource? = null
+    val result = try {
+      synchronized(stateLock) {
+        if (closed || latestOpenAttemptId != attemptId || attemptId in discardedOpenAttemptIds) {
+          throw cancelled(attemptId)
+        }
+      }
+      val openedCandidate = opener.open(path, attemptId, fallbackFont)
+      candidate = openedCandidate
+      val accepted = synchronized(stateLock) {
+        if (closed || latestOpenAttemptId != attemptId || attemptId in discardedOpenAttemptIds) {
+          false
+        } else {
+          check(attemptId !in preparedOpenSessions) { "Open attempt ID was reused" }
+          preparedOpenSessions[attemptId] = openedCandidate
+          true
+        }
+      }
+      if (accepted) {
+        Result.success(openedCandidate.info)
+      } else {
+        openedCandidate.close()
+        Result.failure(cancelled(attemptId))
+      }
+    } catch (error: Throwable) {
+      candidate?.let { opened ->
+        val retained = synchronized(stateLock) { preparedOpenSessions[attemptId] === opened }
+        if (!retained) runCatching { opened.close() }
+      }
+      Result.failure(error)
+    }
+    completion(result)
   }
 
   fun renderTiles(
@@ -423,7 +607,7 @@ internal class PdfSessionWorker(
 
   fun export(
     snapshot: PdfExportSnapshot,
-    artifactPolicy: CacheArtifactPolicy,
+    artifactPolicy: DocumentArtifactPolicy,
     completion: (Result<String>) -> Unit,
   ) {
     if (closed) {
@@ -448,35 +632,63 @@ internal class PdfSessionWorker(
     }
   }
 
-  private fun replaceOnWorker(
-    path: String,
+  private fun prepareMutationOnWorker(
+    workingPath: String?,
+    candidatePath: String,
     generation: Long,
+    request: PdfiumAssemblyRequest,
     fallbackFont: PdfFallbackFont?,
+    retireCandidate: (File) -> Unit,
     completion: (Result<PdfSessionInfo>) -> Unit,
   ) {
-    closeCurrent()
-    if (isStale(generation)) {
-      completion(Result.failure(cancelled(generation)))
-      return
-    }
-
-    var candidate: PdfSessionResource? = null
+    val candidateFile = File(candidatePath)
     val result = try {
-      val opened = opener.open(path, generation, fallbackFont)
-      candidate = opened
+      if (isStale(generation)) throw cancelled(generation)
+      assembler(workingPath?.let(::File), request, candidateFile)
+      if (isStale(generation)) throw cancelled(generation)
+      val opened = opener.open(candidatePath, generation, fallbackFont)
       if (isStale(generation)) {
         opened.close()
-        Result.failure(cancelled(generation))
-      } else {
-        current = opened
-        Result.success(opened.info)
+        throw cancelled(generation)
       }
-    } catch (error: Exception) {
-      candidate?.close()
+      preparedMutation?.let { previous ->
+        previous.session.close()
+        previous.retire(File(previous.path))
+      }
+      preparedMutation = PreparedMutation(candidatePath, opened, retireCandidate)
+      Result.success(opened.info)
+    } catch (error: Throwable) {
       Result.failure<PdfSessionInfo>(error)
     }
+    if (result.isFailure) retireCandidate(candidateFile)
     completion(result)
   }
+
+  private fun enqueueMutationControl(
+    generation: Long,
+    completion: (Result<Unit>) -> Unit,
+    action: () -> Unit,
+  ) {
+    try {
+      executor.execute {
+        val result = try {
+          action()
+          Result.success(Unit)
+        } catch (error: Throwable) {
+          Result.failure(error)
+        }
+        completion(result)
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      completion(Result.failure(cancelled(generation)))
+    }
+  }
+
+  private data class PreparedMutation(
+    val path: String,
+    val session: PdfSessionResource,
+    val retire: (File) -> Unit,
+  )
 
   override fun close() {
     close(emptySet()) { }
@@ -515,9 +727,18 @@ internal class PdfSessionWorker(
   }
 
   private fun closeCurrent() {
+    preparedMutation?.let { prepared ->
+      preparedMutation = null
+      prepared.session.close()
+      prepared.retire(File(prepared.path))
+    }
     val session = current
     current = null
     session?.close()
+    preparedOpenSessions.values.forEach { it.close() }
+    preparedOpenSessions.clear()
+    acceptedOpenAttemptIds.clear()
+    discardedOpenAttemptIds.clear()
   }
 
   private fun cancelled(generation: Long): PdfSessionException {

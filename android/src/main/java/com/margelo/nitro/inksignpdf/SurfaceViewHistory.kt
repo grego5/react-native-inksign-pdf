@@ -35,9 +35,7 @@ internal fun SurfaceView.presentHistoryMutation(mutation: InkHistoryMutation) {
     is InkHistoryMutation.Appended -> inkRenderer.addCompletedOutline(mutation.outline)
     is InkHistoryMutation.Removed -> inkRenderer.removeLastCompleted(mutation.outline)
     is InkHistoryMutation.Replaced -> inkRenderer.setCompletedHistory(
-      mutation.content.mapNotNull { entry ->
-        (entry as? PageContent.Ink)?.outline
-      },
+      mutation.content.mapNotNull { it.inkOutlineOrNull() },
     )
     is InkHistoryMutation.Cleared -> inkRenderer.clearCompleted()
   }
@@ -48,21 +46,14 @@ internal fun SurfaceView.presentHistoryMutation(mutation: InkHistoryMutation) {
   pageNavigationController.reconcilePreviews()
 }
 
-internal fun SurfaceView.activeHistory(): InkHistory {
-  val state = checkNotNull(documentState)
-  return state.page(state.activePageIndex).history
-}
-
 internal fun SurfaceView.rebuildCommittedTextLayer() {
-  val state = documentState
+  val state = documentCoordinator.takeIf { it.hasDocument }
   if (state == null) {
     committedTextLayer = TextRenderLayer.empty()
     return
   }
   committedTextLayer = TextRenderLayer.from(
-    state.page(state.activePageIndex).history.contentSnapshot().mapNotNull { content ->
-      (content as? PageContent.Text)?.annotation
-    },
+    state.pageSnapshot(state.activePageIndex).content.mapNotNull { it.textAnnotationOrNull() },
   )
 }
 
@@ -71,7 +62,7 @@ internal fun SurfaceView.validateTextMutation(generation: Long, pageIndex: Int) 
   if (disposed) {
     throw PdfSessionException("operation_cancelled", "PDF view was disposed")
   }
-  val state = documentState
+  val state = documentCoordinator.takeIf { it.hasDocument }
   if (state == null || state.generation != generation || state.activePageIndex != pageIndex) {
     throw PdfSessionException(
       "operation_cancelled",
@@ -81,15 +72,15 @@ internal fun SurfaceView.validateTextMutation(generation: Long, pageIndex: Int) 
 }
 
 internal fun SurfaceView.reportedState(): InkState {
-  val state = documentState ?: return InkState(false, false, false)
-  val active = state.page(state.activePageIndex).history.state()
+  val state = documentCoordinator.takeIf { it.hasDocument } ?: return InkState(false, false, false)
+  val active = state.activeHistoryState()
   return InkState(
     canUndo = active.canUndo,
     canRedo = active.canRedo,
-    isDirty = state.pages.any { it.history.state().isDirty },
+    isDirty = state.isDirty(),
   )
 }
 
 internal fun SurfaceView.resetDocumentHistories() {
-  documentState?.pages?.forEach { it.history.reset() }
+  if (documentCoordinator.hasDocument) documentCoordinator.resetHistories()
 }

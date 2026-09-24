@@ -1,6 +1,9 @@
 #include "pdfium-adapter/PdfiumDocumentSession.hpp"
 #include "pdfium-adapter/PdfiumFontFallback.hpp"
+#include "pdfium-adapter/PdfiumLibraryInternal.hpp"
 
+#include <fpdf_edit.h>
+#include <fpdf_transformpage.h>
 #include <fpdfview.h>
 
 #include <cassert>
@@ -15,18 +18,13 @@
 #include <vector>
 
 namespace margelo::nitro::inksignpdf::pdfium {
-namespace {
 
-struct LibraryState final {
-  std::mutex lifecycleMutex;
-  std::mutex apiMutex;
-  std::size_t activeLeases = 0;
-};
-
-LibraryState& libraryState() {
-  static LibraryState state;
+PdfiumLibraryState& pdfiumLibraryState() {
+  static PdfiumLibraryState state;
   return state;
 }
+
+namespace {
 
 class ScopedPage final {
  public:
@@ -50,7 +48,7 @@ class ScopedDocument final {
   ScopedDocument& operator=(const ScopedDocument&) = delete;
   ~ScopedDocument() {
     if (document_ == nullptr) return;
-    auto& state = libraryState();
+    auto& state = pdfiumLibraryState();
     std::lock_guard apiLock(state.apiMutex);
     FPDF_CloseDocument(document_);
   }
@@ -87,7 +85,7 @@ PdfiumLibrary::PdfiumLibrary(PdfiumLibrary&& other) noexcept
 PdfiumLibrary& PdfiumLibrary::operator=(PdfiumLibrary&& other) noexcept {
   if (this == &other) return *this;
   if (acquired_) {
-    auto& state = libraryState();
+    auto& state = pdfiumLibraryState();
     std::scoped_lock lock(state.lifecycleMutex, state.apiMutex);
     assert(state.activeLeases > 0);
     if (state.activeLeases > 0 && --state.activeLeases == 0) {
@@ -102,7 +100,7 @@ PdfiumLibrary& PdfiumLibrary::operator=(PdfiumLibrary&& other) noexcept {
 PdfiumLibrary::~PdfiumLibrary() {
   if (!acquired_) return;
 
-  auto& state = libraryState();
+  auto& state = pdfiumLibraryState();
   std::scoped_lock lock(state.lifecycleMutex, state.apiMutex);
   assert(state.activeLeases > 0);
   if (state.activeLeases > 0 && --state.activeLeases == 0) {
@@ -113,7 +111,7 @@ PdfiumLibrary::~PdfiumLibrary() {
 }
 
 std::unique_ptr<PdfiumLibrary> PdfiumLibrary::acquire(PdfiumError& error) {
-  auto& state = libraryState();
+  auto& state = pdfiumLibraryState();
   std::scoped_lock lock(state.lifecycleMutex, state.apiMutex);
   if (state.activeLeases == 0) {
     FPDF_LIBRARY_CONFIG config{};
@@ -122,7 +120,12 @@ std::unique_ptr<PdfiumLibrary> PdfiumLibrary::acquire(PdfiumError& error) {
     config.m_v8EmbedderSlot = 0;
     FPDF_InitLibraryWithConfig(&config);
 
-    installSystemFontProvider();
+    if (!installSystemFontProvider()) {
+      FPDF_DestroyLibrary();
+      error = {PdfiumErrorCode::LibraryInitializationFailed,
+               "Unable to install the PDFium system font provider"};
+      return nullptr;
+    }
   }
   ++state.activeLeases;
   error = {};
@@ -212,52 +215,10 @@ PdfiumOpenResult PdfiumDocumentSession::open(
     return result;
   }
 
-  if (fallbackFont.has_value()) {
-    std::size_t analysisPageCount = 0;
-    FPDF_DOCUMENT analysisRaw = nullptr;
-    unsigned long loadError = 0;
-    auto& state = libraryState();
-    {
-      std::lock_guard apiLock(state.apiMutex);
-      analysisRaw = FPDF_LoadMemDocument(
-          documentBytes.data(),
-          static_cast<int>(documentBytes.size()),
-          password.empty() ? nullptr : password.c_str());
-      if (analysisRaw == nullptr) loadError = FPDF_GetLastError();
-    }
-    if (analysisRaw == nullptr) {
-      result.error = {PdfiumErrorCode::DocumentOpenFailed,
-                      "PDFium analysis document open failed (PDFium error " +
-                          std::to_string(loadError) + ")"};
-      return result;
-    }
-
-    ScopedDocument analysisDocument(analysisRaw);
-    {
-      std::lock_guard apiLock(state.apiMutex);
-      const int count = FPDF_GetPageCount(analysisDocument.get());
-      if (count > 0) analysisPageCount = static_cast<std::size_t>(count);
-    }
-    if (analysisPageCount == 0) {
-      result.error = {PdfiumErrorCode::DocumentOpenFailed,
-                      "PDFium analysis document contains no pages"};
-      return result;
-    }
-
-    {
-      std::lock_guard apiLock(state.apiMutex);
-      ScopedFontRegistry noRegistry(nullptr);
-      collectFontRequirements(analysisDocument.get(), analysisPageCount,
-                              *fontRegistry);
-    }
-  }
-
-  fontRegistry->resolve();
-
   FPDF_DOCUMENT renderingRaw = nullptr;
   unsigned long loadError = 0;
   {
-    auto& state = libraryState();
+    auto& state = pdfiumLibraryState();
     std::lock_guard apiLock(state.apiMutex);
     ScopedFontRegistry activeRegistry(fontRegistry.get());
     renderingRaw = FPDF_LoadMemDocument(
@@ -276,7 +237,7 @@ PdfiumOpenResult PdfiumDocumentSession::open(
   ScopedDocument renderingDocument(renderingRaw);
   std::size_t pageCount = 0;
   {
-    auto& state = libraryState();
+    auto& state = pdfiumLibraryState();
     std::lock_guard apiLock(state.apiMutex);
     ScopedFontRegistry activeRegistry(fontRegistry.get());
     const int count = FPDF_GetPageCount(renderingDocument.get());
@@ -319,7 +280,7 @@ PdfiumError PdfiumDocumentSession::inspectPage(
             "PDFium page index is outside the document"};
   }
 
-  auto& state = libraryState();
+  auto& state = pdfiumLibraryState();
   std::lock_guard apiLock(state.apiMutex);
   ScopedFontRegistry activeRegistry(impl_->fontRegistry.get());
   ScopedPage page(FPDF_LoadPage(impl_->document, static_cast<int>(pageIndex)));
@@ -331,11 +292,36 @@ PdfiumError PdfiumDocumentSession::inspectPage(
   }
   const double width = FPDF_GetPageWidth(page.get());
   const double height = FPDF_GetPageHeight(page.get());
-  if (!(width > 0.0) || !(height > 0.0)) {
+  float mediaBoxLeft = 0.0f;
+  float mediaBoxBottom = 0.0f;
+  float mediaBoxRight = 0.0f;
+  float mediaBoxTop = 0.0f;
+  if (!FPDFPage_GetMediaBox(page.get(), &mediaBoxLeft, &mediaBoxBottom,
+                            &mediaBoxRight, &mediaBoxTop)) {
+    return {PdfiumErrorCode::PageOpenFailed,
+            "PDFium page has no readable MediaBox"};
+  }
+  if (!(width > 0.0) || !(height > 0.0) ||
+      !std::isfinite(width) || !std::isfinite(height) ||
+      !std::isfinite(mediaBoxLeft) || !std::isfinite(mediaBoxBottom) ||
+      !std::isfinite(mediaBoxRight) || !std::isfinite(mediaBoxTop) ||
+      !(mediaBoxRight > mediaBoxLeft) || !(mediaBoxTop > mediaBoxBottom)) {
     return {PdfiumErrorCode::PageOpenFailed,
             "PDFium page has invalid dimensions"};
   }
-  metadata = {pageIndex, width, height};
+  const int rotation = FPDFPage_GetRotation(page.get());
+  if (rotation < 0 || rotation > 3) {
+    return {PdfiumErrorCode::PageOpenFailed,
+            "PDFium page has invalid rotation"};
+  }
+  metadata.pageIndex = pageIndex;
+  metadata.width = width;
+  metadata.height = height;
+  metadata.rotation = rotation;
+  metadata.mediaBoxLeft = mediaBoxLeft;
+  metadata.mediaBoxBottom = mediaBoxBottom;
+  metadata.mediaBoxRight = mediaBoxRight;
+  metadata.mediaBoxTop = mediaBoxTop;
   return {};
 }
 
@@ -399,7 +385,7 @@ PdfiumError PdfiumDocumentSession::renderPage(
             "PDFium render flags contain unsupported bits"};
   }
 
-  auto& state = libraryState();
+  auto& state = pdfiumLibraryState();
   std::lock_guard apiLock(state.apiMutex);
   ScopedFontRegistry activeRegistry(impl_->fontRegistry.get());
   ScopedPage page(FPDF_LoadPage(impl_->document,
@@ -444,7 +430,7 @@ void PdfiumDocumentSession::closeUnchecked() noexcept {
   if (!impl_) return;
 
   if (impl_->document != nullptr) {
-    auto& state = libraryState();
+    auto& state = pdfiumLibraryState();
     {
       std::lock_guard apiLock(state.apiMutex);
       FPDF_CloseDocument(impl_->document);

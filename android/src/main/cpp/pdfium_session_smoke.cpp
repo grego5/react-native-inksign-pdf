@@ -1,16 +1,31 @@
 #include "pdfium-adapter/PdfiumDocumentSession.hpp"
+#include "pdfium-adapter/PdfiumPageAssembler.hpp"
+#include "pdfium-adapter/PdfiumSignedDocumentExporter.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 using margelo::nitro::inksignpdf::pdfium::PdfiumDocumentSession;
 using margelo::nitro::inksignpdf::pdfium::PdfiumErrorCode;
+using margelo::nitro::inksignpdf::pdfium::PdfiumAppendInput;
+using margelo::nitro::inksignpdf::pdfium::PdfiumAppendInputType;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssembler;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyCommand;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyOperation;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageMetadata;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageRenderRequest;
+using margelo::nitro::inksignpdf::pdfium::PdfiumExportTextLine;
+using margelo::nitro::inksignpdf::pdfium::PdfiumInkBitmap;
+using margelo::nitro::inksignpdf::pdfium::PdfiumSignedDocumentExporter;
+using margelo::nitro::inksignpdf::pdfium::PdfiumSignedExportPage;
 
 namespace {
 
@@ -51,7 +66,8 @@ std::vector<std::uint8_t> minimalPdf() {
 
 std::vector<std::uint8_t> textPdf(
     const std::string& mediaBox,
-    const std::string& content) {
+    const std::string& content,
+    int rotation = 0) {
   const std::string header = "%PDF-1.4\n";
   const std::string object1 =
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
@@ -59,6 +75,7 @@ std::vector<std::uint8_t> textPdf(
       "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
   const std::string object3 =
       "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox " + mediaBox +
+      (rotation == 0 ? std::string() : " /Rotate " + std::to_string(rotation)) +
       "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n";
   const std::string object4 =
       "4 0 obj\n<< /Length " + std::to_string(content.size()) +
@@ -94,6 +111,77 @@ std::vector<std::uint8_t> textPdf(
   return {pdf.begin(), pdf.end()};
 }
 
+std::vector<std::uint8_t> multiPagePdf(
+    const std::vector<std::pair<int, int>>& sizes) {
+  std::vector<std::string> objects;
+  objects.emplace_back("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+
+  std::string kids = "[";
+  for (std::size_t index = 0; index < sizes.size(); ++index) {
+    kids += std::to_string(3 + index) + " 0 R ";
+  }
+  kids += "]";
+  objects.push_back("2 0 obj\n<< /Type /Pages /Kids " + kids +
+                    " /Count " + std::to_string(sizes.size()) +
+                    " >>\nendobj\n");
+  for (std::size_t index = 0; index < sizes.size(); ++index) {
+    const auto [width, height] = sizes[index];
+    const std::size_t contentObject = 3 + sizes.size() + index;
+    objects.push_back(
+        std::to_string(3 + index) +
+        " 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 " +
+        std::to_string(width) + " " + std::to_string(height) +
+        "] /Contents " + std::to_string(contentObject) +
+        " 0 R >>\nendobj\n");
+  }
+  for (std::size_t index = 0; index < sizes.size(); ++index) {
+    objects.push_back(std::to_string(3 + sizes.size() + index) +
+                      " 0 obj\n<< /Length 0 >>\nstream\n\nendstream\n"
+                      "endobj\n");
+  }
+
+  std::string pdf = "%PDF-1.4\n";
+  std::vector<std::size_t> offsets;
+  offsets.reserve(objects.size());
+  for (const auto& object : objects) {
+    offsets.push_back(pdf.size());
+    pdf += object;
+  }
+  const std::size_t xrefOffset = pdf.size();
+  pdf += "xref\n0 " + std::to_string(objects.size() + 1) +
+         "\n0000000000 65535 f \n";
+  char entry[32];
+  for (const std::size_t offset : offsets) {
+    const int written =
+        snprintf(entry, sizeof(entry), "%010zu 00000 n \n", offset);
+    pdf.append(entry, static_cast<std::size_t>(written));
+  }
+  pdf += "trailer\n<< /Size " + std::to_string(objects.size() + 1) +
+         " /Root 1 0 R >>\nstartxref\n";
+  pdf += std::to_string(xrefOffset);
+  pdf += "\n%%EOF\n";
+  return {pdf.begin(), pdf.end()};
+}
+
+std::vector<std::uint8_t> readFile(const std::string& path) {
+  std::ifstream input(path, std::ios::binary);
+  return {std::istreambuf_iterator<char>(input),
+          std::istreambuf_iterator<char>()};
+}
+
+bool matchesSizes(const std::vector<PdfiumPageMetadata>& pages,
+                  const std::vector<std::pair<double, double>>& sizes) {
+  if (pages.size() != sizes.size()) return false;
+  for (std::size_t index = 0; index < pages.size(); ++index) {
+    if (pages[index].width != sizes[index].first ||
+        pages[index].height != sizes[index].second ||
+        pages[index].rotation != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 extern "C" bool ReactNativeInkSignPdfPdfiumSessionLifecycleSmoke() {
@@ -110,6 +198,53 @@ extern "C" bool ReactNativeInkSignPdfPdfiumSessionLifecycleSmoke() {
   }
   if (first.session->inspectPage(1, metadata).code !=
       PdfiumErrorCode::InvalidPageIndex) {
+    return false;
+  }
+
+  auto geometrySession = PdfiumDocumentSession::open(
+      textPdf("[10 20 110 220]", "", 90));
+  if (!geometrySession || !geometrySession.session->inspectPage(0, metadata) ||
+      metadata.rotation != 1 || metadata.mediaBoxLeft != 10.0 ||
+      metadata.mediaBoxBottom != 20.0 || metadata.mediaBoxRight != 110.0 ||
+      metadata.mediaBoxTop != 220.0 || metadata.canonicalWidth() != 100.0 ||
+      metadata.canonicalHeight() != 200.0) {
+    return false;
+  }
+
+  PdfiumSignedExportPage signedPage;
+  signedPage.expectedGeometry = metadata;
+  PdfiumInkBitmap ink;
+  std::array<std::uint8_t, 16> inkPixels{
+      0, 0, 255, 128, 0, 0, 0, 0, 0, 255, 0, 128, 0, 0, 0, 0};
+  ink.bgra = inkPixels;
+  ink.width = 2;
+  ink.height = 2;
+  ink.stride = 8;
+  ink.left = 10.0;
+  ink.top = 10.0;
+  ink.displayWidth = 20.0;
+  ink.displayHeight = 20.0;
+  signedPage.ink = std::move(ink);
+  signedPage.textLines.push_back(
+      {u"PDFium", 15.0, 35.0, 10.0, 0xFF102030u, false});
+  const auto signedCandidate = PdfiumSignedDocumentExporter::write(
+      textPdf("[10 20 110 220]", "", 90), {signedPage});
+  if (!signedCandidate) return false;
+  auto signedSession = PdfiumDocumentSession::open(signedCandidate.bytes);
+  PdfiumPageMetadata signedMetadata;
+  if (!signedSession || signedSession.session->pageCount() != 1 ||
+      !signedSession.session->inspectPage(0, signedMetadata) ||
+      signedMetadata.mediaBoxLeft != 10.0 ||
+      signedMetadata.mediaBoxBottom != 20.0 ||
+      signedMetadata.mediaBoxRight != 110.0 ||
+      signedMetadata.mediaBoxTop != 220.0 || signedMetadata.rotation != 1) {
+    return false;
+  }
+  signedPage.textLines[0].rightToLeft = true;
+  const auto unsupportedSignedCandidate = PdfiumSignedDocumentExporter::write(
+      textPdf("[10 20 110 220]", "", 90), {signedPage});
+  if (unsupportedSignedCandidate ||
+      unsupportedSignedCandidate.error.code != PdfiumErrorCode::UnsupportedText) {
     return false;
   }
 
@@ -157,5 +292,190 @@ extern "C" bool ReactNativeInkSignPdfPdfiumSessionLifecycleSmoke() {
   auto second = PdfiumDocumentSession::open(minimalPdf());
   if (!second || second.session->pageCount() != 1) return false;
   if (!second.session->close() || !first.session->close()) return false;
+  return true;
+}
+
+extern "C" bool ReactNativeInkSignPdfPdfiumAssemblySmoke(
+    const char* scratchPath,
+    const std::uint8_t* jpegBytes,
+    std::size_t jpegSize) {
+  if (scratchPath == nullptr || jpegBytes == nullptr || jpegSize == 0) {
+    return false;
+  }
+  const std::string appendPath = std::string(scratchPath) + ".append.pdf";
+  const std::string createPath = std::string(scratchPath) + ".create.pdf";
+  const std::string createImagePath = std::string(scratchPath) + ".create-image.pdf";
+  const std::string createPdfPath = std::string(scratchPath) + ".create-pdf.pdf";
+  const std::string movePath = std::string(scratchPath) + ".move.pdf";
+  const std::string backwardPath = std::string(scratchPath) + ".backward.pdf";
+  const std::string removePath = std::string(scratchPath) + ".remove.pdf";
+  const std::string invalidPath = std::string(scratchPath) + ".invalid.pdf";
+  const std::string solePath = std::string(scratchPath) + ".sole.pdf";
+  const std::string firstRemovePath =
+      std::string(scratchPath) + ".first-remove.pdf";
+  const std::string lastRemovePath =
+      std::string(scratchPath) + ".last-remove.pdf";
+  for (const auto& path :
+       {appendPath, createPath, createImagePath, createPdfPath, movePath, backwardPath, removePath, invalidPath, solePath,
+        firstRemovePath, lastRemovePath}) {
+    std::remove(path.c_str());
+  }
+
+  PdfiumAppendInput source;
+  source.type = PdfiumAppendInputType::Pdf;
+  source.bytes = multiPagePdf({{200, 100}, {300, 100}});
+  PdfiumAppendInput image;
+  image.type = PdfiumAppendInputType::Image;
+  image.bytes.assign(jpegBytes, jpegBytes + jpegSize);
+  image.pageWidth = 80.0;
+  image.pageHeight = 90.0;
+  image.placement = {40.0, 0.0, 0.0, 20.0, 10.0, 15.0};
+
+  PdfiumPageAssemblyCommand create;
+  create.operation = PdfiumPageAssemblyOperation::Create;
+  create.appendInputs.push_back(source);
+  create.appendInputs.push_back(image);
+  const auto created = PdfiumPageAssembler::assemble(
+      {}, std::move(create), createPath);
+  if (!created ||
+      !matchesSizes(created.pages, {{200, 100}, {300, 100}, {80, 90}}) ||
+      readFile(createPath).empty()) {
+    return false;
+  }
+  PdfiumPageAssemblyCommand imageOnlyCreate;
+  imageOnlyCreate.operation = PdfiumPageAssemblyOperation::Create;
+  imageOnlyCreate.appendInputs.push_back(image);
+  const auto imageOnly = PdfiumPageAssembler::assemble(
+      {}, std::move(imageOnlyCreate), createImagePath);
+  if (!imageOnly || !matchesSizes(imageOnly.pages, {{80, 90}})) return false;
+  PdfiumPageAssemblyCommand pdfOnlyCreate;
+  pdfOnlyCreate.operation = PdfiumPageAssemblyOperation::Create;
+  pdfOnlyCreate.appendInputs.push_back(source);
+  const auto pdfOnly = PdfiumPageAssembler::assemble(
+      {}, std::move(pdfOnlyCreate), createPdfPath);
+  if (!pdfOnly || !matchesSizes(pdfOnly.pages, {{200, 100}, {300, 100}})) {
+    return false;
+  }
+  PdfiumPageAssemblyCommand emptyCreate;
+  emptyCreate.operation = PdfiumPageAssemblyOperation::Create;
+  const auto rejectedEmptyCreate = PdfiumPageAssembler::assemble(
+      {}, std::move(emptyCreate), solePath);
+  if (rejectedEmptyCreate || !readFile(solePath).empty()) return false;
+
+  PdfiumPageAssemblyCommand append;
+  append.operation = PdfiumPageAssemblyOperation::Append;
+  append.appendInputs.push_back(std::move(source));
+  append.appendInputs.push_back(std::move(image));
+  const auto appended = PdfiumPageAssembler::assemble(
+      multiPagePdf({{100, 100}, {110, 100}, {120, 100}}),
+      std::move(append), appendPath);
+  if (!appended ||
+      !matchesSizes(appended.pages,
+                    {{100, 100}, {110, 100}, {120, 100}, {200, 100},
+                     {300, 100}, {80, 90}})) {
+    return false;
+  }
+  const auto appendedBytes = readFile(appendPath);
+  if (appendedBytes.empty()) return false;
+
+  PdfiumPageAssemblyCommand move;
+  move.operation = PdfiumPageAssemblyOperation::Move;
+  move.pageIndex = 0;
+  move.destinationIndex = 5;
+  const auto moved = PdfiumPageAssembler::assemble(
+      appendedBytes, std::move(move), movePath);
+  if (!moved ||
+      !matchesSizes(moved.pages,
+                    {{110, 100}, {120, 100}, {200, 100}, {300, 100},
+                     {80, 90}, {100, 100}})) {
+    return false;
+  }
+
+  PdfiumPageAssemblyCommand backward;
+  backward.operation = PdfiumPageAssemblyOperation::Move;
+  backward.pageIndex = 5;
+  backward.destinationIndex = 1;
+  const auto movedBackward = PdfiumPageAssembler::assemble(
+      readFile(movePath), std::move(backward), backwardPath);
+  if (!movedBackward ||
+      !matchesSizes(movedBackward.pages,
+                    {{110, 100}, {100, 100}, {120, 100}, {200, 100},
+                     {300, 100}, {80, 90}})) {
+    return false;
+  }
+
+  PdfiumPageAssemblyCommand sameIndex;
+  sameIndex.operation = PdfiumPageAssemblyOperation::Move;
+  sameIndex.pageIndex = 2;
+  sameIndex.destinationIndex = 2;
+  const auto same = PdfiumPageAssembler::assemble(
+      readFile(backwardPath), std::move(sameIndex), removePath);
+  if (!same ||
+      !matchesSizes(same.pages,
+                    {{110, 100}, {100, 100}, {120, 100}, {200, 100},
+                     {300, 100}, {80, 90}})) {
+    return false;
+  }
+
+  PdfiumPageAssemblyCommand removeMiddle;
+  removeMiddle.operation = PdfiumPageAssemblyOperation::Remove;
+  removeMiddle.pageIndex = 2;
+  const auto removed = PdfiumPageAssembler::assemble(
+      readFile(removePath), std::move(removeMiddle), invalidPath);
+  if (!removed ||
+      !matchesSizes(removed.pages, {{110, 100}, {100, 100}, {200, 100},
+                                    {300, 100}, {80, 90}})) {
+    return false;
+  }
+
+  PdfiumPageAssemblyCommand removeFirst;
+  removeFirst.operation = PdfiumPageAssemblyOperation::Remove;
+  removeFirst.pageIndex = 0;
+  const auto removedFirst = PdfiumPageAssembler::assemble(
+      readFile(invalidPath), std::move(removeFirst), firstRemovePath);
+  if (!removedFirst ||
+      !matchesSizes(removedFirst.pages,
+                    {{100, 100}, {200, 100}, {300, 100}, {80, 90}})) {
+    return false;
+  }
+
+  PdfiumPageAssemblyCommand removeLast;
+  removeLast.operation = PdfiumPageAssemblyOperation::Remove;
+  removeLast.pageIndex = 3;
+  const auto removedLast = PdfiumPageAssembler::assemble(
+      readFile(firstRemovePath), std::move(removeLast), lastRemovePath);
+  if (!removedLast ||
+      !matchesSizes(removedLast.pages,
+                    {{100, 100}, {200, 100}, {300, 100}})) {
+    return false;
+  }
+
+  PdfiumPageAssemblyCommand invalidMove;
+  invalidMove.operation = PdfiumPageAssemblyOperation::Move;
+  invalidMove.pageIndex = 0;
+  invalidMove.destinationIndex = 99;
+  const auto unchangedInput = readFile(invalidPath);
+  const auto failed = PdfiumPageAssembler::assemble(
+      readFile(invalidPath), std::move(invalidMove), solePath);
+  if (failed || !readFile(solePath).empty() ||
+      readFile(invalidPath) != unchangedInput) {
+    return false;
+  }
+
+  PdfiumPageAssemblyCommand removeOnly;
+  removeOnly.operation = PdfiumPageAssemblyOperation::Remove;
+  removeOnly.pageIndex = 0;
+  const auto only = PdfiumPageAssembler::assemble(
+      multiPagePdf({{50, 50}}), std::move(removeOnly), solePath);
+  if (only || only.error.code != PdfiumErrorCode::LastPageRequired ||
+      !readFile(solePath).empty()) {
+    return false;
+  }
+
+  for (const auto& path :
+       {appendPath, createPath, createImagePath, createPdfPath, movePath, backwardPath, removePath, invalidPath, solePath,
+        firstRemovePath, lastRemovePath}) {
+    std::remove(path.c_str());
+  }
   return true;
 }

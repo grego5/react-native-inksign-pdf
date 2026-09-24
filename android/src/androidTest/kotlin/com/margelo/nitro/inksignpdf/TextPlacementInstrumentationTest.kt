@@ -171,7 +171,7 @@ internal class TextPlacementInstrumentationTest {
       )
       harness.surface.appendTextAnnotation(1L, 0, annotation)
       overlay.syncContent()
-      revisionBeforeHold = harness.surface.activeHistory().revision
+      revisionBeforeHold = harness.activeHistoryRevision()
       val point = checkNotNull(harness.surface.textPresentationSnapshot())
         .transform.map(annotation.position)
       dispatch(overlay, MotionEvent.ACTION_DOWN, point.x.toFloat(), point.y.toFloat(), 3_100L)
@@ -184,7 +184,7 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, point.x.toFloat(), point.y.toFloat(), 3_760L))
         assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
         assertEquals(null, overlay.editingAnnotationId())
-        assertEquals(revisionBeforeHold, harness.surface.activeHistory().revision)
+        assertEquals(revisionBeforeHold, harness.activeHistoryRevision())
         assertEquals(16.0, checkNotNull(harness.surface.textPresentationSnapshot())
           .annotations.single().fontSize, 0.0)
         assertEquals(17.0, overlay.increaseTextSize(), 0.0)
@@ -247,20 +247,31 @@ internal class TextPlacementInstrumentationTest {
   @Test
   fun outsideEditorDragPansViewportAndKeepsEditorActive() {
     harness.runOnMain {
-      harness.surface.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
         overlay.armPlacement(1L)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_600L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_610L))
         assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(1, editorCount(overlay))
+        val editor = editorView(overlay)
+        val panStartX = 8f
+        val panStartY = 2f
+        assertTrue(
+          "The pan gesture must start outside the editor; editor=" +
+            "[${editor.left},${editor.top},${editor.right},${editor.bottom}]",
+            panStartX < editor.left || panStartX > editor.right ||
+            panStartY < editor.top || panStartY > editor.bottom,
+        )
         val before = harness.surface.currentViewportState().focus
 
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 290f, 290f, 5_620L))
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_MOVE, 240f, 290f, 5_640L))
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 240f, 290f, 5_660L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, panStartX, panStartY, 5_620L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_MOVE, panStartX + 50f, panStartY, 5_640L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, panStartX + 50f, panStartY, 5_660L))
 
         assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
-        assertEquals(1, overlay.childCount)
+        assertEquals(1, editorCount(overlay))
         assertTrue(harness.surface.currentViewportState().focus.x != before.x)
       } finally {
         overlay.dispose()
@@ -271,12 +282,16 @@ internal class TextPlacementInstrumentationTest {
   @Test
   fun mountedRtlEditorKeepsItsRightEdgeAcrossTypingAndDeletion() {
     harness.runOnMain {
-      harness.surface.setDocument(harness.info, zoom = 3.0, fitToPage = false)
-      val overlay = harness.createOverlay()
+        harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+        val overlay = harness.createOverlay()
       try {
+        overlay.setTextDirection(TextDirection.RTL)
         overlay.armPlacement(1L)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_000L))
-        val editor = overlay.getChildAt(0) as EditText
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_010L))
+        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(1, editorCount(overlay))
+        val editor = editorView(overlay)
         assertTrue(editor.paddingLeft > 0)
         assertTrue(editor.paddingTop > 0)
         overlay.syncTransform()
@@ -284,7 +299,14 @@ internal class TextPlacementInstrumentationTest {
         val beforeRight = beforeTransform.inverse()
           .map(PagePoint(editor.right.toDouble(), editor.top.toDouble())).x
 
-        editor.setText("ש")
+        editor.setText("1")
+        overlay.syncTransform()
+        val oneTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
+        val oneRight = oneTransform.inverse()
+          .map(PagePoint(editor.right.toDouble(), editor.top.toDouble())).x
+        assertEquals(beforeRight, oneRight, 2.0)
+
+        editor.setText("Latin")
         overlay.syncTransform()
         val afterTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
         val afterRight = afterTransform.inverse()
@@ -308,6 +330,9 @@ internal class TextPlacementInstrumentationTest {
         editor.setText("")
         overlay.syncTransform()
         assertTrue(editor.width > 0 && editor.width < wideWidth)
+        editor.setText("1Latin שלום")
+        overlay.finishForLifecycle()
+        assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single().directionRtl)
       } finally {
         overlay.dispose()
       }
@@ -317,12 +342,13 @@ internal class TextPlacementInstrumentationTest {
   @Test
   fun nativeSoftWrapsBecomeExplicitTextWhenTheDraftSettles() {
     harness.runOnMain {
-      harness.surface.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
         overlay.armPlacement(1L)
+        choosePlacementDirection(overlay, rtl = false)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 6_000L))
-        val editor = overlay.getChildAt(0) as EditText
+        val editor = editorView(overlay)
         editor.setText("abcdefghij".repeat(80))
         overlay.syncTransform()
         val nativeLineCount = checkNotNull(editor.layout).lineCount
@@ -347,16 +373,34 @@ internal class TextPlacementInstrumentationTest {
 
   @Test
   fun selectionVisibilityFollowsTheMovedRangeEndpoint() {
+    lateinit var overlay: TextInteractionOverlay
     harness.runOnMain {
-      harness.surface.setDocument(harness.info, zoom = 3.0, fitToPage = false)
-      val overlay = harness.createOverlay()
-      try {
-        overlay.armPlacement(1L)
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 7_000L))
-        val editor = overlay.getChildAt(0) as EditText
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      overlay = harness.createOverlay()
+      overlay.setTextDirection(TextDirection.LTR)
+      overlay.armPlacement(1L)
+      assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 7_000L))
+      assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 7_010L))
+      assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+      assertEquals(1, editorCount(overlay))
+    }
+    try {
+      harness.waitForViewportAnimationToFinish()
+      harness.runOnMain {
+        val editor = editorView(overlay)
+        editor.setText("שלום")
+        overlay.syncTransform()
+        val hebrewTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
+        val leftAnchorWithHebrew = hebrewTransform.inverse()
+          .map(PagePoint(editor.left.toDouble(), editor.top.toDouble())).x
+
         val text = "A".repeat(220)
         editor.setText(text)
         overlay.syncTransform()
+        val latinTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
+        val leftAnchorWithLatin = latinTransform.inverse()
+          .map(PagePoint(editor.left.toDouble(), editor.top.toDouble())).x
+        assertEquals(leftAnchorWithHebrew, leftAnchorWithLatin, 2.0)
 
         editor.setSelection(0, text.length)
         overlay.syncTransform()
@@ -364,6 +408,7 @@ internal class TextPlacementInstrumentationTest {
         assertCaretIsInsideView(editor, editor.selectionEnd)
 
         editor.setSelection(1, text.length)
+        assertCaretIsOutsideView(editor, editor.selectionStart)
         overlay.syncTransform()
         val startFocus = harness.surface.currentViewportState().focus.x
         assertTrue(startFocus < endFocus)
@@ -372,9 +417,11 @@ internal class TextPlacementInstrumentationTest {
         editor.setSelection(1)
         overlay.syncTransform()
         assertCaretIsInsideView(editor, editor.selectionStart)
-      } finally {
-        overlay.dispose()
+        overlay.finishForLifecycle()
+        assertTrue(!checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single().directionRtl)
       }
+    } finally {
+      harness.runOnMain { overlay.dispose() }
     }
   }
 
@@ -399,7 +446,7 @@ internal class TextPlacementInstrumentationTest {
         dispatch(overlay, MotionEvent.ACTION_UP, point.x.toFloat() + 40f, point.y.toFloat(), 4_040L)
 
         assertEquals(InteractionMode.VIEW, overlay.interactionMode())
-        assertEquals(0, overlay.childCount)
+        assertEquals(0, editorCount(overlay))
       } finally {
         overlay.dispose()
       }
@@ -421,51 +468,97 @@ internal class TextPlacementInstrumentationTest {
     }
   }
 
+  private fun editorCount(overlay: TextInteractionOverlay): Int =
+    (0 until overlay.childCount).count { overlay.getChildAt(it) is EditText }
+
+  private fun editorView(overlay: TextInteractionOverlay): EditText =
+    (0 until overlay.childCount)
+      .map(overlay::getChildAt)
+      .filterIsInstance<EditText>()
+      .single()
+
+  private fun choosePlacementDirection(overlay: TextInteractionOverlay, rtl: Boolean) {
+    overlay.setTextDirection(if (rtl) TextDirection.RTL else TextDirection.LTR)
+  }
+
   private fun assertCaretIsInsideView(editor: EditText, offset: Int) {
+    val (caretX, caretTop) = caretViewPosition(editor, offset)
+    val layout = checkNotNull(editor.layout)
+    val focus = harness.surface.currentViewportState().focus
+    val details = "caret=($caretX,$caretTop) offset=$offset line=${layout.getLineForOffset(offset)} " +
+      "editor=[${editor.left},${editor.top},${editor.right},${editor.bottom}] " +
+      "scroll=(${editor.scrollX},${editor.scrollY}) focus=(${focus.x},${focus.y})"
+    assertTrue("Caret must be inside the overlay; $details", caretX >= 8 && caretX <= 292)
+    assertTrue("Caret must be inside the overlay; $details", caretTop >= 8 && caretTop <= 292)
+  }
+
+  private fun assertCaretIsOutsideView(editor: EditText, offset: Int) {
+    val (caretX, caretTop) = caretViewPosition(editor, offset)
+    assertTrue(
+      "The moved selection endpoint must start outside the overlay, got x=$caretX y=$caretTop",
+      caretX < 8 || caretX > 292 || caretTop < 8 || caretTop > 292,
+    )
+  }
+
+  private fun caretViewPosition(editor: EditText, offset: Int): Pair<Int, Int> {
     val layout = checkNotNull(editor.layout)
     val line = layout.getLineForOffset(offset)
     val caretX = editor.left + editor.paddingLeft +
       layout.getPrimaryHorizontal(offset).toInt() - editor.scrollX
     val caretTop = editor.top + editor.paddingTop + layout.getLineTop(line) - editor.scrollY
-    assertTrue(caretX >= 8)
-    assertTrue(caretX <= 292)
-    assertTrue(caretTop >= 8)
-    assertTrue(caretTop <= 292)
+    return caretX to caretTop
   }
 
   private inner class TextSurfaceHarness {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val pages = listOf(
+      PdfPageDimensions(300.0, 300.0),
+      PdfPageDimensions(300.0, 300.0),
+    )
     private val worker = PdfSessionWorker(
-      opener = PdfSessionOpener { _, generation ->
-        EmptyPdfResource(info.copy(generation = generation))
+      opener = PdfSessionOpener { path, openedGeneration ->
+        EmptyPdfResource(PdfSessionInfo(path, pages, openedGeneration))
       },
     )
+    private val generation = worker.reserveOpenAttemptId(0L)
     private val engine = InkEngine()
+    private val coordinator = MutableDocumentCoordinator(
+      generation = generation,
+      sessionWorker = worker,
+      artifactPolicy = CacheArtifactPolicy.initialize(instrumentation.targetContext),
+    )
+    fun activeHistoryRevision(): Long = coordinator.activeHistoryRevision()
     lateinit var surface: SurfaceView
     val info = PdfSessionInfo(
       sourcePath = "text.pdf",
-      pages = listOf(
-        PdfPageDimensions(300.0, 300.0),
-        PdfPageDimensions(300.0, 300.0),
-      ),
-      generation = 1L,
+      pages = pages,
+      generation = generation,
     )
 
     init {
       val created = java.util.concurrent.atomic.AtomicReference<SurfaceView>()
       instrumentation.runOnMainSync {
-        created.set(SurfaceView(instrumentation.targetContext, worker, engine))
+        created.set(
+          SurfaceView(
+            instrumentation.targetContext,
+            engine,
+            documentCoordinator = coordinator,
+          ),
+        )
         surface = created.get()
         surface.layout(0, 0, 300, 300)
       }
       val result = java.util.concurrent.atomic.AtomicReference<Result<PdfSessionInfo>>()
       val completed = CountDownLatch(1)
-      worker.replace("text.pdf", 1L) {
-        result.set(it)
-        completed.countDown()
+      worker.prepareOpen(generation, "text.pdf", null) { prepared ->
+        result.set(prepared)
+        assertTrue(worker.commitPreparedOpen(generation) { committed ->
+          if (committed.isFailure) result.set(Result.failure(checkNotNull(committed.exceptionOrNull())))
+          completed.countDown()
+        })
       }
       assertTrue(completed.await(5L, TimeUnit.SECONDS))
-      runOnMain { surface.setDocument(result.get().getOrThrow()) }
+      runOnMain { setDocument(result.get().getOrThrow()) }
     }
 
     fun createOverlay(): TextInteractionOverlay {
@@ -477,11 +570,29 @@ internal class TextPlacementInstrumentationTest {
       return overlay
     }
 
-    fun setDocument(next: PdfSessionInfo) {
-      surface.setDocument(next)
+    fun setDocument(
+      next: PdfSessionInfo,
+      zoom: Double? = null,
+      focus: PagePoint? = null,
+      fitToPage: Boolean = true,
+    ) {
+      val pages = next.pages.map(::InkPageState)
+      surface.documentCoordinator.installCandidate(next.sourcePath, pages, pages.first().id)
+      surface.installDocumentPresentation(zoom, focus, fitToPage)
     }
 
     fun runOnMain(action: () -> Unit) = instrumentation.runOnMainSync(action)
+
+    fun waitForViewportAnimationToFinish(timeoutMs: Long = 5_000L) {
+      val deadline = android.os.SystemClock.uptimeMillis() + timeoutMs
+      while (android.os.SystemClock.uptimeMillis() < deadline) {
+        val animating = java.util.concurrent.atomic.AtomicBoolean()
+        instrumentation.runOnMainSync { animating.set(surface.isTextFocusAnimating()) }
+        if (!animating.get()) return
+        android.os.SystemClock.sleep(16L)
+      }
+      throw AssertionError("Text focus animation did not settle before the selection visibility check")
+    }
 
     fun close() {
       runOnMain { surface.clearDocument() }
