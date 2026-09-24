@@ -1,75 +1,6 @@
 import CoreGraphics
-import PDFKit
 import PencilKit
 import UIKit
-
-enum InkSignPdfEdgeNavigationPhysicalDirection: Hashable {
-  case left
-  case right
-}
-
-struct InkSignPdfEdgeNavigationGesture {
-  let previousEligible: Bool
-  let nextEligible: Bool
-  let isRTL: Bool
-  let deadZone: CGFloat
-  let armDistance: CGFloat
-}
-
-protocol InkSignPdfPageTurnPreviewScheduler: AnyObject {
-  func schedule(
-    _ request: InkSignPdfPageTurnPreviewRequest,
-    completion: @escaping (UIImage?) -> Void)
-}
-
-final class InkSignPdfDispatchPreviewScheduler: InkSignPdfPageTurnPreviewScheduler {
-  private let queue = DispatchQueue(
-    label: "ReactNativeInkSignPdf.pageTurnPreview",
-    qos: .userInitiated)
-  private let renderer: (InkSignPdfPageTurnPreviewRequest) -> UIImage?
-
-  init(renderer: @escaping (InkSignPdfPageTurnPreviewRequest) -> UIImage? = {
-    InkSignPdfPageTurnPreviewView.render(request: $0)
-  }) {
-    self.renderer = renderer
-  }
-
-  func schedule(
-    _ request: InkSignPdfPageTurnPreviewRequest,
-    completion: @escaping (UIImage?) -> Void
-  ) {
-    let renderer = self.renderer
-    queue.async {
-      let image = renderer(request)
-      DispatchQueue.main.async {
-        completion(image)
-      }
-    }
-  }
-}
-
-protocol InkSignPdfPageTurnAnimationDriver: AnyObject {
-  func start()
-  func stop()
-}
-
-protocol InkSignPdfPageTurnAnimationDriverFactory: AnyObject {
-  func make(
-    duration: CFTimeInterval,
-    update: @escaping (CGFloat) -> Void,
-    finish: @escaping () -> Void
-  ) -> InkSignPdfPageTurnAnimationDriver
-}
-
-final class ViewportAnimationDriverFactory: InkSignPdfPageTurnAnimationDriverFactory {
-  func make(
-    duration: CFTimeInterval,
-    update: @escaping (CGFloat) -> Void,
-    finish: @escaping () -> Void
-  ) -> InkSignPdfPageTurnAnimationDriver {
-    ViewportAnimationDriver(duration: duration, update: update, finish: finish)
-  }
-}
 
 /// Main-thread owner for the complete iOS page-turn transaction.
 ///
@@ -244,7 +175,7 @@ final class InkSignPdfPageTurnLifecycle {
     guard let owner,
           !owner.editMode,
           owner.pendingPageSwitchID == nil,
-          let documentState = owner.documentState,
+          let state = owner.documentCoordinator.document,
           owner.documentView.bounds.width > 0,
           owner.documentView.bounds.height > 0 else {
       clearPreviewSlots()
@@ -256,7 +187,7 @@ final class InkSignPdfPageTurnLifecycle {
     for direction in [InkSignPdfEdgeNavigationPhysicalDirection.left,
                       InkSignPdfEdgeNavigationPhysicalDirection.right] {
       if let request = previewRequest(for: direction,
-                                      state: documentState,
+                                      state: state,
                                       viewportSize: context.viewportSize,
                                       density: context.density,
                                       isRTL: context.isRTL) {
@@ -325,13 +256,13 @@ final class InkSignPdfPageTurnLifecycle {
 
   private func currentStableContext() -> StableContext? {
     guard let owner,
-          let state = owner.documentState,
+          let state = owner.documentCoordinator.document,
           !owner.editMode,
           owner.pendingPageSwitchID == nil,
           owner.documentView.bounds.width > 0,
           owner.documentView.bounds.height > 0 else { return nil }
     return StableContext(
-      generation: owner.generation,
+      generation: owner.documentCoordinator.generation,
       sourcePageIndex: state.activePageIndex,
       viewportSize: owner.documentView.bounds.size,
       density: max(UIScreen.main.scale, 1),
@@ -363,10 +294,10 @@ final class InkSignPdfPageTurnLifecycle {
           current.instance == instance,
           current.request.key == request.key,
           let owner,
-          owner.generation == request.key.generation,
+          owner.documentCoordinator.generation == request.key.generation,
           owner.documentView.effectiveUserInterfaceLayoutDirection ==
             (request.key.isRTL ? .rightToLeft : .leftToRight),
-          let state = owner.documentState,
+          let state = owner.documentCoordinator.document,
           let expected = previewRequest(for: direction,
                                         state: state,
                                         viewportSize: owner.documentView.bounds.size,
@@ -389,7 +320,7 @@ final class InkSignPdfPageTurnLifecycle {
       reconcilePreviews()
     }
     guard !disposed, let owner, !owner.editMode,
-          owner.documentState != nil else { return false }
+          owner.documentCoordinator.document != nil else { return false }
     switch phase {
     case .idle: break
     default: return false
@@ -475,7 +406,9 @@ final class InkSignPdfPageTurnLifecycle {
     let denominator = max(transaction.gesture.armDistance - transaction.gesture.deadZone, 1)
     let progress = min(max((abs(translation.x) - transaction.gesture.deadZone) / denominator, 0), 1)
     let resisted = min(40, max(abs(translation.x) - transaction.gesture.deadZone, 0) * 40 / denominator)
-    let delta = Self.pageTurnTargetDelta(for: physical, isRTL: transaction.gesture.isRTL)
+    let delta = InkSignPdfPageNavigationPolicy.pageTurnTargetDelta(
+      for: physical,
+      isRTL: transaction.gesture.isRTL)
     transaction.physicalDirection = physical
     transaction.targetDelta = delta
     transaction.targetPageIndex = transaction.context.sourcePageIndex + delta
@@ -501,8 +434,7 @@ final class InkSignPdfPageTurnLifecycle {
     let shouldCommit = transaction.progress >= 1 &&
       transaction.targetDelta != nil && transaction.targetPageIndex != nil && transaction.preview != nil
     if shouldCommit {
-      owner.edgeNavigationGestureRecognizer.isEnabled = false
-      owner.documentView.gestureRecognizers?.forEach { $0.isEnabled = false }
+      owner.setInteractionMode(editing: false, interactionsEnabled: false)
       beginSettlement(outcome: .commit,
                       targetDelta: transaction.targetDelta,
                       targetPageIndex: transaction.targetPageIndex,
@@ -697,62 +629,20 @@ final class InkSignPdfPageTurnLifecycle {
 
   private func captureGesture(at location: CGPoint) -> InkSignPdfEdgeNavigationGesture? {
     guard let owner,
-          let state = owner.documentState,
+          let state = owner.documentCoordinator.document,
           owner.documentView.bounds.width > 0,
           owner.documentView.bounds.height > 0,
-          state.activePage.geometry.isValid else { return nil }
-    let page = state.activePage.page
-    let bounds = owner.documentView.bounds
-    let pageBounds = owner.documentView.convert(page.bounds(for: .mediaBox), from: page)
-    let edgeTolerance = 1 / max(UIScreen.main.scale, 1)
-    guard location.y >= pageBounds.minY - edgeTolerance,
-          location.y <= pageBounds.maxY + edgeTolerance,
-          location.x >= pageBounds.minX - edgeTolerance,
-          location.x <= pageBounds.maxX + edgeTolerance else { return nil }
-    let leftPDF = owner.documentView.convert(CGPoint(x: bounds.minX, y: bounds.midY), to: page)
-    let rightPDF = owner.documentView.convert(CGPoint(x: bounds.maxX, y: bounds.midY), to: page)
-    let mediaBox = state.activePage.geometry.mediaBox
-    let left = CGPoint(x: leftPDF.x - mediaBox.minX, y: mediaBox.maxY - leftPDF.y)
-    let right = CGPoint(x: rightPDF.x - mediaBox.minX, y: mediaBox.maxY - rightPDF.y)
-    let rotation = ((state.activePage.geometry.rotation % 360) + 360) % 360
-    let usesCanonicalY = rotation == 90 || rotation == 270
-    let leftAxis = usesCanonicalY ? left.y : left.x
-    let rightAxis = usesCanonicalY ? right.y : right.x
-    let pageLength = usesCanonicalY ? mediaBox.height : mediaBox.width
-    let visibleLength = abs(rightAxis - leftAxis)
-    let pointsPerPoint = visibleLength / bounds.width
-    let onePixel = pointsPerPoint / max(UIScreen.main.scale, 1)
-    guard pageLength.isFinite, pageLength > 0,
-          visibleLength.isFinite, visibleLength > 0,
-          onePixel.isFinite, onePixel > 0 else { return nil }
-    let leftClamped = min(max(leftAxis, 0), pageLength)
-    let rightClamped = min(max(rightAxis, 0), pageLength)
-    let increasesToRight = rightAxis >= leftAxis
-    let leftBoundary = increasesToRight ? 0.0 : pageLength
-    let rightBoundary = increasesToRight ? pageLength : 0.0
-    let atLeft = abs(leftClamped - leftBoundary) <= onePixel
-    let atRight = abs(rightClamped - rightBoundary) <= onePixel
+          state.activePage.geometry.isValid,
+          let viewport = owner.documentView.viewportTransform else { return nil }
     let isRTL = owner.documentView.effectiveUserInterfaceLayoutDirection == .rightToLeft
-    let visiblePageWidth = pageBounds.intersection(bounds).width
-    let armDistance = visiblePageWidth * 0.30
-    guard visiblePageWidth.isFinite, visiblePageWidth > 0,
-          armDistance.isFinite, armDistance > 0 else { return nil }
-    return InkSignPdfEdgeNavigationGesture(
-      previousEligible: state.activePageIndex > 0 && (isRTL ? atRight : atLeft),
-      nextEligible: state.activePageIndex + 1 < state.pages.count && (isRTL ? atLeft : atRight),
+    return InkSignPdfPageNavigationPolicy.captureGesture(
+      at: location,
+      viewport: viewport,
+      bounds: owner.documentView.bounds,
+      activePageIndex: state.activePageIndex,
+      pageCount: state.pages.count,
       isRTL: isRTL,
-      deadZone: 8,
-      armDistance: armDistance)
-  }
-
-  static func pageTurnTargetDelta(
-    for direction: InkSignPdfEdgeNavigationPhysicalDirection,
-    isRTL: Bool
-  ) -> Int {
-    switch (direction, isRTL) {
-    case (.left, false), (.right, true): return 1
-    case (.right, false), (.left, true): return -1
-    }
+      density: max(UIScreen.main.scale, 1))
   }
 
   func previewRequest(
@@ -762,14 +652,16 @@ final class InkSignPdfPageTurnLifecycle {
     density: CGFloat,
     isRTL: Bool
   ) -> InkSignPdfPageTurnPreviewRequest? {
-    guard let owner,
-          state.pages.indices.contains(state.activePageIndex + Self.pageTurnTargetDelta(for: direction, isRTL: isRTL)) else { return nil }
-    let targetIndex = state.activePageIndex + Self.pageTurnTargetDelta(for: direction, isRTL: isRTL)
+    guard let owner else { return nil }
+    let targetIndex = state.activePageIndex + InkSignPdfPageNavigationPolicy.pageTurnTargetDelta(
+      for: direction,
+      isRTL: isRTL)
+    guard state.pages.indices.contains(targetIndex) else { return nil }
     let target = state.pages[targetIndex]
     guard let layout = fitCenteredLayout(for: target.geometry) else { return nil }
     let mediaBox = target.geometry.mediaBox
     let key = InkSignPdfPageTurnPreviewKey(
-      generation: owner.generation,
+      generation: owner.documentCoordinator.generation,
       sourcePageIndex: state.activePageIndex,
       targetPageIndex: targetIndex,
       direction: direction,
@@ -787,7 +679,9 @@ final class InkSignPdfPageTurnLifecycle {
       isRTL: isRTL)
     return InkSignPdfPageTurnPreviewRequest(
       key: key,
-      pdfiumSession: state.pdfiumSession,
+      document: state.document,
+      page: target.page,
+      pdfQueue: owner.documentCoordinator.pdfQueue,
       geometry: target.geometry,
       drawingData: target.history.content.drawing.dataRepresentation(),
       textAnnotations: target.history.content.textAnnotations,
@@ -799,18 +693,19 @@ final class InkSignPdfPageTurnLifecycle {
     guard let owner, geometry.isValid,
           owner.documentView.bounds.width > 0,
           owner.documentView.bounds.height > 0 else { return nil }
-    let rotation = ((geometry.rotation % 360) + 360) % 360
-    let width = rotation == 90 || rotation == 270 ? geometry.mediaBox.height : geometry.mediaBox.width
-    let height = rotation == 90 || rotation == 270 ? geometry.mediaBox.width : geometry.mediaBox.height
+    let displaySize = PageViewportTransform.displaySize(for: geometry)
+    let width = displaySize.width
+    let height = displaySize.height
     let scale = min(owner.documentView.bounds.width / width,
                     owner.documentView.bounds.height / height)
     guard scale.isFinite, scale > 0 else { return nil }
-    let frame = CGRect(x: owner.documentView.bounds.midX - width * scale / 2,
-                       y: owner.documentView.bounds.midY - height * scale / 2,
-                       width: width * scale,
-                       height: height * scale)
-    guard frame.minX.isFinite, frame.minY.isFinite,
-          frame.width.isFinite, frame.height.isFinite else { return nil }
-    return (frame, scale)
+    guard let viewport = PageViewportTransform(
+      geometry: geometry,
+      bounds: owner.documentView.bounds,
+      zoom: scale,
+      focus: CGPoint(x: geometry.mediaBox.width / 2,
+                     y: geometry.mediaBox.height / 2),
+      generation: owner.documentCoordinator.generation) else { return nil }
+    return (viewport.pageFrame, viewport.zoom)
   }
 }

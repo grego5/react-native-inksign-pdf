@@ -1,5 +1,4 @@
 import Foundation
-import PDFKit
 import PencilKit
 import UIKit
 
@@ -115,7 +114,7 @@ final class InkSignPdfPageOverlayView: UIView {
   }
 }
 
-/// Retained because the page host owns the overlay independently of PDFKit.
+/// Retained by the view so the overlay remains stable while pages change.
 final class PageOverlayProvider: NSObject {
   weak var owner: InkSignView? {
     didSet { overlayView.owner = owner }

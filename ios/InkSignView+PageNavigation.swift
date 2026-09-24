@@ -1,5 +1,4 @@
 import Foundation
-import PDFKit
 import PencilKit
 import UIKit
 import NitroModules
@@ -11,7 +10,7 @@ extension InkSignView {
     to pageIndex: Int,
     completion: ((Result<PageInfo, Error>) -> Void)? = nil
   ) throws -> InkSignPdfNativePageInfo {
-    guard let state = documentState else { throw ViewportError.notReady }
+    guard let state = documentCoordinator.document else { throw ViewportError.notReady }
     try requireViewportReady(request: .preserve)
     guard pageIndex >= 0, pageIndex < state.pages.count else {
       throw ViewportError.invalidOptions("page index is out of range")
@@ -26,12 +25,11 @@ extension InkSignView {
     cancelViewportAnimation()
     cancelActiveStroke()
     pendingPageSwitchEditing = wasEditing
-    canvasView.isUserInteractionEnabled = false
-    documentView.gestureRecognizers?.forEach { $0.isEnabled = false }
+    setInteractionMode(editing: false, interactionsEnabled: false)
     pageSwitchRequestID &+= 1
     let requestID = pageSwitchRequestID
     pendingPageSwitchID = requestID
-    state.activePageIndex = pageIndex
+    precondition(documentCoordinator.selectPage(id: state.pages[pageIndex].id) != nil)
     invalidateOverlayTransformCache()
     textInteractionOverlay.syncContent()
     canvasView.isInstallingDrawing = true
@@ -40,11 +38,13 @@ extension InkSignView {
 
     let target = state.activePage
     pageTurnLifecycle.pageSwitchStarted(switchID: requestID, targetPageIndex: pageIndex)
-    documentView.installPage(index: target.index,
-                             page: target.page,
+    documentView.installPage(index: pageIndex,
+                             pageID: target.id,
                              geometry: target.geometry,
-                             session: state.pdfiumSession)
-    overlayDidDisplay(canvasView, for: target.page)
+                             page: target.page,
+                             document: state.document,
+                             generation: documentCoordinator.generation)
+    overlayDidDisplay(canvasView, for: target.id)
     return try currentPageInfo()
   }
 
@@ -62,12 +62,10 @@ extension InkSignView {
   }
 
   func beginPageTurnCommit(targetPageIndex: Int) {
-    guard !disposed, documentState != nil else {
+    guard !disposed, documentCoordinator.document != nil else {
       pageTurnLifecycle.pageTurnCommitFailedBeforeStart()
       return
     }
-    edgeNavigationGestureRecognizer.isEnabled = false
-    documentView.gestureRecognizers?.forEach { $0.isEnabled = false }
     do {
       try switchPage(to: targetPageIndex) { [weak self] result in
         if case .success(let info) = result { self?.onPageChange?(info) }
@@ -107,9 +105,9 @@ extension InkSignView {
 
   func finishPageSwitchIfReady(requestID: UInt64) {
     guard pendingPageSwitchID == requestID,
-          let state = documentState,
-          documentView.currentPage === state.activePage.page,
-          attachedOverlayPage === state.activePage.page,
+          let state = documentCoordinator.document,
+          documentView.currentPageID == state.activePage.id,
+          attachedOverlayPage == state.activePage.id,
           documentView.bounds.width > 0,
           documentView.bounds.height > 0,
           let fitScale = usableFitScale() else { return }
@@ -118,12 +116,12 @@ extension InkSignView {
       focus: CGPoint(x: state.activePage.geometry.mediaBox.width / 2,
                      y: state.activePage.geometry.mediaBox.height / 2))) else { return }
     guard pendingPageSwitchID == requestID,
-          documentView.currentPage === state.activePage.page,
+          documentView.currentPageID == state.activePage.id,
           documentView.scaleFactor.isFinite,
           documentView.scaleFactor >= 0.1,
           documentView.scaleFactor <= 16,
-          attachedOverlayPage === state.activePage.page,
-          overlayTransformPage === state.activePage.page,
+          attachedOverlayPage == state.activePage.id,
+          overlayTransformPage == state.activePage.id,
           pageToOverlayTransform != nil,
           isFittedToPage() else { return }
     if case .committed = pageTurnLifecycle.phase {
