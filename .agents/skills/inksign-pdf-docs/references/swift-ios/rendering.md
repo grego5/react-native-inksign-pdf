@@ -1,10 +1,11 @@
 # iOS rendering
 
-PDFKit and Quartz provide base page imagery. A transparent native overlay presents
-committed and in-progress PencilKit content. Completed drawings enter page history;
-live strokes and predictions remain transient.
+- `PDFView` presents pages and owns native zoom, scrolling, and PDF selection.
+- The page overlay provider supplies a transparent PencilKit surface per page.
+- Page overlays are temporary. Committed drawings live in page history; live
+  strokes and predictions are transient.
 
-Page-turn previews compose the target PDF page with committed ink and text.
-CoreText shapes committed text. Rendering results update presentation for the
-current document and page request. Text and ink use canonical top-left page
-coordinates across viewport zoom and display scale.
+- TextKit lays out live editing. Committed rendering and export use the same font
+  and paragraph style.
+- Text and ink use canonical top-left page coordinates. PDFKit converts between
+  page and view coordinates.

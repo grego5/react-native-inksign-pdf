@@ -1,15 +1,21 @@
 # iOS viewport and input
 
-The UI thread owns viewport and interaction state. Committed ink and text use
-canonical page coordinates. A native transform maps that page space through PDF
-rotation into UIKit presentation.
+- **View mode:** `PDFView` owns pan, pinch, momentum, and page navigation.
+- **Edit mode:** the page overlay owns drawing and text input; PDF navigation
+  input is suspended. Verify the handoff on a device or simulator.
+- Committed page coordinates remain canonical. PDFKit maps them into the visible
+  page overlay.
 
-Page navigation proceeds asynchronously after command dispatch. The coordinator
-installs page imagery, the retained ink canvas, and the fitted viewport as one
-switch. The current page request updates the presentation.
+- Page swipes use PDFView navigation.
+- Imperative page commands select a stable coordinator page ID and ask PDFKit to
+  present it.
+- The coordinator follows the page installed by PDFKit.
 
-PencilKit owns stroke sampling, pressure response, smoothing, and prediction.
-Completed drawings enter page-local history; live strokes and predictions stay
-transient. The native text overlay owns editing, selection, and placement state.
-Committed text annotations use canonical page coordinates and participate in
-history and export.
+- PencilKit owns stroke sampling, pressure response, smoothing, and prediction.
+- Completed drawings enter page-local history; live strokes and predictions do
+  not.
+- The text overlay owns editing, selection, and placement state.
+- TextKit lays out live text at the editor's final container width. Committed text
+  retains those dimensions and shares the editor's font and paragraph style.
+- Committed text uses canonical page coordinates and participates in history and
+  export.

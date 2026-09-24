@@ -1,16 +1,14 @@
 ## Development rules
 
-- Change authoritative source files, never `nitrogen/generated/**` by hand.
-- Public Nitro API source: `src/InkSignView.nitro.ts`, `src/index.ts`, and
-  `nitro.json`.
+- Change authoritative source files, do not edit `nitrogen/generated/**` by hand.
+- Public Nitro API source: `src/InkSignView.nitro.ts`, `src/index.ts`, and `nitro.json`.
 - Android production source is under `android/src/main/java/...`.
-- Keep PDF bytes, high-frequency input, and stroke state native; do not add a
-  high-frequency JavaScript boundary.
-- Keep shared geometry in page coordinates and PDF I/O/export off the UI
-  thread.
-- Preserve the v1 scope: multi-page PDFs, one active page, page-local history,
-  Android PDFium and iOS PDFKit/Quartz/CoreText backends, and no Paper/web/
-  Windows/macOS implementation.
+- Prioritize correct, streamlined architecture over narrow patches and defensive
+  checks that conceal implementation mistakes; internal breaking changes are acceptable.
+- Treat existing tests and documentation as descriptions to revise, not constraints
+  on a better design.
+- For cross-language changes, report ownership, lifetime, threading, data
+  representation, and error translation.
 
 ## Implementation workflow
 
@@ -24,61 +22,18 @@
    changes.
 5. After public Nitro API changes, run `npm run nitrogen`.
 6. Validate the narrowest useful layer, then run applicable checks.
-
-Do not expand the v1 contract or introduce another stroke representation
-without first documenting the architectural decision in `architecture.md`.
-
-## Native InkEngine artifacts
-
-The repository keeps the production InkEngine source-linked for desktop,
-native tests, and deliberate Android source builds. The Android archive
-producer is `tools/build-ink-engine-archive.ps1`; it uses the Android NDK
-toolchain and emits one indexed archive plus JSON metadata per ABI.
-The archive contains the C ABI engine, upstream adapters, Google Ink geometry,
-and the required Abseil object files. It does not contain JNI, PDFium, or
-`c++_shared`.
-
-`ENABLE_PERFETTO_TRACE=OFF` is the normal archive policy and compiles Android
-trace scopes and counters out. A local debug source build may explicitly set
-`ENABLE_PERFETTO_TRACE=ON`; a trace-enabled archive is a separately named
-profiling artifact and is not the normal release artifact. The producer's
-`InkEngineArchiveSmoke` target verifies that the merged archive resolves
-through `InkEngineC.h`; `tools/verify-ink-engine-archive.ps1` checks the
-ABI, metadata, archive members, C ABI symbols, and normal-artifact trace rule.
-
-The manually triggered `.github/workflows/build-and-publish-ink-engine.yml`
-workflow builds the supported Android release ABIs (`arm64-v8a` and
-`x86_64`) from a full checkout with NDK `27.1.12297006`. It runs source-linked
-native tests once, smoke-links and verifies every ABI, and refuses to reuse an
-existing release tag. The release contains raw archives, per-ABI metadata, a
-combined manifest, checksums, and Google Ink/Abseil notices. Profiling archives
-are never selected by this workflow.
-
-Android Gradle consumes the pinned release in `android/ink-engine-release.json`.
-In prebuilt mode, `prepareInkEngine` downloads the single
-`ink-engine-1.0.0-android-static.zip` release asset when the verified cache is
-missing, validates its pinned ZIP/checksum hashes, inner manifest, per-ABI
-metadata and archives, then installs the selected archives under
-`android/build/ink-engine/<abi>/` before CMake configuration. A valid cache is
-reused offline. CMake performs the final ABI, API version, expected NDK, byte
-size, SHA-256, and trace-disabled checks before linking the imported target.
-Repository development and tests explicitly opt into source mode with
-`ReactNativeInkSignPdf_useSourceInkEngine=true`; source mode remains the only
-Android path that compiles Google Ink and Abseil from `core/third_party` and does
-not invoke the InkEngine downloader. The npm package contains the release pin,
-C ABI headers, and PDFium inputs, but no InkEngine archives or Google
-Ink/Abseil source trees.
+7. Automated tests should be added for stable, observable contracts and meaningful regressions.
+   Validate visual, geometric, timing, and interaction quality through representative
+   real-world use and inspection. Keep the test suite focused on checks that provide
+   reliable confidence.
 
 ## iOS validation
 
-The iOS boundary has simulator tests for native behavior and a device archive
-for device integration. Changes to PDF handling also require fixture checks for
-visible source content, page geometry, locked text annotations, read-only vector
-signature annotations, write/reopen, and external-viewer interoperability.
-Advanced source PDF semantics are outside the editing contract. Use the
-narrowest simulator focus for a change; visual fidelity and device interaction
-remain separate runtime checks. Android PDFium packaging is validated by the
-PDFium verifier.
+- Run the narrowest simulator focus for native behavior. Use a device archive
+  for integration; visual fidelity and interaction still need runtime checks.
+- For PDF changes, fixture-check visible content and geometry, locked text and
+  vector signatures, write/reopen, and external-viewer interoperability.
+  Advanced source PDF semantics are outside the editing contract.
 
 ## Validation commands
 

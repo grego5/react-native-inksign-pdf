@@ -1,10 +1,44 @@
 import Foundation
-import PencilKit
+import PDFKit
 import UIKit
 import NitroModules
-import QuartzCore
 
 extension InkSignView {
+  func documentViewPageDidChange() {
+    guard let page = documentView.currentPage else { return }
+    documentViewDidNavigate(to: page)
+  }
+
+  func documentViewDidNavigate(to page: PDFPage) {
+    guard let state = documentCoordinator.document else { return }
+    let index = state.document.index(for: page)
+    guard index >= 0, index < state.pages.count else { return }
+
+    if index != state.activePageIndex {
+      cancelPendingPageSwitch()
+      textInteractionOverlay.finishForLifecycle()
+      let wasEditing = editMode
+      cancelActiveStroke()
+      setInteractionMode(editing: false, interactionsEnabled: false)
+      attachedOverlayPage = nil
+      documentCoordinator.selectPage(id: state.pages[index].id)
+      invalidateOverlayTransformCache()
+      textInteractionOverlay.syncContent()
+      pageSwitchRequestID &+= 1
+      pendingPageSwitchID = pageSwitchRequestID
+      pendingPageSwitchEditing = wasEditing
+      pendingPageSwitchCompletion = { [weak self] result in
+        if case .success(let info) = result { self?.onPageChange?(info) }
+      }
+    }
+
+    guard let active = documentCoordinator.document?.activePage,
+          active.page === page,
+          overlayProvider.isDisplaying(page),
+          let canvas = overlayProvider.canvasView(for: active.id) else { return }
+    overlayDidDisplay(canvas, for: active.id)
+  }
+
   @discardableResult
   func switchPage(
     to pageIndex: Int,
@@ -12,127 +46,50 @@ extension InkSignView {
   ) throws -> InkSignPdfNativePageInfo {
     guard let state = documentCoordinator.document else { throw ViewportError.notReady }
     try requireViewportReady(request: .preserve)
-    guard pageIndex >= 0, pageIndex < state.pages.count else {
+    guard state.pages.indices.contains(pageIndex) else {
       throw ViewportError.invalidOptions("page index is out of range")
     }
     if pageIndex == state.activePageIndex { return try currentPageInfo() }
 
     cancelPendingPageSwitch()
     textInteractionOverlay.finishForLifecycle()
-    pendingPageSwitchCompletion = completion
-    attachedOverlayPage = nil
     let wasEditing = editMode
-    cancelViewportAnimation()
     cancelActiveStroke()
-    pendingPageSwitchEditing = wasEditing
     setInteractionMode(editing: false, interactionsEnabled: false)
+    attachedOverlayPage = nil
+    pendingPageSwitchEditing = wasEditing
+    pendingPageSwitchCompletion = completion
     pageSwitchRequestID &+= 1
-    let requestID = pageSwitchRequestID
-    pendingPageSwitchID = requestID
-    precondition(documentCoordinator.selectPage(id: state.pages[pageIndex].id) != nil)
+    pendingPageSwitchID = pageSwitchRequestID
+    guard documentCoordinator.selectPage(id: state.pages[pageIndex].id) != nil else {
+      cancelPendingPageSwitch()
+      throw ViewportError.notReady
+    }
     invalidateOverlayTransformCache()
     textInteractionOverlay.syncContent()
-    canvasView.isInstallingDrawing = true
-    canvasView.drawing = PKDrawing()
-    canvasView.isInstallingDrawing = false
 
-    let target = state.activePage
-    pageTurnLifecycle.pageSwitchStarted(switchID: requestID, targetPageIndex: pageIndex)
-    documentView.installPage(index: pageIndex,
-                             pageID: target.id,
-                             geometry: target.geometry,
-                             page: target.page,
-                             document: state.document,
-                             generation: documentCoordinator.generation)
-    overlayDidDisplay(canvasView, for: target.id)
+    let page = state.pages[pageIndex].page
+    documentView.go(to: page)
+    if documentView.currentPage === page {
+      documentViewDidNavigate(to: page)
+    }
     return try currentPageInfo()
-  }
-
-  @objc func handleEdgeNavigationPan(_ recognizer: UIPanGestureRecognizer) {
-    switch recognizer.state {
-    case .began, .changed:
-      pageTurnLifecycle.pullChanged(translation: recognizer.translation(in: documentView))
-    case .ended:
-      pageTurnLifecycle.pullEnded()
-    case .cancelled, .failed:
-      pageTurnLifecycle.pullCancelled()
-    default:
-      break
-    }
-  }
-
-  func beginPageTurnCommit(targetPageIndex: Int) {
-    guard !disposed, documentCoordinator.document != nil else {
-      pageTurnLifecycle.pageTurnCommitFailedBeforeStart()
-      return
-    }
-    do {
-      try switchPage(to: targetPageIndex) { [weak self] result in
-        if case .success(let info) = result { self?.onPageChange?(info) }
-      }
-    } catch {
-      pageTurnLifecycle.pageTurnCommitFailedBeforeStart()
-      setInteractionMode(editing: false)
-    }
-  }
-
-  func gestureRecognizer(
-    _ gestureRecognizer: UIGestureRecognizer,
-    shouldReceive touch: UITouch
-  ) -> Bool {
-    if gestureRecognizer === edgeNavigationGestureRecognizer ||
-        gestureRecognizer === doubleTapGestureRecognizer,
-       let target = touch.view,
-       target === textInteractionOverlay || target.isDescendant(of: textInteractionOverlay) {
-      return false
-    }
-    guard gestureRecognizer === edgeNavigationGestureRecognizer else { return true }
-    return prepareForEdgeNavigationTouch(at: touch.location(in: documentView))
-  }
-
-  @discardableResult
-  func prepareForEdgeNavigationTouch(at location: CGPoint) -> Bool {
-    pageTurnLifecycle.prepareForEdgeNavigationTouch(at: location)
-  }
-
-  func gestureRecognizer(
-    _ gestureRecognizer: UIGestureRecognizer,
-    shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-  ) -> Bool {
-    gestureRecognizer === edgeNavigationGestureRecognizer ||
-      otherGestureRecognizer === edgeNavigationGestureRecognizer
   }
 
   func finishPageSwitchIfReady(requestID: UInt64) {
     guard pendingPageSwitchID == requestID,
           let state = documentCoordinator.document,
-          documentView.currentPageID == state.activePage.id,
-          attachedOverlayPage == state.activePage.id,
-          documentView.bounds.width > 0,
-          documentView.bounds.height > 0,
-          let fitScale = usableFitScale() else { return }
-    guard applyViewport(target: ViewportTarget(
-      zoom: fitScale,
-      focus: CGPoint(x: state.activePage.geometry.mediaBox.width / 2,
-                     y: state.activePage.geometry.mediaBox.height / 2))) else { return }
-    guard pendingPageSwitchID == requestID,
-          documentView.currentPageID == state.activePage.id,
-          documentView.scaleFactor.isFinite,
-          documentView.scaleFactor >= 0.1,
-          documentView.scaleFactor <= 16,
+          documentView.currentPage === state.activePage.page,
           attachedOverlayPage == state.activePage.id,
           overlayTransformPage == state.activePage.id,
-          pageToOverlayTransform != nil,
-          isFittedToPage() else { return }
-    if case .committed = pageTurnLifecycle.phase {
-      guard pageTurnLifecycle.pageSwitchReady(switchID: requestID) else { return }
-    }
+          pageToOverlayTransform != nil else { return }
+
     pendingPageSwitchID = nil
-    let completion = pendingPageSwitchCompletion
-    pendingPageSwitchCompletion = nil
     installCommittedDrawing()
     setInteractionMode(editing: pendingPageSwitchEditing)
     pendingPageSwitchEditing = false
+    let completion = pendingPageSwitchCompletion
+    pendingPageSwitchCompletion = nil
     if let completion {
       do {
         completion(.success(toPublicPageInfo(try currentPageInfo())))
@@ -143,16 +100,10 @@ extension InkSignView {
   }
 
   func cancelPendingPageSwitch() {
-    let switchID = pendingPageSwitchID
     let completion = pendingPageSwitchCompletion
     pendingPageSwitchCompletion = nil
     pendingPageSwitchID = nil
     pendingPageSwitchEditing = false
-    if let switchID {
-      pageTurnLifecycle.pageSwitchCancelled(switchID: switchID)
-    }
     completion?(.failure(ViewportError.cancelled))
   }
-
-
 }

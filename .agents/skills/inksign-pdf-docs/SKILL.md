@@ -43,6 +43,8 @@ Read the reference matching the task:
   [stroke-engine/prediction-frames.md](references/stroke-engine/prediction-frames.md)
 - Replay, native/platform tests, and engine invariants:
   [stroke-engine/replay-validation.md](references/stroke-engine/replay-validation.md)
+- Native archives, release packaging, and Android consumption:
+  [stroke-engine/artifacts.md](references/stroke-engine/artifacts.md)
 
 ## Swift / iOS
 

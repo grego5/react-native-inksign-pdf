@@ -36,7 +36,8 @@ struct InkSignPdfTextAnnotation: Equatable {
   var intrinsicSize: CGSize { bounds.size }
 
   func replacingText(_ text: String, pageSize: CGSize) -> InkSignPdfTextAnnotation {
-    let size = Self.intrinsicSize(of: text, fontSize: fontSize)
+    let size = Self.intrinsicSize(of: text, fontSize: fontSize,
+                                  isRTL: isRTL, maximumWidth: pageSize.width)
     let origin = Self.clippedOrigin(for: size, preferred: position, pageSize: pageSize)
     return InkSignPdfTextAnnotation(id: id,
                                     text: text,
@@ -56,7 +57,8 @@ struct InkSignPdfTextAnnotation: Equatable {
   }
 
   func changingFontSize(to fontSize: CGFloat, pageSize: CGSize) -> InkSignPdfTextAnnotation {
-    let size = Self.intrinsicSize(of: text, fontSize: fontSize)
+    let size = Self.intrinsicSize(of: text, fontSize: fontSize,
+                                  isRTL: isRTL, maximumWidth: pageSize.width)
     let origin = Self.clippedOrigin(for: size, preferred: position, pageSize: pageSize)
     return InkSignPdfTextAnnotation(id: id, text: text,
                                     bounds: CGRect(origin: origin, size: size),
@@ -65,8 +67,14 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     isRTL: isRTL)
   }
 
-  static func intrinsicSize(of text: String, fontSize: CGFloat) -> CGSize {
-    InkSignPdfTextRenderer.intrinsicSize(of: text, fontSize: fontSize)
+  static func intrinsicSize(of text: String,
+                            fontSize: CGFloat,
+                            isRTL: Bool = false,
+                            maximumWidth: CGFloat = .greatestFiniteMagnitude) -> CGSize {
+    InkSignPdfTextRenderer.intrinsicSize(of: text,
+                                         fontSize: fontSize,
+                                         isRTL: isRTL,
+                                         maximumWidth: maximumWidth)
   }
 
   private static func clippedOrigin(

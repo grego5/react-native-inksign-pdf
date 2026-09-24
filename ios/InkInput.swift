@@ -26,7 +26,6 @@ extension InkSignView {
   /// recognizer may observe .began before or after this callback, so it only
   /// receives the coordinator's ID through canvasGestureWillBegin.
   func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
-    cancelViewportAnimation()
     guard canvasView === self.canvasView,
           editMode, documentCoordinator.document != nil,
           pageToOverlayTransform != nil,

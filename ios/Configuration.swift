@@ -35,19 +35,41 @@ func normalizeTextColor(_ value: String?, fallback: String = "#000000") -> Strin
                 Int((green * 255).rounded()), Int((blue * 255).rounded()))
 }
 
+enum InkSignPdfNativeConfigurationUpdate {
+  case pen(color: String?, maxWidth: Double?)
+  case defaultTextFontSize(Double?)
+  case defaultTextColor(String?)
+  case outlineColor(String?)
+  case selectedOutlineColor(String?)
+  case editorBackgroundColor(String?)
+  case selectedBackgroundColor(String?)
+  case keyboardAvoidanceEnabled(Bool)
+}
+
 extension InkSignView {
-  func updatePenConfiguration() {
-    let color = strokeColor
-    let maxWidth = strokeMaxWidth
-    performOnMain {
-      let value = sanitizePen(
-        color: color,
-        maxWidth: maxWidth)
-      if self.hasDrawingTransaction {
-        self.queuedPen = value
-      } else {
-        self.installPen(value)
-      }
+  func enqueueNativeConfiguration(_ update: InkSignPdfNativeConfigurationUpdate) {
+    performOnMain { [weak self] in self?.applyNativeConfiguration(update) }
+  }
+
+  private func applyNativeConfiguration(_ update: InkSignPdfNativeConfigurationUpdate) {
+    switch update {
+    case .pen(let color, let maxWidth):
+      let value = sanitizePen(color: color, maxWidth: maxWidth)
+      if hasDrawingTransaction { queuedPen = value } else { installPen(value) }
+    case .defaultTextFontSize(let value):
+      textInteractionOverlay.setDefaultFontSize(value)
+    case .defaultTextColor(let value):
+      textInteractionOverlay.setDefaultTextColor(value)
+    case .outlineColor(let value):
+      textInteractionOverlay.setOutlineColor(value)
+    case .selectedOutlineColor(let value):
+      textInteractionOverlay.setSelectedOutlineColor(value)
+    case .editorBackgroundColor(let value):
+      textInteractionOverlay.setEditorBackgroundColor(value)
+    case .selectedBackgroundColor(let value):
+      textInteractionOverlay.setSelectedBackgroundColor(value)
+    case .keyboardAvoidanceEnabled(let value):
+      textInteractionOverlay.setKeyboardAvoidanceEnabled(value)
     }
   }
 

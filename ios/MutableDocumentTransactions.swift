@@ -154,8 +154,8 @@ extension InkSignPdfDocumentCoordinator {
   }
 
   private static func samePageProperties(_ lhs: PDFPage, _ rhs: PDFPage) -> Bool {
-    guard PageViewportTransform.normalizedRotation(lhs.rotation) ==
-            PageViewportTransform.normalizedRotation(rhs.rotation) else { return false }
+    guard PageGeometry.normalizedRotation(lhs.rotation) ==
+            PageGeometry.normalizedRotation(rhs.rotation) else { return false }
     let boxes: [PDFDisplayBox] = [.mediaBox, .cropBox, .bleedBox, .trimBox, .artBox]
     return boxes.allSatisfy { sameRect(lhs.bounds(for: $0), rhs.bounds(for: $0)) }
   }

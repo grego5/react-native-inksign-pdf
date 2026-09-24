@@ -73,7 +73,7 @@ enum InkSignPdfSignatureVectorPath {
       appendCircle(at: sample.center, diameter: sample.diameter, to: path)
     }
     for index in 1..<samples.count {
-      try appendConnector(from: samples[index - 1], to: samples[index], to: path)
+      try appendConnector(from: samples[index - 1], to: samples[index], path)
     }
     return path
   }

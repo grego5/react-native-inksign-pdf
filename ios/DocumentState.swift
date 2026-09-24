@@ -1,8 +1,7 @@
 import Foundation
 import PDFKit
 
-/// Owns the currently published PDF and all document generation state. UIKit
-/// presentation remains in `InkSignView` and `InkPdfView`.
+/// Owns the currently published PDF and all document generation state.
 final class InkSignPdfDocumentCoordinator {
   enum OperationType: Equatable { case open, finalize, structural }
   enum PageMutation {

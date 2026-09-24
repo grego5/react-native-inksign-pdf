@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import PencilKit
 import UIKit
 import NitroModules
@@ -52,10 +53,8 @@ extension InkSignView {
     cancelPendingPageSwitch()
     pageNavigationRequestID &+= 1
     if target == current.pageIndex {
-      pageTurnLifecycle.cancelUncommittedTurn()
       return
     }
-    pageTurnLifecycle.cancelUncommittedTurn()
     let requestID = pageNavigationRequestID
     let requestGeneration = documentCoordinator.generation
     DispatchQueue.main.async { [weak self] in
@@ -90,9 +89,7 @@ extension InkSignView {
     guard !disposed else { throw ViewportError.cancelled }
     let request = try Self.parseViewport(viewport)
     cancelPendingPageSwitch()
-    pageTurnLifecycle.cancelUncommittedTurn()
     try requireViewportReady(request: request)
-    viewportRequestID &+= 1
     try applyModeTransition(toEditing: toEditing, request: request)
   }
 
@@ -120,11 +117,9 @@ extension InkSignView {
       return
     }
     pageInputCoordinator.cancelPending()
-    cancelViewportAnimation()
     let token = operation.generation
     let previousViewport = try? currentViewportSnapshot()
     let previousEditing = editMode
-    viewportRequestID &+= 1
     pageNavigationRequestID &+= 1
     pendingOpen = PendingOpen(token: token,
                               operation: operation,
@@ -142,7 +137,6 @@ extension InkSignView {
     setInteractionMode(editing: false, interactionsEnabled: false)
     attachedOverlayPage = nil
     textInteractionOverlay.syncContent()
-    pageTurnLifecycle.cancelUncommittedTurn()
     cancelPendingPageSwitch()
     pageSwitchRequestID &+= 1
     pendingPageSwitchID = nil
@@ -150,7 +144,8 @@ extension InkSignView {
     canvasView.isInstallingDrawing = true
     canvasView.drawing = PKDrawing()
     canvasView.isInstallingDrawing = false
-    documentView.removePage()
+    documentView.document = nil
+    overlayProvider.reset()
     emitChange(force: true)
 
     guard !path.isEmpty else {
@@ -231,14 +226,9 @@ extension InkSignView {
         coordinator.claimArtifact(workingURL)
         self.pageSwitchRequestID &+= 1
         self.pendingPageSwitchID = nil
-        self.documentView.installPage(
-          index: 0,
-          pageID: newDocument.pages[0].id,
-          geometry: newDocument.pages[0].geometry,
-          page: newDocument.pages[0].page,
-          document: newDocument.document,
-          generation: token)
-        self.overlayDidDisplay(self.canvasView, for: loadedPages[0].id)
+        self.overlayProvider.install(document: newDocument.document, generation: token)
+        self.documentView.document = newDocument.document
+        self.documentView.go(to: newDocument.pages[0].page)
         self.configureDoubleTapGestureRecognition()
       }
     }
@@ -267,14 +257,26 @@ extension InkSignView {
     textInteractionOverlay.finishForLifecycle()
     if editMode && !editing { cancelActiveStroke() }
     editMode = editing
-    pageTurnLifecycle.modeChanged(editing: editing)
     let enabled = interactionsEnabled && documentCoordinator.document != nil && !disposed
-    edgeNavigationGestureRecognizer.isEnabled = !editing && enabled
+    viewInteractionsEnabled = enabled
     canvasView.isHidden = documentCoordinator.document == nil
     canvasView.isUserInteractionEnabled = enabled
     canvasView.drawingGestureRecognizer.isEnabled = editing && enabled
-    documentView.gestureRecognizers?.forEach { $0.isEnabled = !editing && enabled }
+    textInteractionOverlay.placementTapRecognizer.isEnabled = editing && enabled
+    pdfViewInteractionOwnership.update(
+      pdfView: documentView,
+      editing: editing,
+      interactionsEnabled: enabled,
+      placementRecognizer: textInteractionOverlay.placementTapRecognizer)
     emitChange()
+  }
+
+  func updatePDFViewInteractionOwnership() {
+    pdfViewInteractionOwnership.update(
+      pdfView: documentView,
+      editing: editMode,
+      interactionsEnabled: viewInteractionsEnabled,
+      placementRecognizer: textInteractionOverlay.placementTapRecognizer)
   }
 
   func currentPageInfo() throws -> InkSignPdfNativePageInfo {

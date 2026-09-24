@@ -1,5 +1,6 @@
 import Foundation
 import CoreGraphics
+import PDFKit
 import PencilKit
 import UIKit
 import NitroModules
@@ -7,31 +8,6 @@ import NitroModules
 /// Native implementation backing the generated HybridInkSignViewSpec.
 /// PDF, PencilKit input, history, and callbacks are main-thread owned. PDF
 /// parsing and export are isolated on serial queues.
-final class InkSignPdfGestureRecognizerDelegate: NSObject, UIGestureRecognizerDelegate {
-  weak var owner: InkSignView?
-
-  init(owner: InkSignView) {
-    self.owner = owner
-  }
-
-  func gestureRecognizer(
-    _ gestureRecognizer: UIGestureRecognizer,
-    shouldReceive touch: UITouch
-  ) -> Bool {
-    owner?.gestureRecognizer(gestureRecognizer, shouldReceive: touch) ?? false
-  }
-
-  func gestureRecognizer(
-    _ gestureRecognizer: UIGestureRecognizer,
-    shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-  ) -> Bool {
-    owner?.gestureRecognizer(
-      gestureRecognizer,
-      shouldRecognizeSimultaneouslyWith: otherGestureRecognizer
-    ) ?? false
-  }
-}
-
 final class InkSignPdfCanvasViewDelegate: NSObject, PKCanvasViewDelegate {
   weak var owner: InkSignView?
 
@@ -52,6 +28,29 @@ final class InkSignPdfCanvasViewDelegate: NSObject, PKCanvasViewDelegate {
   }
 }
 
+final class InkSignPdfViewGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+  weak var owner: InkSignView?
+
+  init(owner: InkSignView) {
+    self.owner = owner
+  }
+
+  func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                         shouldReceive touch: UITouch) -> Bool {
+    guard let owner,
+          gestureRecognizer === owner.doubleTapGestureRecognizer,
+          let target = touch.view,
+          target === owner.textInteractionOverlay ||
+            target.isDescendant(of: owner.textInteractionOverlay) else { return true }
+    return false
+  }
+
+  func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                         shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+    false
+  }
+}
+
 final class InkSignView: HybridInkSignViewSpec {
   struct PendingOpen {
     let token: UInt64
@@ -65,33 +64,26 @@ final class InkSignView: HybridInkSignViewSpec {
   }
 
   let container = UIView()
-  let documentView = InkPdfView()
+  let documentView = PDFView()
+  let pdfViewInteractionOwnership = PDFViewInteractionOwnership()
   let overlayProvider = PageOverlayProvider()
   let artifactPolicy = InkSignPdfCacheArtifactPolicy.shared
   lazy var pageInputCoordinator = InkSignPdfPageInputCoordinator(
     hostView: container,
     artifactPolicy: artifactPolicy)
-  private lazy var gestureRecognizerDelegate = InkSignPdfGestureRecognizerDelegate(owner: self)
   private lazy var canvasViewDelegate = InkSignPdfCanvasViewDelegate(owner: self)
-  private let pageTurnPreviewScheduler: InkSignPdfPageTurnPreviewScheduler
-  private let pageTurnAnimationDriverFactory: InkSignPdfPageTurnAnimationDriverFactory
-  lazy var pageTurnLifecycle = InkSignPdfPageTurnLifecycle(
-    owner: self,
-    previewScheduler: pageTurnPreviewScheduler,
-    animationDriverFactory: pageTurnAnimationDriverFactory)
-
   let documentCoordinator: InkSignPdfDocumentCoordinator
   lazy var textInteractionOverlay = InkSignPdfTextInteractionOverlay(frame: .zero)
-  var viewportRequestID: UInt64 = 0
+  private lazy var pdfViewGestureDelegate = InkSignPdfViewGestureDelegate(owner: self)
   var pageSwitchRequestID: UInt64 = 0
   var pageNavigationRequestID: UInt64 = 0
   var pendingPageSwitchID: UInt64?
   var pendingPageSwitchEditing = false
   var pendingPageSwitchCompletion: ((Result<PageInfo, Error>) -> Void)?
-  var viewportAnimation: ViewportAnimationDriver?
   var textKeyboardOcclusion: CGFloat = 0
   var pendingOpen: PendingOpen?
   var editMode = false
+  var viewInteractionsEnabled = true
   var doubleTap: DoubleTapOptions?
   var currentPen = PenValue()
   var queuedPen: PenValue?
@@ -106,11 +98,12 @@ final class InkSignView: HybridInkSignViewSpec {
   var nextTextAnnotationID: UInt64 = 0
   var lastChange: (Bool, Bool, Bool, String)?
   var backgroundObserver: NSObjectProtocol?
+  var pdfPageObserver: NSObjectProtocol?
+  var pdfScaleObserver: NSObjectProtocol?
   var overlayTransformPage: UUID?
   var attachedOverlayPage: UUID?
   var overlayTransformBounds = CGRect.zero
   var overlayTransformMediaBox = CGRect.zero
-  var overlayTransformViewportFrame = CGRect.zero
   var pageToOverlayTransform: CGAffineTransform?
   var disposed = false
 
@@ -119,45 +112,41 @@ final class InkSignView: HybridInkSignViewSpec {
   lazy var doubleTapGestureRecognizer: UITapGestureRecognizer = {
     let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
     recognizer.numberOfTapsRequired = 2
-    recognizer.delegate = gestureRecognizerDelegate
+    recognizer.delegate = pdfViewGestureDelegate
     recognizer.cancelsTouchesInView = true
-    return recognizer
-  }()
-
-  lazy var edgeNavigationGestureRecognizer: UIPanGestureRecognizer = {
-    let recognizer = UIPanGestureRecognizer(target: self, action: #selector(handleEdgeNavigationPan(_:)))
-    recognizer.delegate = gestureRecognizerDelegate
-    recognizer.cancelsTouchesInView = false
-    recognizer.maximumNumberOfTouches = 1
     return recognizer
   }()
 
   // Shared Nitro property; Android PDFium consumes this font configuration.
   var fallbackFont: PdfFallbackFont?
-  var strokeColor: String? { didSet { updatePenConfiguration() } }
+  var strokeColor: String? {
+    didSet { enqueueNativeConfiguration(.pen(color: strokeColor, maxWidth: strokeMaxWidth)) }
+  }
   var strokeMinWidth: Double?
-  var strokeMaxWidth: Double? { didSet { updatePenConfiguration() } }
+  var strokeMaxWidth: Double? {
+    didSet { enqueueNativeConfiguration(.pen(color: strokeColor, maxWidth: strokeMaxWidth)) }
+  }
   var strokeSmoothing: Double?
   var defaultTextFontSize: Double? {
-    didSet { textInteractionOverlay.setDefaultFontSize(defaultTextFontSize) }
+    didSet { enqueueNativeConfiguration(.defaultTextFontSize(defaultTextFontSize)) }
   }
   var defaultTextColor: String? {
-    didSet { textInteractionOverlay.setDefaultTextColor(defaultTextColor) }
+    didSet { enqueueNativeConfiguration(.defaultTextColor(defaultTextColor)) }
   }
   var outlineColor: String? {
-    didSet { textInteractionOverlay.setOutlineColor(outlineColor) }
+    didSet { enqueueNativeConfiguration(.outlineColor(outlineColor)) }
   }
   var selectedOutlineColor: String? {
-    didSet { textInteractionOverlay.setSelectedOutlineColor(selectedOutlineColor) }
+    didSet { enqueueNativeConfiguration(.selectedOutlineColor(selectedOutlineColor)) }
   }
   var editorBackgroundColor: String? {
-    didSet { textInteractionOverlay.setEditorBackgroundColor(editorBackgroundColor) }
+    didSet { enqueueNativeConfiguration(.editorBackgroundColor(editorBackgroundColor)) }
   }
   var selectedBackgroundColor: String? {
-    didSet { textInteractionOverlay.setSelectedBackgroundColor(selectedBackgroundColor) }
+    didSet { enqueueNativeConfiguration(.selectedBackgroundColor(selectedBackgroundColor)) }
   }
   var keyboardAvoidanceEnabled: Bool? {
-    didSet { textInteractionOverlay.setKeyboardAvoidanceEnabled(keyboardAvoidanceEnabled != false) }
+    didSet { enqueueNativeConfiguration(.keyboardAvoidanceEnabled(keyboardAvoidanceEnabled != false)) }
   }
 
   var onStateChange: ((StateChangeEvent) -> Void)?
@@ -165,18 +154,30 @@ final class InkSignView: HybridInkSignViewSpec {
 
   var canvasView: InkCanvasView { overlayProvider.canvasView }
 
-  init(
-    previewScheduler: InkSignPdfPageTurnPreviewScheduler = InkSignPdfDispatchPreviewScheduler(),
-    animationDriverFactory: InkSignPdfPageTurnAnimationDriverFactory = ViewportAnimationDriverFactory()
-  ) {
-    pageTurnPreviewScheduler = previewScheduler
-    pageTurnAnimationDriverFactory = animationDriverFactory
+  func configureCanvasView(_ canvas: InkCanvasView) {
+    canvas.owner = self
+    canvas.delegate = canvasViewDelegate
+    canvas.isUserInteractionEnabled = editMode
+    canvas.drawingGestureRecognizer.isEnabled = false
+    canvas.tool = PKInkingTool(.pen, color: currentPen.color,
+                               width: CGFloat(currentPen.maxWidth))
+  }
+
+  override init() {
     documentCoordinator = InkSignPdfDocumentCoordinator(artifactPolicy: artifactPolicy)
     super.init()
     container.clipsToBounds = true
-    documentView.owner = self
+    documentView.backgroundColor = .white
+    documentView.isOpaque = true
+    documentView.displayMode = .singlePage
+    documentView.displayDirection = .horizontal
+    documentView.usePageViewController(true, withViewOptions: nil)
+    documentView.displayBox = .mediaBox
+    documentView.displaysPageBreaks = false
+    documentView.minScaleFactor = 0.1
+    documentView.maxScaleFactor = 16
+    documentView.autoScales = false
     documentView.translatesAutoresizingMaskIntoConstraints = false
-    container.addSubview(pageTurnLifecycle.previewView)
     container.addSubview(documentView)
     NSLayoutConstraint.activate([
       documentView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
@@ -184,14 +185,8 @@ final class InkSignView: HybridInkSignViewSpec {
       documentView.topAnchor.constraint(equalTo: container.topAnchor),
       documentView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
     ])
-    documentView.addSubview(overlayProvider.overlayView)
-    overlayProvider.overlayView.frame = documentView.bounds
-    overlayProvider.overlayView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    pageTurnLifecycle.previewView.frame = container.bounds
-    pageTurnLifecycle.previewView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    documentView.backgroundColor = .clear
+    documentView.pageOverlayViewProvider = overlayProvider
     documentView.addGestureRecognizer(doubleTapGestureRecognizer)
-    documentView.addGestureRecognizer(edgeNavigationGestureRecognizer)
     documentView.addGestureRecognizer(textInteractionOverlay.placementTapRecognizer)
     configureDoubleTapGestureRecognition()
     configureTextPlacementGestureRecognition()
@@ -213,11 +208,17 @@ final class InkSignView: HybridInkSignViewSpec {
         self?.cancelActiveStroke()
       }
     setInteractionMode(editing: false)
+    pdfPageObserver = NotificationCenter.default.addObserver(
+      forName: .PDFViewPageChanged,
+      object: documentView,
+      queue: .main) { [weak self] _ in self?.documentViewPageDidChange() }
+    pdfScaleObserver = NotificationCenter.default.addObserver(
+      forName: .PDFViewScaleChanged,
+      object: documentView,
+      queue: .main) { [weak self] _ in self?.refreshActiveOverlayTransform() }
   }
 
   deinit {
-    pageTurnLifecycle.dispose()
-    viewportAnimation?.stop()
     pendingOpen = nil
     disposed = true
     documentCoordinator.dispose()
@@ -229,6 +230,8 @@ final class InkSignView: HybridInkSignViewSpec {
     if let backgroundObserver {
       NotificationCenter.default.removeObserver(backgroundObserver)
     }
+    if let pdfPageObserver { NotificationCenter.default.removeObserver(pdfPageObserver) }
+    if let pdfScaleObserver { NotificationCenter.default.removeObserver(pdfScaleObserver) }
   }
 
   func dispose() {
@@ -238,18 +241,15 @@ final class InkSignView: HybridInkSignViewSpec {
       self.cancelPendingPageSwitch()
       self.disposed = true
       self.documentCoordinator.dispose()
-      self.viewportRequestID &+= 1
       self.pageSwitchRequestID &+= 1
       self.pageNavigationRequestID &+= 1
-      self.viewportAnimation?.stop()
-      self.viewportAnimation = nil
       let pendingOpen = self.pendingOpen
       self.pendingOpen = nil
-      self.pageTurnLifecycle.dispose()
       pendingOpen?.promise.reject(withError: LoadError.cancelled)
       self.textInteractionOverlay.finishForLifecycle()
       self.cancelActiveStroke(clearLive: false)
-      self.documentView.removePage()
+      self.documentView.document = nil
+      self.overlayProvider.reset()
       self.setInteractionMode(editing: false, interactionsEnabled: false)
       self.attachedOverlayPage = nil
       self.invalidateOverlayTransformCache()
@@ -264,6 +264,14 @@ final class InkSignView: HybridInkSignViewSpec {
       if let observer = self.backgroundObserver {
         NotificationCenter.default.removeObserver(observer)
         self.backgroundObserver = nil
+      }
+      if let observer = self.pdfPageObserver {
+        NotificationCenter.default.removeObserver(observer)
+        self.pdfPageObserver = nil
+      }
+      if let observer = self.pdfScaleObserver {
+        NotificationCenter.default.removeObserver(observer)
+        self.pdfScaleObserver = nil
       }
       self.onStateChange = nil
       self.onPageChange = nil

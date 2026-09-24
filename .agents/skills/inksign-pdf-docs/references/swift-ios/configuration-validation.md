@@ -1,14 +1,17 @@
 # iOS configuration and validation boundary
 
-The public props are defined in
-[`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts). iOS maps the
-supported stroke settings to PencilKit; PencilKit owns pressure response,
-smoothing, caps, joins, and prediction. Native artifact storage belongs to the
-module and may be configured by the host app.
+- Public props are defined in
+  [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts).
+- Nitro configuration setters capture incoming values and apply UIKit-backed
+  changes on the main thread. Pen changes wait for an active drawing transaction
+  to finish.
+- iOS maps supported stroke settings to PencilKit. PencilKit owns pressure,
+  smoothing, caps, joins, and prediction.
+- The module owns temporary artifacts; the host app can configure their cache
+  directory.
 
-iOS runtime validation uses macOS and Xcode. XCTest and simulator runs cover
-native behavior and integration. Visual fidelity, gesture feel, haptics, and
-device performance are assessed through visual review and representative device
-checks where relevant.
+- Run XCTest and simulator validation on macOS with Xcode.
+- Review visual fidelity, gesture feel, haptics, and device performance on
+  representative devices where relevant.
 
-See [development.md](../development.md) for validation entry points and scope.
+- See [development.md](../development.md) for validation entry points and scope.

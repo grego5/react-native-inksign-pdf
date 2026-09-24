@@ -7,16 +7,69 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
-  func testOverlayProviderRetainsContainerAndStableCanvasAccessor() {
-    let fixture = makeFixture(pageCount: 1)
+  func testPDFViewOwnsPresentationAndRequestsPageSpecificOverlays() throws {
+    let fixture = makeFixture(pageCount: 2)
     defer { fixture.window.isHidden = true }
 
+    let state = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    let first = try XCTUnwrap(fixture.view.overlayProvider.pdfView(
+      fixture.view.documentView,
+      overlayViewFor: state.pages[0].page))
+    let second = try XCTUnwrap(fixture.view.overlayProvider.pdfView(
+      fixture.view.documentView,
+      overlayViewFor: state.pages[1].page))
+
+    XCTAssertEqual(fixture.view.documentView.displayMode, .singlePage)
+    XCTAssertTrue(fixture.view.documentView.pageOverlayViewProvider ===
+                  fixture.view.overlayProvider)
+    XCTAssertTrue(fixture.view.documentView.currentPage === state.activePage.page)
+    XCTAssertTrue(fixture.view.documentView.backgroundColor === .white)
+    XCTAssertFalse(first === second)
     XCTAssertTrue(fixture.view.overlayProvider.canvasView === fixture.view.canvasView)
-    XCTAssertTrue(fixture.view.overlayProvider.overlayView.superview ===
-                  fixture.view.documentView)
-    XCTAssertEqual(fixture.view.overlayProvider.overlayView.subviews.count, 1)
-    XCTAssertTrue(fixture.view.overlayProvider.overlayView.subviews.first ===
-                  fixture.view.canvasView)
+  }
+
+  func testEndedPageOverlayCanBeRecreatedFromCoordinatorState() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let state = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    let page = state.activePage.page
+    let pageID = state.activePage.id
+    let history = state.activePage.history
+    let before = history.content
+    let point = PKStrokePoint(location: CGPoint(x: 80, y: 90),
+                              timeOffset: 0,
+                              size: CGSize(width: 4, height: 4),
+                              opacity: 1,
+                              force: 0.5,
+                              azimuth: 0,
+                              altitude: .pi / 2)
+    let stroke = PKStroke(ink: PKInk(.pen, color: .black),
+                          path: PKStrokePath(controlPoints: [point], creationDate: Date()),
+                          transform: .identity,
+                          mask: nil)
+    XCTAssertTrue(history.record(type: .ink,
+                                 before: before,
+                                 after: before.replacingDrawing(PKDrawing(strokes: [stroke]))))
+    let committedContent = state.activePage.history.content
+    let oldOverlay = try XCTUnwrap(fixture.view.overlayProvider.pdfView(
+      fixture.view.documentView,
+      overlayViewFor: page))
+
+    fixture.view.overlayProvider.pdfView(fixture.view.documentView,
+                                         willEndDisplayingOverlayView: oldOverlay,
+                                         for: page)
+    let newOverlay = try XCTUnwrap(fixture.view.overlayProvider.pdfView(
+      fixture.view.documentView,
+      overlayViewFor: page))
+    fixture.view.overlayProvider.pdfView(fixture.view.documentView,
+                                         willDisplayOverlayView: newOverlay,
+                                         for: page)
+    let newCanvas = try XCTUnwrap((newOverlay as? InkSignPdfPageOverlayView)?.canvasView)
+
+    XCTAssertFalse(oldOverlay === newOverlay)
+    XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.id, pageID)
+    XCTAssertTrue(state.activePage.history.content.equals(committedContent))
+    XCTAssertEqual(newCanvas.drawing.strokes.count, 1)
   }
 
   func testCoordinatorUsesStablePageIdentityAndOwnsWorkingArtifact() throws {

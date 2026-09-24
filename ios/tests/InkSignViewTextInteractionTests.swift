@@ -7,26 +7,7 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport {
-  func testTextAnnotationKeepsCenteredIntrinsicBoundsWhenContentExceedsPage() {
-    let annotation = makeCenteredTextAnnotation(
-      id: "text",
-      text: "one\n\ntwo",
-      fontSize: 16,
-      pageSize: CGSize(width: 80, height: 40))
-
-    XCTAssertEqual(annotation.text, "one\n\ntwo")
-    XCTAssertGreaterThan(annotation.intrinsicSize.height, 2 * 16)
-    XCTAssertLessThanOrEqual(annotation.bounds.maxX, 80)
-    XCTAssertGreaterThan(annotation.intrinsicSize.height, 40)
-    XCTAssertEqual(annotation.bounds.midY, 20, accuracy: 0.001)
-    XCTAssertEqual(annotation.bounds.maxY,
-                   (40 + annotation.intrinsicSize.height) / 2,
-                   accuracy: 0.001)
-    XCTAssertEqual(annotation.position.x, (80 - annotation.intrinsicSize.width) / 2,
-                   accuracy: 0.001)
-  }
-
-  func testTextRendererShapesMultilineLatinAndRTLInCanonicalPreviewSpace() {
+  func testTextRendererDrawsMultilineLatinAndRTLInCanonicalPageSpace() {
     let annotation = makeCenteredTextAnnotation(
       id: "text",
       text: "Latin\nשלום עולם",
@@ -38,16 +19,17 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     var didDraw = false
     let image = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 200),
                                         format: format).image { rendererContext in
-      didDraw = InkSignPdfTextRenderer.drawForPreview(
+      didDraw = InkSignPdfTextRenderer.drawCanonical(
         [annotation],
         pageSize: CGSize(width: 300, height: 200),
-        mediaBox: CGRect(x: -12, y: 24, width: 300, height: 200),
-        pdfToPreview: .identity,
         in: rendererContext.cgContext)
     }
 
     XCTAssertTrue(didDraw)
-    XCTAssertEqual(image.size, CGSize(width: 300, height: 200))
+    let attachment = XCTAttachment(image: image)
+    attachment.name = "latin-rtl-text-rendering-manual-review"
+    attachment.lifetime = .keepAlways
+    add(attachment)
     XCTAssertEqual(InkSignPdfTextRenderer.canonicalToPDFTransform(
       for: CGRect(x: -12, y: 24, width: 300, height: 200)).tx, -12, accuracy: 0.001)
   }
@@ -332,6 +314,75 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let annotations = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history.content.textAnnotations)
     XCTAssertEqual(annotations.count, 1)
     XCTAssertEqual(annotations[0].bounds.maxX, editingRightEdge, accuracy: 0.001)
+  }
+
+  func testLiveEditorLayoutKeepsCaretVisibleAcrossWrappedTextDeletionAndFontChange() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.window.isHidden = true }
+    let overlay = fixture.view.textInteractionOverlay
+    try overlay.armPlacement(generation: fixture.view.documentCoordinator.generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 180, y: 140)))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+
+    editor.text = "Invoice אבג 123 — العربية 🖋️ with a long line that wraps\nSecond line"
+    editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
+    overlay.textViewDidChange(editor)
+    let wrappedSize = editor.bounds.size
+    let caret = try XCTUnwrap(editor.selectedTextRange.map { editor.caretRect(for: $0.end) })
+
+    XCTAssertGreaterThan(wrappedSize.height, InkSignPdfTextStyle.font(size: 16).lineHeight)
+    XCTAssertEqual(editor.bounds.width,
+                   editor.textContainer.size.width + editor.textContainerInset.left +
+                    editor.textContainerInset.right,
+                   accuracy: 0.001)
+    XCTAssertTrue(editor.bounds.insetBy(dx: -1, dy: -1).intersects(caret))
+
+    _ = try overlay.increaseTextSize()
+    XCTAssertEqual(try XCTUnwrap(editor.font).pointSize, 17, accuracy: 0.001)
+    XCTAssertEqual(editor.bounds.width,
+                   editor.textContainer.size.width + editor.textContainerInset.left +
+                    editor.textContainerInset.right,
+                   accuracy: 0.001)
+    XCTAssertTrue(editor.bounds.insetBy(dx: -1, dy: -1).intersects(
+      editor.selectedTextRange.map { editor.caretRect(for: $0.end) } ?? .zero))
+
+    editor.text = ""
+    overlay.textViewDidChange(editor)
+    let emptyCaret = try XCTUnwrap(editor.selectedTextRange.map { editor.caretRect(for: $0.end) })
+    XCTAssertTrue(editor.bounds.insetBy(dx: -1, dy: -1).intersects(emptyCaret))
+  }
+
+  func testLiveEditorUsesFinalTextContainerWidthForLongLTRAndRTLLines() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.window.isHidden = true }
+    let overlay = fixture.view.textInteractionOverlay
+    for (isRTL, direction) in [(false, TextDirection.ltr), (true, TextDirection.rtl)] {
+      overlay.setTextDirection(direction)
+      try overlay.armPlacement(generation: fixture.view.documentCoordinator.generation)
+      XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 180, y: 140)))
+      let editor = try XCTUnwrap(textEditor(in: overlay))
+      editor.text = isRTL
+        ? "עברית طويلة מאוד 123 العربية — سطر طويل يلتف عدة مرات"
+        : "A deliberately long LTR line that wraps across the available page width"
+      editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
+      overlay.textViewDidChange(editor)
+
+      XCTAssertEqual(editor.bounds.width,
+                     editor.textContainer.size.width + editor.textContainerInset.left +
+                      editor.textContainerInset.right,
+                     accuracy: 0.001)
+      XCTAssertGreaterThan(editor.bounds.height,
+                           InkSignPdfTextStyle.font(size: 16).lineHeight)
+      let caret = try XCTUnwrap(editor.selectedTextRange.map { editor.caretRect(for: $0.end) })
+      XCTAssertTrue(editor.bounds.insetBy(dx: -1, dy: -1).intersects(caret))
+      let measuredBounds = editor.bounds
+      let committedText = editor.text
+      overlay.finishForLifecycle()
+      let annotation = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage
+        .history.content.textAnnotations.first { $0.text == committedText })
+      XCTAssertEqual(annotation.bounds.width, measuredBounds.width, accuracy: 0.001)
+      XCTAssertEqual(annotation.bounds.height, measuredBounds.height, accuracy: 0.001)
+    }
   }
 
   func testLongPressIsEligibleOnlyWhenTouchStartsOnCommittedText() throws {

@@ -214,8 +214,8 @@ enum InkSignPdfNativeExporter {
   private static func sameGeometry(_ expected: PageGeometry,
                                    _ actual: PDFPage) -> Bool {
     expected.isValid &&
-      PageViewportTransform.normalizedRotation(expected.rotation) ==
-        PageViewportTransform.normalizedRotation(actual.rotation) &&
+      PageGeometry.normalizedRotation(expected.rotation) ==
+        PageGeometry.normalizedRotation(actual.rotation) &&
       sameRect(expected.mediaBox, actual.bounds(for: .mediaBox))
   }
 

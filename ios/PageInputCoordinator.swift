@@ -32,7 +32,7 @@ final class InkSignPdfPageInputCoordinator: NSObject {
   typealias DocumentPickerFactory = ([UTType]) -> UIDocumentPickerViewController
   typealias PhotoPickerFactory = (PHPickerConfiguration) -> PHPickerViewController
   typealias ControllerPresenter = (UIViewController, UIViewController) -> Void
-  typealias ControllerDismisser = (UIViewController, Bool) -> Void
+  typealias ControllerDismisser = (UIViewController, Bool, (() -> Void)?) -> Void
   typealias SecurityScope = (
     _ url: URL,
     _ copy: () throws -> InkSignPdfStagedPageInput
@@ -70,8 +70,8 @@ final class InkSignPdfPageInputCoordinator: NSObject {
     controllerPresenter: @escaping ControllerPresenter = { presenter, controller in
       presenter.present(controller, animated: true)
     },
-    controllerDismisser: @escaping ControllerDismisser = { controller, animated in
-      controller.dismiss(animated: animated)
+    controllerDismisser: @escaping ControllerDismisser = { controller, animated, completion in
+      controller.dismiss(animated: animated, completion: completion)
     },
     sourceChooser: SourceChooser? = nil,
     securityScope: @escaping SecurityScope = { url, copy in
@@ -129,7 +129,7 @@ final class InkSignPdfPageInputCoordinator: NSObject {
     activeRequest = nil
     request.cancel()
     if let controller = request.controller {
-      controllerDismisser(controller, false)
+      controllerDismisser(controller, false, nil)
     }
     request.controller = nil
     let stagedURLs = request.takeStagedURLs()
@@ -301,19 +301,21 @@ final class InkSignPdfPageInputCoordinator: NSObject {
   }
 
   private func chooseFiles(for request: Request, from presenter: UIViewController) {
-    guard activeRequest === request else { return }
-    DispatchQueue.main.async { [weak self] in
+    guard activeRequest === request,
+          let sourceController = request.controller else { return }
+    request.controller = nil
+    controllerDismisser(sourceController, true) { [weak self] in
       guard let self, self.activeRequest === request else { return }
-      request.controller = nil
       self.presentFiles(for: request, from: self.topPresenter(from: presenter))
     }
   }
 
   private func choosePhotos(for request: Request, from presenter: UIViewController) {
-    guard activeRequest === request else { return }
-    DispatchQueue.main.async { [weak self] in
+    guard activeRequest === request,
+          let sourceController = request.controller else { return }
+    request.controller = nil
+    controllerDismisser(sourceController, true) { [weak self] in
       guard let self, self.activeRequest === request else { return }
-      request.controller = nil
       self.presentPhotos(for: request, from: self.topPresenter(from: presenter))
     }
   }
@@ -407,7 +409,7 @@ final class InkSignPdfPageInputCoordinator: NSObject {
 
   func finishPhotoPicking(itemProviders: [NSItemProvider], from picker: PHPickerViewController) {
     guard let request = activeRequest, request.controller === picker else { return }
-    controllerDismisser(picker, false)
+    controllerDismisser(picker, false, nil)
     request.controller = nil
     stagePhotos(itemProviders, for: request)
   }

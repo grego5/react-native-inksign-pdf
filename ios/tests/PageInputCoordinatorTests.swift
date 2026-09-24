@@ -131,6 +131,7 @@ final class PageInputCoordinatorTests: XCTestCase {
           sourceChoicePresented.fulfill()
         }
       },
+      controllerDismisser: { _, _, completion in completion?() },
       sourceChooser: { _, actions in
         choosePhotos = actions.choosePhotos
         return UIViewController()
@@ -173,7 +174,10 @@ final class PageInputCoordinatorTests: XCTestCase {
           sourceChoicePresented.fulfill()
         }
       },
-      controllerDismisser: { controller, _ in dismissedPicker = controller },
+      controllerDismisser: { controller, _, completion in
+        dismissedPicker = controller
+        completion?()
+      },
       sourceChooser: { _, actions in
         choosePhotos = actions.choosePhotos
         return UIViewController()
@@ -218,7 +222,7 @@ final class PageInputCoordinatorTests: XCTestCase {
         return value
       },
       controllerPresenter: { _, _ in pickerPresented.fulfill() },
-      controllerDismisser: { _, _ in dismissed = true })
+      controllerDismisser: { _, _, _ in dismissed = true })
 
     DispatchQueue.main.async {
       coordinator.stage(options: InkSignPdfPageInputOptions(type: .pdf)) {
@@ -372,6 +376,7 @@ final class PageInputCoordinatorTests: XCTestCase {
           sourceChoicePresented.fulfill()
         }
       },
+      controllerDismisser: { _, _, completion in completion?() },
       sourceChooser: { _, actions in
         choosePhotos = actions.choosePhotos
         return UIViewController()
@@ -444,6 +449,7 @@ final class PageInputCoordinatorTests: XCTestCase {
           sourceChoicePresented.fulfill()
         }
       },
+      controllerDismisser: { _, _, completion in completion?() },
       sourceChooser: { _, actions in
         choosePhotos = actions.choosePhotos
         return UIViewController()

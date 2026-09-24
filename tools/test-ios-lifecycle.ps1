@@ -18,8 +18,8 @@ function Assert-NotContains([string]$Text, [string]$Pattern, [string]$Name) {
 }
 
 $view = Read-Source "ios/InkSignView.swift"
-$pageView = Read-Source "ios/PdfPageView.swift"
-$preview = Read-Source "ios/PagePreview.swift"
+$overlayProvider = Read-Source "ios/PageOverlay.swift"
+$pageNavigation = Read-Source "ios/InkSignView+PageNavigation.swift"
 $documentState = Read-Source "ios/DocumentState.swift"
 $candidateLoader = Read-Source "ios/DocumentCandidateLoader.swift"
 $mutableTransactions = Read-Source "ios/MutableDocumentTransactions.swift"
@@ -32,6 +32,7 @@ $textRendering = Read-Source "ios/TextRendering.swift"
 $signaturePath = Read-Source "ios/SignatureVectorPath.swift"
 $podspec = Read-Source "ReactNativeInkSignPdf.podspec"
 $lifecycleTests = Read-Source "ios/tests/InkSignViewLifecycleTests.swift"
+$signatureTests = Read-Source "ios/tests/SignatureExportTests.swift"
 $backendTests = Read-Source "ios/tests/NativePDFBackendTests.swift"
 $inputTests = Read-Source "ios/tests/PageInputCoordinatorTests.swift"
 $renderingDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/rendering.md"
@@ -48,8 +49,13 @@ Assert-Contains $candidateLoader 'document\.page\(at: index\)' 'candidate record
 Assert-Contains $mutableTransactions 'candidate\.insert\(page, at:' 'PDF pages transfer by direct insertion'
 Assert-Contains $mutableTransactions 'candidate\.write\(to: allocated\)' 'structural candidates are written before publication'
 Assert-Contains $mutableTransactions 'InkSignPdfDocumentCandidateLoader\.load\(url: allocated\)' 'structural candidates are reopened before publication'
-Assert-Contains $pageView 'context\.drawPDFPage\(pageRef\)' 'live pages render with Quartz'
-Assert-Contains $preview 'baseContext\.drawPDFPage\(pageRef\)' 'page previews render with Quartz'
+Assert-Contains $view 'let documentView = PDFView\(\)' 'PDFKit owns the iOS presentation view'
+Assert-Contains $view 'usePageViewController\(true' 'PDFKit owns native page swipe navigation'
+Assert-Contains $view 'pageOverlayViewProvider = overlayProvider' 'PDFKit supplies page overlays'
+Assert-Contains $overlayProvider 'PDFPageOverlayViewProvider' 'ink uses PDFKit page overlays'
+Assert-Contains $overlayProvider 'configureTextPlacementGestureRecognition' 'page placement is coordinated with PDFKit gestures'
+Assert-Contains $pageNavigation 'documentView\.go\(to: page\)' 'imperative navigation uses PDFKit'
+Assert-NotContains $view 'InkPdfView|edgeNavigationGestureRecognizer|PageTurnPreview' 'the live view has no custom presentation engine'
 Assert-Contains $export 'InkSignPdfNativeExporter\.write\(' 'finalize calls the native exporter'
 Assert-Contains $nativeExporter 'page\.addAnnotation\(InkSignPdfVectorAnnotation\(' 'export adds editor content as native PDF annotations'
 Assert-Contains $nativeExporter 'document\.write\(to: outputURL\)' 'export writes the edited source document'
@@ -60,7 +66,7 @@ Assert-Contains $vectorAnnotation 'final class InkSignPdfVectorAnnotation: PDFAn
 Assert-Contains $vectorAnnotation 'lockedContentsFlag' 'text annotations prevent content edits'
 Assert-Contains $vectorAnnotation 'override func draw\(with box: PDFDisplayBox, in context: CGContext\)' 'annotation appearance uses vector drawing'
 Assert-Contains $textRendering 'CTLineDraw' 'committed text is drawn with Core Text'
-Assert-Contains $textRendering 'CTParagraphStyleCreate' 'Core Text receives the text direction'
+Assert-Contains $textRendering 'NSLayoutManager|NSParagraphStyle' 'text uses the shared TextKit paragraph layout'
 Assert-Contains $signaturePath 'path\.fillPath|path\.closeSubpath' 'signature output uses filled vector outlines'
 Assert-NotContains $export 'InkSignPdfPdfiumSession|PdfiumTextLineSnapshot|InkSnapshot' 'finalize has no PDFium or raster signature model'
 Assert-NotContains $podspec 'PDFium|pdfium|xcframework' 'iOS package links no PDFium artifacts'
@@ -95,9 +101,10 @@ Assert-Contains $cacheArtifacts 'allocateExportSnapshot' 'iOS cache allocates im
 Assert-Contains $inputTests 'testPhotoCancellationDismissesPicker' 'photo picker cancellation is tested'
 Assert-Contains $inputTests 'testSecurityScopeIsBalancedForEachLocalSource' 'security-scope balance is tested'
 Assert-Contains $lifecycleTests 'testCoordinatorUsesStablePageIdentityAndOwnsWorkingArtifact' 'coordinator identity and artifact ownership are tested'
+Assert-Contains $lifecycleTests 'testEndedPageOverlayCanBeRecreatedFromCoordinatorState' 'page overlays release presentation state without discarding committed history'
 Assert-Contains $lifecycleTests 'testStaleExportCannotPublishOutput' 'stale export publication is tested'
 Assert-Contains $backendTests 'testCrossDocumentInsertionPreservesOrderVisiblePagesAndGeometry' 'native page import contract is tested'
-Assert-Contains $backendTests 'testNativeExportAddsLockedTextAndReadOnlyVectorAnnotationsToSourcePages' 'native annotation export contract is tested'
+Assert-Contains $signatureTests 'testNativeExportPersistsVectorAnnotationsAndExpandedSignatureBounds' 'native annotation export contract is tested'
 
 Assert-Contains $renderingDocs 'PDFKit' 'rendering reference documents the native backend'
 Assert-Contains $lifecycleDocs 'PDFKit' 'lifecycle reference documents PDFKit ownership'

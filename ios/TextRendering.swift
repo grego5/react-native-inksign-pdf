@@ -3,32 +3,93 @@ import CoreGraphics
 import UIKit
 
 struct TextLayoutMetrics: Equatable {
-  let lines: [String]
   let maximumLineWidth: CGFloat
   let lineHeight: CGFloat
   let size: CGSize
 }
 
+enum InkSignPdfTextStyle {
+  static let presentationInsets = UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4)
+
+  static func font(size: CGFloat) -> UIFont {
+    UIFont.systemFont(ofSize: size)
+  }
+
+  static func paragraph(isRTL: Bool) -> NSParagraphStyle {
+    let style = NSMutableParagraphStyle()
+    style.baseWritingDirection = isRTL ? .rightToLeft : .leftToRight
+    style.alignment = isRTL ? .right : .left
+    style.lineBreakMode = .byWordWrapping
+    return style
+  }
+
+  static func attributes(fontSize: CGFloat,
+                         color: UIColor,
+                         isRTL: Bool) -> [NSAttributedString.Key: Any] {
+    [.font: font(size: fontSize),
+     .foregroundColor: color,
+     .paragraphStyle: paragraph(isRTL: isRTL)]
+  }
+
+  static func apply(to textView: UITextView,
+                    fontSize: CGFloat,
+                    color: UIColor,
+                    isRTL: Bool) {
+    let attributes = attributes(fontSize: fontSize, color: color, isRTL: isRTL)
+    textView.font = font(size: fontSize)
+    textView.textColor = color
+    textView.textAlignment = isRTL ? .right : .left
+    textView.semanticContentAttribute = isRTL ? .forceRightToLeft : .forceLeftToRight
+    if textView.textStorage.length > 0 {
+      textView.textStorage.addAttributes(attributes,
+                                         range: NSRange(location: 0,
+                                                        length: textView.textStorage.length))
+    }
+    textView.typingAttributes = attributes
+  }
+}
+
 /// Shapes, measures, and draws committed text using Core Text. Stored text
 /// coordinates are media-box-relative page units with a top-left origin.
 enum InkSignPdfTextRenderer {
-  static func layout(text: String, fontSize: CGFloat) -> TextLayoutMetrics {
+  static func layout(text: String,
+                     fontSize: CGFloat,
+                     isRTL: Bool = false,
+                     contentWidth: CGFloat = .greatestFiniteMagnitude) -> TextLayoutMetrics {
     precondition(fontSize.isFinite && fontSize > 0,
                  "Text annotation font size must be finite and positive")
-    let lines = makeLines(text, fontSize: fontSize, color: .black, rightToLeft: false)
-    let lineHeight = max(UIFont.systemFont(ofSize: fontSize).lineHeight, 1)
-    let widest = lines.reduce(CGFloat.zero) { current, line in
-      max(current, CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil)))
-    }
-    return TextLayoutMetrics(lines: text.components(separatedBy: "\n"),
-                             maximumLineWidth: widest,
+    let layoutWidth = resolvedContentWidth(contentWidth,
+                                           text: text,
+                                           fontSize: fontSize)
+    let lineHeight = max(InkSignPdfTextStyle.font(size: fontSize).lineHeight, 1)
+    let fragments = makeLineFragments(text,
+                                      fontSize: fontSize,
+                                      color: .black,
+                                      isRTL: isRTL,
+                                      contentWidth: layoutWidth)
+    let widest = fragments.reduce(CGFloat.zero) { max($0, $1.rect.width) }
+    let laidOutHeight = fragments.last.map { $0.rect.maxY } ?? lineHeight
+    let height = max(laidOutHeight, lineHeight * CGFloat(max(fragments.count, 1)))
+    return TextLayoutMetrics(maximumLineWidth: widest,
                              lineHeight: lineHeight,
-                             size: CGSize(width: max(widest, 1),
-                                          height: lineHeight * CGFloat(lines.count)))
+                             size: CGSize(width: max(widest, 1) +
+                                            InkSignPdfTextStyle.presentationInsets.left +
+                                            InkSignPdfTextStyle.presentationInsets.right,
+                                          height: height +
+                                            InkSignPdfTextStyle.presentationInsets.top +
+                                            InkSignPdfTextStyle.presentationInsets.bottom))
   }
 
-  static func intrinsicSize(of text: String, fontSize: CGFloat) -> CGSize {
-    layout(text: text, fontSize: fontSize).size
+  static func intrinsicSize(of text: String,
+                            fontSize: CGFloat,
+                            isRTL: Bool = false,
+                            maximumWidth: CGFloat = .greatestFiniteMagnitude) -> CGSize {
+    let insets = InkSignPdfTextStyle.presentationInsets
+    let contentWidth = max(1, maximumWidth - insets.left - insets.right)
+    return layout(text: text,
+                  fontSize: fontSize,
+                  isRTL: isRTL,
+                  contentWidth: contentWidth).size
   }
 
   /// Draws into canonical top-left page space. The destination context is
@@ -51,50 +112,32 @@ enum InkSignPdfTextRenderer {
         context.restoreGState()
         return false
       }
-      let lines = makeLines(annotation.text,
-                            fontSize: annotation.fontSize,
-                            color: color,
-                            rightToLeft: annotation.isRTL)
-      let baseFont = makeFont(size: annotation.fontSize)
+      let insets = InkSignPdfTextStyle.presentationInsets
+      let contentWidth = max(1, annotation.bounds.width - insets.left - insets.right)
+      let lines = makeLineFragments(annotation.text,
+                                    fontSize: annotation.fontSize,
+                                    color: color,
+                                    isRTL: annotation.isRTL,
+                                    contentWidth: contentWidth)
+      let attributes = InkSignPdfTextStyle.attributes(fontSize: annotation.fontSize,
+                                                       color: color,
+                                                       isRTL: annotation.isRTL)
       context.saveGState()
-      context.clip(to: annotation.bounds)
       context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-      var top = annotation.position.y
-      for line in lines {
+      for fragment in lines {
+        let value = fragment.text
+        let attributed = NSAttributedString(string: value, attributes: attributes)
+        let line = CTLineCreateWithAttributedString(attributed)
         var ascent: CGFloat = 0
-        var descent: CGFloat = 0
-        var leading: CGFloat = 0
-        _ = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
-        context.textPosition = CGPoint(x: annotation.position.x, y: top + ascent)
+        _ = CTLineGetTypographicBounds(line, &ascent, nil, nil)
+        context.textPosition = CGPoint(x: annotation.position.x + insets.left + fragment.rect.minX,
+                                       y: annotation.position.y + insets.top + fragment.rect.minY + ascent)
         CTLineDraw(line, context)
-        top += max(ascent + descent + leading,
-                   CGFloat(CTFontGetSize(baseFont)) * 1.2)
       }
       context.restoreGState()
     }
     context.restoreGState()
     return true
-  }
-
-  /// Draws committed text during page previews using the same canonical
-  /// coordinates and Core Text shaping as final PDF export.
-  @discardableResult
-  static func drawForPreview(
-    _ annotations: [InkSignPdfTextAnnotation],
-    pageSize: CGSize,
-    mediaBox: CGRect,
-    pdfToPreview: CGAffineTransform,
-    in context: CGContext
-  ) -> Bool {
-    guard annotations.isEmpty || isValidPageSize(pageSize),
-          isValidRect(mediaBox) else { return false }
-    guard !annotations.isEmpty else { return true }
-    context.saveGState()
-    context.concatenate(concatenating(pdfToPreview,
-                                     canonicalToPDFTransform(for: mediaBox)))
-    let result = drawCanonical(annotations, pageSize: pageSize, in: context)
-    context.restoreGState()
-    return result
   }
 
   static func canonicalToPDFTransform(for mediaBox: CGRect) -> CGAffineTransform {
@@ -111,43 +154,48 @@ enum InkSignPdfTextRenderer {
                    alpha: 1)
   }
 
-  private static func makeLines(_ text: String,
-                                fontSize: CGFloat,
-                                color: UIColor,
-                                rightToLeft: Bool) -> [CTLine] {
-    let font = makeFont(size: fontSize)
-    let foreground = color.cgColor
-    let direction: CTWritingDirection = rightToLeft ? .rightToLeft : .leftToRight
-    let alignment: CTTextAlignment = rightToLeft ? .right : .left
-    let paragraphStyle = withUnsafePointer(to: direction) { directionPointer in
-      withUnsafePointer(to: alignment) { alignmentPointer in
-        var settings = [
-          CTParagraphStyleSetting(spec: .baseWritingDirection,
-                                  valueSize: MemoryLayout<CTWritingDirection>.size,
-                                  value: UnsafeRawPointer(directionPointer)),
-          CTParagraphStyleSetting(spec: .alignment,
-                                  valueSize: MemoryLayout<CTTextAlignment>.size,
-                                  value: UnsafeRawPointer(alignmentPointer)),
-        ]
-        return settings.withUnsafeBufferPointer { buffer in
-          CTParagraphStyleCreate(buffer.baseAddress!, buffer.count)
-        }
-      }
-    }
-    let attributes: [NSAttributedString.Key: Any] = [
-      NSAttributedString.Key(kCTFontAttributeName as String): font,
-      NSAttributedString.Key(kCTForegroundColorAttributeName as String): foreground,
-      NSAttributedString.Key(kCTParagraphStyleAttributeName as String): paragraphStyle,
-    ]
-    return text.components(separatedBy: "\n").map { value in
-      CTLineCreateWithAttributedString(NSAttributedString(string: value,
-                                                          attributes: attributes))
-    }
+  private struct LineFragment {
+    let text: String
+    let rect: CGRect
   }
 
-  private static func makeFont(size: CGFloat) -> CTFont {
-    let uiFont = UIFont.systemFont(ofSize: size)
-    return CTFontCreateWithName(uiFont.fontName as CFString, uiFont.pointSize, nil)
+  private static func makeLineFragments(_ text: String,
+                                        fontSize: CGFloat,
+                                        color: UIColor,
+                                        isRTL: Bool,
+                                        contentWidth: CGFloat) -> [LineFragment] {
+    let storage = NSTextStorage(attributedString: NSAttributedString(
+      string: text,
+      attributes: InkSignPdfTextStyle.attributes(fontSize: fontSize,
+                                                  color: color,
+                                                  isRTL: isRTL)))
+    let manager = NSLayoutManager()
+    let container = NSTextContainer(size: CGSize(width: contentWidth,
+                                                 height: .greatestFiniteMagnitude))
+    container.lineFragmentPadding = 0
+    container.lineBreakMode = .byWordWrapping
+    manager.addTextContainer(container)
+    storage.addLayoutManager(manager)
+    manager.ensureLayout(for: container)
+    let glyphRange = NSRange(location: 0, length: manager.numberOfGlyphs)
+    var fragments: [LineFragment] = []
+    manager.enumerateLineFragments(forGlyphRange: glyphRange) { _, usedRect, _, lineGlyphRange, _ in
+      let characterRange = manager.characterRange(forGlyphRange: lineGlyphRange,
+                                                    actualGlyphRange: nil)
+      let value = (text as NSString).substring(with: characterRange)
+      fragments.append(LineFragment(text: value.hasSuffix("\n") ? String(value.dropLast()) : value,
+                                    rect: usedRect))
+    }
+    return fragments
+  }
+
+  private static func resolvedContentWidth(_ requested: CGFloat,
+                                           text: String,
+                                           fontSize: CGFloat) -> CGFloat {
+    guard requested.isFinite, requested < CGFloat.greatestFiniteMagnitude / 2 else {
+      return max(fontSize, CGFloat(max(text.utf16.count, 1)) * fontSize * 4)
+    }
+    return max(1, requested)
   }
 
   private static func isValid(_ annotation: InkSignPdfTextAnnotation) -> Bool {
@@ -161,20 +209,4 @@ enum InkSignPdfTextRenderer {
     size.width.isFinite && size.height.isFinite && size.width > 0 && size.height > 0
   }
 
-  private static func isValidRect(_ rect: CGRect) -> Bool {
-    rect.minX.isFinite && rect.minY.isFinite &&
-      rect.width.isFinite && rect.height.isFinite &&
-      rect.width > 0 && rect.height > 0
-  }
-
-  private static func concatenating(_ outer: CGAffineTransform,
-                                    _ inner: CGAffineTransform) -> CGAffineTransform {
-    CGAffineTransform(
-      a: outer.a * inner.a + outer.c * inner.b,
-      b: outer.b * inner.a + outer.d * inner.b,
-      c: outer.a * inner.c + outer.c * inner.d,
-      d: outer.b * inner.c + outer.d * inner.d,
-      tx: outer.a * inner.tx + outer.c * inner.ty + outer.tx,
-      ty: outer.b * inner.tx + outer.d * inner.ty + outer.ty)
-  }
 }
