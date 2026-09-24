@@ -3,6 +3,7 @@
 #include "pdfium-adapter/PdfiumLibraryInternal.hpp"
 
 #include <fpdf_edit.h>
+#include <fpdf_transformpage.h>
 #include <fpdfview.h>
 
 #include <cassert>
@@ -291,7 +292,20 @@ PdfiumError PdfiumDocumentSession::inspectPage(
   }
   const double width = FPDF_GetPageWidth(page.get());
   const double height = FPDF_GetPageHeight(page.get());
-  if (!(width > 0.0) || !(height > 0.0)) {
+  float mediaBoxLeft = 0.0f;
+  float mediaBoxBottom = 0.0f;
+  float mediaBoxRight = 0.0f;
+  float mediaBoxTop = 0.0f;
+  if (!FPDFPage_GetMediaBox(page.get(), &mediaBoxLeft, &mediaBoxBottom,
+                            &mediaBoxRight, &mediaBoxTop)) {
+    return {PdfiumErrorCode::PageOpenFailed,
+            "PDFium page has no readable MediaBox"};
+  }
+  if (!(width > 0.0) || !(height > 0.0) ||
+      !std::isfinite(width) || !std::isfinite(height) ||
+      !std::isfinite(mediaBoxLeft) || !std::isfinite(mediaBoxBottom) ||
+      !std::isfinite(mediaBoxRight) || !std::isfinite(mediaBoxTop) ||
+      !(mediaBoxRight > mediaBoxLeft) || !(mediaBoxTop > mediaBoxBottom)) {
     return {PdfiumErrorCode::PageOpenFailed,
             "PDFium page has invalid dimensions"};
   }
@@ -300,7 +314,14 @@ PdfiumError PdfiumDocumentSession::inspectPage(
     return {PdfiumErrorCode::PageOpenFailed,
             "PDFium page has invalid rotation"};
   }
-  metadata = {pageIndex, width, height, rotation};
+  metadata.pageIndex = pageIndex;
+  metadata.width = width;
+  metadata.height = height;
+  metadata.rotation = rotation;
+  metadata.mediaBoxLeft = mediaBoxLeft;
+  metadata.mediaBoxBottom = mediaBoxBottom;
+  metadata.mediaBoxRight = mediaBoxRight;
+  metadata.mediaBoxTop = mediaBoxTop;
   return {};
 }
 

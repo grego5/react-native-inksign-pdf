@@ -255,11 +255,20 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_610L))
         assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
         assertEquals(1, editorCount(overlay))
+        val editor = editorView(overlay)
+        val panStartX = 8f
+        val panStartY = 2f
+        assertTrue(
+          "The pan gesture must start outside the editor; editor=" +
+            "[${editor.left},${editor.top},${editor.right},${editor.bottom}]",
+          panStartX < editor.left || panStartX > editor.right ||
+            panStartY < editor.top || panStartY > editor.bottom,
+        )
         val before = harness.surface.currentViewportState().focus
 
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 290f, 290f, 5_620L))
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_MOVE, 240f, 290f, 5_640L))
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 240f, 290f, 5_660L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, panStartX, panStartY, 5_620L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_MOVE, panStartX + 50f, panStartY, 5_640L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, panStartX + 50f, panStartY, 5_660L))
 
         assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
         assertEquals(1, editorCount(overlay))

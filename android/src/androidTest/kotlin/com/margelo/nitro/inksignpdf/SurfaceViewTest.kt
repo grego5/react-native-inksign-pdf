@@ -119,6 +119,10 @@ class SurfaceViewTest {
   fun selectedPreviewGatesPullAndReleaseUntilItIsReady() {
     FakePdfSession.holdPreviews()
     harness.runOnMain { harness.setDocument(harness.documentInfo()) }
+    assertTrue(
+      "preview rendering must be held before sending the gated gesture",
+      FakePdfSession.awaitPreviewStarted(),
+    )
     harness.sendPageNavigationSwipe()
 
     harness.sendPageNavigationRelease()
@@ -1136,6 +1140,8 @@ class SurfaceViewTest {
       delayPreviews = false
       previewRelease.countDown()
     }
+
+    fun awaitPreviewStarted(): Boolean = previewStarted.await(5L, TimeUnit.SECONDS)
 
     fun holdNextVisible(): CountDownLatch {
       visibleStarted = CountDownLatch(1)

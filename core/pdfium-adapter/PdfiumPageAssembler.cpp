@@ -4,6 +4,7 @@
 #include <fpdf_edit.h>
 #include <fpdf_ppo.h>
 #include <fpdf_save.h>
+#include <fpdf_transformpage.h>
 #include <fpdfview.h>
 
 #include <algorithm>
@@ -159,12 +160,30 @@ PdfiumError inspectPages(FPDF_DOCUMENT document,
     const double width = FPDF_GetPageWidth(page.get());
     const double height = FPDF_GetPageHeight(page.get());
     const int rotation = FPDFPage_GetRotation(page.get());
+    float mediaBoxLeft = 0.0f;
+    float mediaBoxBottom = 0.0f;
+    float mediaBoxRight = 0.0f;
+    float mediaBoxTop = 0.0f;
     if (!(width > 0.0) || !(height > 0.0) || !finite(width) ||
-        !finite(height) || rotation < 0 || rotation > 3) {
+        !finite(height) || rotation < 0 || rotation > 3 ||
+        !FPDFPage_GetMediaBox(page.get(), &mediaBoxLeft, &mediaBoxBottom,
+                              &mediaBoxRight, &mediaBoxTop) ||
+        !finite(mediaBoxLeft) || !finite(mediaBoxBottom) ||
+        !finite(mediaBoxRight) || !finite(mediaBoxTop) ||
+        !(mediaBoxRight > mediaBoxLeft) || !(mediaBoxTop > mediaBoxBottom)) {
       return {PdfiumErrorCode::ValidationFailed,
               "PDFium candidate contains invalid page metadata"};
     }
-    pages.push_back({static_cast<std::size_t>(index), width, height, rotation});
+    PdfiumPageMetadata metadata;
+    metadata.pageIndex = static_cast<std::size_t>(index);
+    metadata.width = width;
+    metadata.height = height;
+    metadata.rotation = rotation;
+    metadata.mediaBoxLeft = mediaBoxLeft;
+    metadata.mediaBoxBottom = mediaBoxBottom;
+    metadata.mediaBoxRight = mediaBoxRight;
+    metadata.mediaBoxTop = mediaBoxTop;
+    pages.push_back(metadata);
   }
   return {};
 }
@@ -180,7 +199,14 @@ bool sameMetadata(const PdfiumPageMetadata& expected,
   constexpr double kDimensionTolerance = 1e-6;
   return expected.rotation == actual.rotation &&
       std::abs(expected.width - actual.width) <= kDimensionTolerance &&
-      std::abs(expected.height - actual.height) <= kDimensionTolerance;
+      std::abs(expected.height - actual.height) <= kDimensionTolerance &&
+      std::abs(expected.mediaBoxLeft - actual.mediaBoxLeft) <=
+          kDimensionTolerance &&
+      std::abs(expected.mediaBoxBottom - actual.mediaBoxBottom) <=
+          kDimensionTolerance &&
+      std::abs(expected.mediaBoxRight - actual.mediaBoxRight) <=
+          kDimensionTolerance &&
+      std::abs(expected.mediaBoxTop - actual.mediaBoxTop) <= kDimensionTolerance;
 }
 
 PdfiumError appendImage(FPDF_DOCUMENT document,
@@ -209,6 +235,7 @@ PdfiumError appendImage(FPDF_DOCUMENT document,
   }
 
   ImageFileAccess access;
+  access.bytes = &input.bytes;
   access.fileAccess.m_FileLen = static_cast<unsigned long>(input.bytes.size());
   access.fileAccess.m_GetBlock = &ImageFileAccess::getBlock;
   access.fileAccess.m_Param = &access;
@@ -400,10 +427,20 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
         if (!operationError) break;
         // PDFium's saved page dimensions are reported at float precision. Compare
         // the candidate against the dimensions its PDF page can actually encode.
-        expectedPages.push_back(
-            {expectedPages.size(),
-             static_cast<double>(static_cast<float>(input.pageWidth)),
-             static_cast<double>(static_cast<float>(input.pageHeight)), 0});
+        PdfiumPageMetadata imagePage;
+        imagePage.pageIndex = expectedPages.size();
+        imagePage.width =
+            static_cast<double>(static_cast<float>(input.pageWidth));
+        imagePage.height =
+            static_cast<double>(static_cast<float>(input.pageHeight));
+        imagePage.rotation = 0;
+        imagePage.mediaBoxLeft = 0.0;
+        imagePage.mediaBoxBottom = 0.0;
+        imagePage.mediaBoxRight =
+            static_cast<double>(static_cast<float>(input.pageWidth));
+        imagePage.mediaBoxTop =
+            static_cast<double>(static_cast<float>(input.pageHeight));
+        expectedPages.push_back(imagePage);
       }
     }
 
@@ -475,10 +512,20 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
                           std::to_string(expectedPages[index].height) +
                           " rotation " +
                           std::to_string(expectedPages[index].rotation) +
+                          " MediaBox [" +
+                          std::to_string(expectedPages[index].mediaBoxLeft) + "," +
+                          std::to_string(expectedPages[index].mediaBoxBottom) + "," +
+                          std::to_string(expectedPages[index].mediaBoxRight) + "," +
+                          std::to_string(expectedPages[index].mediaBoxTop) + "]" +
                           ", got " + std::to_string(actualPages[index].width) +
                           "x" + std::to_string(actualPages[index].height) +
                           " rotation " +
-                          std::to_string(actualPages[index].rotation)};
+                          std::to_string(actualPages[index].rotation) +
+                          " MediaBox [" +
+                          std::to_string(actualPages[index].mediaBoxLeft) + "," +
+                          std::to_string(actualPages[index].mediaBoxBottom) + "," +
+                          std::to_string(actualPages[index].mediaBoxRight) + "," +
+                          std::to_string(actualPages[index].mediaBoxTop) + "]"};
       return result;
     }
   }

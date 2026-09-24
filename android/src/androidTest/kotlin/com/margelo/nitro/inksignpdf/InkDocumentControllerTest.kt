@@ -26,14 +26,22 @@ class InkDocumentControllerTest {
   fun sameLevelPanUpdatesDisplayedRequestsImmediately() {
     val harness = ControllerHarness(page = PdfPageDimensions(5000.0, 5000.0))
     try {
+      harness.runOnMain {
+        harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0))
+      }
+      harness.awaitState { !it.transitionPending && it.pendingKeys.isEmpty() }
       val before = harness.state()
 
       harness.runOnMain {
-        harness.controller.setZoomForTest(0.1, PagePoint(100.0, 100.0))
+        harness.controller.setZoomForTest(1.0, PagePoint(1000.0, 1000.0))
       }
       val after = harness.state()
 
       assertNotEquals(before.activeVisibleKeys, after.activeVisibleKeys)
+      assertEquals(
+        before.activeVisibleKeys.map { it.level }.toSet(),
+        after.activeVisibleKeys.map { it.level }.toSet(),
+      )
       assertEquals(after.activeVisibleKeys, after.displayedVisibleKeys)
       assertFalse(after.transitionPending)
     } finally {

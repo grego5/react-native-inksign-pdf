@@ -2,7 +2,9 @@
 
 [Back to task index](../TASKS.md)
 
-Status: Complete
+Status: Complete — image-only CREATE saves, reopens, and renders visible image
+pixels at the requested page dimensions. Candidate validation still checks
+rotation and MediaBox metadata.
 
 ## Objective
 
@@ -60,8 +62,10 @@ serialized and handles stay on their owning worker.
 5. Add one image page by creating a page with the target width and height,
    creating an image object, loading the optimized JPEG with
    `FPDFImageObj_LoadJpegFileInline`, applying the encoder's contain placement
-   matrix, inserting the object, and generating page content. Keep JPEG data
-   inline so staged image files can be deleted after assembly.
+   matrix, inserting the object, and generating page content. The file-access
+   callback must point at the append input's JPEG bytes for the duration of the
+   inline load; PDFium copies the image data before that call returns. Keep JPEG
+   data inline so staged image files can be deleted after assembly.
 6. Remove one validated index with `FPDFPage_Delete`; reject the sole-page case
    as `last_page_required`.
 7. Move one validated page with `FPDF_MovePages`. Define the assembler's target
@@ -69,8 +73,8 @@ serialized and handles stay on their owning worker.
    PDFium index translation inside the adapter. Lock forward, backward, and
    same-index behavior with tests.
 8. Save to an exact scratch path via non-incremental `FPDF_SaveAsCopy`. Reopen
-   and validate count, dimensions, rotations, append order, removal, and move
-   order before success.
+   and validate count, rotated display dimensions, rotation, MediaBox, append
+   order, removal, and move order before success.
 9. Never overwrite or delete input files. Platform owners perform atomic
    publication and retire prior working artifacts.
 
@@ -84,8 +88,9 @@ serialized and handles stay on their owning worker.
 
 - Add native fixtures with distinguishable pages.
 - Verify multipage append order and vector source preservation.
-- Verify image pages contain optimized JPEG content, preserve the target page
-  dimensions and contain placement, and do not retain staged image files.
+- Verify image pages contain optimized JPEG content, render visible pixels
+  after save/reopen, preserve the target page dimensions and contain placement,
+  and do not retain staged image files.
 - Verify first/middle/last removal and sole-page rejection.
 - Verify forward, backward, and same-index moves.
 - Verify failed mutation leaves input unchanged and publishes no valid output.

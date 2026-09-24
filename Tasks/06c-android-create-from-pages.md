@@ -18,6 +18,8 @@ Make Android `addPages` create a document from selected PDF and image inputs whe
 
 ## Completion
 
-- Focused JVM and connected tests cover image-only creation with A4 and custom size, PDF-only creation, mixed ordering, cancellation on an empty view, failure cleanup, page history after creation, and final export. Run the Android runner and `git diff --check -- ':!nitrogen/generated/**'`.
+- Focused JVM and connected tests cover image-only creation with A4 and custom size, PDF-only creation, mixed ordering, cancellation on an empty view, failure cleanup, page history after creation, and final export. The image-only connected check must reopen the saved candidate and verify rendered pixels as well as requested page dimensions. Run the Android runner and `git diff --check -- ':!nitrogen/generated/**'`.
 
-Status: Planned
+Status: Complete — focused creation checks and the full connected Android suite
+pass. The image-only check reopens the saved candidate and verifies visible
+pixels and requested dimensions; the JVM suite and Android build also pass.

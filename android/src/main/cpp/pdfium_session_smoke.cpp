@@ -1,7 +1,9 @@
 #include "pdfium-adapter/PdfiumDocumentSession.hpp"
 #include "pdfium-adapter/PdfiumPageAssembler.hpp"
+#include "pdfium-adapter/PdfiumSignedDocumentExporter.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -20,6 +22,10 @@ using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyCommand;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyOperation;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageMetadata;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageRenderRequest;
+using margelo::nitro::inksignpdf::pdfium::PdfiumExportTextLine;
+using margelo::nitro::inksignpdf::pdfium::PdfiumInkBitmap;
+using margelo::nitro::inksignpdf::pdfium::PdfiumSignedDocumentExporter;
+using margelo::nitro::inksignpdf::pdfium::PdfiumSignedExportPage;
 
 namespace {
 
@@ -60,7 +66,8 @@ std::vector<std::uint8_t> minimalPdf() {
 
 std::vector<std::uint8_t> textPdf(
     const std::string& mediaBox,
-    const std::string& content) {
+    const std::string& content,
+    int rotation = 0) {
   const std::string header = "%PDF-1.4\n";
   const std::string object1 =
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
@@ -68,6 +75,7 @@ std::vector<std::uint8_t> textPdf(
       "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
   const std::string object3 =
       "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox " + mediaBox +
+      (rotation == 0 ? std::string() : " /Rotate " + std::to_string(rotation)) +
       "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n";
   const std::string object4 =
       "4 0 obj\n<< /Length " + std::to_string(content.size()) +
@@ -190,6 +198,53 @@ extern "C" bool ReactNativeInkSignPdfPdfiumSessionLifecycleSmoke() {
   }
   if (first.session->inspectPage(1, metadata).code !=
       PdfiumErrorCode::InvalidPageIndex) {
+    return false;
+  }
+
+  auto geometrySession = PdfiumDocumentSession::open(
+      textPdf("[10 20 110 220]", "", 90));
+  if (!geometrySession || !geometrySession.session->inspectPage(0, metadata) ||
+      metadata.rotation != 1 || metadata.mediaBoxLeft != 10.0 ||
+      metadata.mediaBoxBottom != 20.0 || metadata.mediaBoxRight != 110.0 ||
+      metadata.mediaBoxTop != 220.0 || metadata.canonicalWidth() != 100.0 ||
+      metadata.canonicalHeight() != 200.0) {
+    return false;
+  }
+
+  PdfiumSignedExportPage signedPage;
+  signedPage.expectedGeometry = metadata;
+  PdfiumInkBitmap ink;
+  std::array<std::uint8_t, 16> inkPixels{
+      0, 0, 255, 128, 0, 0, 0, 0, 0, 255, 0, 128, 0, 0, 0, 0};
+  ink.bgra = inkPixels;
+  ink.width = 2;
+  ink.height = 2;
+  ink.stride = 8;
+  ink.left = 10.0;
+  ink.top = 10.0;
+  ink.displayWidth = 20.0;
+  ink.displayHeight = 20.0;
+  signedPage.ink = std::move(ink);
+  signedPage.textLines.push_back(
+      {u"PDFium", 15.0, 35.0, 10.0, 0xFF102030u, false});
+  const auto signedCandidate = PdfiumSignedDocumentExporter::write(
+      textPdf("[10 20 110 220]", "", 90), {signedPage});
+  if (!signedCandidate) return false;
+  auto signedSession = PdfiumDocumentSession::open(signedCandidate.bytes);
+  PdfiumPageMetadata signedMetadata;
+  if (!signedSession || signedSession.session->pageCount() != 1 ||
+      !signedSession.session->inspectPage(0, signedMetadata) ||
+      signedMetadata.mediaBoxLeft != 10.0 ||
+      signedMetadata.mediaBoxBottom != 20.0 ||
+      signedMetadata.mediaBoxRight != 110.0 ||
+      signedMetadata.mediaBoxTop != 220.0 || signedMetadata.rotation != 1) {
+    return false;
+  }
+  signedPage.textLines[0].rightToLeft = true;
+  const auto unsupportedSignedCandidate = PdfiumSignedDocumentExporter::write(
+      textPdf("[10 20 110 220]", "", 90), {signedPage});
+  if (unsupportedSignedCandidate ||
+      unsupportedSignedCandidate.error.code != PdfiumErrorCode::UnsupportedText) {
     return false;
   }
 
