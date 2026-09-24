@@ -14,6 +14,7 @@ on:
           - native-pdf-backend
           - page-input
           - lifecycle
+          - performance
           - all
           - build-only
 
@@ -113,7 +114,12 @@ jobs:
           echo "IOS_SCHEME=$scheme" >> "$GITHUB_ENV"
           echo "IOS_DESTINATION=platform=iOS Simulator,id=$simulator_udid,arch=$simulator_arch" >> "$GITHUB_ENV"
 
+          configuration="Debug"
           case "${{ inputs.focus }}" in
+            performance)
+              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests/testComplexDocumentRenderingPerformance"
+              configuration="Release"
+              ;;
             stabilization)
               test_args="-only-testing:__TEST_TARGET__/InkSignViewStabilizationTests"
               ;;
@@ -140,6 +146,7 @@ jobs:
               exit 1
               ;;
           esac
+          echo "IOS_CONFIGURATION=$configuration" >> "$GITHUB_ENV"
           echo "IOS_TEST_ARGS_TEMPLATE=$test_args" >> "$GITHUB_ENV"
 
       - name: Build for testing
@@ -149,6 +156,7 @@ jobs:
           xcodebuild \
             -workspace "$IOS_WORKSPACE" \
             -scheme "$IOS_SCHEME" \
+            -configuration "$IOS_CONFIGURATION" \
             -destination "$IOS_DESTINATION" \
             -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
             -resultBundlePath "$RUNNER_TEMP/ios-build.xcresult" \
@@ -172,6 +180,7 @@ jobs:
           xcodebuild \
             -workspace "$IOS_WORKSPACE" \
             -scheme "$IOS_SCHEME" \
+            -configuration "$IOS_CONFIGURATION" \
             -destination "$IOS_DESTINATION" \
             -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
             -resultBundlePath "$RUNNER_TEMP/ios-tests.xcresult" \
@@ -187,6 +196,14 @@ jobs:
           test -n "$executed"
           test "$executed" -gt 0
 
+      - name: Export test attachments
+        if: success() && (inputs.focus == 'native-pdfkit' || inputs.focus == 'native-pdf-backend' || inputs.focus == 'lifecycle' || inputs.focus == 'performance' || inputs.focus == 'all')
+        run: |
+          mkdir -p "$RUNNER_TEMP/ios-test-attachments"
+          xcrun xcresulttool export attachments \
+            --path "$RUNNER_TEMP/ios-tests.xcresult" \
+            --output-path "$RUNNER_TEMP/ios-test-attachments"
+
       - name: Upload Xcode diagnostics
         if: failure()
         uses: actions/upload-artifact@v7
@@ -199,10 +216,10 @@ jobs:
           if-no-files-found: ignore
 
       - name: Preserve native PDF fixture results
-        if: success() && (inputs.focus == 'native-pdfkit' || inputs.focus == 'native-pdf-backend' || inputs.focus == 'lifecycle')
+        if: success() && (inputs.focus == 'native-pdfkit' || inputs.focus == 'native-pdf-backend' || inputs.focus == 'lifecycle' || inputs.focus == 'performance' || inputs.focus == 'all')
         uses: actions/upload-artifact@v7
         with:
           name: native-ios-pdf-fixtures
-          path: ${{ runner.temp }}/ios-tests.xcresult
+          path: ${{ runner.temp }}/ios-test-attachments
           retention-days: 3
           if-no-files-found: error
