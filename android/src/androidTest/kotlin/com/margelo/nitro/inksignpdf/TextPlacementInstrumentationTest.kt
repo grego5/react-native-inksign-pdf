@@ -261,7 +261,7 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(
           "The pan gesture must start outside the editor; editor=" +
             "[${editor.left},${editor.top},${editor.right},${editor.bottom}]",
-          panStartX < editor.left || panStartX > editor.right ||
+            panStartX < editor.left || panStartX > editor.right ||
             panStartY < editor.top || panStartY > editor.bottom,
         )
         val before = harness.surface.currentViewportState().focus

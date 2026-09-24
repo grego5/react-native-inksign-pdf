@@ -45,7 +45,7 @@ enum InkSignPdfTextRenderer {
     context.clip(to: CGRect(origin: .zero, size: pageSize))
     for annotation in annotations {
       guard isValid(annotation),
-            let color = overrideColor ?? color(from: annotation.textColor),
+            let color = overrideColor ?? Self.color(from: annotation.textColor),
             let components = color.cgColor.components,
             !components.isEmpty else {
         context.restoreGState()

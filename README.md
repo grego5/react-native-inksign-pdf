@@ -6,6 +6,7 @@
 - Can bring own scanner module and bridge it seamlessly by adding pages through path to the file in cacae directory.
 - Displays loaded PDF as background. Including swipe/method pagination.
 - Uses PDFium on Android for document loading, rendering, page assembly, and export; iOS uses PDFKit, Quartz, and CoreText for PDF operations.
+- Android's optional `fallbackFont` applies to source-PDF rendering.
 - Supports velocity-driven ink, text annotations, and history.
 - Android using custom c++ InkEngine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
 - iOS uses PDFKit and Quartz for PDF operations, CoreText for text, and PencilKit for ink input. No web support.
