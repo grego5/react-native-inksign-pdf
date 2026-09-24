@@ -1,45 +1,33 @@
-# iOS view and document lifecycle
+# iOS document lifecycle
 
 ## Ownership
 
-- `InkSignView` owns the PDFium page host, PencilKit input, page history, and export
-  orchestration. Its document state retains the Objective-C++ PDFium session
-  facade and the source PDFKit document needed by export/metadata paths.
-- `InkSignView` owns viewport commands and lifecycle completion. Open readiness
-  covers the document, first page, overlay, bounds, geometry, and requested fit
-  scale before the target is applied and the promise is published.
-- `InkPdfView` is a leaf presentation component. It owns the current canonical
-  focus, zoom, page frame, and PDFium tiles.
-- `InkSignPdfDocumentState` owns the source document, ordered pages, active page,
-  PDFium session, generation, and committed page content. The Objective-C++
-  facade owns the native session and serializes all PDFium operations.
-- The text overlay owns the temporary editor, selection, dragging, and keyboard
-  behavior. The page-turn lifecycle owns preview and handoff presentation.
-- JavaScript owns props, commands, and coarse callbacks only; native owns PDF,
-  PencilKit, gesture, and history state.
+`InkSignView` adapts Nitro commands and coordinates document operations. The
+document coordinator owns the published PDFKit document, ordered stable page
+records, active page ID, page histories, generation, and module-created
+artifacts. UIKit presentation owns the viewport, page tiles, and ink canvas;
+the text overlay owns temporary editing state.
 
-## Loading and readiness
+## Publication
 
-- The retained page-overlay provider supplies the transparent `PKCanvasView`
-  above the active PDFium tile host. Tile replacement and layout changes do
-  operate on presentation state; history stores committed page content.
-- `open()` loads a validated local PDF and creates its PDFium session on a
-  serial worker. Invalid fallback-font resources, empty documents, page-count
-  mismatches, and invalid page geometry are rejected. Invalid fallback-font
-  configuration reports `invalid_fallback_font` with the native reason.
-- PDFium supplies page dimensions and all base display pixels. The retained
-  PDFKit document remains available only for source metadata and export
-  requirements.
-- The open operation publishes page info after the active overlay and page
-  transform are ready.
-- Caller-owned source files are read-only. Native cleanup is limited to exact
-  module-created cache artifacts.
+Opening copies the caller's PDF into a module-owned working document.
+Replacement and structural page changes prepare and validate a detached
+candidate. The current document remains published until validation succeeds;
+failed, cancelled, or stale operations leave it intact. Publication replaces
+the document, page order, active page, and structural dirty state together.
 
-## Navigation and disposal
+Page identity and page-local history follow a page through append, removal, and
+movement. The coordinator tracks structural changes separately from page-local
+content history. PDF inputs contribute pages in requested order; image inputs
+become PDF pages.
 
-- Page switches install target-page committed content. Preview and handoff
-  results carry generation and page identity checks.
-- Disposal is UI-thread-owned and idempotent. It cancels input, navigation,
-  previews, and export, removes the overlay, releases the document, and clears
-  callbacks. Worker results use generation checks.
+## Presentation and navigation
 
+PDFKit and Quartz provide the base page imagery. PencilKit and text editing are
+presented in native overlays; transient input is separate from committed page
+history. A page switch installs its target page, overlay, and viewport as one
+presentation transition. The current page request alone updates presentation.
+A page-change callback follows an actual installed switch.
+
+Disposal invalidates pending operations and releases document, worker, and
+presentation resources. See [export.md](export.md) for finalize behavior.

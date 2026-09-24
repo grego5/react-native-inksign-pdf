@@ -1,0 +1,216 @@
+name: iOS simulator validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      focus:
+        description: Select the simulator validation scope
+        required: true
+        default: stabilization
+        type: choice
+        options:
+          - stabilization
+          - native-pdfkit
+          - native-pdf-backend
+          - page-input
+          - lifecycle
+          - all
+          - build-only
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-simulator-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: example
+    env:
+      CI: '1'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Select Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install consumer dependencies
+        run: |
+          npm pkg set 'dependencies.@grego5/react-native-inksign-pdf=file:..'
+          npm install --no-package-lock --ignore-scripts --install-links --no-audit --no-fund
+
+      - name: Generate iOS project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Enable lifecycle test spec
+        shell: bash
+        run: |
+          set -euo pipefail
+          podfile="$GITHUB_WORKSPACE/example/ios/Podfile"
+          test -f "$podfile"
+          ruby - "$podfile" <<'RUBY'
+          path = ARGV.fetch(0)
+          text = File.read(path)
+          declaration = "  pod 'ReactNativeInkSignPdf', :path => '../node_modules/@grego5/react-native-inksign-pdf', :testspecs => ['LifecycleTests']\n"
+          abort 'LifecycleTests test spec is already configured unexpectedly' if text.include?(":testspecs => ['LifecycleTests']")
+          updated = text.sub(/target [^\n]+ do\n/, "\\0#{declaration}")
+          abort 'Could not find an application target in the generated Podfile' if updated == text
+          File.write(path, updated)
+          RUBY
+
+      - name: Install CocoaPods
+        run: pod install --project-directory=ios
+
+      - name: Resolve test scheme and focus
+        shell: bash
+        run: |
+          set -euo pipefail
+          workspace=""
+          for candidate in "$GITHUB_WORKSPACE/example/ios"/*.xcworkspace; do
+            if [ -d "$candidate" ]; then
+              workspace="$candidate"
+              break
+            fi
+          done
+          if [ -z "$workspace" ]; then
+            echo "No iOS workspace found under $GITHUB_WORKSPACE/example/ios" >&2
+            ls -la "$GITHUB_WORKSPACE/example/ios" >&2
+            exit 1
+          fi
+          test -n "$workspace"
+          xcodebuild -list -json -workspace "$workspace" > "$RUNNER_TEMP/workspace-list.json"
+          scheme="$(jq -r '[.workspace.schemes[] | select(test("LifecycleTests$"))][0] // empty' "$RUNNER_TEMP/workspace-list.json")"
+          test -n "$scheme"
+          simulator="$(xcrun simctl list devices available -j | jq -r '
+            [.devices[] | .[] |
+              select(.isAvailable == true) |
+              {name, udid,
+               priority: (if (.name | startswith("iPhone")) then 0 else 1 end)} |
+              select(.udid != null)] |
+            sort_by(.priority, .name, .udid) |
+            .[0] // empty |
+            "\(.name)|\(.udid)"')"
+          test -n "$simulator"
+          simulator_name="${simulator%%|*}"
+          simulator_udid="${simulator##*|}"
+          simulator_arch="$(uname -m)"
+          echo "Selected iOS Simulator: $simulator_name ($simulator_udid)"
+          echo "IOS_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          echo "IOS_SCHEME=$scheme" >> "$GITHUB_ENV"
+          echo "IOS_DESTINATION=platform=iOS Simulator,id=$simulator_udid,arch=$simulator_arch" >> "$GITHUB_ENV"
+
+          case "${{ inputs.focus }}" in
+            stabilization)
+              test_args="-only-testing:__TEST_TARGET__/InkSignViewStabilizationTests"
+              ;;
+            native-pdfkit)
+              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnPreviewTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnNavigationTests -only-testing:__TEST_TARGET__/InkSignViewTextInteractionTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
+              ;;
+            native-pdf-backend)
+              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests"
+              ;;
+            page-input)
+              test_args="-only-testing:__TEST_TARGET__/PageInputCoordinatorTests"
+              ;;
+            lifecycle)
+              test_args="-only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnPreviewTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnNavigationTests -only-testing:__TEST_TARGET__/InkSignViewTextInteractionTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
+              ;;
+            all)
+              test_args=""
+              ;;
+            build-only)
+              test_args=""
+              ;;
+            *)
+              echo "Unsupported focus: ${{ inputs.focus }}" >&2
+              exit 1
+              ;;
+          esac
+          echo "IOS_TEST_ARGS_TEMPLATE=$test_args" >> "$GITHUB_ENV"
+
+      - name: Build for testing
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace "$IOS_WORKSPACE" \
+            -scheme "$IOS_SCHEME" \
+            -destination "$IOS_DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/ios-build.xcresult" \
+            build-for-testing 2>&1 | tee "$RUNNER_TEMP/ios-build.log"
+
+      - name: Prepare selected tests
+        if: inputs.focus != 'build-only'
+        run: |
+          test_args="${IOS_TEST_ARGS_TEMPLATE//__TEST_TARGET__/$IOS_SCHEME}"
+          echo "IOS_TEST_ARGS=$test_args" >> "$GITHUB_ENV"
+
+      - name: Run selected tests
+        if: inputs.focus != 'build-only'
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -o pipefail
+          test_args=()
+          if [ -n "$IOS_TEST_ARGS" ]; then
+            read -r -a test_args <<< "$IOS_TEST_ARGS"
+          fi
+          xcodebuild \
+            -workspace "$IOS_WORKSPACE" \
+            -scheme "$IOS_SCHEME" \
+            -destination "$IOS_DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
+            -resultBundlePath "$RUNNER_TEMP/ios-tests.xcresult" \
+            test-without-building "${test_args[@]}" 2>&1 | tee "$RUNNER_TEMP/ios-tests.log"
+
+      - name: Verify executed test count
+        if: inputs.focus != 'build-only'
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          executed="$(sed -nE 's/.*Executed ([0-9]+) tests,.*/\1/p' \
+            "$RUNNER_TEMP/ios-tests.log" | sort -n | tail -n 1)"
+          test -n "$executed"
+          test "$executed" -gt 0
+
+      - name: Export test attachments
+        if: success() && (inputs.focus == 'native-pdfkit' || inputs.focus == 'native-pdf-backend' || inputs.focus == 'lifecycle' || inputs.focus == 'all')
+        run: |
+          mkdir -p "$RUNNER_TEMP/ios-test-attachments"
+          xcrun xcresulttool export attachments \
+            --path "$RUNNER_TEMP/ios-tests.xcresult" \
+            --output-path "$RUNNER_TEMP/ios-test-attachments"
+
+      - name: Upload Xcode diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-validation-diagnostics
+          path: |
+            ${{ runner.temp }}/ios-*.xcresult
+            ${{ runner.temp }}/ios-*.log
+            ${{ runner.temp }}/ios-test-summary.json
+          if-no-files-found: ignore
+
+      - name: Preserve native PDF fixture results
+        if: success() && (inputs.focus == 'native-pdfkit' || inputs.focus == 'native-pdf-backend' || inputs.focus == 'lifecycle' || inputs.focus == 'all')
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-ios-pdf-fixtures
+          path: ${{ runner.temp }}/ios-test-attachments
+          retention-days: 3
+          if-no-files-found: error

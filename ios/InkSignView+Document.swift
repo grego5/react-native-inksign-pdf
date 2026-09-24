@@ -1,5 +1,4 @@
 import Foundation
-import PDFKit
 import PencilKit
 import UIKit
 import NitroModules
@@ -58,11 +57,11 @@ extension InkSignView {
     }
     pageTurnLifecycle.cancelUncommittedTurn()
     let requestID = pageNavigationRequestID
-    let requestGeneration = generation
+    let requestGeneration = documentCoordinator.generation
     DispatchQueue.main.async { [weak self] in
       guard let self,
             !self.disposed,
-            self.generation == requestGeneration,
+            self.documentCoordinator.generation == requestGeneration,
             self.pageNavigationRequestID == requestID else { return }
       do {
         try self.switchPage(to: target, completion: self.programmaticPageSwitchCompletion())
@@ -108,30 +107,42 @@ extension InkSignView {
       promise.reject(withError: LoadError.cancelled)
       return
     }
+    if let pending = pendingOpen {
+      pendingOpen = nil
+      if let active = pending.operation {
+        documentCoordinator.settle(active, succeeded: false)
+      }
+      restoreDocumentAfterOpenFailure(pending: pending)
+      pending.promise.reject(withError: LoadError.cancelled)
+    }
+    guard let operation = documentCoordinator.admit(.open) else {
+      promise.reject(withError: LoadError.operationInProgress)
+      return
+    }
+    pageInputCoordinator.cancelPending()
     cancelViewportAnimation()
-    pendingOpen?.promise.reject(withError: LoadError.cancelled)
-    pendingOpen = nil
-    publicationLock.lock()
-    generation &+= 1
+    let token = operation.generation
+    let previousViewport = try? currentViewportSnapshot()
+    let previousEditing = editMode
     viewportRequestID &+= 1
     pageNavigationRequestID &+= 1
-    let token = generation
-    publicationLock.unlock()
     pendingOpen = PendingOpen(token: token,
+                              operation: operation,
                               promise: promise,
                               zoom: zoom,
                               focus: focus,
-                              fitToPage: fitToPage)
+                              fitToPage: fitToPage,
+                              previousViewport: previousViewport.map {
+                                ViewportTarget(zoom: CGFloat($0.zoom),
+                                               focus: CGPoint(x: $0.x, y: $0.y))
+                              },
+                              previousEditing: previousEditing)
     textInteractionOverlay.finishForLifecycle()
     cancelActiveStroke(clearLive: false)
-    editMode = false
-    canvasView.isUserInteractionEnabled = false
-    canvasView.isHidden = true
-    documentState = nil
+    setInteractionMode(editing: false, interactionsEnabled: false)
     attachedOverlayPage = nil
     textInteractionOverlay.syncContent()
     pageTurnLifecycle.cancelUncommittedTurn()
-    edgeNavigationGestureRecognizer.isEnabled = false
     cancelPendingPageSwitch()
     pageSwitchRequestID &+= 1
     pendingPageSwitchID = nil
@@ -142,10 +153,11 @@ extension InkSignView {
     documentView.removePage()
     emitChange(force: true)
 
-    let requestedFallbackFont = fallbackFont
-
     guard !path.isEmpty else {
+      let failed = pendingOpen
       pendingOpen = nil
+      documentCoordinator.settle(operation, succeeded: false)
+      restoreDocumentAfterOpenFailure(pending: failed)
       promise.reject(withError: LoadError.invalidSourcePath)
       return
     }
@@ -153,8 +165,13 @@ extension InkSignView {
     let url = URL(fileURLWithPath: path)
       .standardizedFileURL
       .resolvingSymlinksInPath()
-    loadQueue.async { [weak self] in
+    documentCoordinator.pdfQueue.async { [weak self, coordinator = documentCoordinator] in
       guard let self else { return }
+      var workingURL: URL?
+      var ownsWorkingURL = false
+      defer {
+        if !ownsWorkingURL, let workingURL { coordinator.discardArtifact(workingURL) }
+      }
       var isDirectory: ObjCBool = false
       guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
             !isDirectory.boolValue, FileManager.default.isReadableFile(atPath: url.path) else {
@@ -163,70 +180,65 @@ extension InkSignView {
       guard let sourceData = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
         self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
       }
-      guard let loaded = PDFDocument(data: sourceData) else {
+      do {
+        let allocated = try self.artifactPolicy.allocateWorkingSource()
+        guard coordinator.registerPendingArtifact(allocated, for: operation) else {
+          self.artifactPolicy.deleteExact(allocated)
+          self.finishLoad(token: token, promise: promise, error: .cancelled)
+          return
+        }
+        workingURL = allocated
+        try sourceData.write(to: allocated, options: .atomic)
+      } catch {
         self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
       }
-      guard loaded.pageCount > 0 else {
-        self.finishLoad(token: token, promise: promise, error: .unsupportedPdf); return
+      guard let workingURL else {
+        self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
       }
-      let pdfiumSession: InkSignPdfPdfiumSession
+      let loadedCandidate: InkSignPdfDocumentCandidate
       do {
-        pdfiumSession = try InkSignPdfPdfiumSession(
-          data: sourceData,
-          fallbackFontPath: requestedFallbackFont?.path,
-          collectionIndex: requestedFallbackFont?.collectionIndex ?? 0)
-      } catch {
-        let nativeError = error as NSError
-        let loadError: LoadError = nativeError.domain == InkSignPdfPdfiumErrorDomain &&
-          nativeError.code == InkSignPdfPdfiumInvalidFallbackFontErrorCode
-          ? .invalidFallbackFont(nativeError.localizedDescription)
-          : .pdfLoadFailed
+      loadedCandidate = try InkSignPdfDocumentCandidateLoader.load(url: workingURL)
+      } catch let candidateError as InkSignPdfDocumentCandidateError {
+        let loadError: LoadError
+        switch candidateError {
+        case .empty:
+          loadError = .unsupportedPdf
+        case .unreadable, .invalidGeometry:
+          loadError = .pdfLoadFailed
+        }
         self.finishLoad(token: token, promise: promise, error: loadError); return
+      } catch {
+        self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
       }
-      guard pdfiumSession.pageCount == loaded.pageCount else {
-        pdfiumSession.close()
-        self.finishLoad(token: token, promise: promise, error: .unsupportedPdf); return
-      }
-      var loadedPages: [InkSignPdfPageState] = []
-      for index in 0..<loaded.pageCount {
-        guard let loadedPage = loaded.page(at: index) else {
-          pdfiumSession.close()
-          self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
+      let loadedDocument = loadedCandidate.document
+      let loadedPages = loadedCandidate.pages
+      ownsWorkingURL = true
+      DispatchQueue.main.async { [weak self, coordinator] in
+        guard let self, !self.disposed, self.documentCoordinator.generation == token,
+              self.pendingOpen?.token == token else {
+          coordinator.discardArtifact(workingURL)
+          return
         }
-        var pdfiumSize = CGSize.zero
-        do {
-          try pdfiumSession.pageSize(for: UInt(index), into: &pdfiumSize)
-        } catch {
-          pdfiumSession.close()
-          self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
+        let newDocument = InkSignPdfDocumentState(sourceURL: url,
+                                                  workingURL: workingURL,
+                                                  document: loadedDocument,
+                                                  pages: loadedPages)
+        guard self.documentCoordinator.publish(newDocument, operation: operation) else {
+          coordinator.discardArtifact(workingURL)
+          self.documentCoordinator.settle(operation, succeeded: false)
+          return
         }
-        let bounds = loadedPage.bounds(for: .mediaBox)
-        let rotation = loadedPage.rotation
-        let geometry = PageGeometry(mediaBox: bounds, rotation: rotation)
-        guard pdfiumSize.width.isFinite, pdfiumSize.height.isFinite,
-              geometry.isValid else {
-          pdfiumSession.close()
-          self.finishLoad(token: token, promise: promise, error: .pdfLoadFailed); return
-        }
-        loadedPages.append(InkSignPdfPageState(index: index,
-                                                page: loadedPage,
-                                                geometry: geometry))
-      }
-      DispatchQueue.main.async { [weak self] in
-        guard let self, !self.disposed, self.generation == token,
-              self.pendingOpen?.token == token else { return }
-        self.documentState = InkSignPdfDocumentState(sourceURL: url,
-                                                      document: loaded,
-                                                      pdfiumSession: pdfiumSession,
-                                                      pages: loadedPages)
+        coordinator.claimArtifact(workingURL)
         self.pageSwitchRequestID &+= 1
         self.pendingPageSwitchID = nil
         self.documentView.installPage(
           index: 0,
-          page: loadedPages[0].page,
-          geometry: loadedPages[0].geometry,
-          session: pdfiumSession)
-        self.overlayDidDisplay(self.canvasView, for: loadedPages[0].page)
+          pageID: newDocument.pages[0].id,
+          geometry: newDocument.pages[0].geometry,
+          page: newDocument.pages[0].page,
+          document: newDocument.document,
+          generation: token)
+        self.overlayDidDisplay(self.canvasView, for: loadedPages[0].id)
         self.configureDoubleTapGestureRecognition()
       }
     }
@@ -238,28 +250,35 @@ extension InkSignView {
     error: LoadError
   ) {
     DispatchQueue.main.async { [weak self] in
-      guard let self, !self.disposed, self.generation == token,
+      guard let self, !self.disposed, self.documentCoordinator.generation == token,
             self.pendingOpen?.token == token else { return }
+      let failed = self.pendingOpen
+      if let operation = failed?.operation {
+        self.documentCoordinator.settle(operation, succeeded: false)
+      }
       self.pendingOpen = nil
+      self.restoreDocumentAfterOpenFailure(pending: failed)
       promise.reject(withError: error)
     }
   }
 
-  func setInteractionMode(editing: Bool) {
-    let editing = editing && documentState != nil
+  func setInteractionMode(editing: Bool, interactionsEnabled: Bool = true) {
+    let editing = editing && documentCoordinator.document != nil
     textInteractionOverlay.finishForLifecycle()
     if editMode && !editing { cancelActiveStroke() }
     editMode = editing
     pageTurnLifecycle.modeChanged(editing: editing)
-    edgeNavigationGestureRecognizer.isEnabled = !editing && documentState != nil && !disposed
-    canvasView.isHidden = documentState == nil
-    canvasView.isUserInteractionEnabled = documentState != nil
-    documentView.gestureRecognizers?.forEach { $0.isEnabled = !editing }
+    let enabled = interactionsEnabled && documentCoordinator.document != nil && !disposed
+    edgeNavigationGestureRecognizer.isEnabled = !editing && enabled
+    canvasView.isHidden = documentCoordinator.document == nil
+    canvasView.isUserInteractionEnabled = enabled
+    canvasView.drawingGestureRecognizer.isEnabled = editing && enabled
+    documentView.gestureRecognizers?.forEach { $0.isEnabled = !editing && enabled }
     emitChange()
   }
 
   func currentPageInfo() throws -> InkSignPdfNativePageInfo {
-    guard let state = documentState else { throw ViewportError.notReady }
+    guard let state = documentCoordinator.document else { throw ViewportError.notReady }
     return InkSignPdfNativePageInfo(pageIndex: state.activePageIndex,
                                     pageCount: state.pages.count,
                                     geometry: state.activePage.geometry)

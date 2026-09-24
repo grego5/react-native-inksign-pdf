@@ -9,11 +9,12 @@ struct InkSignPdfTextAnnotation: Equatable {
   let text: String
   let bounds: CGRect
   let fontSize: CGFloat
+  let isRTL: Bool
   /// Canonical opaque RGB color captured with the annotation for export/rendering.
   let textColor: String
 
   init(id: String, text: String, bounds: CGRect, fontSize: CGFloat,
-       textColor: String = "#000000") {
+       textColor: String = "#000000", isRTL: Bool = false) {
     precondition(!id.isEmpty, "Text annotation ID must not be empty")
     precondition(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                  "Committed text annotation must not be blank")
@@ -27,6 +28,7 @@ struct InkSignPdfTextAnnotation: Equatable {
     self.text = text
     self.bounds = bounds
     self.fontSize = fontSize
+    self.isRTL = isRTL
     self.textColor = textColor
   }
 
@@ -40,7 +42,8 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     text: text,
                                     bounds: CGRect(origin: origin, size: size),
                                     fontSize: fontSize,
-                                    textColor: textColor)
+                                    textColor: textColor,
+                                    isRTL: isRTL)
   }
 
   func moving(to position: CGPoint, pageSize: CGSize) -> InkSignPdfTextAnnotation {
@@ -48,7 +51,8 @@ struct InkSignPdfTextAnnotation: Equatable {
     return InkSignPdfTextAnnotation(id: id, text: text,
                                     bounds: CGRect(origin: origin, size: bounds.size),
                                     fontSize: fontSize,
-                                    textColor: textColor)
+                                    textColor: textColor,
+                                    isRTL: isRTL)
   }
 
   func changingFontSize(to fontSize: CGFloat, pageSize: CGSize) -> InkSignPdfTextAnnotation {
@@ -57,7 +61,8 @@ struct InkSignPdfTextAnnotation: Equatable {
     return InkSignPdfTextAnnotation(id: id, text: text,
                                     bounds: CGRect(origin: origin, size: size),
                                     fontSize: fontSize,
-                                    textColor: textColor)
+                                    textColor: textColor,
+                                    isRTL: isRTL)
   }
 
   static func intrinsicSize(of text: String, fontSize: CGFloat) -> CGSize {
@@ -103,7 +108,7 @@ struct InkSignPdfPageContentSnapshot {
   }
 }
 
-enum InkSignPdfPageContentActionKind: Equatable {
+enum InkSignPdfPageContentActionType: Equatable {
   case ink
   case textCreate
   case textEdit
@@ -114,7 +119,7 @@ enum InkSignPdfPageContentActionKind: Equatable {
 }
 
 struct InkSignPdfPageContentHistoryAction {
-  let kind: InkSignPdfPageContentActionKind
+  let type: InkSignPdfPageContentActionType
   let before: InkSignPdfPageContentSnapshot
   let after: InkSignPdfPageContentSnapshot
 }
@@ -137,14 +142,14 @@ final class InkSignPdfPageContentHistory {
 
   @discardableResult
   func record(
-    kind: InkSignPdfPageContentActionKind,
+    type: InkSignPdfPageContentActionType,
     before: InkSignPdfPageContentSnapshot,
     after: InkSignPdfPageContentSnapshot
   ) -> Bool {
     guard !before.equals(after) else { return false }
     guard content.equals(before) else { return false }
     content = after
-    undoStack.append(InkSignPdfPageContentHistoryAction(kind: kind, before: before, after: after))
+    undoStack.append(InkSignPdfPageContentHistoryAction(type: type, before: before, after: after))
     redoStack.removeAll(keepingCapacity: true)
     revision &+= 1
     return true
@@ -155,21 +160,21 @@ final class InkSignPdfPageContentHistory {
     guard !content.textAnnotations.contains(where: { $0.id == annotation.id }) else { return false }
     var annotations = content.textAnnotations
     annotations.append(annotation)
-    return record(kind: .textCreate, before: content, after: content.replacingText(annotations))
+    return record(type: .textCreate, before: content, after: content.replacingText(annotations))
   }
 
   @discardableResult
   func replaceText(
     before: InkSignPdfTextAnnotation,
     with annotation: InkSignPdfTextAnnotation,
-    kind: InkSignPdfPageContentActionKind
+    type: InkSignPdfPageContentActionType
   ) -> Bool {
     guard let index = content.textAnnotations.firstIndex(where: { $0.id == before.id }),
           content.textAnnotations[index] == before,
           before.id == annotation.id else { return false }
     var annotations = content.textAnnotations
     annotations[index] = annotation
-    return record(kind: kind, before: content, after: content.replacingText(annotations))
+    return record(type: type, before: content, after: content.replacingText(annotations))
   }
 
   @discardableResult
@@ -178,12 +183,12 @@ final class InkSignPdfPageContentHistory {
           content.textAnnotations[index] == annotation else { return false }
     var annotations = content.textAnnotations
     annotations.remove(at: index)
-    return record(kind: .textDelete, before: content, after: content.replacingText(annotations))
+    return record(type: .textDelete, before: content, after: content.replacingText(annotations))
   }
 
   func clear() {
     guard !content.isEmpty else { return }
-    record(kind: .clear, before: content,
+    record(type: .clear, before: content,
            after: InkSignPdfPageContentSnapshot(drawing: PKDrawing(), textAnnotations: []))
   }
 

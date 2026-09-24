@@ -1,5 +1,4 @@
 import Foundation
-import PDFKit
 import PencilKit
 import UIKit
 import NitroModules
@@ -16,11 +15,10 @@ extension InkSignView {
     }
   }
 
-  /// Converts an overlay point through the coordinator-owned PDFKit mapping
-  /// into canonical media-box-relative page coordinates.
+  /// Converts an overlay point into canonical media-box-relative page coordinates.
   func canonicalPagePoint(fromOverlay point: CGPoint) -> CGPoint? {
-    guard let state = documentState,
-          attachedOverlayPage === state.activePage.page,
+    guard let state = documentCoordinator.document,
+          attachedOverlayPage == state.activePage.id,
           let transform = pageToOverlayTransform,
           let inverse = transform.invertedIfFinite else { return nil }
     let pagePoint = point.applying(inverse)
@@ -31,22 +29,22 @@ extension InkSignView {
     return pagePoint
   }
 
-  func isSupportedPage(_ candidate: PDFPage) -> Bool {
-    guard let state = documentState else { return false }
-    return state.activePage.page === candidate && state.activePage.geometry.isValid
+  func isSupportedPage(_ pageID: UUID) -> Bool {
+    guard let state = documentCoordinator.document else { return false }
+    return state.activePage.id == pageID && state.activePage.geometry.isValid
   }
 
-  func overlayDidDisplay(_ overlay: InkCanvasView, for page: PDFPage) {
-    guard !disposed, overlay === canvasView, isSupportedPage(page) else { return }
-    attachedOverlayPage = page
-    refreshOverlayTransform(overlay, for: page)
+  func overlayDidDisplay(_ overlay: InkCanvasView, for pageID: UUID) {
+    guard !disposed, overlay === canvasView, isSupportedPage(pageID) else { return }
+    attachedOverlayPage = pageID
+    refreshOverlayTransform(overlay, for: pageID)
     textInteractionOverlay.syncContent()
     if let pendingPageSwitchID { finishPageSwitchIfReady(requestID: pendingPageSwitchID) }
     _ = completeOpenIfReady()
   }
 
-  func overlayDidEndDisplaying(_ overlay: InkCanvasView, for page: PDFPage) {
-    guard overlay === canvasView, attachedOverlayPage === page else { return }
+  func overlayDidEndDisplaying(_ overlay: InkCanvasView, for pageID: UUID) {
+    guard overlay === canvasView, attachedOverlayPage == pageID else { return }
     attachedOverlayPage = nil
     textInteractionOverlay.finishForLifecycle()
     cancelActiveStroke()
@@ -55,9 +53,9 @@ extension InkSignView {
   }
 
   func overlayLayoutChanged(_ overlay: InkCanvasView) {
-    guard !disposed, let page = documentState?.activePage.page,
-          attachedOverlayPage === page, isSupportedPage(page) else { return }
-    refreshOverlayTransform(overlay, for: page)
+    guard !disposed, let pageID = documentCoordinator.document?.activePage.id,
+          attachedOverlayPage == pageID, isSupportedPage(pageID) else { return }
+    refreshOverlayTransform(overlay, for: pageID)
     if let pendingPageSwitchID { finishPageSwitchIfReady(requestID: pendingPageSwitchID) }
     _ = completeOpenIfReady()
     pageTurnLifecycle.stableContextChanged()
@@ -67,49 +65,48 @@ extension InkSignView {
   /// dependent state; they never issue another viewport mutation.
   func documentViewViewportChanged(_ view: InkPdfView) {
     guard view === documentView,
-          let page = documentState?.activePage.page else { return }
+          let pageID = documentCoordinator.document?.activePage.id else { return }
     invalidateOverlayTransformCache()
-    refreshOverlayTransform(canvasView, for: page)
+    refreshOverlayTransform(canvasView, for: pageID)
   }
 
-  func refreshOverlayTransform(_ overlay: InkCanvasView, for page: PDFPage) {
-    guard isSupportedPage(page), attachedOverlayPage === page else { return }
-    let mediaBox = documentState?.activePage.geometry.mediaBox ?? .zero
-    if overlayTransformPage === page,
-       overlayTransformBounds == overlay.bounds,
-       overlayTransformMediaBox == mediaBox {
+  func refreshOverlayTransform(_ overlay: InkCanvasView, for pageID: UUID) {
+    guard isSupportedPage(pageID), attachedOverlayPage == pageID,
+          let viewport = documentView.viewportTransform else {
+      invalidateOverlayTransformCache()
       return
     }
-    func convert(_ point: CGPoint) -> CGPoint {
-      let viewPoint = documentView.convert(point, from: page)
-      return overlay.convert(viewPoint, from: documentView)
+    let documentOrigin = overlay.convert(CGPoint.zero, from: documentView)
+    let documentXAxis = overlay.convert(CGPoint(x: 1, y: 0), from: documentView)
+    let documentYAxis = overlay.convert(CGPoint(x: 0, y: 1), from: documentView)
+    let documentToOverlay = CGAffineTransform(
+      a: documentXAxis.x - documentOrigin.x,
+      b: documentXAxis.y - documentOrigin.y,
+      c: documentYAxis.x - documentOrigin.x,
+      d: documentYAxis.y - documentOrigin.y,
+      tx: documentOrigin.x,
+      ty: documentOrigin.y)
+    let transform = viewport.canonicalToView.concatenating(documentToOverlay)
+    guard transform.a.isFinite, transform.b.isFinite,
+          transform.c.isFinite, transform.d.isFinite,
+          transform.tx.isFinite, transform.ty.isFinite,
+          transform.invertedIfFinite != nil else {
+      invalidateOverlayTransformCache()
+      return
     }
-    let origin = convert(CGPoint(x: mediaBox.minX, y: mediaBox.maxY))
-    let xAxis = convert(CGPoint(x: mediaBox.maxX, y: mediaBox.maxY))
-    let yAxis = convert(CGPoint(x: mediaBox.minX, y: mediaBox.minY))
-    let transform = CGAffineTransform(
-      a: (xAxis.x - origin.x) / mediaBox.width,
-      b: (xAxis.y - origin.y) / mediaBox.width,
-      c: (yAxis.x - origin.x) / mediaBox.height,
-      d: (yAxis.y - origin.y) / mediaBox.height,
-      tx: origin.x,
-      ty: origin.y)
-    let sx = sqrt(transform.a * transform.a + transform.b * transform.b)
-    let sy = sqrt(transform.c * transform.c + transform.d * transform.d)
-    let determinant = transform.a * transform.d - transform.b * transform.c
-    let relativeDifference = abs(sx - sy) / max(sx, sy)
-    guard transform.a.isFinite, transform.b.isFinite, transform.c.isFinite,
-          transform.d.isFinite, transform.tx.isFinite, transform.ty.isFinite,
-          sx.isFinite, sy.isFinite, sx > 0.0, sy > 0.0,
-          determinant.isFinite, abs(determinant) > 0.000001,
-          relativeDifference.isFinite, relativeDifference <= 0.001 else {
+    let mediaBox = viewport.geometry.mediaBox
+    if overlayTransformPage == pageID,
+       overlayTransformBounds == overlay.bounds,
+       overlayTransformMediaBox == mediaBox,
+       overlayTransformViewportFrame == viewport.pageFrame {
       return
     }
     if hasDrawingTransaction { cancelActiveStroke() }
     pageToOverlayTransform = transform
-    overlayTransformPage = page
+    overlayTransformPage = pageID
     overlayTransformBounds = overlay.bounds
     overlayTransformMediaBox = mediaBox
+    overlayTransformViewportFrame = viewport.pageFrame
     installCommittedDrawing()
     textInteractionOverlay.syncTransform()
   }
@@ -118,6 +115,7 @@ extension InkSignView {
     overlayTransformPage = nil
     overlayTransformBounds = .zero
     overlayTransformMediaBox = .zero
+    overlayTransformViewportFrame = .zero
     pageToOverlayTransform = nil
   }
 }

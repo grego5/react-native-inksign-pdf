@@ -15,7 +15,7 @@ extension InkSignView {
       self.textInteractionOverlay.finishForLifecycle()
       self.setInteractionMode(editing: false)
       self.configureTextPlacementGestureRecognition()
-      try self.textInteractionOverlay.armPlacement(generation: self.generation)
+      try self.textInteractionOverlay.armPlacement(generation: self.documentCoordinator.generation)
     }
   }
 
@@ -23,6 +23,13 @@ extension InkSignView {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
       self.textInteractionOverlay.cancelPendingPlacement()
+    }
+  }
+
+  func setTextDirection(direction: TextDirection) throws {
+    try performOnMainSync {
+      guard !self.disposed else { throw TextError.cancelled }
+      self.textInteractionOverlay.setTextDirection(direction)
     }
   }
 
@@ -39,11 +46,11 @@ extension InkSignView {
   }
 
   func activeTextAnnotations() -> [InkSignPdfTextAnnotation] {
-    documentState?.activePage.history.content.textAnnotations ?? []
+    documentCoordinator.document?.activePage.history.content.textAnnotations ?? []
   }
 
   func activePageSize() -> CGSize {
-    documentState?.activePage.geometry.mediaBox.size ?? .zero
+    documentCoordinator.document?.activePage.geometry.mediaBox.size ?? .zero
   }
 
   func appendTextAnnotation(
@@ -51,8 +58,8 @@ extension InkSignView {
     generation: UInt64,
     pageIndex: Int
   ) {
-    guard !disposed, self.generation == generation,
-          let state = documentState,
+    guard !disposed, self.documentCoordinator.generation == generation,
+          let state = documentCoordinator.document,
           state.activePageIndex == pageIndex else { return }
     cancelActiveStroke()
     guard state.activePage.history.appendText(annotation) else { return }
@@ -63,15 +70,15 @@ extension InkSignView {
   func replaceTextAnnotation(
     _ before: InkSignPdfTextAnnotation,
     with after: InkSignPdfTextAnnotation,
-    kind: InkSignPdfPageContentActionKind,
+    type: InkSignPdfPageContentActionType,
     generation: UInt64,
     pageIndex: Int
   ) {
-    guard !disposed, self.generation == generation,
-          let state = documentState,
+    guard !disposed, self.documentCoordinator.generation == generation,
+          let state = documentCoordinator.document,
           state.activePageIndex == pageIndex else { return }
     cancelActiveStroke()
-    guard state.activePage.history.replaceText(before: before, with: after, kind: kind) else { return }
+  guard state.activePage.history.replaceText(before: before, with: after, type: type) else { return }
     textInteractionOverlay.syncContent()
     emitChange()
   }
@@ -81,8 +88,8 @@ extension InkSignView {
     generation: UInt64,
     pageIndex: Int
   ) {
-    guard !disposed, self.generation == generation,
-          let state = documentState,
+    guard !disposed, self.documentCoordinator.generation == generation,
+          let state = documentCoordinator.document,
           state.activePageIndex == pageIndex else { return }
     cancelActiveStroke()
     guard state.activePage.history.removeText(annotation) else { return }

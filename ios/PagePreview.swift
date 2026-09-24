@@ -1,4 +1,5 @@
 import CoreGraphics
+import PDFKit
 import PencilKit
 import UIKit
 
@@ -23,7 +24,9 @@ struct InkSignPdfPageTurnPreviewKey: Hashable {
 
 struct InkSignPdfPageTurnPreviewRequest {
   let key: InkSignPdfPageTurnPreviewKey
-  let pdfiumSession: InkSignPdfPdfiumSession
+  let document: PDFDocument
+  let page: PDFPage
+  let pdfQueue: DispatchQueue
   let geometry: PageGeometry
   let drawingData: Data
   let textAnnotations: [InkSignPdfTextAnnotation]
@@ -54,7 +57,7 @@ final class InkSignPdfPageTurnPreviewView: UIView {
     imageView.frame = imageFrame
   }
 
-  /// Renders the base page with PDFium on the preview worker, then composites
+  /// Renders the base page with Quartz on the PDF queue, then composites
   /// only committed ink and text presentation on the resulting image.
   static func render(request: InkSignPdfPageTurnPreviewRequest) -> UIImage? {
     let size = request.size
@@ -66,131 +69,68 @@ final class InkSignPdfPageTurnPreviewView: UIView {
     let density = max(request.key.density, 1)
     let pixelWidth = max(1, Int(ceil(size.width * density)))
     let pixelHeight = max(1, Int(ceil(size.height * density)))
-    let pixels = NSMutableData(length: pixelWidth * pixelHeight * 4)
+    let bytesPerRow = pixelWidth * 4
+    let pixels = NSMutableData(length: bytesPerRow * pixelHeight)
     guard let pixels else { return nil }
-    let pointPdfToPreview = pdfiumTransform(for: request.geometry,
-                                            outputSize: size,
-                                            pixelScale: 1)
-    let pdfToPreview = pdfiumTransform(for: request.geometry,
-                                       outputSize: size,
-                                       pixelScale: density)
-    do {
-      try request.pdfiumSession.renderPage(
-        UInt(request.key.targetPageIndex),
-        width: Int32(pixelWidth),
-        height: Int32(pixelHeight),
-        stride: Int32(pixelWidth * 4),
-        pageToDevice: pdfToPreview,
-        clip: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight),
-        background: UInt32.max,
-        flags: 0x03,
-        pixels: pixels)
-      guard let provider = CGDataProvider(data: pixels as Data as CFData),
-            let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-            let image = CGImage(width: pixelWidth, height: pixelHeight,
-                                bitsPerComponent: 8, bitsPerPixel: 32,
-                                bytesPerRow: pixelWidth * 4,
-                                space: colorSpace,
-                                bitmapInfo: CGBitmapInfo.byteOrder32Little
-                                  .union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)),
-                                provider: provider, decode: nil,
-                                shouldInterpolate: true, intent: .defaultIntent) else {
-        return nil
+    let displaySize = PageViewportTransform.displaySize(for: request.geometry)
+    let fitScale = min(size.width / displaySize.width,
+                       size.height / displaySize.height)
+    guard let viewport = PageViewportTransform(
+      geometry: request.geometry,
+      bounds: CGRect(origin: .zero, size: size),
+      zoom: fitScale,
+      focus: CGPoint(x: request.geometry.mediaBox.width / 2,
+                     y: request.geometry.mediaBox.height / 2),
+      generation: request.key.generation) else { return nil }
+    let pointPdfToPreview = viewport.pdfToViewTransform()
+    let pdfToPreview = viewport.pdfToViewTransform(pixelScale: density)
+    let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(
+      CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue))
+    guard let baseContext = CGContext(data: pixels.mutableBytes,
+                                      width: pixelWidth,
+                                      height: pixelHeight,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: bytesPerRow,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: bitmapInfo.rawValue),
+          let pageRef = request.page.pageRef else { return nil }
+    baseContext.setFillColor(UIColor.white.cgColor)
+    baseContext.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+    baseContext.saveGState()
+    baseContext.translateBy(x: 0, y: CGFloat(pixelHeight))
+    baseContext.scaleBy(x: 1, y: -1)
+    baseContext.concatenate(pdfToPreview)
+    withExtendedLifetime(request.document) {
+      baseContext.drawPDFPage(pageRef)
+      for annotation in request.page.annotations where annotation.shouldDisplay {
+        annotation.draw(with: .mediaBox, in: baseContext)
       }
-
-      let pageImage = UIImage(cgImage: image, scale: density, orientation: .up)
-      let renderer = UIGraphicsImageRenderer(size: size, format: {
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = density
-        format.opaque = true
-        return format
-      }())
-      return renderer.image { context in
-        pageImage.draw(in: CGRect(origin: .zero, size: size))
-        context.cgContext.saveGState()
-        context.cgContext.concatenate(canonicalToPreviewTransform(
-          for: request.geometry, outputSize: size))
-        drawing.image(from: CGRect(origin: .zero,
-                                   size: request.geometry.mediaBox.size), scale: 1)
-          .draw(in: CGRect(origin: .zero, size: request.geometry.mediaBox.size))
-        context.cgContext.restoreGState()
-        _ = InkSignPdfTextRenderer.drawForPreview(
-          request.textAnnotations,
-          pageSize: request.geometry.mediaBox.size,
-          mediaBox: request.geometry.mediaBox,
-          pdfToPreview: CGAffineTransform(
-            translationX: -request.geometry.mediaBox.minX,
-            y: -request.geometry.mediaBox.minY
-          ).concatenating(pointPdfToPreview),
-          in: context.cgContext)
-      }
-    } catch {
-      return nil
     }
-  }
+    baseContext.restoreGState()
+    guard let baseImage = baseContext.makeImage() else { return nil }
 
-  private static func rotatedSize(for geometry: PageGeometry) -> CGSize {
-    let rotation = ((geometry.rotation % 360) + 360) % 360
-    return rotation == 90 || rotation == 270
-      ? CGSize(width: geometry.mediaBox.height, height: geometry.mediaBox.width)
-      : geometry.mediaBox.size
-  }
-
-  private static func pdfToDisplayTransform(for geometry: PageGeometry) -> CGAffineTransform {
-    let w = geometry.mediaBox.width
-    let h = geometry.mediaBox.height
-    switch ((geometry.rotation % 360) + 360) % 360 {
-    case 90: return CGAffineTransform(a: 0, b: -1, c: -1, d: 0, tx: h, ty: w)
-    case 180: return CGAffineTransform(a: -1, b: 0, c: 0, d: 1, tx: w, ty: 0)
-    case 270: return CGAffineTransform(a: 0, b: 1, c: 1, d: 0, tx: 0, ty: 0)
-    default: return CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: h)
+    let pageImage = UIImage(cgImage: baseImage, scale: density, orientation: .up)
+    let renderer = UIGraphicsImageRenderer(size: size, format: {
+      let format = UIGraphicsImageRendererFormat()
+      format.scale = density
+      format.opaque = true
+      return format
+    }())
+    return renderer.image { context in
+      pageImage.draw(in: CGRect(origin: .zero, size: size))
+      context.cgContext.saveGState()
+      context.cgContext.concatenate(viewport.canonicalToView)
+      drawing.image(from: CGRect(origin: .zero,
+                                 size: request.geometry.mediaBox.size), scale: 1)
+        .draw(in: CGRect(origin: .zero, size: request.geometry.mediaBox.size))
+      context.cgContext.restoreGState()
+      _ = InkSignPdfTextRenderer.drawForPreview(
+        request.textAnnotations,
+        pageSize: request.geometry.mediaBox.size,
+        mediaBox: request.geometry.mediaBox,
+        pdfToPreview: pointPdfToPreview,
+        in: context.cgContext)
     }
-  }
-
-  private static func canonicalToDisplayTransform(for geometry: PageGeometry) -> CGAffineTransform {
-    let w = geometry.mediaBox.width
-    let h = geometry.mediaBox.height
-    switch ((geometry.rotation % 360) + 360) % 360 {
-    case 90: return CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: w)
-    case 180: return CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: w, ty: h)
-    case 270: return CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: h, ty: 0)
-    default: return .identity
-    }
-  }
-
-  private static func canonicalToPreviewTransform(
-    for geometry: PageGeometry,
-    outputSize: CGSize
-  ) -> CGAffineTransform {
-    let base = canonicalToDisplayTransform(for: geometry)
-    let displaySize = rotatedSize(for: geometry)
-    let scale = min(outputSize.width / displaySize.width,
-                    outputSize.height / displaySize.height)
-    let xOffset = (outputSize.width - displaySize.width * scale) / 2
-    let yOffset = (outputSize.height - displaySize.height * scale) / 2
-    return CGAffineTransform(a: base.a * scale, b: base.b * scale,
-                             c: base.c * scale, d: base.d * scale,
-                             tx: base.tx * scale + xOffset,
-                             ty: base.ty * scale + yOffset)
-  }
-
-  private static func pdfiumTransform(
-    for geometry: PageGeometry,
-    outputSize: CGSize,
-    pixelScale: CGFloat
-  ) -> CGAffineTransform {
-    let base = pdfToDisplayTransform(for: geometry)
-    let displaySize = rotatedSize(for: geometry)
-    let scale = min(outputSize.width / displaySize.width,
-                    outputSize.height / displaySize.height)
-    let xOffset = (outputSize.width - displaySize.width * scale) / 2
-    let yOffset = (outputSize.height - displaySize.height * scale) / 2
-    return CGAffineTransform(a: base.a * scale * pixelScale,
-                             b: base.b * scale * pixelScale,
-                             c: base.c * scale * pixelScale,
-                             d: base.d * scale * pixelScale,
-                             tx: base.tx * scale * pixelScale + xOffset * pixelScale,
-                             ty: base.ty * scale * pixelScale + yOffset * pixelScale)
   }
 
   func install(image: UIImage, key: InkSignPdfPageTurnPreviewKey, frame: CGRect) -> Bool {
