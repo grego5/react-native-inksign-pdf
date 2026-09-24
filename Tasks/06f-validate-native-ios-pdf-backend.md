@@ -40,20 +40,20 @@ page geometry, and export this module's locked text and vector signatures.
 4. Verify signature bounds, page association, display/print flags, read-only and
    lock flags, and a persisted vector-only appearance stream. Supported ordinary
    viewers must not edit, move, resize, or replace it.
-5. Verify visible output in the supported viewer corpus and measure rendering
-   with a representative large or complex document.
+5. Verify visible output and editing behavior in the supported viewer corpus.
 6. Convert required behavior into focused assertions. Do not inspect or reject
    unsupported advanced PDF semantics, and do not add PDFium fallback.
 
 ## Completion
 
 - Direct import, geometry, annotation persistence, locked-but-copyable text,
-  read-only vector signatures, write/reopen, viewer interoperability, and
-  representative rendering performance are proven.
+  read-only vector signatures, write/reopen, and supported viewer
+  interoperability are proven.
 - Tasks 6, 6d, and 6g have no unresolved ownership or representation decision.
 
 Status: In progress — the local Hebrew visual-review fixture is not bundled and
 its test is skipped when absent. RTL/fallback-font rendering and selection or
 copying interoperability still require macOS fixture and supported-viewer
-evidence. A skipped fixture is not completion evidence; external-viewer and
-representative performance checks also remain pending.
+evidence. A skipped fixture is not completion evidence; external-viewer checks
+remain pending. A one-off rendering measurement may inform
+integration tuning, but platform API performance is not a migration gate.

@@ -129,7 +129,7 @@ on the main actor.
   publishes only while the operation remains current.
 - Fixtures cover direct page import, image pages, mixed geometry, rotations,
   LTR/RTL and fallback text, locked-but-copyable text, read-only locked vector
-  signatures, write/reopen, external viewers, and representative performance.
+  signatures, write/reopen, and external viewers.
   Unsupported advanced PDF semantics are not acceptance criteria.
 
 ## Implementation policy

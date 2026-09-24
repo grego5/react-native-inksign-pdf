@@ -33,7 +33,7 @@ PDFium backend and Apple-framework iOS backend.
   image-size, remove-current, and requested-index move controls.
 - Example state follows resolved page results and `onPageChange`. Native
   cross-platform validation, manual parity, external-viewer interoperability,
-  and representative performance evidence remain to be completed.
+  and final export evidence remain to be completed.
 
 ## Implementation
 
@@ -51,9 +51,9 @@ PDFium backend and Apple-framework iOS backend.
 8. Run the complete validation matrix and inspect generated artifacts for accidental API or platform drift.
 9. Publish the Task 6f interoperability results: page import, image pages,
    geometry, locked-but-copyable text annotations, read-only locked vector
-   signature annotations, external viewers, performance, file ownership, and
-   transactional publication. State that advanced source PDF semantics are
-   outside the basic editing contract and their loss is not incomplete work.
+   signature annotations, external viewers, file ownership, and transactional
+   publication. State that advanced source PDF semantics are outside the basic
+   editing contract and their loss is not incomplete work.
 
 ## Tests
 
@@ -81,4 +81,4 @@ PDFium backend and Apple-framework iOS backend.
 
 Status: In progress — API documentation, example controls, and TypeScript
 contract coverage are in place. The native validation matrix, manual parity,
-external-viewer results, and representative performance checks remain pending.
+external-viewer results, and final export evidence remain pending.

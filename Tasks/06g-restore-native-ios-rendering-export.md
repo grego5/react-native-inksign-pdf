@@ -46,5 +46,5 @@ the coordinator's immutable snapshot and transactional publication model.
 - Production iOS rendering, export, and verification contain no PDFium call and
   make no advanced source-semantics preservation promise.
 
-Status: Implementation follows the annotation-based contract; macOS fixture,
-external-viewer, and performance validation remain pending.
+Status: Implementation follows the annotation-based contract; macOS fixture and
+external-viewer validation remain pending.

@@ -203,81 +203,6 @@ final class NativePDFBackendTests: XCTestCase {
            named: "hebrew-fixture-visual-review.png")
   }
 
-  func testComplexDocumentRenderingPerformance() throws {
-    let pageCount = 50
-    let sourceURL = temporaryPDFURL("render-performance-source")
-    let outputURL = temporaryPDFURL("render-performance-output")
-    defer {
-      try? FileManager.default.removeItem(at: sourceURL)
-      try? FileManager.default.removeItem(at: outputURL)
-    }
-
-    try writeComplexPDF(to: sourceURL, pageCount: pageCount)
-    let source = try XCTUnwrap(PDFDocument(url: sourceURL))
-    XCTAssertEqual(source.pageCount, pageCount)
-    let drawingData = variableWidthDrawing().dataRepresentation()
-    let snapshots = try (0..<pageCount).map { pageIndex -> ExportPageSnapshot in
-      let page = try XCTUnwrap(source.page(at: pageIndex))
-      return ExportPageSnapshot(
-        pageIndex: pageIndex,
-        pageID: UUID(),
-        geometry: PageGeometry(mediaBox: page.bounds(for: .mediaBox),
-                               rotation: page.rotation),
-        drawingData: drawingData,
-        textAnnotations: [
-          InkSignPdfTextAnnotation(
-            id: "performance-text-\(pageIndex)",
-            text: "Page \(pageIndex) — שלום — العربية",
-            bounds: CGRect(x: 72, y: 48, width: 420, height: 28),
-            fontSize: 14,
-            isRTL: true),
-        ])
-    }
-    try InkSignPdfNativeExporter.write(sourceURL: sourceURL,
-                                       pages: snapshots,
-                                       outputURL: outputURL)
-
-    let output = try XCTUnwrap(PDFDocument(url: outputURL))
-    XCTAssertEqual(output.pageCount, pageCount)
-    let outputBytes = try Data(contentsOf: outputURL)
-    let pdfAttachment = XCTAttachment(data: outputBytes,
-                                      uniformTypeIdentifier: "com.adobe.pdf")
-    pdfAttachment.name = "native-ios-render-performance-50-pages.pdf"
-    pdfAttachment.lifetime = .keepAlways
-    add(pdfAttachment)
-    attach(try XCTUnwrap(output.page(at: 0))
-             .thumbnail(of: CGSize(width: 792, height: 1024), for: .mediaBox),
-           named: "native-ios-render-performance-first-page.png")
-
-    let renderSize = CGSize(width: 792, height: 1024)
-    let start = DispatchTime.now().uptimeNanoseconds
-    var renderedPixels = 0
-    for pageIndex in 0..<output.pageCount {
-      let image = autoreleasepool {
-        output.page(at: pageIndex)?.thumbnail(of: renderSize, for: .mediaBox)
-      }
-      let cgImage = try XCTUnwrap(image?.cgImage)
-      renderedPixels += cgImage.width * cgImage.height
-    }
-    let elapsedNanoseconds = DispatchTime.now().uptimeNanoseconds - start
-    let elapsedMilliseconds = Double(elapsedNanoseconds) / 1_000_000
-    let report = String(
-      format: "PDF_RENDER_BENCHMARK renderer=PDFKit-Quartz pages=%ld pageSize=612x792 " +
-        "rasterSize=%ldx%ld renderedPixels=%ld totalMs=%.1f meanMsPerPage=%.2f pdfBytes=%ld",
-      pageCount,
-      Int(renderSize.width),
-      Int(renderSize.height),
-      renderedPixels,
-      elapsedMilliseconds,
-      elapsedMilliseconds / Double(pageCount),
-      outputBytes.count)
-    print(report)
-    let metricAttachment = XCTAttachment(string: report)
-    metricAttachment.name = "native-ios-render-performance.txt"
-    metricAttachment.lifetime = .keepAlways
-    add(metricAttachment)
-  }
-
   private func imagePage(size: CGSize, color: UIColor) throws -> PDFPage {
     let format = UIGraphicsImageRendererFormat()
     format.scale = 1
@@ -307,48 +232,6 @@ final class NativePDFBackendTests: XCTestCase {
     context.textPosition = CGPoint(x: 40, y: 580)
     CTLineDraw(sourceLine, context)
     context.endPDFPage()
-    context.closePDF()
-  }
-
-  private func writeComplexPDF(to url: URL, pageCount: Int) throws {
-    let mediaBox = CGRect(x: 0, y: 0, width: 612, height: 792)
-    var bounds = mediaBox
-    let consumer = try XCTUnwrap(CGDataConsumer(url: url as CFURL))
-    let context = try XCTUnwrap(CGContext(consumer: consumer, mediaBox: &bounds, nil))
-    let font = CTFontCreateWithName("Helvetica" as CFString, 10, nil)
-    let attributes: [NSAttributedString.Key: Any] = [
-      NSAttributedString.Key(kCTFontAttributeName as String): font,
-    ]
-
-    for pageIndex in 0..<pageCount {
-      context.beginPDFPage(nil)
-      context.setFillColor(UIColor.white.cgColor)
-      context.fill(mediaBox)
-      context.setStrokeColor(UIColor(red: 0.18, green: 0.35, blue: 0.72, alpha: 1).cgColor)
-      context.setLineWidth(1.25)
-
-      for row in 0..<42 {
-        let line = CTLineCreateWithAttributedString(
-          NSAttributedString(
-            string: "Page \(pageIndex) row \(row) — שלום — العربية — PDFKit Quartz",
-            attributes: attributes))
-        context.textMatrix = .identity
-        context.textPosition = CGPoint(x: 32, y: mediaBox.maxY - 44 - CGFloat(row) * 16)
-        CTLineDraw(line, context)
-      }
-
-      for shape in 0..<24 {
-        let x = 36 + CGFloat(shape % 6) * 88
-        let y = 64 + CGFloat(shape / 6) * 32
-        context.beginPath()
-        context.move(to: CGPoint(x: x, y: y))
-        context.addCurve(to: CGPoint(x: x + 64, y: y + 18),
-                         control1: CGPoint(x: x + 16, y: y + 38),
-                         control2: CGPoint(x: x + 48, y: y - 20))
-        context.strokePath()
-      }
-      context.endPDFPage()
-    }
     context.closePDF()
   }
 
