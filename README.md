@@ -9,7 +9,7 @@
 - Android's optional `fallbackFont` applies to source-PDF rendering.
 - Supports velocity-driven ink, text annotations, and history.
 - Android using custom c++ InkEngine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
-- iOS uses PDFKit and Quartz for PDF operations, CoreText for text, and PencilKit for ink input. No web support.
+- iOS uses PDFKit for PDF operations and page presentation, CoreText for text, and PencilKit for ink input. No web support.
 - Exports a new PDF that retains visible source pages and adds text and signatures as locked annotations with vector appearances.
 
 Intended workflow: open pdf, double click an area or dedicated button to enter edit mode, zoom into tapped area or prefined coordinates,
@@ -21,7 +21,7 @@ draw a signature, save to new file. The brush doesn't scale with zoom level, but
 
 - Node.js 20
 - Android 7.0/API 24 or newer
-- iOS 15.1
+- iOS 16.0
 - A native iOS or Android project
 
 ## Installation

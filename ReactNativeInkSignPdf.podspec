@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.homepage     = 'https://github.com/grego5/react-native-inksign-pdf'
   s.license      = { :type => 'MIT' }
   s.author       = { 'grego5' => 'maintainers@example.invalid' }
-  s.platforms    = { :ios => '15.1' }
+  s.platforms    = { :ios => '16.0' }
   s.source       = { :git => 'https://github.com/grego5/react-native-inksign-pdf.git', :tag => s.version.to_s }
   s.source_files = 'ios/**/*.{h,m,mm,swift}'
   s.exclude_files = 'ios/tests/**/*'

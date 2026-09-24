@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import PDFKit
 import NitroModules
 import UIKit
 
@@ -236,9 +237,7 @@ extension InkSignView {
       finishStructuralFailure(context, error: MutablePageError.activeInkGesture, promise: promise)
       return false
     }
-    cancelViewportAnimation()
     cancelPendingPageSwitch()
-    pageTurnLifecycle.cancelUncommittedTurn()
     textInteractionOverlay.finishForLifecycle()
     setInteractionMode(editing: context.wasEditing, interactionsEnabled: false)
     context.prepared = true
@@ -336,14 +335,10 @@ extension InkSignView {
                                              viewport: Viewport?,
                                              wasEditing: Bool) {
     let page = state.activePage
-    documentView.installPage(index: state.activePageIndex,
-                              pageID: page.id,
-                              geometry: page.geometry,
-                              page: page.page,
-                              document: state.document,
-                              generation: generation)
-    applyStructuralViewport(viewport, generation: generation)
-    overlayDidDisplay(canvasView, for: page.id)
+    overlayProvider.install(document: state.document, generation: generation)
+    documentView.document = state.document
+    documentView.go(to: page.page)
+    applyStructuralViewport(viewport)
     restoreInteractionMode(wasEditing)
   }
 
@@ -354,24 +349,19 @@ extension InkSignView {
     pageSwitchRequestID &+= 1
     pendingPageSwitchID = nil
     let page = state.activePage
-    documentView.installPage(index: state.activePageIndex,
-                              pageID: page.id,
-                              geometry: page.geometry,
-                              page: page.page,
-                              document: state.document,
-                              generation: generation)
-    applyStructuralViewport(viewport, generation: generation)
-    overlayDidDisplay(canvasView, for: page.id)
+    overlayProvider.install(document: state.document, generation: generation)
+    documentView.document = state.document
+    documentView.go(to: page.page)
+    applyStructuralViewport(viewport)
     restoreInteractionMode(wasEditing)
     configureDoubleTapGestureRecognition()
     emitChange(force: true)
   }
 
-  private func applyStructuralViewport(_ viewport: Viewport?, generation: UInt64) {
+  private func applyStructuralViewport(_ viewport: Viewport?) {
     guard let viewport else { return }
-    _ = documentView.applyViewport(zoom: CGFloat(viewport.zoom),
-                                   focus: CGPoint(x: viewport.x, y: viewport.y),
-                                   generation: generation)
+    _ = applyViewport(target: ViewportTarget(zoom: CGFloat(viewport.zoom),
+                                             focus: CGPoint(x: viewport.x, y: viewport.y)))
   }
 
   private func restoreInteractionMode(_ wasEditing: Bool) {

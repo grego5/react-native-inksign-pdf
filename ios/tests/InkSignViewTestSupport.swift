@@ -13,33 +13,32 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     pageCount: Int = 2,
     activePageIndex: Int = 0,
     applyInitialViewport: Bool = true
-  ) -> (view: InkSignView, window: UIWindow, pages: [UUID],
-        previewScheduler: TestPreviewScheduler,
-        animationFactory: TestAnimationDriverFactory) {
+  ) -> (view: InkSignView, window: UIWindow, pages: [UUID]) {
     let document = PDFDocument()
     for index in 0..<pageCount {
-      let image = UIGraphicsImageRenderer(size: CGSize(width: 300 + index * 100, height: 400))
-        .image { UIColor.white.setFill(); $0.fill(CGRect(x: 0, y: 0, width: 300 + index * 100, height: 400)) }
+      let size = CGSize(width: 300 + index * 100, height: 400)
+      let image = UIGraphicsImageRenderer(size: size).image { context in
+        UIColor.white.setFill()
+        context.fill(CGRect(origin: .zero, size: size))
+      }
       let page = PDFPage(image: image)!
-      page.setBounds(CGRect(x: 0, y: 0, width: 300 + index * 100, height: 400), for: .mediaBox)
+      page.setBounds(CGRect(origin: .zero, size: size), for: .mediaBox)
       document.insert(page, at: index)
     }
+
     let workingURL = try! InkSignPdfCacheArtifactPolicy.shared.allocateWorkingSource()
     XCTAssertTrue(document.write(to: workingURL))
     let loaded = try! InkSignPdfDocumentCandidateLoader.load(url: workingURL)
     let states = loaded.pages
-    let previewScheduler = TestPreviewScheduler()
-    let animationFactory = TestAnimationDriverFactory()
-    let view = InkSignView(
-      previewScheduler: previewScheduler,
-      animationDriverFactory: animationFactory)
-    let state = InkSignPdfDocumentState(
-      sourceURL: workingURL,
-      workingURL: workingURL,
-      document: loaded.document,
-      pages: states)
-    XCTAssertTrue(view.documentCoordinator.publish(state, generation: view.documentCoordinator.generation))
+    let view = InkSignView()
+    let state = InkSignPdfDocumentState(sourceURL: workingURL,
+                                        workingURL: workingURL,
+                                        document: loaded.document,
+                                        pages: states)
+    XCTAssertTrue(view.documentCoordinator.publish(state,
+                                                    generation: view.documentCoordinator.generation))
     XCTAssertTrue(view.documentCoordinator.selectPage(at: activePageIndex))
+
     let controller = UIViewController()
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
     window.rootViewController = controller
@@ -47,71 +46,27 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     view.view.frame = controller.view.bounds
     window.makeKeyAndVisible()
     controller.view.layoutIfNeeded()
-    view.documentView.installPage(
-      index: activePageIndex,
-      pageID: states[activePageIndex].id,
-      geometry: states[activePageIndex].geometry,
-      page: states[activePageIndex].page,
-      document: loaded.document,
-      generation: view.documentCoordinator.generation)
+    view.overlayProvider.install(document: loaded.document,
+                                 generation: view.documentCoordinator.generation)
+    view.documentView.document = loaded.document
+    view.documentView.go(to: states[activePageIndex].page)
     view.documentView.layoutIfNeeded()
     if applyInitialViewport {
-      XCTAssertTrue(view.documentView.applyViewport(
+      XCTAssertTrue(view.applyViewport(target: ViewportTarget(
         zoom: view.documentView.scaleFactorForSizeToFit,
-        focus: CGPoint(x: 150, y: 200),
-        generation: view.documentCoordinator.generation))
+        focus: CGPoint(x: 150, y: 200))))
     }
-    view.canvasView.frame = view.documentView.bounds
-    view.attachedOverlayPage = states[activePageIndex].id
-    view.overlayTransformPage = states[activePageIndex].id
+    let canvas = view.overlayProvider.canvasView(for: states[activePageIndex].id)!
+    view.overlayDidDisplay(canvas, for: states[activePageIndex].id)
     view.pageToOverlayTransform = .identity
-    view.pageTurnLifecycle.stableContextChanged()
-    previewScheduler.completeAll()
-    return (view, window, states.map(\.id), previewScheduler, animationFactory)
+    view.overlayTransformPage = states[activePageIndex].id
+    return (view, window, states.map(\.id))
   }
 
   func drainMainQueue() {
     let drained = expectation(description: "queued navigation callbacks")
     DispatchQueue.main.async { drained.fulfill() }
     wait(for: [drained], timeout: 1)
-  }
-
-  func preparedPreview(
-    _ direction: InkSignPdfEdgeNavigationPhysicalDirection,
-    in view: InkSignView
-  ) -> InkSignPdfPageTurnLifecycle.PreparedPreview? {
-    guard case .some(.ready(let preview)) = view.pageTurnLifecycle.previewSlots[direction] else {
-      return nil
-    }
-    return preview
-  }
-
-  func renderingRequest(
-    _ direction: InkSignPdfEdgeNavigationPhysicalDirection,
-    in view: InkSignView
-  ) -> InkSignPdfPageTurnPreviewRequest? {
-    guard case .some(.rendering(let rendering)) = view.pageTurnLifecycle.previewSlots[direction] else {
-      return nil
-    }
-    return rendering.request
-  }
-
-  func isIdle(_ lifecycle: InkSignPdfPageTurnLifecycle) -> Bool {
-    if case .idle = lifecycle.phase { return true }
-    return false
-  }
-
-  func beginSubthresholdSettlement(in view: InkSignView) {
-    XCTAssertTrue(beginPull(in: view))
-    view.pageTurnLifecycle.pullChanged(translation: CGPoint(x: -32, y: 0))
-    view.pageTurnLifecycle.pullEnded()
-  }
-
-  @discardableResult
-  func beginPull(in view: InkSignView) -> Bool {
-    let location = CGPoint(x: view.documentView.bounds.midX,
-                           y: view.documentView.bounds.midY)
-    return view.prepareForEdgeNavigationTouch(at: location)
   }
 }
 
@@ -123,9 +78,13 @@ func makeCenteredTextAnnotation(
   id: String,
   text: String,
   fontSize: CGFloat,
-  pageSize: CGSize
+  pageSize: CGSize,
+  isRTL: Bool = false
 ) -> InkSignPdfTextAnnotation {
-  let size = InkSignPdfTextAnnotation.intrinsicSize(of: text, fontSize: fontSize)
+  let size = InkSignPdfTextAnnotation.intrinsicSize(of: text,
+                                                   fontSize: fontSize,
+                                                   isRTL: isRTL,
+                                                   maximumWidth: pageSize.width)
   let x = size.width >= pageSize.width
     ? (pageSize.width - size.width) / 2
     : min(max((pageSize.width - size.width) / 2, 0), pageSize.width - size.width)
@@ -136,101 +95,6 @@ func makeCenteredTextAnnotation(
                                   text: text,
                                   bounds: CGRect(x: x, y: y,
                                                  width: size.width, height: size.height),
-                                  fontSize: fontSize)
-}
-
-final class TestPreviewScheduler: InkSignPdfPageTurnPreviewScheduler {
-  final class Job {
-    let request: InkSignPdfPageTurnPreviewRequest
-    let completion: (UIImage?) -> Void
-
-    init(request: InkSignPdfPageTurnPreviewRequest, completion: @escaping (UIImage?) -> Void) {
-      self.request = request
-      self.completion = completion
-    }
-  }
-
-  private(set) var submittedRequests: [InkSignPdfPageTurnPreviewRequest] = []
-  private var jobs: [Job] = []
-
-  func schedule(
-    _ request: InkSignPdfPageTurnPreviewRequest,
-    completion: @escaping (UIImage?) -> Void
-  ) {
-    submittedRequests.append(request)
-    jobs.append(Job(request: request, completion: completion))
-  }
-
-  func completeNext(image: UIImage? = UIImage()) {
-    precondition(!jobs.isEmpty, "expected a queued preview job")
-    let job = jobs.removeFirst()
-    job.completion(image)
-  }
-
-  func completeAll(image: UIImage? = UIImage()) {
-    while !jobs.isEmpty {
-      completeNext(image: image)
-    }
-  }
-
-  func complete(request: InkSignPdfPageTurnPreviewRequest, image: UIImage?) {
-    guard let index = jobs.firstIndex(where: { $0.request.key == request.key }) else {
-      preconditionFailure("expected a queued preview request")
-    }
-    let job = jobs.remove(at: index)
-    job.completion(image)
-  }
-}
-
-final class TestAnimationDriverFactory: InkSignPdfPageTurnAnimationDriverFactory {
-  weak var lastDriver: TestAnimationDriver?
-  private(set) var callbackHandles: [TestAnimationCallbackHandle] = []
-
-  var lastCallback: TestAnimationCallbackHandle? {
-    callbackHandles.last
-  }
-
-  func make(
-    duration: CFTimeInterval,
-    update: @escaping (CGFloat) -> Void,
-    finish: @escaping () -> Void
-  ) -> InkSignPdfPageTurnAnimationDriver {
-    let callback = TestAnimationCallbackHandle(update: update, finish: finish)
-    callbackHandles.append(callback)
-    let driver = TestAnimationDriver(callback: callback)
-    lastDriver = driver
-    return driver
-  }
-}
-
-final class TestAnimationCallbackHandle {
-  private let update: (CGFloat) -> Void
-  private let finish: () -> Void
-
-  init(update: @escaping (CGFloat) -> Void, finish: @escaping () -> Void) {
-    self.update = update
-    self.finish = finish
-  }
-
-  func advance(to progress: CGFloat) {
-    update(progress)
-  }
-
-  func complete() {
-    update(1)
-    finish()
-  }
-}
-
-final class TestAnimationDriver: InkSignPdfPageTurnAnimationDriver {
-  private let callback: TestAnimationCallbackHandle
-
-  init(callback: TestAnimationCallbackHandle) {
-    self.callback = callback
-  }
-
-  func start() {}
-  func stop() {}
-  func advance(to progress: CGFloat) { callback.advance(to: progress) }
-  func complete() { callback.complete() }
+                                  fontSize: fontSize,
+                                  isRTL: isRTL)
 }

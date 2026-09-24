@@ -5,6 +5,14 @@ import NitroModules
 import QuartzCore
 
 extension InkSignView {
+  func overlayProviderWillReset() {
+    textInteractionOverlay.finishForLifecycle()
+    textInteractionOverlay.removeFromSuperview()
+    cancelActiveStroke()
+    attachedOverlayPage = nil
+    invalidateOverlayTransformCache()
+  }
+
   /// Gives an armed placement tap priority over every PDF navigation gesture
   /// that could otherwise observe the same touch sequence.
   func configureTextPlacementGestureRecognition() {
@@ -35,7 +43,15 @@ extension InkSignView {
   }
 
   func overlayDidDisplay(_ overlay: InkCanvasView, for pageID: UUID) {
-    guard !disposed, overlay === canvasView, isSupportedPage(pageID) else { return }
+    guard !disposed,
+          overlayProvider.canvasView(for: pageID) === overlay,
+          isSupportedPage(pageID) else { return }
+    if textInteractionOverlay.superview !== overlay {
+      textInteractionOverlay.removeFromSuperview()
+      textInteractionOverlay.frame = overlay.bounds
+      textInteractionOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+      overlay.addSubview(textInteractionOverlay)
+    }
     attachedOverlayPage = pageID
     refreshOverlayTransform(overlay, for: pageID)
     textInteractionOverlay.syncContent()
@@ -44,49 +60,55 @@ extension InkSignView {
   }
 
   func overlayDidEndDisplaying(_ overlay: InkCanvasView, for pageID: UUID) {
-    guard overlay === canvasView, attachedOverlayPage == pageID else { return }
+    guard overlayProvider.canvasView(for: pageID) === overlay,
+          attachedOverlayPage == pageID else { return }
     attachedOverlayPage = nil
     textInteractionOverlay.finishForLifecycle()
     cancelActiveStroke()
-    pageTurnLifecycle.overlayDetached()
     invalidateOverlayTransformCache()
   }
 
   func overlayLayoutChanged(_ overlay: InkCanvasView) {
-    guard !disposed, let pageID = documentCoordinator.document?.activePage.id,
+    guard !disposed, overlay === canvasView,
+          let pageID = documentCoordinator.document?.activePage.id,
           attachedOverlayPage == pageID, isSupportedPage(pageID) else { return }
     refreshOverlayTransform(overlay, for: pageID)
     if let pendingPageSwitchID { finishPageSwitchIfReady(requestID: pendingPageSwitchID) }
     _ = completeOpenIfReady()
-    pageTurnLifecycle.stableContextChanged()
+  }
+
+  func refreshActiveOverlayTransform() {
+    guard let state = documentCoordinator.document,
+          let canvas = overlayProvider.canvasView(for: state.activePage.id) else { return }
+    refreshOverlayTransform(canvas, for: state.activePage.id)
   }
 
   /// Reports a completed gesture mutation. Presentation callbacks only refresh
   /// dependent state; they never issue another viewport mutation.
-  func documentViewViewportChanged(_ view: InkPdfView) {
-    guard view === documentView,
-          let pageID = documentCoordinator.document?.activePage.id else { return }
-    invalidateOverlayTransformCache()
-    refreshOverlayTransform(canvasView, for: pageID)
-  }
-
   func refreshOverlayTransform(_ overlay: InkCanvasView, for pageID: UUID) {
     guard isSupportedPage(pageID), attachedOverlayPage == pageID,
-          let viewport = documentView.viewportTransform else {
+          let state = documentCoordinator.document,
+          let page = documentView.currentPage,
+          page === state.activePage.page else {
       invalidateOverlayTransformCache()
       return
     }
-    let documentOrigin = overlay.convert(CGPoint.zero, from: documentView)
-    let documentXAxis = overlay.convert(CGPoint(x: 1, y: 0), from: documentView)
-    let documentYAxis = overlay.convert(CGPoint(x: 0, y: 1), from: documentView)
-    let documentToOverlay = CGAffineTransform(
-      a: documentXAxis.x - documentOrigin.x,
-      b: documentXAxis.y - documentOrigin.y,
-      c: documentYAxis.x - documentOrigin.x,
-      d: documentYAxis.y - documentOrigin.y,
-      tx: documentOrigin.x,
-      ty: documentOrigin.y)
-    let transform = viewport.canonicalToView.concatenating(documentToOverlay)
+    let mediaBox = state.activePage.geometry.mediaBox
+    func overlayPoint(canonical: CGPoint) -> CGPoint {
+      let pdfPoint = CGPoint(x: canonical.x + mediaBox.minX,
+                             y: mediaBox.maxY - canonical.y)
+      let viewPoint = documentView.convert(pdfPoint, from: page)
+      return overlay.convert(viewPoint, from: documentView)
+    }
+    let origin = overlayPoint(canonical: .zero)
+    let xAxis = overlayPoint(canonical: CGPoint(x: 1, y: 0))
+    let yAxis = overlayPoint(canonical: CGPoint(x: 0, y: 1))
+    let transform = CGAffineTransform(a: xAxis.x - origin.x,
+                                      b: xAxis.y - origin.y,
+                                      c: yAxis.x - origin.x,
+                                      d: yAxis.y - origin.y,
+                                      tx: origin.x,
+                                      ty: origin.y)
     guard transform.a.isFinite, transform.b.isFinite,
           transform.c.isFinite, transform.d.isFinite,
           transform.tx.isFinite, transform.ty.isFinite,
@@ -94,11 +116,9 @@ extension InkSignView {
       invalidateOverlayTransformCache()
       return
     }
-    let mediaBox = viewport.geometry.mediaBox
     if overlayTransformPage == pageID,
        overlayTransformBounds == overlay.bounds,
-       overlayTransformMediaBox == mediaBox,
-       overlayTransformViewportFrame == viewport.pageFrame {
+       overlayTransformMediaBox == mediaBox {
       return
     }
     if hasDrawingTransaction { cancelActiveStroke() }
@@ -106,7 +126,6 @@ extension InkSignView {
     overlayTransformPage = pageID
     overlayTransformBounds = overlay.bounds
     overlayTransformMediaBox = mediaBox
-    overlayTransformViewportFrame = viewport.pageFrame
     installCommittedDrawing()
     textInteractionOverlay.syncTransform()
   }
@@ -115,7 +134,6 @@ extension InkSignView {
     overlayTransformPage = nil
     overlayTransformBounds = .zero
     overlayTransformMediaBox = .zero
-    overlayTransformViewportFrame = .zero
     pageToOverlayTransform = nil
   }
 }
