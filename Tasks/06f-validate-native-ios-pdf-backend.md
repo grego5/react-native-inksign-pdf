@@ -52,5 +52,8 @@ page geometry, and export this module's locked text and vector signatures.
   representative rendering performance are proven.
 - Tasks 6, 6d, and 6g have no unresolved ownership or representation decision.
 
-Status: In progress — macOS fixture, external-viewer, and performance evidence
-remain pending.
+Status: In progress — the local Hebrew visual-review fixture is not bundled and
+its test is skipped when absent. RTL/fallback-font rendering and selection or
+copying interoperability still require macOS fixture and supported-viewer
+evidence. A skipped fixture is not completion evidence; external-viewer and
+representative performance checks also remain pending.

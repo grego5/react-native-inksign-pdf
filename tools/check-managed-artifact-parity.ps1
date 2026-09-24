@@ -24,6 +24,7 @@ function Forbid([string]$Text, [string]$Pattern, [string]$Name) {
 
 $androidPolicy = Read-Source "android/src/main/java/com/margelo/nitro/inksignpdf/CacheArtifactPolicy.kt"
 $androidView = Read-Source "android/src/main/java/com/margelo/nitro/inksignpdf/HybridInkSignView.kt"
+$androidCoordinator = Read-Source "android/src/main/java/com/margelo/nitro/inksignpdf/DocumentCoordinator.kt"
 $androidWorker = Read-Source "android/src/main/java/com/margelo/nitro/inksignpdf/PdfSession.kt"
 $androidExport = Read-Source "android/src/main/java/com/margelo/nitro/inksignpdf/PdfExport.kt"
 $androidPackage = Read-Source "android/src/main/java/com/margelo/nitro/inksignpdf/ReactNativeInkSignPdfPackage.kt"
@@ -45,9 +46,10 @@ Require $androidPolicy 'SIGNED_OUTPUT' 'Android signed classifier'
 Require $androidPolicy 'EXPORT_SCRATCH' 'Android scratch classifier'
 Require $androidPolicy 'DEBUG_RECORDING' 'Android debug classifier'
 Require $androidPackage 'CacheArtifactPolicy\.initialize' 'Android package startup gate'
-Require $androidView 'artifactPolicy\.allocateSignedOutput\(\)' 'Android managed output allocation'
+Require $androidCoordinator 'artifactPolicy\.allocateSignedOutput\(\)' 'Android coordinator allocates signed output'
+Forbid $androidView 'artifactPolicy\.allocateSignedOutput\(' 'Android view delegates signed-output ownership to the coordinator'
 Require $androidView 'pendingOutputs|ownedOutputs' 'Android request/view output ownership'
-Require $androidView 'pdfWorker\.close\(outputs, artifactPolicy::deleteExact\)' 'Android disposal uses policy deletion'
+Require $androidView 'coordinator\.closeSession\(outputs \+ workingFiles, artifactPolicy::deleteExact\)' 'Android disposal delegates cleanup to the coordinator'
 Require $androidView 'normalizeFinalizeError' 'Android finalize errors are normalized'
 Require $androidView 'cache_unavailable' 'Android cache allocation errors are mapped'
 Require $androidWorker 'retireOutput' 'Android worker output retirement callback'
@@ -62,14 +64,12 @@ Require $iosPolicy 'ReactNativeInkSignPdfCacheDirectoryName' 'iOS Info.plist ove
 Require $iosPolicy 'contentsOfDirectory' 'iOS direct startup scan'
 Require $iosPolicy 'signedOutputPattern' 'iOS signed classifier'
 Require $iosPolicy 'exportScratchPattern' 'iOS scratch classifier'
-Require $iosPolicy 'verificationScratchPattern' 'iOS verification classifier'
 Require $iosPolicy 'deleteExact' 'iOS exact deletion'
 Require $iosStartup 'constructor' 'iOS image startup hook'
 Require $iosCoordinator 'pendingArtifacts|ownedOutputs' 'iOS coordinator output ownership'
 Require $iosCoordinator 'artifacts\.forEach\(artifactPolicy\.deleteExact\)' 'iOS coordinator disposal uses policy deletion'
 Require $iosCoordinator 'artifactPolicy\.allocateSignedOutput\(\)' 'iOS managed output allocation'
 Require $iosExport 'policy\.allocateExportScratch\(\)' 'iOS operation scratch allocation'
-Require $iosExport 'policy\.allocateVerificationScratch\(\)' 'iOS verification scratch allocation'
 Require $iosExport 'policy\.deleteExact' 'iOS operation scratch cleanup'
 Require $iosExport 'normalizeExportError' 'iOS finalize errors are normalized'
 Require $iosExport 'if let exportError = error as\? ExportError' 'iOS public export errors are preserved'
@@ -77,19 +77,17 @@ Forbid $iosView 'managedSourceURL|sourceLifetime|sourceLease|managedSourceLifeti
 Forbid $iosDocument 'managedSourceURL|sourceLifetime|sourceLease|removeManagedSource' 'iOS document source cleanup removed'
 Forbid $iosExport 'managedSourceURL|sourceLifetime|sourceLease|removeManagedSource|source\.deletingLastPathComponent\(\)' 'iOS export is not source-derived'
 
-Forbid $example 'workingDirectory|uniqueSourceName|source-\$' 'example has no second source copy'
-Require $example 'keepLocalCopy' 'example retains picker-owned local copy workflow'
-Require $example 'cleanupLocalFile' 'example can retire picker copies'
-Require $example 'useEffect' 'example cleans picker copies on unmount'
-Require $example 'cleanupLocalFile' 'example retires exact picker paths'
-Require $example 'cleanupLocalFile' 'example uses one picker-path cleanup helper'
-Require $example 'const previousPath = selectedPdf\.current\?\.path' 'example captures the exact previous source'
-Require $example 'cleanupLocalFile\(previousPath' 'example retires the previous source after replacement'
-Require $example 'if \(pickerPath !== previousPath\) cleanupLocalFile\(pickerPath' 'example retires failed-open candidates'
-Require $example 'saveDocuments' 'example copies signed output to caller destination'
-Require $example 'copy:\s*true' 'example requests durable output copy'
+Require $example 'inkSignView\.addPages\(options\)' 'example forwards page acquisition to the native API'
+Require $example 'label="Add files"' 'example exposes unrestricted native page acquisition'
+Require $example "type: 'pdf'" 'example exposes PDF-only acquisition'
+Require $example "type: 'image'" 'example exposes image-only acquisition'
+Require $example 'imagePageSize' 'example supplies editable image-page dimensions'
+Require $example 'inkSignView\.removePage\(\)' 'example removes the active native page'
+Require $example 'inkSignView\.movePage\(destination\)' 'example moves the active page to a requested index'
+Require $example 'result\.pageInfo !== undefined' 'example preserves absent page metadata after empty-view cancellation'
+Require $example 'onPageChange=\{setPageInfo\}' 'example follows committed page changes'
 Require $readme 'caller-owned' 'public source ownership documentation'
 Require $readme 'before\s+unmount' 'public output lifetime documentation'
 Require $readme 'CACHE_DIRECTORY_NAME|ReactNativeInkSignPdfCacheDirectoryName' 'public cache override documentation'
 
-Write-Output "PASS managed artifact parity: Android and iOS use contained process-once policies, direct caller sources, and request-owned outputs"
+Write-Output "PASS artifact ownership: platform coordinators own document outputs and the example uses native page commands"

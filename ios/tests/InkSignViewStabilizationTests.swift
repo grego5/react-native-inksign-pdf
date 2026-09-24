@@ -66,14 +66,17 @@ final class InkSignViewStabilizationTests: XCTestCase {
       generation: 11))
     let documentToOverlay = CGAffineTransform(translationX: 23, y: 31)
       .scaledBy(x: 1.1, y: 0.9)
-    let canonicalToOverlay = documentToOverlay
-      .concatenating(viewport.canonicalToView)
-    let pdfToOverlay = documentToOverlay
-      .concatenating(viewport.pdfToView)
+    let canonicalToOverlay = viewport.canonicalToView
+      .concatenating(documentToOverlay)
+    let pdfToOverlay = viewport.pdfToView
+      .concatenating(documentToOverlay)
     let canonical = CGPoint(x: 72, y: 141)
     let pdf = viewport.pdfPoint(fromCanonical: canonical)
     let overlayPoint = canonical.applying(canonicalToOverlay)
 
+    assertPoint(viewport.viewPoint(fromCanonical: canonical),
+                equals: CGPoint(x: 285.15, y: 173.7))
+    assertPoint(overlayPoint, equals: CGPoint(x: 336.665, y: 187.33))
     assertPoint(pdf.applying(pdfToOverlay), equals: overlayPoint)
     assertPoint(overlayPoint.applying(canonicalToOverlay.inverted()),
                 equals: canonical)

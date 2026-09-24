@@ -110,7 +110,7 @@ extension InkSignView {
                                          pages: pages,
                                          outputURL: output)
       return output
-    } catch InkSignPdfNativeExporterError.unsupportedInk {
+    } catch InkSignPdfNativeExporterError.unsupportedInk(_) {
       policy.deleteExact(output)
       throw ExportError.unsupportedContent
     } catch {

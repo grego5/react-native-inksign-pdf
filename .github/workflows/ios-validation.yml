@@ -11,6 +11,7 @@ on:
         options:
           - stabilization
           - native-pdfkit
+          - native-pdf-backend
           - page-input
           - lifecycle
           - all
@@ -119,6 +120,9 @@ jobs:
             native-pdfkit)
               test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
               ;;
+            native-pdf-backend)
+              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests"
+              ;;
             page-input)
               test_args="-only-testing:__TEST_TARGET__/PageInputCoordinatorTests"
               ;;
@@ -195,7 +199,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Preserve native PDF fixture results
-        if: inputs.focus == 'native-pdfkit' && success()
+        if: success() && (inputs.focus == 'native-pdfkit' || inputs.focus == 'native-pdf-backend' || inputs.focus == 'lifecycle')
         uses: actions/upload-artifact@v7
         with:
           name: native-ios-pdf-fixtures

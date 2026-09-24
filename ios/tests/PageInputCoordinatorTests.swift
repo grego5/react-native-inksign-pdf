@@ -61,7 +61,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     wait(for: [completion], timeout: 5)
 
     guard case .failure(let error) = try XCTUnwrap(result) else {
-      return XCTFail("unsupported input should reject")
+      return XCTFail("unsupported input should reject; got \(String(describing: result))")
     }
     XCTAssertEqual((error as? InkSignPdfPageInputCoordinator.PageInputError), .unsupportedContent)
     let after = Set((try? FileManager.default.contentsOfDirectory(
@@ -97,6 +97,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     var photoConfiguration: PHPickerConfiguration?
     var choosePhotos: (() -> Void)?
     let filePresented = expectation(description: "Files picker presented")
+    let sourceChoicePresented = expectation(description: "Photo source choice presented")
     let photoPresented = expectation(description: "Photo picker presented")
 
     let filesCoordinator = InkSignPdfPageInputCoordinator(
@@ -123,15 +124,25 @@ final class PageInputCoordinatorTests: XCTestCase {
         photoConfiguration = configuration
         return PHPickerViewController(configuration: configuration)
       },
-      controllerPresenter: { _, _ in photoPresented.fulfill() },
+      controllerPresenter: { _, controller in
+        if controller is PHPickerViewController {
+          photoPresented.fulfill()
+        } else {
+          sourceChoicePresented.fulfill()
+        }
+      },
       sourceChooser: { _, actions in
         choosePhotos = actions.choosePhotos
         return UIViewController()
       })
     DispatchQueue.main.async {
       photosCoordinator.stage(options: InkSignPdfPageInputOptions(type: .image)) { _ in }
-      choosePhotos?()
     }
+    wait(for: [sourceChoicePresented], timeout: 2)
+    guard let choosePhotos else {
+      return XCTFail("photo source choice did not provide its selection action")
+    }
+    runOnMain { choosePhotos() }
     wait(for: [photoPresented], timeout: 2)
     XCTAssertEqual(photoConfiguration?.selection, .ordered)
     XCTAssertEqual(photoConfiguration?.selectionLimit, 0)
@@ -140,11 +151,12 @@ final class PageInputCoordinatorTests: XCTestCase {
 
   func testPhotoCancellationDismissesPickerAndResolvesEmptySelection() {
     let presenter = UIViewController()
+    let sourceChoicePresented = expectation(description: "Photo source choice presented")
     let pickerPresented = expectation(description: "Photo picker presented")
-    let cancelled = expectation(description: "picker cancellation resolves")
     var picker: PHPickerViewController?
     var dismissedPicker: UIViewController?
     var choosePhotos: (() -> Void)?
+    var resolveCancellation: (() -> Void)?
     let coordinator = InkSignPdfPageInputCoordinator(
       hostView: UIView(),
       artifactPolicy: InkSignPdfCacheArtifactPolicy.shared,
@@ -154,7 +166,13 @@ final class PageInputCoordinatorTests: XCTestCase {
         picker = result
         return result
       },
-      controllerPresenter: { _, _ in pickerPresented.fulfill() },
+      controllerPresenter: { _, controller in
+        if controller is PHPickerViewController {
+          pickerPresented.fulfill()
+        } else {
+          sourceChoicePresented.fulfill()
+        }
+      },
       controllerDismisser: { controller, _ in dismissedPicker = controller },
       sourceChooser: { _, actions in
         choosePhotos = actions.choosePhotos
@@ -164,18 +182,24 @@ final class PageInputCoordinatorTests: XCTestCase {
     DispatchQueue.main.async {
       coordinator.stage(options: InkSignPdfPageInputOptions(type: .image)) { result in
         if case .success(let staged) = result, staged.isEmpty {
-          cancelled.fulfill()
+          resolveCancellation?()
         }
       }
-      choosePhotos?()
     }
+    wait(for: [sourceChoicePresented], timeout: 2)
+    guard let choosePhotos else {
+      return XCTFail("photo source choice did not provide its selection action")
+    }
+    runOnMain { choosePhotos() }
     wait(for: [pickerPresented], timeout: 2)
-    XCTAssertNotNil(picker)
-    if let picker {
-      runOnMain { coordinator.picker(picker, didFinishPicking: []) }
-      wait(for: [cancelled], timeout: 2)
-      XCTAssertTrue(dismissedPicker === picker)
+    guard let picker else {
+      return XCTFail("photo source choice did not present a photo picker")
     }
+    let cancelled = expectation(description: "picker cancellation resolves")
+    resolveCancellation = { cancelled.fulfill() }
+    runOnMain { coordinator.picker(picker, didFinishPicking: []) }
+    wait(for: [cancelled], timeout: 2)
+    XCTAssertTrue(dismissedPicker === picker)
   }
 
   func testDisposalCancellationRejectsPendingPickerAndDismissesIt() {
@@ -329,6 +353,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     var picker: PHPickerViewController?
     var choosePhotos: (() -> Void)?
     var result: Result<[InkSignPdfStagedPageInput], Error>?
+    let sourceChoicePresented = expectation(description: "photo source choice presented")
     let pickerPresented = expectation(description: "photo picker presented")
     let completed = expectation(description: "photo providers staged")
     let coordinator = InkSignPdfPageInputCoordinator(
@@ -340,7 +365,13 @@ final class PageInputCoordinatorTests: XCTestCase {
         picker = value
         return value
       },
-      controllerPresenter: { _, _ in pickerPresented.fulfill() },
+      controllerPresenter: { _, controller in
+        if controller is PHPickerViewController {
+          pickerPresented.fulfill()
+        } else {
+          sourceChoicePresented.fulfill()
+        }
+      },
       sourceChooser: { _, actions in
         choosePhotos = actions.choosePhotos
         return UIViewController()
@@ -351,13 +382,18 @@ final class PageInputCoordinatorTests: XCTestCase {
         result = $0
         completed.fulfill()
       }
-      choosePhotos?()
     }
+    wait(for: [sourceChoicePresented], timeout: 2)
+    guard let choosePhotos else {
+      return XCTFail("photo source choice did not provide its selection action")
+    }
+    runOnMain { choosePhotos() }
     wait(for: [pickerPresented], timeout: 2)
-    let providers = [imageProvider(for: firstURL), imageProvider(for: secondURL)]
-    if let picker {
-      runOnMain { coordinator.finishPhotoPicking(itemProviders: providers, from: picker) }
+    guard let picker else {
+      return XCTFail("photo source choice did not present a photo picker")
     }
+    let providers = [imageProvider(for: firstURL), imageProvider(for: secondURL)]
+    runOnMain { coordinator.finishPhotoPicking(itemProviders: providers, from: picker) }
     wait(for: [completed], timeout: 5)
 
     let staged = try XCTUnwrap(result).get()
@@ -389,6 +425,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     var picker: PHPickerViewController?
     var choosePhotos: (() -> Void)?
     var result: Result<[InkSignPdfStagedPageInput], Error>?
+    let sourceChoicePresented = expectation(description: "photo source choice presented")
     let pickerPresented = expectation(description: "photo picker presented")
     let completed = expectation(description: "photo provider failure")
     let coordinator = InkSignPdfPageInputCoordinator(
@@ -400,7 +437,13 @@ final class PageInputCoordinatorTests: XCTestCase {
         picker = value
         return value
       },
-      controllerPresenter: { _, _ in pickerPresented.fulfill() },
+      controllerPresenter: { _, controller in
+        if controller is PHPickerViewController {
+          pickerPresented.fulfill()
+        } else {
+          sourceChoicePresented.fulfill()
+        }
+      },
       sourceChooser: { _, actions in
         choosePhotos = actions.choosePhotos
         return UIViewController()
@@ -411,16 +454,21 @@ final class PageInputCoordinatorTests: XCTestCase {
         result = $0
         completed.fulfill()
       }
-      choosePhotos?()
     }
+    wait(for: [sourceChoicePresented], timeout: 2)
+    guard let choosePhotos else {
+      return XCTFail("photo source choice did not provide its selection action")
+    }
+    runOnMain { choosePhotos() }
     wait(for: [pickerPresented], timeout: 2)
+    guard let picker else {
+      return XCTFail("photo source choice did not present a photo picker")
+    }
     let providers = [
       imageProvider(for: sourceURL),
       NSItemProvider()
     ]
-    if let picker {
-      runOnMain { coordinator.finishPhotoPicking(itemProviders: providers, from: picker) }
-    }
+    runOnMain { coordinator.finishPhotoPicking(itemProviders: providers, from: picker) }
     wait(for: [completed], timeout: 5)
 
     guard case .failure(let error) = try XCTUnwrap(result) else {

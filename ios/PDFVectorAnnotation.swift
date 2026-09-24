@@ -29,22 +29,20 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
   init(signatureBounds: CGRect,
        localPath: CGPath,
        color: UIColor,
-       mediaBox: CGRect,
-       identifier: String) {
+       mediaBox: CGRect) {
     self.kind = .signature
     self.mediaBox = mediaBox
     self.signaturePath = localPath.copy()
     self.annotationColor = color
     self.textValue = nil
     super.init(bounds: signatureBounds, forType: .stamp, withProperties: nil)
-    configure(name: "inksign-signature-\(identifier)", flags: Self.signatureFlags)
+    configure(flags: Self.signatureFlags)
   }
 
   init(text: InkSignPdfTextAnnotation,
        mediaBox: CGRect,
        pdfBounds: CGRect,
-       color: UIColor,
-       identifier: String) {
+       color: UIColor) {
     self.kind = .text
     self.mediaBox = mediaBox
     self.signaturePath = nil
@@ -55,7 +53,7 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
     font = UIFont.systemFont(ofSize: text.fontSize)
     fontColor = color
     alignment = text.isRTL ? .right : .left
-    configure(name: "inksign-text-\(identifier)", flags: Self.textFlags)
+    configure(flags: Self.textFlags)
   }
 
   required init?(coder: NSCoder) {
@@ -115,23 +113,18 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
       copy = InkSignPdfVectorAnnotation(signatureBounds: bounds,
                                         localPath: signaturePath,
                                         color: annotationColor,
-                                        mediaBox: mediaBox,
-                                        identifier: UUID().uuidString)
+                                        mediaBox: mediaBox)
     } else if let textValue {
       copy = InkSignPdfVectorAnnotation(text: textValue,
                                         mediaBox: mediaBox,
                                         pdfBounds: bounds,
-                                        color: annotationColor,
-                                        identifier: UUID().uuidString)
+                                        color: annotationColor)
     } else {
       preconditionFailure("Vector annotation has no appearance data")
     }
     copy.contents = contents
     copy.shouldDisplay = shouldDisplay
     copy.shouldPrint = shouldPrint
-    if let name = value(forAnnotationKey: .name) {
-      precondition(copy.setValue(name, forAnnotationKey: .name))
-    }
     if let flags = value(forAnnotationKey: .flags) {
       precondition(copy.setValue(flags, forAnnotationKey: .flags))
     }
@@ -168,14 +161,13 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
     (annotation.value(forAnnotationKey: .flags) as? NSNumber)?.intValue ?? 0
   }
 
-  private func configure(name: String, flags: Int) {
+  private func configure(flags: Int) {
     shouldDisplay = true
     shouldPrint = true
     let border = PDFBorder()
     border.lineWidth = 0
     self.border = border
     color = .clear
-    precondition(setValue(name, forAnnotationKey: .name))
     precondition(setValue(NSNumber(value: flags), forAnnotationKey: .flags))
   }
 }

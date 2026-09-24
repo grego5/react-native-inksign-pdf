@@ -263,7 +263,6 @@ final class InkSignPdfDocumentCoordinator {
     generation &+= 1
     pendingArtifacts.remove(candidate.workingURL)
     structuralDirty = true
-    operationPublishedDocument = true
     return previous
   }
 
@@ -278,7 +277,6 @@ final class InkSignPdfDocumentCoordinator {
     generation &+= 1
     pendingArtifacts.remove(candidate.workingURL)
     structuralDirty = true
-    operationPublishedDocument = true
     return true
   }
 

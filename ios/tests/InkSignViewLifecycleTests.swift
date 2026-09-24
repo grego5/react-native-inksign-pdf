@@ -221,12 +221,21 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let exported = expectation(description: "export page order")
     let output = try view.finalize()
     output.then { path in
-      let pdf = PDFDocument(url: URL(fileURLWithPath: path))
+      let outputURL = URL(fileURLWithPath: path)
+      let pdf = PDFDocument(url: outputURL)
       XCTAssertEqual(pdf?.pageCount, 2)
       XCTAssertEqual(pdf?.page(at: 0)?.bounds(for: .mediaBox).width, 300)
       XCTAssertEqual(pdf?.page(at: 0)?.bounds(for: .mediaBox).height, 400)
       XCTAssertEqual(pdf?.page(at: 1)?.bounds(for: .mediaBox).width, 500)
       XCTAssertEqual(pdf?.page(at: 1)?.bounds(for: .mediaBox).height, 400)
+      if let data = try? Data(contentsOf: outputURL) {
+        let attachment = XCTAttachment(data: data, uniformTypeIdentifier: "com.adobe.pdf")
+        attachment.name = "native-ios-reordered-export.pdf"
+        attachment.lifetime = .keepAlways
+        self.add(attachment)
+      } else {
+        XCTFail("The finalized reordered PDF must be readable for independent inspection.")
+      }
       exported.fulfill()
     }
     output.catch { error in XCTFail("export failed: \(error)"); exported.fulfill() }
@@ -651,7 +660,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertTrue(isIdle(fixture.view.pageTurnLifecycle))
   }
 
-  func testTouchPreflightAcceptsOneReadyEligibleDirection() {
+  func testTouchPreflightAcceptsOneReadyEligibleDirection() throws {
     let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
     defer { fixture.window.isHidden = true }
     fixture.view.pageTurnLifecycle.cancelUncommittedTurn()
@@ -866,9 +875,20 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let output = try policy.allocateExportScratch()
     defer { policy.deleteExact(output) }
 
-    try InkSignPdfNativeExporter.write(sourceURL: state.workingURL,
-                                       pages: [snapshot],
-                                       outputURL: output)
+    do {
+      try InkSignPdfNativeExporter.write(sourceURL: state.workingURL,
+                                         pages: [snapshot],
+                                         outputURL: output)
+    } catch {
+      if let pdfData = try? Data(contentsOf: output) {
+        let attachment = XCTAttachment(data: pdfData,
+                                       uniformTypeIdentifier: "com.adobe.pdf")
+        attachment.name = "native-ios-export-validation-failure.pdf"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+      }
+      throw error
+    }
 
     let page = try XCTUnwrap(PDFDocument(url: output)?.page(at: 0))
     for expected in [latin, rtl] {

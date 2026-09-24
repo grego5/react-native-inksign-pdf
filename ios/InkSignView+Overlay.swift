@@ -86,7 +86,7 @@ extension InkSignView {
       d: documentYAxis.y - documentOrigin.y,
       tx: documentOrigin.x,
       ty: documentOrigin.y)
-    let transform = documentToOverlay.concatenating(viewport.canonicalToView)
+    let transform = viewport.canonicalToView.concatenating(documentToOverlay)
     guard transform.a.isFinite, transform.b.isFinite,
           transform.c.isFinite, transform.d.isFinite,
           transform.tx.isFinite, transform.ty.isFinite,

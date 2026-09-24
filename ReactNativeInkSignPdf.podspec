@@ -30,7 +30,6 @@ Pod::Spec.new do |s|
 
   s.test_spec 'LifecycleTests' do |test_spec|
     test_spec.source_files = 'ios/tests/**/*.{swift,mm,h}'
-    test_spec.resources = ['diagnostics/RaDaLqz0kjfZbrgDjeEd.pdf']
     test_spec.frameworks = ['UIKit', 'PDFKit', 'PencilKit', 'XCTest', 'ImageIO']
   end
 

@@ -132,9 +132,14 @@ final class InkSignPdfPageInputCoordinator: NSObject {
       controllerDismisser(controller, false)
     }
     request.controller = nil
-    cleanup(request.takeStagedURLs())
-    guard request.beginSettlement() else { return }
-    request.completion(.failure(PageInputError.operationCancelled))
+    let stagedURLs = request.takeStagedURLs()
+    guard request.beginSettlement() else {
+      cleanup(stagedURLs)
+      return
+    }
+    cleanup(stagedURLs, then: {
+      request.completion(.failure(PageInputError.operationCancelled))
+    })
   }
 
   enum PageInputError: LocalizedError, Equatable {
@@ -460,7 +465,6 @@ final class InkSignPdfPageInputCoordinator: NSObject {
       let ordered = staged.compactMap { $0 }
       lock.unlock()
       guard error == nil, ordered.count == itemProviders.count else {
-        self.cleanup(request.takeStagedURLs())
         self.complete(request, with: .failure(error ?? PageInputError.unreadableItem))
         return
       }
@@ -482,22 +486,41 @@ final class InkSignPdfPageInputCoordinator: NSObject {
       cleanup(request.takeStagedURLs())
       return
     }
+    request.controller = nil
     if case .failure = result {
-      cleanup(request.takeStagedURLs())
+      cleanup(request.takeStagedURLs(), then: {
+        request.completion(result)
+      })
     } else {
       _ = request.takeStagedURLs()
+      request.completion(result)
     }
-    request.controller = nil
-    request.completion(result)
   }
 
-  private func cleanup(_ urls: [URL]) {
-    guard !urls.isEmpty else { return }
+  private func cleanup(_ urls: [URL], then completion: (() -> Void)? = nil) {
+    guard !urls.isEmpty else {
+      if let completion {
+        if Thread.isMainThread {
+          completion()
+        } else {
+          DispatchQueue.main.async(execute: completion)
+        }
+      }
+      return
+    }
     let policy = artifactPolicy
     if Thread.isMainThread {
-      DispatchQueue.global(qos: .utility).async { policy.deleteURLs(urls) }
+      DispatchQueue.global(qos: .utility).async {
+        policy.deleteURLs(urls)
+        if let completion {
+          DispatchQueue.main.async(execute: completion)
+        }
+      }
     } else {
       policy.deleteURLs(urls)
+      if let completion {
+        DispatchQueue.main.async(execute: completion)
+      }
     }
   }
 
@@ -571,7 +594,8 @@ final class InkSignPdfPageInputCoordinator: NSObject {
       guard requestedType != .image else { throw PageInputError.unsupportedContent }
       return .pdf
     }
-    guard CGImageSourceCreateWithURL(url as CFURL, nil) != nil else {
+    guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
+          CGImageSourceGetCount(imageSource) > 0 else {
       throw PageInputError.unsupportedContent
     }
     guard requestedType != .pdf else { throw PageInputError.unsupportedContent }

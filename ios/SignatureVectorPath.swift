@@ -8,9 +8,21 @@ struct InkSignPdfFilledStroke {
 }
 
 enum InkSignPdfSignatureVectorPath {
-  enum Error: Swift.Error {
+  // PencilKit distance interpolation can quantize an opaque sample to 65534/65535.
+  private static let opaqueOpacityQuantizationStep = CGFloat(1) / CGFloat(UInt16.max)
+
+  enum Error: Swift.Error, CustomStringConvertible {
     case unsupportedInk
-    case invalidStroke
+    case invalidStroke(String)
+
+    var description: String {
+      switch self {
+      case .unsupportedInk:
+        return "unsupportedInk"
+      case .invalidStroke(let reason):
+        return "invalidStroke(\(reason))"
+      }
+    }
   }
 
   static func filledStrokes(in drawing: PKDrawing) throws -> [InkSignPdfFilledStroke] {
@@ -21,27 +33,31 @@ enum InkSignPdfSignatureVectorPath {
     guard stroke.ink.inkType == .pen, stroke.mask == nil else { throw Error.unsupportedInk }
 
     let strokePath = stroke.path
-    guard strokePath.count > 0 else { throw Error.invalidStroke }
-    let parameterRange = PKFloatRange(lowerBound: 0,
-                                      upperBound: CGFloat(strokePath.count - 1))
+    guard strokePath.count > 0 else { throw Error.invalidStroke("empty path") }
     var samples: [Sample] = []
-    strokePath.enumerateInterpolatedPoints(in: parameterRange,
-                                           strideByDistance: 1) { point, _ in
-      samples.append(Sample(center: point.location,
-                            radius: point.size.width / 2,
-                            opacity: point.opacity))
+    samples.reserveCapacity(strokePath.count)
+    for point in strokePath.interpolatedPoints(by: .distance(1)) {
+      let sample = Sample(center: point.location,
+                          radius: point.size.width / 2,
+                          opacity: point.opacity)
+      if let previous = samples.last, previous.center == sample.center {
+        samples[samples.count - 1] = Sample(
+          center: sample.center,
+          radius: max(previous.radius, sample.radius),
+          opacity: sample.opacity)
+      } else {
+        samples.append(sample)
+      }
     }
-    if strokePath.count == 1 && samples.isEmpty {
-      let point = strokePath.point(at: 0)
-      samples.append(Sample(center: point.location,
-                            radius: point.size.width / 2,
-                            opacity: point.opacity))
-    }
-    guard !samples.isEmpty,
-          samples.allSatisfy({ $0.opacity == 1 &&
-            $0.radius.isFinite && $0.radius > 0 &&
-            $0.center.x.isFinite && $0.center.y.isFinite }) else {
-      throw Error.invalidStroke
+    guard !samples.isEmpty else { throw Error.invalidStroke("no interpolated samples") }
+    for (index, sample) in samples.enumerated() {
+      guard abs(sample.opacity - 1) <= opaqueOpacityQuantizationStep else {
+        throw Error.invalidStroke("sample \(index) has opacity \(sample.opacity)")
+      }
+      guard sample.radius.isFinite, sample.radius > 0,
+            sample.center.x.isFinite, sample.center.y.isFinite else {
+        throw Error.invalidStroke("sample \(index) has invalid size or location")
+      }
     }
 
     let outline: CGMutablePath
@@ -57,7 +73,9 @@ enum InkSignPdfSignatureVectorPath {
     }
 
     var transform = stroke.transform
-    guard let transformed = outline.copy(using: &transform) else { throw Error.invalidStroke }
+    guard let transformed = outline.copy(using: &transform) else {
+      throw Error.invalidStroke("stroke transform could not be applied")
+    }
     return InkSignPdfFilledStroke(path: transformed, color: stroke.ink.color)
   }
 
@@ -70,9 +88,20 @@ enum InkSignPdfSignatureVectorPath {
     for index in samples.indices {
       let previous = samples[max(index - 1, 0)].center
       let next = samples[min(index + 1, samples.count - 1)].center
-      let tangent = CGPoint(x: next.x - previous.x, y: next.y - previous.y)
-      let length = hypot(tangent.x, tangent.y)
-      guard length.isFinite, length > 0 else { throw Error.invalidStroke }
+      let current = samples[index].center
+      var tangent = CGPoint(x: next.x - previous.x, y: next.y - previous.y)
+      var length = hypot(tangent.x, tangent.y)
+      if length == 0 {
+        tangent = CGPoint(x: next.x - current.x, y: next.y - current.y)
+        length = hypot(tangent.x, tangent.y)
+      }
+      if length == 0 {
+        tangent = CGPoint(x: current.x - previous.x, y: current.y - previous.y)
+        length = hypot(tangent.x, tangent.y)
+      }
+      guard length.isFinite, length > 0 else {
+        throw Error.invalidStroke("sample \(index) has no distinct neighbor")
+      }
       let normal = CGPoint(x: -tangent.y / length, y: tangent.x / length)
       let sample = samples[index]
       left.append(CGPoint(x: sample.center.x + normal.x * sample.radius,

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Sharing from 'expo-sharing';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   InkSignView,
+  type AddPagesOptions,
   type PageInfo,
   type StateChangeEvent,
   type ViewportOptions,
@@ -18,12 +19,26 @@ export default function App() {
     Platform.OS === 'android' && process.env.EXPO_PUBLIC_ENABLE_DEBUG_RECORDER === 'true';
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
+  const [imagePageWidth, setImagePageWidth] = useState('595.28');
+  const [imagePageHeight, setImagePageHeight] = useState('841.89');
+  const [moveDestinationText, setMoveDestinationText] = useState('');
   const [state, setState] = useState<StateChangeEvent>({
     canUndo: false,
     canRedo: false,
     isDirty: false,
     mode: 'view',
   });
+  const imagePageSize = {
+    width: Number(imagePageWidth),
+    height: Number(imagePageHeight),
+  };
+  const imagePageSizeIsValid =
+    Number.isFinite(imagePageSize.width) && imagePageSize.width > 0 &&
+    Number.isFinite(imagePageSize.height) && imagePageSize.height > 0;
+  const moveDestination = Number(moveDestinationText);
+  const moveDestinationIsValid =
+    moveDestinationText.trim() !== '' && Number.isInteger(moveDestination) &&
+    moveDestination >= 0 && pageInfo !== null && moveDestination < pageInfo.pageCount;
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -32,7 +47,7 @@ export default function App() {
     });
   }, []);
 
-  async function addPages(type?: 'pdf' | 'image') {
+  async function addPages(options?: AddPagesOptions) {
     try {
       const inkSignView = inkSignViewRef.current;
       if (inkSignView === null) {
@@ -40,7 +55,7 @@ export default function App() {
       }
 
       if (Platform.OS === 'android') await ensureFallbackFont();
-      const result = await inkSignView.addPages(type === undefined ? undefined : { type });
+      const result = await inkSignView.addPages(options);
       if (result.pageInfo !== undefined) setPageInfo(result.pageInfo);
     } catch (error) {
       Alert.alert('Add pages failed', String(error));
@@ -178,8 +193,33 @@ export default function App() {
 
         <View style={styles.toolbar}>
           <View style={styles.row}>
-            <Action label="Add PDF" onPress={() => void addPages('pdf')} />
-            <Action label="Add image" onPress={() => void addPages('image')} />
+            <Action label="Add files" onPress={() => void addPages()} />
+            <Action label="Add PDF" onPress={() => void addPages({ type: 'pdf' })} />
+            <Action
+              label="Add image"
+              disabled={!imagePageSizeIsValid}
+              onPress={() => void addPages({ type: 'image', imagePageSize })}
+            />
+          </View>
+
+          <View style={styles.row}>
+            <TextInput
+              accessibilityLabel="Image page width in PDF points"
+              keyboardType="decimal-pad"
+              onChangeText={setImagePageWidth}
+              placeholder="Width (pt)"
+              style={styles.numberInput}
+              value={imagePageWidth}
+            />
+            <TextInput
+              accessibilityLabel="Image page height in PDF points"
+              keyboardType="decimal-pad"
+              onChangeText={setImagePageHeight}
+              placeholder="Height (pt)"
+              style={styles.numberInput}
+              value={imagePageHeight}
+            />
+            <Text style={styles.hint}>Portrait A4 by default</Text>
           </View>
 
           <View style={styles.row}>
@@ -206,19 +246,18 @@ export default function App() {
           </View>
 
           <View style={styles.row}>
-            <Action
-              label="Move ←"
-              disabled={pageInfo === null || pageInfo.pageIndex === 0}
-              onPress={() => {
-                if (pageInfo !== null) void moveActivePage(pageInfo.pageIndex - 1);
-              }}
+            <TextInput
+              accessibilityLabel="Destination page index, zero-based"
+              keyboardType="number-pad"
+              onChangeText={setMoveDestinationText}
+              placeholder="Destination index (0-based)"
+              style={styles.numberInput}
+              value={moveDestinationText}
             />
             <Action
-              label="Move →"
-              disabled={pageInfo === null || pageInfo.pageIndex >= pageInfo.pageCount - 1}
-              onPress={() => {
-                if (pageInfo !== null) void moveActivePage(pageInfo.pageIndex + 1);
-              }}
+              label="Move current page"
+              disabled={!moveDestinationIsValid}
+              onPress={() => void moveActivePage(moveDestination)}
             />
             <Action
               label="Export"
@@ -339,6 +378,17 @@ const styles = StyleSheet.create({
   buttonDisabled: { backgroundColor: '#aeb7c7' },
   buttonText: { color: '#fff', fontWeight: '600' },
   pageIndicator: { alignSelf: 'center', color: '#333', paddingVertical: 10 },
+  numberInput: {
+    flex: 1,
+    minWidth: 72,
+    borderWidth: 1,
+    borderColor: '#c8cdd5',
+    borderRadius: 6,
+    backgroundColor: '#fff',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    color: '#111',
+  },
   surfaceFrame: { flex: 1, overflow: 'hidden', borderRadius: 8, backgroundColor: '#ddd' },
   surface: { flex: 1 },
   state: { fontFamily: 'monospace', color: '#333' },

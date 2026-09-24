@@ -28,9 +28,12 @@ PDFium backend and Apple-framework iOS backend.
 
 - The public contract is shared, but PDF engine ownership is platform-specific:
   Android uses PDFium and iOS uses PDFKit, Quartz, and CoreText.
-- The example uses an Expo picker to select the initial PDF passed to `open`.
-- Android and iOS picker ownership, example controls, and end-to-end validation
-  remain to be documented after Tasks 3 through 6.
+- The README documents `addPages`, `removePage`, and `movePage`, and the example
+  uses native page acquisition with unrestricted, PDF-only, image-only, custom
+  image-size, remove-current, and requested-index move controls.
+- Example state follows resolved page results and `onPageChange`. Native
+  cross-platform validation, manual parity, external-viewer interoperability,
+  and representative performance evidence remain to be completed.
 
 ## Implementation
 
@@ -76,4 +79,6 @@ PDFium backend and Apple-framework iOS backend.
 
 `docs: describe native pdf page workflow`
 
-Status: Planned
+Status: In progress — API documentation, example controls, and TypeScript
+contract coverage are in place. The native validation matrix, manual parity,
+external-viewer results, and representative performance checks remain pending.

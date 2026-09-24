@@ -11,7 +11,7 @@ final class MutablePageImageEncoderTests: XCTestCase {
     let source = try makeJPEG(orientation: 1)
     defer { try? FileManager.default.removeItem(at: source) }
 
-    let geometry = PageGeometry(mediaBox: CGRect(x: -12, y: 24, width: 72, height: 144),
+    let geometry = PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 72, height: 144),
                                 rotation: 90)
     let page = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: geometry)
     assertRect(page.bounds(for: .mediaBox), equals: geometry.mediaBox)

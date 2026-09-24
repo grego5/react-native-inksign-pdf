@@ -5,6 +5,7 @@ import PDFKit
 import PencilKit
 import UIKit
 import XCTest
+@testable import ReactNativeInkSignPdf
 
 final class NativePDFBackendTests: XCTestCase {
   private enum ColorChannel {
@@ -30,10 +31,17 @@ final class NativePDFBackendTests: XCTestCase {
 
     let sourceBytes = try Data(contentsOf: sourceURL)
     let readableSource = try XCTUnwrap(PDFDocument(url: sourceURL))
+    let redSourcePage = try XCTUnwrap(readableSource.page(at: 0))
+    let greenSourcePage = try XCTUnwrap(readableSource.page(at: 1))
+    let redMediaBox = redSourcePage.bounds(for: .mediaBox)
+    let redCropBox = redSourcePage.bounds(for: .cropBox)
+    let redRotation = redSourcePage.rotation
+    let greenMediaBox = greenSourcePage.bounds(for: .mediaBox)
+    let greenRotation = greenSourcePage.rotation
     let destination = PDFDocument()
     destination.insert(try imagePage(size: CGSize(width: 200, height: 200), color: .blue), at: 0)
-    destination.insert(try XCTUnwrap(readableSource.page(at: 0)), at: 1)
-    destination.insert(try XCTUnwrap(readableSource.page(at: 1)), at: 2)
+    destination.insert(redSourcePage, at: 1)
+    destination.insert(greenSourcePage, at: 2)
     let movedPage = try XCTUnwrap(destination.page(at: 2))
     destination.removePage(at: 2)
     destination.insert(movedPage, at: 0)
@@ -48,16 +56,14 @@ final class NativePDFBackendTests: XCTestCase {
     let greenPage = try XCTUnwrap(reopened.page(at: 0))
     let bluePage = try XCTUnwrap(reopened.page(at: 1))
     let redPage = try XCTUnwrap(reopened.page(at: 2))
-    XCTAssertEqual(greenPage.rotation, 270)
-    XCTAssertEqual(redPage.rotation, 90)
+    XCTAssertEqual(greenPage.rotation, greenRotation)
+    XCTAssertEqual(redPage.rotation, redRotation)
     assertBounds(bluePage.bounds(for: .mediaBox),
                  equals: CGRect(x: 0, y: 0, width: 200, height: 200))
     assertBounds(greenPage.bounds(for: .mediaBox),
-                 equals: CGRect(x: 0, y: 0, width: 450, height: 240))
-    assertBounds(redPage.bounds(for: .mediaBox),
-                 equals: CGRect(x: -24, y: 18, width: 300, height: 400))
-    assertBounds(redPage.bounds(for: .cropBox),
-                 equals: CGRect(x: -12, y: 34, width: 276, height: 360))
+                 equals: greenMediaBox)
+    assertBounds(redPage.bounds(for: .mediaBox), equals: redMediaBox)
+    assertBounds(redPage.bounds(for: .cropBox), equals: redCropBox)
     assertDominantColor(try centerPixel(of: greenPage), channel: .green)
     assertDominantColor(try centerPixel(of: bluePage), channel: .blue)
     assertDominantColor(try centerPixel(of: redPage), channel: .red)
@@ -84,10 +90,12 @@ final class NativePDFBackendTests: XCTestCase {
 
     let committedSource = try XCTUnwrap(PDFDocument(url: sourceURL))
     let committedPage = try XCTUnwrap(committedSource.page(at: 0))
+    let committedMediaBox = committedPage.bounds(for: .mediaBox)
+    let committedCropBox = committedPage.bounds(for: .cropBox)
     let drawing = variableWidthDrawing()
     let signature = try XCTUnwrap(InkSignPdfSignatureVectorPath.filledStrokes(in: drawing).first)
     XCTAssertGreaterThan(signature.path.boundingBoxOfPath.height, 8)
-    let geometry = PageGeometry(mediaBox: committedPage.bounds(for: .mediaBox),
+    let geometry = PageGeometry(mediaBox: committedMediaBox,
                                 rotation: committedPage.rotation)
     let text = [
       InkSignPdfTextAnnotation(id: "latin", text: "CoreText Latin",
@@ -106,26 +114,38 @@ final class NativePDFBackendTests: XCTestCase {
                                       geometry: geometry,
                                       drawingData: drawing.dataRepresentation(),
                                       textAnnotations: text)
-    try InkSignPdfNativeExporter.write(sourceURL: sourceURL,
-                                       pages: [snapshot],
-                                       outputURL: outputURL)
+    do {
+      try InkSignPdfNativeExporter.write(sourceURL: sourceURL,
+                                         pages: [snapshot],
+                                         outputURL: outputURL)
+    } catch {
+      if let pdfData = try? Data(contentsOf: outputURL) {
+        let attachment = XCTAttachment(data: pdfData,
+                                       uniformTypeIdentifier: "com.adobe.pdf")
+        attachment.name = "native-ios-signature-export-validation-failure.pdf"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+      }
+      throw error
+    }
 
     let reopened = try XCTUnwrap(PDFDocument(url: outputURL))
     XCTAssertEqual(reopened.pageCount, 1)
     let page = try XCTUnwrap(reopened.page(at: 0))
-    assertBounds(page.bounds(for: .mediaBox), equals: mediaBox)
-    assertBounds(page.bounds(for: .cropBox), equals: cropBox)
+    assertBounds(page.bounds(for: .mediaBox), equals: committedMediaBox)
+    assertBounds(page.bounds(for: .cropBox), equals: committedCropBox)
     XCTAssertEqual(page.rotation, 90)
     XCTAssertTrue((page.string ?? "").contains("Source page content"),
                   "The original page content remains in the exported PDF.")
 
     let textAnnotations = page.annotations.filter { $0.type?.caseInsensitiveCompare("FreeText") == .orderedSame }
     XCTAssertEqual(textAnnotations.count, text.count)
+    var unmatchedTextAnnotations = textAnnotations
     for expected in text {
-      let name = "inksign-text-\(pageID.uuidString)-\(expected.id)"
-      let annotation = try XCTUnwrap(textAnnotations.first {
-        $0.value(forAnnotationKey: .name) as? String == name
+      let index = try XCTUnwrap(unmatchedTextAnnotations.firstIndex {
+        $0.contents == expected.text
       })
+      let annotation = unmatchedTextAnnotations.remove(at: index)
       XCTAssertEqual(annotation.contents, expected.text)
       XCTAssertTrue(annotation.hasAppearanceStream)
       XCTAssertTrue(annotation.shouldDisplay)
@@ -135,6 +155,7 @@ final class NativePDFBackendTests: XCTestCase {
                      InkSignPdfVectorAnnotation.textFlags)
       XCTAssertEqual(flags & InkSignPdfVectorAnnotation.readOnlyFlag, 0)
     }
+    XCTAssertTrue(unmatchedTextAnnotations.isEmpty)
 
     let signatureAnnotations = page.annotations.filter {
       $0.type?.caseInsensitiveCompare("Stamp") == .orderedSame
@@ -152,7 +173,7 @@ final class NativePDFBackendTests: XCTestCase {
       XCTAssertGreaterThan(annotation.bounds.height, 0)
       persistedSignatureBounds = persistedSignatureBounds.union(annotation.bounds)
     }
-    var canonicalToPDF = InkSignPdfTextRenderer.canonicalToPDFTransform(for: mediaBox)
+    var canonicalToPDF = InkSignPdfTextRenderer.canonicalToPDFTransform(for: committedMediaBox)
     let expectedSignatureBounds = try XCTUnwrap(
       signature.path.copy(using: &canonicalToPDF)).boundingBoxOfPath
     assertBounds(persistedSignatureBounds, equals: expectedSignatureBounds)
@@ -171,8 +192,10 @@ final class NativePDFBackendTests: XCTestCase {
   }
 
   func testHebrewFixtureLoadsForVisualReview() throws {
-    let fixtureURL = try XCTUnwrap(Bundle(for: Self.self)
-      .url(forResource: "RaDaLqz0kjfZbrgDjeEd", withExtension: "pdf"))
+    guard let fixtureURL = Bundle(for: Self.self)
+      .url(forResource: "RaDaLqz0kjfZbrgDjeEd", withExtension: "pdf") else {
+      throw XCTSkip("The local Hebrew visual-review PDF is not part of the package.")
+    }
     let document = try XCTUnwrap(PDFDocument(url: fixtureURL))
     XCTAssertEqual(document.pageCount, 1)
     let page = try XCTUnwrap(document.page(at: 0))

@@ -255,6 +255,9 @@ annotations; the other text colors control presentation.
 
 ```ts
 open(path, options?)
+addPages(options?)
+removePage()
+movePage(pageIndex)
 nextPage()
 previousPage()
 getViewport()
@@ -272,8 +275,42 @@ removeTextAnnotation()
 finalize()
 ```
 
-`open()` returns page metadata. Page navigation is synchronous to initiate and
-publishes the committed result through `onPageChange`:
+`open(path)` explicitly replaces the current PDF and returns its page metadata.
+If replacement fails, the current document remains open. Use `addPages()` for
+the native picker: with no document it creates one; otherwise it appends pages.
+The picker accepts PDFs and images by default, expands every selected PDF in
+page order, and creates one page per image. `type: 'pdf'` or `type: 'image'`
+restricts the picker. Selection order is retained.
+
+`imagePageSize` supplies image-page width and height in PDF points and applies
+to every selected image. Without it, images use the active page size when one
+exists, or portrait A4 (595.28 × 841.89 points) when creating a document.
+Pass `sources` to import ordered local paths or file URLs without showing a
+picker; this is intended for files produced by a scanner or another native
+flow.
+
+```ts
+const result = await pdf.current?.addPages({
+  type: 'image',
+  imagePageSize: { width: 420, height: 594 },
+});
+// { addedPageCount: number, pageInfo?: PageInfo }
+```
+
+Picker cancellation and an empty `sources` list leave the document unchanged
+and resolve with `addedPageCount: 0`. `pageInfo` describes the unchanged active
+page when a document exists and is omitted when no document exists. After pages
+are added, the first new page becomes active. `removePage()` removes and
+returns metadata for the current page; it rejects removal of the final page.
+`movePage(pageIndex)` moves the current page to a zero-based destination
+position, shifting intervening pages rather than swapping them. Moving to its
+current index is a no-op. Ink and text remain attached to their page when it
+moves.
+
+Open, add, remove, move, and finalize share one serialized document-operation
+boundary. A conflicting operation rejects with `operation_in_progress`.
+Page navigation is synchronous to initiate and publishes the committed result
+through `onPageChange`:
 
 ```ts
 {
