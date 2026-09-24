@@ -9,7 +9,7 @@
 - Keep shared geometry in page coordinates and PDF I/O/export off the UI
   thread.
 - Preserve the v1 scope: multi-page PDFs, one active page, page-local history,
-  native Android export, source-preserving iOS export, and no Paper/web/
+  Android PDFium and iOS PDFKit/Quartz/CoreText backends, and no Paper/web/
   Windows/macOS implementation.
 
 ## Implementation workflow
@@ -71,11 +71,14 @@ Ink/Abseil source trees.
 
 ## iOS validation
 
-The iOS boundary has three validation layers: simulator tests for native
-behavior, a device archive for device integration, and PDFium packaging checks
-for the bundled native dependency. Use the narrowest simulator focus for a
-change; broaden validation when PDFium, packaging, or platform integration
-changes. Visual fidelity and device interaction remain separate runtime checks.
+The iOS boundary has simulator tests for native behavior and a device archive
+for device integration. Changes to PDF handling also require fixture checks for
+visible source content, page geometry, locked text annotations, read-only vector
+signature annotations, write/reopen, and external-viewer interoperability.
+Advanced source PDF semantics are outside the editing contract. Use the
+narrowest simulator focus for a change; visual fidelity and device interaction
+remain separate runtime checks. Android PDFium packaging is validated by the
+PDFium verifier.
 
 ## Validation commands
 

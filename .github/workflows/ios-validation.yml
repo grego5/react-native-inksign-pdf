@@ -10,7 +10,7 @@ on:
         type: choice
         options:
           - stabilization
-          - pdfium
+          - native-pdfkit
           - page-input
           - lifecycle
           - all
@@ -51,17 +51,6 @@ jobs:
         run: |
           npm pkg set 'dependencies.@grego5/react-native-inksign-pdf=file:..'
           npm install --no-package-lock --ignore-scripts --install-links --no-audit --no-fund
-
-      - name: Ensure PDFium iOS binary is installed
-        run: |
-          for attempt in 1 2 3 4 5; do
-            if node node_modules/@grego5/react-native-inksign-pdf/tools/fetch-pdfium-ios.mjs; then
-              exit 0
-            fi
-            echo "PDFium download attempt $attempt failed; retrying..."
-            sleep $((attempt * 10))
-          done
-          exit 1
 
       - name: Generate iOS project
         run: npx expo prebuild --platform ios --no-install
@@ -127,8 +116,8 @@ jobs:
             stabilization)
               test_args="-only-testing:__TEST_TARGET__/InkSignViewStabilizationTests"
               ;;
-            pdfium)
-              test_args="-only-testing:__TEST_TARGET__/PdfiumSmokeTests"
+            native-pdfkit)
+              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
               ;;
             page-input)
               test_args="-only-testing:__TEST_TARGET__/PageInputCoordinatorTests"
@@ -204,3 +193,12 @@ jobs:
             ${{ runner.temp }}/ios-*.log
             ${{ runner.temp }}/ios-test-summary.json
           if-no-files-found: ignore
+
+      - name: Preserve native PDF fixture results
+        if: inputs.focus == 'native-pdfkit' && success()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-ios-pdf-fixtures
+          path: ${{ runner.temp }}/ios-tests.xcresult
+          retention-days: 3
+          if-no-files-found: error

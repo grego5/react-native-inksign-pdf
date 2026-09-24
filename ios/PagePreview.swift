@@ -1,4 +1,5 @@
 import CoreGraphics
+import PDFKit
 import PencilKit
 import UIKit
 
@@ -23,7 +24,9 @@ struct InkSignPdfPageTurnPreviewKey: Hashable {
 
 struct InkSignPdfPageTurnPreviewRequest {
   let key: InkSignPdfPageTurnPreviewKey
-  let pdfiumSession: InkSignPdfPdfiumSession
+  let document: PDFDocument
+  let page: PDFPage
+  let pdfQueue: DispatchQueue
   let geometry: PageGeometry
   let drawingData: Data
   let textAnnotations: [InkSignPdfTextAnnotation]
@@ -54,7 +57,7 @@ final class InkSignPdfPageTurnPreviewView: UIView {
     imageView.frame = imageFrame
   }
 
-  /// Renders the base page with PDFium on the preview worker, then composites
+  /// Renders the base page with Quartz on the PDF queue, then composites
   /// only committed ink and text presentation on the resulting image.
   static func render(request: InkSignPdfPageTurnPreviewRequest) -> UIImage? {
     let size = request.size
@@ -66,7 +69,8 @@ final class InkSignPdfPageTurnPreviewView: UIView {
     let density = max(request.key.density, 1)
     let pixelWidth = max(1, Int(ceil(size.width * density)))
     let pixelHeight = max(1, Int(ceil(size.height * density)))
-    let pixels = NSMutableData(length: pixelWidth * pixelHeight * 4)
+    let bytesPerRow = pixelWidth * 4
+    let pixels = NSMutableData(length: bytesPerRow * pixelHeight)
     guard let pixels else { return nil }
     let displaySize = PageViewportTransform.displaySize(for: request.geometry)
     let fitScale = min(size.width / displaySize.width,
@@ -80,54 +84,52 @@ final class InkSignPdfPageTurnPreviewView: UIView {
       generation: request.key.generation) else { return nil }
     let pointPdfToPreview = viewport.pdfToViewTransform()
     let pdfToPreview = viewport.pdfToViewTransform(pixelScale: density)
-    do {
-      try request.pdfiumSession.renderPage(
-        UInt(request.key.targetPageIndex),
-        width: Int32(pixelWidth),
-        height: Int32(pixelHeight),
-        stride: Int32(pixelWidth * 4),
-        pageToDevice: pdfToPreview,
-        clip: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight),
-        background: UInt32.max,
-        flags: 0x03,
-        pixels: pixels)
-      guard let provider = CGDataProvider(data: pixels as Data as CFData),
-            let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-            let image = CGImage(width: pixelWidth, height: pixelHeight,
-                                bitsPerComponent: 8, bitsPerPixel: 32,
-                                bytesPerRow: pixelWidth * 4,
-                                space: colorSpace,
-                                bitmapInfo: CGBitmapInfo.byteOrder32Little
-                                  .union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)),
-                                provider: provider, decode: nil,
-                                shouldInterpolate: true, intent: .defaultIntent) else {
-        return nil
+    let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(
+      CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue))
+    guard let baseContext = CGContext(data: pixels.mutableBytes,
+                                      width: pixelWidth,
+                                      height: pixelHeight,
+                                      bitsPerComponent: 8,
+                                      bytesPerRow: bytesPerRow,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: bitmapInfo.rawValue),
+          let pageRef = request.page.pageRef else { return nil }
+    baseContext.setFillColor(UIColor.white.cgColor)
+    baseContext.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+    baseContext.saveGState()
+    baseContext.translateBy(x: 0, y: CGFloat(pixelHeight))
+    baseContext.scaleBy(x: 1, y: -1)
+    baseContext.concatenate(pdfToPreview)
+    withExtendedLifetime(request.document) {
+      baseContext.drawPDFPage(pageRef)
+      for annotation in request.page.annotations where annotation.shouldDisplay {
+        annotation.draw(with: .mediaBox, in: baseContext)
       }
+    }
+    baseContext.restoreGState()
+    guard let baseImage = baseContext.makeImage() else { return nil }
 
-      let pageImage = UIImage(cgImage: image, scale: density, orientation: .up)
-      let renderer = UIGraphicsImageRenderer(size: size, format: {
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = density
-        format.opaque = true
-        return format
-      }())
-      return renderer.image { context in
-        pageImage.draw(in: CGRect(origin: .zero, size: size))
-        context.cgContext.saveGState()
-        context.cgContext.concatenate(viewport.canonicalToView)
-        drawing.image(from: CGRect(origin: .zero,
-                                   size: request.geometry.mediaBox.size), scale: 1)
-          .draw(in: CGRect(origin: .zero, size: request.geometry.mediaBox.size))
-        context.cgContext.restoreGState()
-        _ = InkSignPdfTextRenderer.drawForPreview(
-          request.textAnnotations,
-          pageSize: request.geometry.mediaBox.size,
-          mediaBox: request.geometry.mediaBox,
-          pdfToPreview: pointPdfToPreview,
-          in: context.cgContext)
-      }
-    } catch {
-      return nil
+    let pageImage = UIImage(cgImage: baseImage, scale: density, orientation: .up)
+    let renderer = UIGraphicsImageRenderer(size: size, format: {
+      let format = UIGraphicsImageRendererFormat()
+      format.scale = density
+      format.opaque = true
+      return format
+    }())
+    return renderer.image { context in
+      pageImage.draw(in: CGRect(origin: .zero, size: size))
+      context.cgContext.saveGState()
+      context.cgContext.concatenate(viewport.canonicalToView)
+      drawing.image(from: CGRect(origin: .zero,
+                                 size: request.geometry.mediaBox.size), scale: 1)
+        .draw(in: CGRect(origin: .zero, size: request.geometry.mediaBox.size))
+      context.cgContext.restoreGState()
+      _ = InkSignPdfTextRenderer.drawForPreview(
+        request.textAnnotations,
+        pageSize: request.geometry.mediaBox.size,
+        mediaBox: request.geometry.mediaBox,
+        pdfToPreview: pointPdfToPreview,
+        in: context.cgContext)
     }
   }
 

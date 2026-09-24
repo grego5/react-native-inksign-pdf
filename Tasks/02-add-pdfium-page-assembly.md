@@ -1,4 +1,4 @@
-# Task 02: Add shared PDFium page assembly
+# Task 02: Add Android PDFium page assembly
 
 [Back to task index](../TASKS.md)
 
@@ -8,9 +8,10 @@ rotation and MediaBox metadata.
 
 ## Objective
 
-Add a worker-safe PDFium adapter that appends PDF pages, creates optimized
-image pages, removes one page, moves one page, and saves a validated replacement
-without modifying its input.
+Add a worker-safe PDFium adapter for Android that appends PDF pages, creates
+optimized image pages, removes one page, moves one page, and saves a validated
+replacement without modifying its input. The code may remain in shared C++
+source, but iOS is not a consumer contract.
 
 ## Non-goals
 
@@ -33,7 +34,7 @@ without modifying its input.
 - `core/third_party/pdfium/include/fpdf_save.h`: `FPDF_SaveAsCopy`.
 - `core/third_party/pdfium/manifest.json`, `tools/verify-pdfium.ps1`,
   `android/build.gradle`, and `android/CMakeLists.txt`.
-- Android and iOS PDFium smoke tests.
+- Android PDFium smoke and integration tests.
 
 ## Current behavior and invariants
 

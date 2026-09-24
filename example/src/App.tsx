@@ -26,8 +26,9 @@ export default function App() {
   });
 
   useEffect(() => {
+    if (Platform.OS !== 'android') return;
     void ensureFallbackFont().catch((error) => {
-      console.warn('Unable to install example PDFium fallback font', error);
+      console.warn('Unable to install Android PDFium fallback font', error);
     });
   }, []);
 
@@ -38,7 +39,7 @@ export default function App() {
         throw new Error('The InkSignView is not available');
       }
 
-      await ensureFallbackFont();
+      if (Platform.OS === 'android') await ensureFallbackFont();
       const result = await inkSignView.addPages(type === undefined ? undefined : { type });
       if (result.pageInfo !== undefined) setPageInfo(result.pageInfo);
     } catch (error) {
@@ -160,7 +161,9 @@ export default function App() {
           <InkSignView
             ref={inkSignViewRef}
             style={styles.surface}
-            fallbackFont={{ path: fallbackFontPath }}
+            fallbackFont={
+              Platform.OS === 'android' ? { path: fallbackFontPath } : undefined
+            }
             strokeColor="#111111"
             strokeMinWidth={2.0}
             strokeMaxWidth={4.0}

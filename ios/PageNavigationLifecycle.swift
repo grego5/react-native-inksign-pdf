@@ -1,5 +1,4 @@
 import CoreGraphics
-import PDFKit
 import PencilKit
 import UIKit
 
@@ -23,9 +22,6 @@ protocol InkSignPdfPageTurnPreviewScheduler: AnyObject {
 }
 
 final class InkSignPdfDispatchPreviewScheduler: InkSignPdfPageTurnPreviewScheduler {
-  private let queue = DispatchQueue(
-    label: "ReactNativeInkSignPdf.pageTurnPreview",
-    qos: .userInitiated)
   private let renderer: (InkSignPdfPageTurnPreviewRequest) -> UIImage?
 
   init(renderer: @escaping (InkSignPdfPageTurnPreviewRequest) -> UIImage? = {
@@ -39,7 +35,7 @@ final class InkSignPdfDispatchPreviewScheduler: InkSignPdfPageTurnPreviewSchedul
     completion: @escaping (UIImage?) -> Void
   ) {
     let renderer = self.renderer
-    queue.async {
+    request.pdfQueue.async {
       let image = renderer(request)
       DispatchQueue.main.async {
         completion(image)
@@ -783,7 +779,9 @@ final class InkSignPdfPageTurnLifecycle {
       isRTL: isRTL)
     return InkSignPdfPageTurnPreviewRequest(
       key: key,
-      pdfiumSession: state.pdfiumSession,
+      document: state.document,
+      page: target.page,
+      pdfQueue: owner.documentCoordinator.pdfQueue,
       geometry: target.geometry,
       drawingData: target.history.content.drawing.dataRepresentation(),
       textAnnotations: target.history.content.textAnnotations,

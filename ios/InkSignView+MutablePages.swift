@@ -1,7 +1,6 @@
 import CoreGraphics
 import Foundation
 import NitroModules
-import PDFKit
 import UIKit
 
 extension InkSignView {
@@ -261,9 +260,8 @@ extension InkSignView {
       pages: context.pages,
       activePageID: context.activePageID,
       activePageIndex: context.activePageIndex,
-      imageGeometry: imageGeometry ?? context.activeGeometry,
-      fallbackFont: fallbackFont)
-    loadQueue.async { [weak self] in
+      imageGeometry: imageGeometry ?? context.activeGeometry)
+    coordinator.pdfQueue.async { [weak self] in
       defer { coordinator.releaseStagedInputs(staged) }
       do {
         let candidate = try coordinator.assembleCandidate(input, staged: staged, command: command)
@@ -339,12 +337,13 @@ extension InkSignView {
                                              wasEditing: Bool) {
     let page = state.activePage
     documentView.installPage(index: state.activePageIndex,
-                              page: page.page,
+                              pageID: page.id,
                               geometry: page.geometry,
-                              session: state.pdfiumSession,
+                              page: page.page,
+                              document: state.document,
                               generation: generation)
     applyStructuralViewport(viewport, generation: generation)
-    overlayDidDisplay(canvasView, for: page.page)
+    overlayDidDisplay(canvasView, for: page.id)
     restoreInteractionMode(wasEditing)
   }
 
@@ -356,12 +355,13 @@ extension InkSignView {
     pendingPageSwitchID = nil
     let page = state.activePage
     documentView.installPage(index: state.activePageIndex,
-                              page: page.page,
+                              pageID: page.id,
                               geometry: page.geometry,
-                              session: state.pdfiumSession,
+                              page: page.page,
+                              document: state.document,
                               generation: generation)
     applyStructuralViewport(viewport, generation: generation)
-    overlayDidDisplay(canvasView, for: page.page)
+    overlayDidDisplay(canvasView, for: page.id)
     restoreInteractionMode(wasEditing)
     configureDoubleTapGestureRecognition()
     emitChange(force: true)

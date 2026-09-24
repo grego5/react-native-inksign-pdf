@@ -79,7 +79,7 @@ final class InkSignViewStabilizationTests: XCTestCase {
                 equals: canonical)
   }
 
-  func testPDFiumTileTransformMatchesDisplayMapping() throws {
+  func testTileTransformMatchesDisplayMapping() throws {
     let geometry = PageGeometry(mediaBox: mediaBox, rotation: 180)
     let viewport = try XCTUnwrap(PageViewportTransform(
       geometry: geometry,

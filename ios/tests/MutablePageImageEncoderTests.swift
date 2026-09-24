@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import ImageIO
 import PDFKit
@@ -6,250 +7,67 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class MutablePageImageEncoderTests: XCTestCase {
-  func testNewPdfCanBeAssembledDirectlyFromPdfAndImageInputs() throws {
-    let sourcePDF = try pdfData(width: 500, height: 400)
-    let imageURL = try makeJPEG(orientation: 1)
-    defer { try? FileManager.default.removeItem(at: imageURL) }
-    let imageInput = try InkSignPdfMutablePageImageEncoder.encode(
-      imageURL,
-      geometry: PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 612, height: 792), rotation: 0))
-    let scratch = try InkSignPdfCacheArtifactPolicy.shared.allocateWorkingSource()
-    defer { InkSignPdfCacheArtifactPolicy.shared.deleteExact(scratch) }
-
-    let sizes = try InkSignPdfPdfiumSession.assembleNewPDF(
-      appendInputs: [["type": "pdf", "data": sourcePDF], imageInput],
-      scratchURL: scratch)
-    let document = try XCTUnwrap(PDFDocument(url: scratch))
-    let session = try InkSignPdfPdfiumSession(data: Data(contentsOf: scratch),
-                                             fallbackFontPath: nil,
-                                             collectionIndex: 0)
-    defer { session.close() }
-    XCTAssertEqual(document.pageCount, 2)
-    XCTAssertEqual(sizes.count, 2)
-    let imagePage = try XCTUnwrap(document.page(at: 1))
-    XCTAssertEqual(imagePage.bounds(for: .mediaBox).width, 612, accuracy: 0.5)
-    XCTAssertEqual(imagePage.bounds(for: .mediaBox).height, 792, accuracy: 0.5)
-    var imagePageSize = CGSize.zero
-    try session.pageSize(for: 1, into: &imagePageSize)
-    XCTAssertEqual(imagePageSize.width, 612, accuracy: 0.5)
-    XCTAssertEqual(imagePageSize.height, 792, accuracy: 0.5)
-  }
-
-  func testAssemblyKeepsMixedPdfAndImageSelectionOrder() throws {
-    let baseData = try pdfData(width: 300, height: 400)
-    let insertedPDF = try pdfData(width: 500, height: 400)
-    let source = try makeJPEG(orientation: 1)
-    defer { try? FileManager.default.removeItem(at: source) }
-    let imageInput = try InkSignPdfMutablePageImageEncoder.encode(
-      source,
-      geometry: PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 300, height: 400), rotation: 0))
-    let scratch = try InkSignPdfCacheArtifactPolicy.shared.allocateWorkingSource()
-    defer { InkSignPdfCacheArtifactPolicy.shared.deleteExact(scratch) }
-    let session = try InkSignPdfPdfiumSession(data: baseData,
-                                             fallbackFontPath: nil,
-                                             collectionIndex: 0)
-    defer { session.close() }
-
-    let sizes = try session.assemble(
-      data: baseData,
-      operation: 0,
-      pageIndex: 0,
-      destinationIndex: 0,
-      appendInputs: [
-        ["type": "pdf", "data": insertedPDF],
-        imageInput,
-      ],
-      scratchURL: scratch)
-    let result = try XCTUnwrap(PDFDocument(url: scratch))
-    XCTAssertEqual(result.pageCount, 3)
-    XCTAssertEqual(sizes.count, 3)
-    XCTAssertEqual(try XCTUnwrap(result.page(at: 0)).bounds(for: .mediaBox).width, 300, accuracy: 0.5)
-    XCTAssertEqual(try XCTUnwrap(result.page(at: 1)).bounds(for: .mediaBox).width, 500, accuracy: 0.5)
-    XCTAssertEqual(try XCTUnwrap(result.page(at: 2)).bounds(for: .mediaBox).width, 300, accuracy: 0.5)
-  }
-
-  func testConcurrentRenderAndAssemblySharePdfiumSerialization() throws {
-    let baseData = try pdfData(width: 300, height: 400)
-    let scratch = try InkSignPdfCacheArtifactPolicy.shared.allocateWorkingSource()
-    defer { InkSignPdfCacheArtifactPolicy.shared.deleteExact(scratch) }
-    let session = try InkSignPdfPdfiumSession(data: baseData,
-                                             fallbackFontPath: nil,
-                                             collectionIndex: 0)
-    defer { session.close() }
-    let group = DispatchGroup()
-    let resultLock = NSLock()
-    var renderSucceeded = false
-    var assembledPageCount = 0
-    var operationError: Error?
-
-    group.enter()
-    DispatchQueue.global(qos: .userInitiated).async {
-      defer { group.leave() }
-      let pixels = NSMutableData(length: 16 * 16 * 4)!
-      do {
-        try session.renderPage(0,
-                               width: 16,
-                               height: 16,
-                               stride: 64,
-                               pageToDevice: .identity,
-                               clip: CGRect(x: 0, y: 0, width: 16, height: 16),
-                               background: UInt32.max,
-                               flags: 0,
-                               pixels: pixels)
-        resultLock.lock(); renderSucceeded = true; resultLock.unlock()
-      } catch {
-        resultLock.lock(); operationError = error; resultLock.unlock()
-      }
-    }
-
-    group.enter()
-    DispatchQueue.global(qos: .userInitiated).async {
-      defer { group.leave() }
-      do {
-        let sizes = try session.assemble(data: baseData,
-                                         operation: 0,
-                                         pageIndex: 0,
-                                         destinationIndex: 0,
-                                         appendInputs: [["type": "pdf", "data": baseData]],
-                                         scratchURL: scratch)
-        resultLock.lock(); assembledPageCount = sizes.count; resultLock.unlock()
-      } catch {
-        resultLock.lock(); operationError = error; resultLock.unlock()
-      }
-    }
-
-    XCTAssertEqual(group.wait(timeout: .now() + 15), .success)
-    resultLock.lock()
-    let rendered = renderSucceeded
-    let pageCount = assembledPageCount
-    let error = operationError
-    resultLock.unlock()
-    XCTAssertNil(error)
-    XCTAssertTrue(rendered)
-    XCTAssertEqual(pageCount, 2)
-    XCTAssertEqual(PDFDocument(url: scratch)?.pageCount, 2)
-  }
-
-  func testCloseOverlappingRenderAndAssemblyLeavesNoOpenSession() throws {
-    let baseData = try pdfData(width: 300, height: 400)
-    let scratch = try InkSignPdfCacheArtifactPolicy.shared.allocateWorkingSource()
-    defer { InkSignPdfCacheArtifactPolicy.shared.deleteExact(scratch) }
-    let session = try InkSignPdfPdfiumSession(data: baseData,
-                                             fallbackFontPath: nil,
-                                             collectionIndex: 0)
-    let group = DispatchGroup()
-    let resultLock = NSLock()
-    var assembled = false
-    var assemblyError: Error?
-    var renderError: Error?
-
-    group.enter()
-    DispatchQueue.global(qos: .userInitiated).async {
-      defer { group.leave() }
-      do {
-        let sizes = try session.assemble(data: baseData,
-                                         operation: 0,
-                                         pageIndex: 0,
-                                         destinationIndex: 0,
-                                         appendInputs: [["type": "pdf", "data": baseData]],
-                                         scratchURL: scratch)
-        resultLock.lock(); assembled = sizes.count == 2; resultLock.unlock()
-      } catch {
-        resultLock.lock(); assemblyError = error; resultLock.unlock()
-      }
-    }
-    group.enter()
-    DispatchQueue.global(qos: .userInitiated).async {
-      defer { group.leave() }
-      let pixels = NSMutableData(length: 16 * 16 * 4)!
-      do {
-        try session.renderPage(0,
-                               width: 16,
-                               height: 16,
-                               stride: 64,
-                               pageToDevice: .identity,
-                               clip: CGRect(x: 0, y: 0, width: 16, height: 16),
-                               background: UInt32.max,
-                               flags: 0,
-                               pixels: pixels)
-      } catch {
-        resultLock.lock(); renderError = error; resultLock.unlock()
-      }
-    }
-    group.enter()
-    DispatchQueue.global(qos: .userInitiated).async {
-      defer { group.leave() }
-      session.close()
-    }
-
-    XCTAssertEqual(group.wait(timeout: .now() + 15), .success)
-    resultLock.lock()
-    let didAssemble = assembled
-    let candidateError = assemblyError
-    let nativeRenderError = renderError
-    resultLock.unlock()
-    XCTAssertNil(candidateError)
-    XCTAssertTrue(didAssemble)
-    if let nativeRenderError {
-      let error = nativeRenderError as NSError
-      XCTAssertEqual(error.domain, InkSignPdfPdfiumErrorDomain)
-      XCTAssertTrue(error.localizedDescription.localizedCaseInsensitiveContains("closed"))
-    }
-    XCTAssertEqual(session.pageCount, 0)
-  }
-
-  func testEncoderContainsLandscapeImageOnWhitePage() throws {
+  func testImageInputBecomesReopenablePdfPageWithRequestedGeometry() throws {
     let source = try makeJPEG(orientation: 1)
     defer { try? FileManager.default.removeItem(at: source) }
 
-    let encoded = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: portraitGeometry)
-    let jpeg = try XCTUnwrap(encoded["data"] as? Data)
-    let image = try XCTUnwrap(CGImageSourceCreateWithData(jpeg as CFData, nil))
-    let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(image, 0, nil))
-    XCTAssertEqual(decoded.width, 200)
-    XCTAssertEqual(decoded.height, 400)
-    let pixels = try rgbaPixels(decoded)
-    XCTAssertGreaterThan(pixels[10 * decoded.width * 4], 235, "top letterbox should be white")
-    let center = (200 * decoded.width + 100) * 4
-    XCTAssertGreaterThan(pixels[center + 1], 140, "the contained image should remain visible")
-    XCTAssertEqual(encoded["pageWidth"] as? CGFloat, 72)
-    XCTAssertEqual(encoded["pageHeight"] as? CGFloat, 144)
-    XCTAssertEqual(encoded["a"] as? CGFloat, 72)
-    XCTAssertEqual(encoded["d"] as? CGFloat, 144)
+    let geometry = PageGeometry(mediaBox: CGRect(x: -12, y: 24, width: 72, height: 144),
+                                rotation: 90)
+    let page = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: geometry)
+    assertRect(page.bounds(for: .mediaBox), equals: geometry.mediaBox)
+    XCTAssertEqual(page.rotation, 90)
+
+    let candidate = PDFDocument()
+    candidate.insert(page, at: 0)
+    let url = temporaryPDFURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    XCTAssertTrue(candidate.write(to: url))
+
+    let reopened = try XCTUnwrap(PDFDocument(url: url))
+    XCTAssertEqual(reopened.pageCount, 1)
+    let reopenedPage = try XCTUnwrap(reopened.page(at: 0))
+    assertRect(reopenedPage.bounds(for: .mediaBox), equals: geometry.mediaBox)
+    XCTAssertEqual(reopenedPage.rotation, 90)
+    XCTAssertGreaterThan(reopenedPage.thumbnail(of: CGSize(width: 144, height: 72),
+                                                for: .mediaBox).size.width, 0)
   }
 
-  func testEncoderAppliesExifRotationBeforeFit() throws {
+  func testEncoderAppliesExifOrientationBeforeContainFit() throws {
     let source = try makeJPEG(orientation: 6)
     defer { try? FileManager.default.removeItem(at: source) }
 
-    let encoded = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: portraitGeometry)
-    let jpeg = try XCTUnwrap(encoded["data"] as? Data)
-    let image = try XCTUnwrap(CGImageSourceCreateWithData(jpeg as CFData, nil))
-    let decoded = try XCTUnwrap(CGImageSourceCreateImageAtIndex(image, 0, nil))
-    let pixels = try rgbaPixels(decoded)
-    let nearTop = (10 * decoded.width + 100) * 4
-    XCTAssertGreaterThan(pixels[nearTop + 1], 140,
-                         "EXIF-rotated content should fill the portrait page")
-  }
+    let geometry = PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 72, height: 144),
+                                rotation: 0)
+    let page = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: geometry)
+    let document = PDFDocument()
+    document.insert(page, at: 0)
+    let url = temporaryPDFURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    XCTAssertTrue(document.write(to: url))
 
-  private var portraitGeometry: PageGeometry {
-    PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 72, height: 144), rotation: 0)
+    let reopenedPage = try XCTUnwrap(PDFDocument(url: url)?.page(at: 0))
+    let thumbnail = reopenedPage.thumbnail(of: CGSize(width: 200, height: 400),
+                                          for: .mediaBox)
+    XCTAssertEqual(thumbnail.size.width, 200, accuracy: 1)
+    XCTAssertEqual(thumbnail.size.height, 400, accuracy: 1)
+    let pixels = try rgbaPixels(try XCTUnwrap(thumbnail.cgImage))
+    let top = (10 * 200 + 100) * 4
+    XCTAssertGreaterThan(pixels[top + 1], 140,
+                         "EXIF-oriented image content should cover the portrait page")
   }
 
   private func makeJPEG(orientation: UInt32) throws -> URL {
-    let colorSpace = CGColorSpaceCreateDeviceRGB()
     let context = try XCTUnwrap(CGContext(data: nil,
                                           width: 200,
                                           height: 100,
                                           bitsPerComponent: 8,
                                           bytesPerRow: 0,
-                                          space: colorSpace,
+                                          space: CGColorSpaceCreateDeviceRGB(),
                                           bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
     context.setFillColor(CGColor(red: 0.1, green: 0.75, blue: 0.2, alpha: 1))
     context.fill(CGRect(x: 0, y: 0, width: 200, height: 100))
     let image = try XCTUnwrap(context.makeImage())
-    let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("InkSignPdfImage-\(UUID().uuidString).jpg")
+    let url = temporaryJPEGURL()
     guard let destination = CGImageDestinationCreateWithURL(url as CFURL,
                                                             "public.jpeg" as CFString,
                                                             1,
@@ -264,20 +82,14 @@ final class MutablePageImageEncoderTests: XCTestCase {
     return url
   }
 
-  private func pdfData(width: CGFloat, height: CGFloat) throws -> Data {
-    let image = UIGraphicsImageRenderer(size: CGSize(width: width, height: height)).image { context in
-      UIColor.white.setFill()
-      context.fill(CGRect(x: 0, y: 0, width: width, height: height))
-    }
-    let page = try XCTUnwrap(PDFPage(image: image))
-    page.setBounds(CGRect(x: 0, y: 0, width: width, height: height), for: .mediaBox)
-    let document = PDFDocument()
-    document.insert(page, at: 0)
-    let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("InkSignPdfFixture-\(UUID().uuidString).pdf")
-    defer { try? FileManager.default.removeItem(at: url) }
-    guard document.write(to: url) else { throw InkSignView.MutablePageError.assemblyFailed }
-    return try Data(contentsOf: url)
+  private func temporaryPDFURL() -> URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignPdfImage-\(UUID().uuidString).pdf")
+  }
+
+  private func temporaryJPEGURL() -> URL {
+    FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignPdfImage-\(UUID().uuidString).jpg")
   }
 
   private func rgbaPixels(_ image: CGImage) throws -> [UInt8] {
@@ -292,5 +104,15 @@ final class MutablePageImageEncoderTests: XCTestCase {
     context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
     let bytes = data.bytes.assumingMemoryBound(to: UInt8.self)
     return Array(UnsafeBufferPointer(start: bytes, count: image.width * image.height * 4))
+  }
+
+  private func assertRect(_ actual: CGRect,
+                         equals expected: CGRect,
+                         file: StaticString = #filePath,
+                         line: UInt = #line) {
+    XCTAssertEqual(actual.minX, expected.minX, accuracy: 0.01, file: file, line: line)
+    XCTAssertEqual(actual.minY, expected.minY, accuracy: 0.01, file: file, line: line)
+    XCTAssertEqual(actual.width, expected.width, accuracy: 0.01, file: file, line: line)
+    XCTAssertEqual(actual.height, expected.height, accuracy: 0.01, file: file, line: line)
   }
 }

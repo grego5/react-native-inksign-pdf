@@ -1,6 +1,5 @@
 import Foundation
 import CoreGraphics
-import PDFKit
 import PencilKit
 import UIKit
 import NitroModules
@@ -68,8 +67,6 @@ final class InkSignView: HybridInkSignViewSpec {
   let container = UIView()
   let documentView = InkPdfView()
   let overlayProvider = PageOverlayProvider()
-  let loadQueue = DispatchQueue(label: "ReactNativeInkSignPdf.load", qos: .userInitiated)
-  let exportQueue = DispatchQueue(label: "ReactNativeInkSignPdf.export", qos: .userInitiated)
   let artifactPolicy = InkSignPdfCacheArtifactPolicy.shared
   lazy var pageInputCoordinator = InkSignPdfPageInputCoordinator(
     hostView: container,
@@ -109,8 +106,8 @@ final class InkSignView: HybridInkSignViewSpec {
   var nextTextAnnotationID: UInt64 = 0
   var lastChange: (Bool, Bool, Bool, String)?
   var backgroundObserver: NSObjectProtocol?
-  weak var overlayTransformPage: PDFPage?
-  weak var attachedOverlayPage: PDFPage?
+  var overlayTransformPage: UUID?
+  var attachedOverlayPage: UUID?
   var overlayTransformBounds = CGRect.zero
   var overlayTransformMediaBox = CGRect.zero
   var overlayTransformViewportFrame = CGRect.zero
@@ -135,6 +132,7 @@ final class InkSignView: HybridInkSignViewSpec {
     return recognizer
   }()
 
+  // Shared Nitro property; Android PDFium consumes this font configuration.
   var fallbackFont: PdfFallbackFont?
   var strokeColor: String? { didSet { updatePenConfiguration() } }
   var strokeMinWidth: Double?
@@ -282,7 +280,6 @@ final class InkSignView: HybridInkSignViewSpec {
   enum LoadError: LocalizedError {
     case invalidSourcePath
     case pdfLoadFailed
-    case invalidFallbackFont(String)
     case unsupportedPdf
     case cancelled
     case operationInProgress
@@ -291,7 +288,6 @@ final class InkSignView: HybridInkSignViewSpec {
       switch self {
       case .invalidSourcePath: return "invalid_source_path: Unable to read the PDF"
       case .pdfLoadFailed: return "pdf_load_failed: Unable to load the PDF"
-      case .invalidFallbackFont(let reason): return "invalid_fallback_font: \(reason)"
       case .unsupportedPdf: return "unsupported_pdf: The PDF is not supported"
       case .cancelled: return "operation_cancelled: PDF loading was cancelled"
       case .operationInProgress: return "operation_in_progress: Another document operation is active"
@@ -303,6 +299,7 @@ final class InkSignView: HybridInkSignViewSpec {
     case notReady
     case invalidOutput
     case cancelled
+    case unsupportedContent
     case failed
     case operationInProgress
 
@@ -311,6 +308,7 @@ final class InkSignView: HybridInkSignViewSpec {
       case .notReady: return "view_not_ready: The PDF is not ready"
       case .invalidOutput: return "invalid_output_path: The export path is invalid"
       case .cancelled: return "operation_cancelled: PDF export was cancelled"
+      case .unsupportedContent: return "pdf_export_unsupported_content: The committed drawing uses unsupported ink"
       case .failed: return "pdf_export_failed: Unable to export the PDF"
       case .operationInProgress: return "operation_in_progress: Another document operation is active"
       }

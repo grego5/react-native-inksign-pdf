@@ -1,16 +1,18 @@
 # iOS PDF export
 
-`finalize()` exports committed content from the current working document to a
-separate output. It does not modify the caller's source, the working document,
-or page history. Live strokes, predictions, drafts, and selection are not
-exported.
+`finalize()` exports an immutable snapshot of committed page content. It excludes
+live strokes, predictions, drafts, selection, and viewport state, and writes a
+separate output without changing the caller's source or working document.
 
-The original PDF pages remain PDF content in the output. Committed text is
-written as PDF text where supported; PencilKit ink is composited as a raster
-layer. Export preserves page order, geometry, and rotation, then validates the
-result before publishing it. Publication is conditional on the finalize
-operation remaining current.
+Android uses PDFium. On iOS, PDFKit retains the source pages and owns the output
+document, Quartz renders page and annotation appearances, and CoreText shapes
+committed text. Each text annotation is locked and locked-content while
+remaining selectable and copyable in supported ordinary viewers. Each signature
+is a read-only, locked annotation whose appearance preserves the committed
+variable-width shape as vector geometry. Neither representation is rasterized.
 
-Markup uses canonical page coordinates, independent of viewport zoom, pan, or
-screen scale. Export behavior and errors are implemented in the native source;
-this reference records the ownership and representation choices.
+The detached candidate is reopened and checked for page geometry, annotation
+contents, vector appearances, and persisted display, print, and lock flags. It
+is published only while the finalize operation remains current. Advanced source
+PDF semantics, including forms, links, outlines, layers, and existing digital
+signatures, are outside the editing contract; their loss does not block export.

@@ -895,7 +895,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private func presentation() -> (generation: UInt64, pageIndex: Int,
                                   pageSize: CGSize, annotations: [InkSignPdfTextAnnotation])? {
     guard let owner, let state = owner.documentCoordinator.document,
-          owner.attachedOverlayPage === state.activePage.page,
+          owner.attachedOverlayPage == state.activePage.id,
           owner.pageToOverlayTransform != nil else { return nil }
     return (owner.documentCoordinator.generation, state.activePageIndex,
             state.activePage.geometry.mediaBox.size,

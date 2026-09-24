@@ -1,5 +1,4 @@
 import Foundation
-import PDFKit
 import PencilKit
 import UIKit
 import NitroModules
@@ -40,11 +39,12 @@ extension InkSignView {
     let target = state.activePage
     pageTurnLifecycle.pageSwitchStarted(switchID: requestID, targetPageIndex: pageIndex)
     documentView.installPage(index: pageIndex,
-                             page: target.page,
+                             pageID: target.id,
                              geometry: target.geometry,
-                             session: state.pdfiumSession,
+                             page: target.page,
+                             document: state.document,
                              generation: documentCoordinator.generation)
-    overlayDidDisplay(canvasView, for: target.page)
+    overlayDidDisplay(canvasView, for: target.id)
     return try currentPageInfo()
   }
 
@@ -106,8 +106,8 @@ extension InkSignView {
   func finishPageSwitchIfReady(requestID: UInt64) {
     guard pendingPageSwitchID == requestID,
           let state = documentCoordinator.document,
-          documentView.currentPage === state.activePage.page,
-          attachedOverlayPage === state.activePage.page,
+          documentView.currentPageID == state.activePage.id,
+          attachedOverlayPage == state.activePage.id,
           documentView.bounds.width > 0,
           documentView.bounds.height > 0,
           let fitScale = usableFitScale() else { return }
@@ -116,12 +116,12 @@ extension InkSignView {
       focus: CGPoint(x: state.activePage.geometry.mediaBox.width / 2,
                      y: state.activePage.geometry.mediaBox.height / 2))) else { return }
     guard pendingPageSwitchID == requestID,
-          documentView.currentPage === state.activePage.page,
+          documentView.currentPageID == state.activePage.id,
           documentView.scaleFactor.isFinite,
           documentView.scaleFactor >= 0.1,
           documentView.scaleFactor <= 16,
-          attachedOverlayPage === state.activePage.page,
-          overlayTransformPage === state.activePage.page,
+          attachedOverlayPage == state.activePage.id,
+          overlayTransformPage == state.activePage.id,
           pageToOverlayTransform != nil,
           isFittedToPage() else { return }
     if case .committed = pageTurnLifecycle.phase {

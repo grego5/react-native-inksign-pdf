@@ -54,18 +54,6 @@ jobs:
         if: inputs.reuse_run_id == ''
         run: npm install --no-package-lock --ignore-scripts --install-links --no-audit --no-fund
 
-      - name: Ensure PDFium iOS binary is installed
-        if: inputs.reuse_run_id == ''
-        run: |
-          for attempt in 1 2 3 4 5; do
-            if node node_modules/@grego5/react-native-inksign-pdf/tools/fetch-pdfium-ios.mjs; then
-              exit 0
-            fi
-            echo "PDFium download attempt $attempt failed; retrying..."
-            sleep $((attempt * 10))
-          done
-          exit 1
-
       - name: Generate iOS project
         if: inputs.reuse_run_id == ''
         env:

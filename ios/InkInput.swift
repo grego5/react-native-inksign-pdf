@@ -149,9 +149,9 @@ extension InkSignView {
   func installCommittedDrawing() {
     let displayed: PKDrawing
     let committedDrawing = documentCoordinator.document?.activePage.history.content.drawing ?? PKDrawing()
-    if let activePage = documentCoordinator.document?.activePage.page,
-       attachedOverlayPage === activePage,
-       overlayTransformPage === activePage,
+    if let activePageID = documentCoordinator.document?.activePage.id,
+       attachedOverlayPage == activePageID,
+       overlayTransformPage == activePageID,
        let transform = pageToOverlayTransform {
       displayed = committedDrawing.transformed(using: transform)
     } else {

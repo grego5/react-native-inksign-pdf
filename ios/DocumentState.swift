@@ -36,6 +36,8 @@ final class InkSignPdfDocumentCoordinator {
   }
 
   let artifactPolicy: InkSignPdfCacheArtifactPolicy
+  let pdfQueue = DispatchQueue(label: "ReactNativeInkSignPdf.ios.pdf",
+                               qos: .userInitiated)
   private let lock = NSLock()
   private(set) var document: InkSignPdfDocumentState?
   private(set) var generation: UInt64 = 0
@@ -168,7 +170,6 @@ final class InkSignPdfDocumentCoordinator {
     }
     lock.unlock()
     if let obsolete, document.map({ obsolete !== $0 }) ?? true {
-      obsolete.pdfiumSession.close()
       artifactPolicy.deleteExact(obsolete.workingURL)
     }
   }
@@ -282,7 +283,6 @@ final class InkSignPdfDocumentCoordinator {
   }
 
   func clearDocument() {
-    document?.pdfiumSession.close()
     if let workingURL = document?.workingURL { artifactPolicy.deleteExact(workingURL) }
     document = nil
     structuralDirty = false
@@ -308,7 +308,6 @@ final class InkSignPdfDocumentCoordinator {
     lock.unlock()
     artifacts.forEach(artifactPolicy.deleteExact)
     if let previous {
-      previous.pdfiumSession.close()
       artifactPolicy.deleteExact(previous.workingURL)
     }
   }
@@ -320,21 +319,18 @@ final class InkSignPdfDocumentState {
   let sourceURL: URL
   let workingURL: URL
   let document: PDFDocument
-  let pdfiumSession: InkSignPdfPdfiumSession
   private(set) var pages: [InkSignPdfPageState]
   fileprivate(set) var activePageID: UUID
 
   init(sourceURL: URL,
        workingURL: URL,
        document: PDFDocument,
-       pdfiumSession: InkSignPdfPdfiumSession,
        pages: [InkSignPdfPageState],
        activePageID: UUID? = nil) {
     precondition(!pages.isEmpty)
     self.sourceURL = sourceURL
     self.workingURL = workingURL
     self.document = document
-    self.pdfiumSession = pdfiumSession
     self.pages = pages
     self.activePageID = activePageID ?? pages[0].id
     precondition(pages.contains { $0.id == self.activePageID })

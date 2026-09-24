@@ -203,15 +203,9 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let afterRemove = try XCTUnwrap(view.documentCoordinator.document)
     XCTAssertEqual(afterRemove.pages.map(\.geometry.mediaBox.width), [300, 500])
     XCTAssertEqual(afterRemove.activePageIndex, 0)
-    XCTAssertEqual(Int(afterRemove.pdfiumSession.pageCount), 2)
-    var firstWorkingPageSize = CGSize.zero
-    var secondWorkingPageSize = CGSize.zero
-    try afterRemove.pdfiumSession.pageSize(for: 0, into: &firstWorkingPageSize)
-    try afterRemove.pdfiumSession.pageSize(for: 1, into: &secondWorkingPageSize)
-    XCTAssertEqual(firstWorkingPageSize.width, 300, accuracy: 0.5)
-    XCTAssertEqual(firstWorkingPageSize.height, 400, accuracy: 0.5)
-    XCTAssertEqual(secondWorkingPageSize.width, 500, accuracy: 0.5)
-    XCTAssertEqual(secondWorkingPageSize.height, 400, accuracy: 0.5)
+    XCTAssertEqual(afterRemove.document.pageCount, 2)
+    XCTAssertEqual(afterRemove.document.page(at: 0)?.rotation, 0)
+    XCTAssertEqual(afterRemove.document.page(at: 1)?.rotation, 0)
     let workingPdf = try XCTUnwrap(CGPDFDocument(afterRemove.workingURL as CFURL),
                                    "the published working PDF must remain readable by the exporter")
     XCTAssertEqual(workingPdf.numberOfPages, 2)
@@ -233,24 +227,6 @@ final class InkSignViewLifecycleTests: XCTestCase {
       XCTAssertEqual(pdf?.page(at: 0)?.bounds(for: .mediaBox).height, 400)
       XCTAssertEqual(pdf?.page(at: 1)?.bounds(for: .mediaBox).width, 500)
       XCTAssertEqual(pdf?.page(at: 1)?.bounds(for: .mediaBox).height, 400)
-      do {
-        let data = try Data(contentsOf: URL(fileURLWithPath: path))
-        let session = try InkSignPdfPdfiumSession(data: data,
-                                                  fallbackFontPath: nil,
-                                                  collectionIndex: 0)
-        defer { session.close() }
-        XCTAssertEqual(Int(session.pageCount), 2)
-        var firstPageSize = CGSize.zero
-        var secondPageSize = CGSize.zero
-        try session.pageSize(for: 0, into: &firstPageSize)
-        try session.pageSize(for: 1, into: &secondPageSize)
-        XCTAssertEqual(firstPageSize.width, 300, accuracy: 0.5)
-        XCTAssertEqual(firstPageSize.height, 400, accuracy: 0.5)
-        XCTAssertEqual(secondPageSize.width, 500, accuracy: 0.5)
-        XCTAssertEqual(secondPageSize.height, 400, accuracy: 0.5)
-      } catch {
-        XCTFail("PDFium could not verify the exported page order: \(error)")
-      }
       exported.fulfill()
     }
     output.catch { error in XCTFail("export failed: \(error)"); exported.fulfill() }
@@ -270,28 +246,17 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let candidateData = try Data(contentsOf: fixtureCandidate.workingURL)
     let candidateURL = try coordinator.artifactPolicy.allocateWorkingSource()
     try candidateData.write(to: candidateURL, options: .atomic)
-    let candidatePDF = try XCTUnwrap(PDFDocument(url: candidateURL))
-    let candidateSession = try InkSignPdfPdfiumSession(data: candidateData,
-                                                       fallbackFontPath: nil,
-                                                       collectionIndex: 0)
-    let candidatePages = try fixtureCandidate.pages.enumerated().map { index, old -> InkSignPdfPageState in
-      guard let page = candidatePDF.page(at: index) else {
-        throw InkSignView.MutablePageError.assemblyFailed
-      }
-      return InkSignPdfPageState(id: old.id,
-                                 page: page,
-                                 geometry: old.geometry,
-                                 history: old.history)
+    let loadedCandidate = try InkSignPdfDocumentCandidateLoader.load(url: candidateURL)
+    let candidatePages = try fixtureCandidate.pages.enumerated().map { index, old in
+      InkSignPdfDocumentCandidateLoader.rebinding(old, to: loadedCandidate.pages[index])
     }
     let candidate = InkSignPdfDocumentState(sourceURL: fixtureCandidate.sourceURL,
                                             workingURL: candidateURL,
-                                            document: candidatePDF,
-                                            pdfiumSession: candidateSession,
+                                            document: loadedCandidate.document,
                                             pages: candidatePages,
                                             activePageID: fixtureCandidate.activePageID)
     defer {
       if coordinator.document !== candidate {
-        candidateSession.close()
         coordinator.artifactPolicy.deleteExact(candidateURL)
       }
     }
@@ -319,14 +284,10 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let candidateURL = try artifacts.allocateWorkingSource()
     defer { artifacts.deleteExact(candidateURL) }
     try data.write(to: candidateURL, options: .atomic)
-    let loaded = try InkSignPdfDocumentCandidateLoader.load(
-      url: candidateURL,
-      fallbackFontPath: nil,
-      collectionIndex: 0)
+    let loaded = try InkSignPdfDocumentCandidateLoader.load(url: candidateURL)
     let candidate = InkSignPdfDocumentState(sourceURL: candidateURL,
                                             workingURL: candidateURL,
                                             document: loaded.document,
-                                            pdfiumSession: loaded.pdfiumSession,
                                             pages: loaded.pages)
     let coordinator = InkSignPdfDocumentCoordinator(artifactPolicy: artifacts)
     defer { coordinator.dispose() }
@@ -446,19 +407,11 @@ final class InkSignViewLifecycleTests: XCTestCase {
     let sourceData = try Data(contentsOf: original.workingURL)
     let candidateURL = try InkSignPdfCacheArtifactPolicy.shared.allocateWorkingSource()
     try sourceData.write(to: candidateURL, options: .atomic)
-    let candidatePDF = try XCTUnwrap(PDFDocument(url: candidateURL))
-    let candidateSession = try InkSignPdfPdfiumSession(
-      data: sourceData, fallbackFontPath: nil, collectionIndex: 0)
-    let candidatePages = try (0..<candidatePDF.pageCount).map { index -> InkSignPdfPageState in
-      let page = try XCTUnwrap(candidatePDF.page(at: index))
-      return InkSignPdfPageState(
-        page: page,
-        geometry: PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation))
-    }
+    let loadedCandidate = try InkSignPdfDocumentCandidateLoader.load(url: candidateURL)
+    let candidatePages = loadedCandidate.pages
     let candidate = InkSignPdfDocumentState(sourceURL: original.sourceURL,
                                             workingURL: candidateURL,
-                                            document: candidatePDF,
-                                            pdfiumSession: candidateSession,
+                                            document: loadedCandidate.document,
                                             pages: candidatePages)
     let operation = try XCTUnwrap(coordinator.admit(.open))
 
@@ -710,9 +663,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     fixture.previewScheduler.complete(request: leftRequest, image: UIImage())
     XCTAssertNotNil(preparedPreview(.left, in: fixture.view))
     XCTAssertNotNil(renderingRequest(.right, in: fixture.view))
-    let pageBounds = fixture.view.documentView.convert(
-      fixture.pages[1].bounds(for: .mediaBox),
-      from: fixture.pages[1])
+    let pageBounds = try XCTUnwrap(fixture.view.documentView.viewportTransform?.pageFrame)
 
     XCTAssertTrue(fixture.view.prepareForEdgeNavigationTouch(at: CGPoint(
       x: pageBounds.midX,
@@ -739,7 +690,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     fixture.animationFactory.lastDriver?.complete()
     fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
 
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[1])
   }
 
   func testRepeatedStablePreviewReconciliationSubmitsOneRenderPerDirection() {
@@ -895,36 +846,41 @@ final class InkSignViewLifecycleTests: XCTestCase {
       for: CGRect(x: -12, y: 24, width: 300, height: 200)).tx, -12, accuracy: 0.001)
   }
 
-  func testTextRendererWritesExtractableTextToPDFContext() throws {
-    let pageSize = CGSize(width: 300, height: 200)
-    let mediaBox = CGRect(x: -12, y: 24, width: pageSize.width, height: pageSize.height)
-    let annotation = makeCenteredTextAnnotation(
-      id: "text",
-      text: "Latin\nשלום עולם",
-      fontSize: 18,
-      pageSize: pageSize)
-    let url = FileManager.default.temporaryDirectory
-      .appendingPathComponent("InkSignPdfTextRenderer-\(UUID().uuidString).pdf")
-    defer { try? FileManager.default.removeItem(at: url) }
+  func testNativeExporterShapesAndExportsLTRAndRTLText() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let state = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    let geometry = state.pages[0].geometry
+    let latin = makeCenteredTextAnnotation(id: "latin", text: "Latin",
+                                           fontSize: 18, pageSize: geometry.mediaBox.size)
+    let rtl = InkSignPdfTextAnnotation(id: "rtl", text: "שלום",
+                                       bounds: latin.bounds.offsetBy(dx: 0, dy: 30),
+                                       fontSize: latin.fontSize,
+                                       isRTL: true)
+    let snapshot = ExportPageSnapshot(pageIndex: 0,
+                                      pageID: state.pages[0].id,
+                                      geometry: geometry,
+                                      drawingData: PKDrawing().dataRepresentation(),
+                                      textAnnotations: [latin, rtl])
+    let policy = InkSignPdfCacheArtifactPolicy.shared
+    let output = try policy.allocateExportScratch()
+    defer { policy.deleteExact(output) }
 
-    var pageBox = mediaBox
-    guard let consumer = CGDataConsumer(url: url as CFURL),
-          let context = CGContext(consumer: consumer,
-                                  mediaBox: &pageBox,
-                                  nil) else {
-      return XCTFail("PDF context should be available")
+    try InkSignPdfNativeExporter.write(sourceURL: state.workingURL,
+                                       pages: [snapshot],
+                                       outputURL: output)
+
+    let page = try XCTUnwrap(PDFDocument(url: output)?.page(at: 0))
+    for expected in [latin, rtl] {
+      let annotation = try XCTUnwrap(page.annotations.first {
+        $0.contents == expected.text &&
+          $0.type?.caseInsensitiveCompare("FreeText") == .orderedSame
+      })
+      XCTAssertTrue(annotation.hasAppearanceStream)
+      let flags = InkSignPdfVectorAnnotation.flags(of: annotation)
+      XCTAssertEqual(flags & InkSignPdfVectorAnnotation.textFlags,
+                     InkSignPdfVectorAnnotation.textFlags)
     }
-    context.beginPDFPage([kCGPDFContextMediaBox as String: mediaBox] as CFDictionary)
-    try InkSignPdfTextRenderer.drawForPDF([annotation],
-                                          pageSize: pageSize,
-                                          mediaBox: mediaBox,
-                                          in: context)
-    context.endPDFPage()
-    context.closePDF()
-
-    let extracted = PDFDocument(url: url)?.page(at: 0)?.string ?? ""
-    XCTAssertTrue(extracted.contains("Latin"))
-    XCTAssertTrue(extracted.contains("שלום"))
   }
 
   func testPageContentHistoryRestoresTextAndClearAsOneAction() {
@@ -1254,10 +1210,10 @@ final class InkSignViewLifecycleTests: XCTestCase {
     fixture.animationFactory.lastDriver?.complete()
     XCTAssertNil(fixture.view.pendingPageSwitchID)
     XCTAssertEqual(completionCount, 1)
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[1])
     fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
     XCTAssertEqual(completionCount, 1)
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[1])
   }
 
   func testSubthresholdPageTurnSettlesPreviewWithPageBeforeClearing() {
@@ -1417,13 +1373,13 @@ final class InkSignViewLifecycleTests: XCTestCase {
 
     XCTAssertNil(fixture.view.pendingPageSwitchID)
     XCTAssertEqual(completionCount, 1)
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[1])
 
     fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
 
     XCTAssertNil(fixture.view.pendingPageSwitchID)
     XCTAssertEqual(completionCount, 1)
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[1])
   }
 
   func testOverlayDetachmentAfterCommittedPageTurnDoesNotResettleIt() {
@@ -1439,7 +1395,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     XCTAssertNil(fixture.view.pendingPageSwitchID)
     XCTAssertTrue(isIdle(fixture.view.pageTurnLifecycle))
     XCTAssertTrue(fixture.view.pageTurnLifecycle.previewView.isHidden)
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[1])
     XCTAssertEqual(completionCount, 1)
     let completedSwitchID = fixture.view.pageSwitchRequestID
     XCTAssertFalse(fixture.view.pageTurnLifecycle.pageSwitchReady(switchID: completedSwitchID &+ 1))
@@ -1450,7 +1406,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[1])
 
     XCTAssertTrue(isIdle(fixture.view.pageTurnLifecycle))
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[1])
     XCTAssertEqual(completionCount, 1)
   }
 
@@ -1488,7 +1444,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
     drainMainQueue()
 
     XCTAssertEqual(pageChanges.map(\.pageIndex), [1])
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[1])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[1])
   }
 
   func testDocumentReplacementInvalidatesQueuedPageNavigation() throws {
@@ -1509,7 +1465,7 @@ final class InkSignViewLifecycleTests: XCTestCase {
 
     XCTAssertEqual(completionCount, 0)
     XCTAssertNil(fixture.view.pendingPageSwitchID)
-    XCTAssertTrue(fixture.view.documentView.currentPage === fixture.pages[0])
+    XCTAssertEqual(fixture.view.documentView.currentPageID, fixture.pages[0])
   }
 
   func testDisposalInvalidatesQueuedPageNavigation() throws {
@@ -1532,42 +1488,30 @@ final class InkSignViewLifecycleTests: XCTestCase {
     pageCount: Int = 2,
     activePageIndex: Int = 0,
     applyInitialViewport: Bool = true
-  ) -> (view: InkSignView, window: UIWindow, pages: [PDFPage],
+  ) -> (view: InkSignView, window: UIWindow, pages: [UUID],
         previewScheduler: TestPreviewScheduler,
         animationFactory: TestAnimationDriverFactory) {
     let document = PDFDocument()
-    let pages = (0..<pageCount).map { index -> PDFPage in
+    for index in 0..<pageCount {
       let image = UIGraphicsImageRenderer(size: CGSize(width: 300 + index * 100, height: 400))
         .image { UIColor.white.setFill(); $0.fill(CGRect(x: 0, y: 0, width: 300 + index * 100, height: 400)) }
       let page = PDFPage(image: image)!
       page.setBounds(CGRect(x: 0, y: 0, width: 300 + index * 100, height: 400), for: .mediaBox)
       document.insert(page, at: index)
-      return page
     }
-    let states = pages.enumerated().map { index, page in
-      InkSignPdfPageState(page: page,
-                          geometry: PageGeometry(mediaBox: page.bounds(for: .mediaBox),
-                                                 rotation: page.rotation))
-    }
-    let sourceURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("InkSignPdfLifecycle-\(UUID().uuidString).pdf")
-    XCTAssertTrue(document.write(to: sourceURL))
-    let sourceData = try! Data(contentsOf: sourceURL)
     let workingURL = try! InkSignPdfCacheArtifactPolicy.shared.allocateWorkingSource()
-    try! sourceData.write(to: workingURL, options: .atomic)
-    let pdfiumSession = try! InkSignPdfPdfiumSession(
-      data: sourceData, fallbackFontPath: nil, collectionIndex: 0)
-    XCTAssertEqual(Int(pdfiumSession.pageCount), pageCount)
+    XCTAssertTrue(document.write(to: workingURL))
+    let loaded = try! InkSignPdfDocumentCandidateLoader.load(url: workingURL)
+    let states = loaded.pages
     let previewScheduler = TestPreviewScheduler()
     let animationFactory = TestAnimationDriverFactory()
     let view = InkSignView(
       previewScheduler: previewScheduler,
       animationDriverFactory: animationFactory)
     let state = InkSignPdfDocumentState(
-      sourceURL: sourceURL,
+      sourceURL: workingURL,
       workingURL: workingURL,
-      document: document,
-      pdfiumSession: pdfiumSession,
+      document: loaded.document,
       pages: states)
     XCTAssertTrue(view.documentCoordinator.publish(state, generation: view.documentCoordinator.generation))
     XCTAssertTrue(view.documentCoordinator.selectPage(at: activePageIndex))
@@ -1580,9 +1524,10 @@ final class InkSignViewLifecycleTests: XCTestCase {
     controller.view.layoutIfNeeded()
     view.documentView.installPage(
       index: activePageIndex,
-      page: pages[activePageIndex],
+      pageID: states[activePageIndex].id,
       geometry: states[activePageIndex].geometry,
-      session: pdfiumSession,
+      page: states[activePageIndex].page,
+      document: loaded.document,
       generation: view.documentCoordinator.generation)
     view.documentView.layoutIfNeeded()
     if applyInitialViewport {
@@ -1592,12 +1537,12 @@ final class InkSignViewLifecycleTests: XCTestCase {
         generation: view.documentCoordinator.generation))
     }
     view.canvasView.frame = view.documentView.bounds
-    view.attachedOverlayPage = pages[activePageIndex]
-    view.overlayTransformPage = pages[activePageIndex]
+    view.attachedOverlayPage = states[activePageIndex].id
+    view.overlayTransformPage = states[activePageIndex].id
     view.pageToOverlayTransform = .identity
     view.pageTurnLifecycle.stableContextChanged()
     previewScheduler.completeAll()
-    return (view, window, pages, previewScheduler, animationFactory)
+    return (view, window, states.map(\.id), previewScheduler, animationFactory)
   }
 
   private func drainMainQueue() {

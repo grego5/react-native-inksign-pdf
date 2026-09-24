@@ -82,7 +82,7 @@ export interface DoubleTapOptions {
 }
 
 export interface InkSignViewProps extends HybridViewProps {
-  /** Optional PDFium fallback resource captured on the next open; changing this requires reopening the document. */
+  /** Android-only PDFium fallback font; iOS uses Core Text system fallback. */
   fallbackFont?: PdfFallbackFont
   strokeColor?: StrokeColor
   strokeMinWidth?: number

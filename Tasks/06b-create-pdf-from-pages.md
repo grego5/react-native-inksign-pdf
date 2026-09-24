@@ -1,4 +1,4 @@
-# Task 06b: Create a PDF from staged pages
+# Task 06b: Create a PDF from staged pages on Android
 
 Back to task index: [TASKS.md](../TASKS.md)
 
@@ -8,12 +8,21 @@ Back to task index: [TASKS.md](../TASKS.md)
 
 ## Objective
 
-Extend the shared PDFium assembler with a creation command that builds a valid PDF from ordered staged inputs without an existing working PDF.
+Extend the Android PDFium assembler with a creation command that builds a valid
+PDF from ordered staged inputs without an existing working PDF.
 
 ## Implementation
 
-1. Add an explicit `CREATE` command to `core/pdfium-adapter/PdfiumPageAssembler.*` and its Android JNI and iOS Objective-C++ boundaries. `CREATE` accepts no current document and requires at least one input; append, remove, and move still require the current working PDF.
-2. Import every selected PDF page as PDF content in source order. Create each image page directly from normalized JPEG bytes and the resolved `imagePageSize`; preserve mixed selection order. Write only a detached candidate artifact, then validate its page count, order, geometry, and reopenability before either platform can publish it.
+1. Add an explicit `CREATE` command to
+   `core/pdfium-adapter/PdfiumPageAssembler.*` and its Android JNI boundary.
+   `CREATE` accepts no current document and requires at least one input; append,
+   remove, and move still require the current working PDF. Do not add or retain
+   an iOS Objective-C++ bridge for this command.
+2. Import every selected PDF page as PDF content in source order. Create each
+   image page directly from normalized JPEG bytes and the resolved
+   `imagePageSize`; preserve mixed selection order. Write only a detached
+   candidate artifact, then validate its page count, order, geometry, and
+   reopenability before Android can publish it.
 3. Keep all PDFium calls behind `PdfiumLibraryState::apiMutex`. An invalid input or failed candidate leaves no partial published document or retained scratch artifact.
 
 ## Completion

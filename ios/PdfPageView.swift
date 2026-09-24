@@ -2,8 +2,6 @@ import CoreGraphics
 import PDFKit
 import UIKit
 
-private let inkSignPdfiumRenderFlags: UInt32 = 0x03 // FPDF_ANNOT | FPDF_LCD_TEXT
-
 private struct InkSignPdfTileKey: Hashable {
   let generation: UInt64
   let pageIndex: Int
@@ -98,14 +96,11 @@ private struct InkSignPdfTileCacheEntry {
   var lastUsed: UInt64
 }
 
-/// Owns the iOS page viewport and the PDFium-backed base image. PDFPage is
-/// retained only as document metadata for the existing history/export layer.
+/// Owns the iOS page viewport and its Quartz-rendered PDF tiles.
 final class InkPdfView: UIView {
   weak var owner: InkSignView?
 
   private let pageLayer = UIView()
-  private let renderQueue = DispatchQueue(label: "ReactNativeInkSignPdf.ios.tiles",
-                                           qos: .userInitiated)
   private var tileViews: [InkSignPdfTileKey: UIImageView] = [:]
   private var tileImages: [InkSignPdfTileKey: InkSignPdfTileCacheEntry] = [:]
   private var failedTiles = Set<InkSignPdfTileKey>()
@@ -114,7 +109,8 @@ final class InkPdfView: UIView {
   private var nextTileRequestID: UInt64 = 0
   private var cacheClock: UInt64 = 0
   private var renderGeneration: UInt64 = 0
-  private var pageSession: InkSignPdfPdfiumSession?
+  private var pageDocument: PDFDocument?
+  private var page: PDFPage?
   private var pageGeometry = PageGeometry.empty
   private var pageIndex = -1
   private var pageGeneration: UInt64?
@@ -122,7 +118,7 @@ final class InkPdfView: UIView {
   private var pinchStartPoint = CGPoint.zero
   private(set) var viewportTransform: PageViewportTransform?
 
-  var currentPage: PDFPage?
+  private(set) var currentPageID: UUID?
   var minScaleFactor: CGFloat = 0.1
   var maxScaleFactor: CGFloat = 16
   var autoScales = false
@@ -201,16 +197,18 @@ final class InkPdfView: UIView {
 
   func installPage(
     index: Int,
-    page: PDFPage,
+    pageID: UUID,
     geometry: PageGeometry,
-    session: InkSignPdfPdfiumSession,
+    page: PDFPage,
+    document: PDFDocument,
     generation: UInt64
   ) {
     renderGeneration &+= 1
-    currentPage = page
+    currentPageID = pageID
     pageIndex = index
     pageGeometry = geometry
-    pageSession = session
+    self.page = page
+    pageDocument = document
     pageGeneration = generation
     viewportTransform = nil
     clearTiles()
@@ -219,8 +217,9 @@ final class InkPdfView: UIView {
 
   func removePage() {
     renderGeneration &+= 1
-    currentPage = nil
-    pageSession = nil
+    currentPageID = nil
+    page = nil
+    pageDocument = nil
     pageIndex = -1
     pageGeometry = .empty
     pageGeneration = nil
@@ -231,7 +230,7 @@ final class InkPdfView: UIView {
 
   @discardableResult
   func applyViewport(zoom: CGFloat, focus: CGPoint, generation: UInt64) -> Bool {
-    guard currentPage != nil, pageGeneration == generation else {
+    guard currentPageID != nil, pageGeneration == generation else {
       renderGeneration &+= 1
       clearTiles()
       viewportTransform = nil
@@ -258,23 +257,25 @@ final class InkPdfView: UIView {
     return !pageLayer.frame.isNull && !pageLayer.frame.isEmpty
   }
 
-  func convert(_ point: CGPoint, to page: PDFPage) -> CGPoint {
-    guard page === currentPage, let transform = viewportTransform else { return .zero }
+  func convert(_ point: CGPoint, to pageID: UUID) -> CGPoint {
+    guard pageID == currentPageID, let transform = viewportTransform else { return .zero }
     return transform.pdfPoint(fromView: point)
   }
 
-  func convert(_ point: CGPoint, from page: PDFPage) -> CGPoint {
-    guard page === currentPage, let transform = viewportTransform else { return .zero }
+  func convert(_ point: CGPoint, from pageID: UUID) -> CGPoint {
+    guard pageID == currentPageID, let transform = viewportTransform else { return .zero }
     return transform.viewPoint(fromPDF: point)
   }
 
-  func convert(_ rect: CGRect, from page: PDFPage) -> CGRect {
-    guard page === currentPage, let transform = viewportTransform else { return .zero }
+  func convert(_ rect: CGRect, from pageID: UUID) -> CGRect {
+    guard pageID == currentPageID, let transform = viewportTransform else { return .zero }
     return transform.viewRect(fromPDF: rect)
   }
 
   private func renderTiles(generation: UInt64) {
-    guard let session = pageSession,
+    guard let page,
+          let document = pageDocument,
+          let pdfQueue = owner?.documentCoordinator.pdfQueue,
           let viewport = viewportTransform,
           pageIndex >= 0,
           bounds.width > 0, bounds.height > 0 else { return }
@@ -325,7 +326,7 @@ final class InkPdfView: UIView {
         let pixelWidth = tile.pixelWidth
         let pixelHeight = tile.pixelHeight
         let byteCost = tile.byteCost
-        renderQueue.async { [weak self, weak session] in
+        pdfQueue.async { [weak self, page, document] in
           var requestWasCurrent = false
           var renderedImage = false
           defer {
@@ -344,7 +345,7 @@ final class InkPdfView: UIView {
               }
             }
           }
-          guard let self, let session else { return }
+          guard let self else { return }
           let isCurrent = DispatchQueue.main.sync {
             self.isCurrentTileRequest(key, renderToken: renderToken)
           }
@@ -356,28 +357,29 @@ final class InkPdfView: UIView {
           guard !byteResult.overflow, byteResult.partialValue == byteCost else { return }
           let pixels = NSMutableData(length: byteResult.partialValue)
           guard let pixels else { return }
-          do {
-            try session.renderPage(
-              UInt(key.pageIndex),
-              width: Int32(pixelWidth),
-              height: Int32(pixelHeight),
-              stride: Int32(strideResult.partialValue),
-              pageToDevice: transform,
-              clip: CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight),
-              background: UInt32.max,
-              flags: inkSignPdfiumRenderFlags,
-              pixels: pixels)
-            let data = pixels as Data
-            guard let provider = CGDataProvider(data: data as CFData),
-                  let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
-                  let image = CGImage(width: pixelWidth, height: pixelHeight,
-                                      bitsPerComponent: 8, bitsPerPixel: 32,
-                                      bytesPerRow: strideResult.partialValue,
-                                      space: colorSpace,
-                                      bitmapInfo: CGBitmapInfo.byteOrder32Little
-                                        .union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)),
-                                      provider: provider, decode: nil,
-                                      shouldInterpolate: true, intent: .defaultIntent) else { return }
+          let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(
+            CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue))
+          guard let context = CGContext(data: pixels.mutableBytes,
+                                        width: pixelWidth,
+                                        height: pixelHeight,
+                                        bitsPerComponent: 8,
+                                        bytesPerRow: strideResult.partialValue,
+                                        space: CGColorSpaceCreateDeviceRGB(),
+                                        bitmapInfo: bitmapInfo.rawValue) else { return }
+          guard let pageRef = page.pageRef else { return }
+          withExtendedLifetime(document) {
+            context.setFillColor(UIColor.white.cgColor)
+            context.fill(CGRect(x: 0, y: 0, width: pixelWidth, height: pixelHeight))
+            context.saveGState()
+            context.translateBy(x: 0, y: CGFloat(pixelHeight))
+            context.scaleBy(x: 1, y: -1)
+            context.concatenate(transform)
+            context.drawPDFPage(pageRef)
+            for annotation in page.annotations where annotation.shouldDisplay {
+              annotation.draw(with: .mediaBox, in: context)
+            }
+            context.restoreGState()
+            guard let image = context.makeImage() else { return }
             let uiImage = UIImage(cgImage: image, scale: density, orientation: .up)
             renderedImage = true
             DispatchQueue.main.async {
@@ -397,8 +399,6 @@ final class InkPdfView: UIView {
                            frame: currentFrame)
               self.boundTileCache(protected: self.protectedVisibleTileKeys().union([key]))
             }
-          } catch {
-            return
           }
         }
       }

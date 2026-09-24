@@ -9,7 +9,7 @@ Move the existing iOS document and page state behind one mutable-document coordi
 ## Implementation
 
 1. Replace `InkSignPdfDocumentState` and index-owned `InkSignPdfPageState` in `ios/DocumentState.swift` with one coordinator-owned ordered page collection. Give each page a stable native ID, geometry, PDFKit page, and existing ink/text history. Derive indexes from collection position; store the active page by ID.
-2. Move document generation and the live PDFKit document and PDFium session from `InkSignView` into the coordinator. Keep `InkSignView` as the Nitro and UIKit adapter, `InkPdfView` as presentation, and the PDFium facade as the serialized session boundary.
+2. Keep the live PDFKit document and document generation in the coordinator. Keep `InkSignView` as the Nitro and UIKit adapter and `InkPdfView` as presentation; the coordinator serializes native document work.
 3. Update open, navigation, history, text, overlay installation, callbacks, and disposal to read or request changes through the coordinator. Remove parallel page and generation state from the view rather than adding compatibility mirrors.
 4. During open, copy the caller-owned PDF to an exact module-owned working artifact before publishing. Use that artifact as the live rendering and export source; release it on replacement and disposal. Preserve caller-file read-only behavior and existing open readiness.
 
@@ -26,5 +26,5 @@ Move the existing iOS document and page state behind one mutable-document coordi
 Status: Complete
 
 Coordinator ownership, stable page IDs, and exact working-PDF artifact
-ownership are implemented. Focused lifecycle coverage and the repository iOS
-lifecycle contract runner verify the ownership boundary.
+ownership are implemented. Focused lifecycle coverage verifies the ownership
+boundary.

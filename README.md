@@ -1,15 +1,15 @@
 # @grego5/react-native-inksign-pdf
 
-- PDF documents singing with ink signature module for React Native.
+- PDF document signing with ink in a React Native module.
 - Load document or images programatically by path, or through native file picker. Images converted to pdf pages automatically.
 - Add additional files to be added as pages. Can add/remove/reorder pages.
 - Can bring own scanner module and bridge it seamlessly by adding pages through path to the file in cacae directory.
 - Displays loaded PDF as background. Including swipe/method pagination.
-- Uses PDFium on Android for document loading, rendering, page assembly, and PDF export. The optional `fallbackFont` applies to source-PDF rendering.
-- Supports velocity-driven ink, text annotations, and histroy.
+- Uses PDFium on Android for document loading, rendering, page assembly, and export; iOS uses PDFKit, Quartz, and CoreText for PDF operations.
+- Supports velocity-driven ink, text annotations, and history.
 - Android using custom c++ InkEngine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
-- iOS basic compatibility using platform typical PencilKit, which is not as good but close. No web support.
-- Export changes to new PDF as vector path, preserving minimal size and high quality on Android, lower quality rasterized overlay as iOS fallback.
+- iOS uses PDFKit and Quartz for PDF operations, CoreText for text, and PencilKit for ink input. No web support.
+- Exports a new PDF that retains visible source pages and adds text and signatures as locked annotations with vector appearances.
 
 Intended workflow: open pdf, double click an area or dedicated button to enter edit mode, zoom into tapped area or prefined coordinates,
 draw a signature, save to new file. The brush doesn't scale with zoom level, but the drawn shape does.
@@ -207,13 +207,10 @@ const styles = StyleSheet.create({
 ```
 
 `open()` accepts a caller-owned local PDF path and starts in view mode. Keep the
-source file readable while the view is mounted. The `fallbackFont` component prop can
-provide one absolute local `.ttf`, `.otf`, or collection path for PDFium
-substitution. The resource is captured when `open()` or `addPages()` runs, so
-changing it takes effect on the next such operation. Invalid resources reject
-the operation; a valid font is used on a best-effort basis even if some glyphs
-are missing. iOS
-support remains experimental until tested on macOS and a device. `finalize()`
+source file readable while the view is mounted. The `fallbackFont` component prop
+provides an optional local font for Android PDFium substitution. It is captured
+when `open()` or `addPages()` runs, so changing it takes effect on the next such
+operation. iOS uses CoreText and the system font fallback behavior. `finalize()`
 returns the path to the signed PDF; copy that file to durable application
 storage before unmounting the view. Native temporary artifacts are kept below
 the app cache directory; iOS can override its leaf directory with the
@@ -224,7 +221,7 @@ the app cache directory; iOS can override its leaf directory with the
 
 ### Props
 
-- `fallbackFont` — one optional PDFium fallback font resource; changes take effect on the next `open()` or `addPages()`.
+- `fallbackFont` — one optional Android PDFium fallback font resource; changes take effect on the next `open()` or `addPages()`.
 - `strokeColor` — ink color as `#RRGGBB`.
 - `strokeMinWidth`, `strokeMaxWidth` — ink width range.
 - `strokeSmoothing` — Android input smoothing from `0` to `1`.

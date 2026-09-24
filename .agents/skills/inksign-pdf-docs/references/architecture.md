@@ -10,19 +10,18 @@ and export.
 - The public contract lives in
   [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts). JavaScript
   receives coarse state and page events, not PDF data or per-frame geometry.
-- Each platform view coordinates one published document with an ordered page
-  list, one active page, and page-local committed history. A native worker owns
-  PDFium sessions and document I/O; the UI thread owns presentation and
-  callbacks.
-- A shared native PDF assembler prepares page changes independently of
-  publication. The platform coordinator validates and publishes a candidate as
-  one document transition.
+- Each platform coordinator owns one published document with an ordered stable
+  page list, one active page, and page-local committed history. Android uses
+  PDFium for document I/O; iOS uses PDFKit with Quartz and CoreText. The UI
+  thread owns presentation and callbacks.
+- Each platform backend prepares, validates, and publishes its own detached
+  candidate as one document transition.
 - Document operations are coordinated per view. Worker results are accepted
   only while their document and request remain current.
 - Android renders PDFium tiles beneath native annotation presentation and uses
-  the shared C++ stroke engine. iOS uses PDFium for page imagery and PencilKit
-  for ink input; export preserves the source PDF while compositing committed
-  ink.
+  the shared C++ stroke engine. iOS renders PDFKit pages through Quartz and
+  uses PencilKit for ink input; export retains source pages and adds committed
+  text and filled vector signatures as PDF annotations.
 
 ## Document model
 
@@ -42,8 +41,13 @@ and export.
 ## Scope
 
 The v1 surface supports ordered PDFs, PDF and image page insertion, page-local
-ink and text, undo/redo, and signed-PDF export. Other annotation types and
-non-mobile platforms are outside this scope.
+ink and text, undo/redo, and signed-PDF export. iOS preserves visible source
+page content, order, supported boxes, and rotation, and exports module text and
+ink as locked annotations with vector appearances. Advanced source PDF
+semantics such as forms, links, outlines, tagged structure, layers, scripts,
+embedded files, and existing digital signatures are outside the editing
+contract; their loss does not block the workflow. Non-mobile platforms and
+unrelated PDF extensions are outside this scope.
 
 ## Subsystem references
 
