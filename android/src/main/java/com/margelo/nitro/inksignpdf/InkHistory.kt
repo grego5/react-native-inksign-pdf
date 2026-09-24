@@ -36,6 +36,8 @@ internal data class TextAnnotation(
   val fontSize: Double,
   /** Opaque ARGB text color captured when the annotation was created. */
   val textColor: Int = Color.BLACK,
+  /** Fixed paragraph base direction selected before this annotation was created. */
+  val directionRtl: Boolean = false,
 ) {
   init {
     require(id.isNotBlank()) { "Text annotation ID must not be blank" }
@@ -68,10 +70,18 @@ internal sealed interface PageContent {
   data class Text(val annotation: TextAnnotation) : PageContent
 }
 
+internal fun PageContent.inkOutlineOrNull(): StrokeOutline? = when (this) {
+  is PageContent.Ink -> outline
+  is PageContent.Text -> null
+}
+
+internal fun PageContent.textAnnotationOrNull(): TextAnnotation? = when (this) {
+  is PageContent.Ink -> null
+  is PageContent.Text -> annotation
+}
+
 private fun List<PageContent>.inkOutlines(): List<StrokeOutline> =
-  mapNotNull { content ->
-    (content as? PageContent.Ink)?.outline
-  }
+  mapNotNull { it.inkOutlineOrNull() }
 
 internal data class InkState(
   val canUndo: Boolean,
@@ -239,13 +249,13 @@ internal class InkHistory {
     content: PageContent,
     added: Boolean,
   ): InkHistoryMutation {
-    if (content is PageContent.Ink) {
-      return if (added) {
+    return when (content) {
+      is PageContent.Ink -> if (added) {
         InkHistoryMutation.Appended(content.outline)
       } else {
         InkHistoryMutation.Removed(content.outline)
       }
+      is PageContent.Text -> InkHistoryMutation.Replaced(contentSnapshot())
     }
-    return InkHistoryMutation.Replaced(contentSnapshot())
   }
 }

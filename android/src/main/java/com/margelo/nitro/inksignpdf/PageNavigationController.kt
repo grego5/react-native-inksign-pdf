@@ -214,7 +214,7 @@ internal class PageNavigationController(
       if (captured == null) return false
       val (capturedContext, capturedGesture) = captured
       val needsPreviewRetry = capturedContext.eligibleTargets.any { (direction, targetPageIndex) ->
-        slots[direction] is PagePreviewSlot.Empty &&
+        (slots[direction] == null || slots[direction] is PagePreviewSlot.Empty) &&
           ((capturedGesture.eligibility.previous && targetPageIndex == capturedContext.sourcePageIndex - 1) ||
             (capturedGesture.eligibility.next && targetPageIndex == capturedContext.sourcePageIndex + 1))
       }

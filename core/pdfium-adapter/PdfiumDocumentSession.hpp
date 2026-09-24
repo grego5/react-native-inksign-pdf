@@ -19,6 +19,13 @@ enum class PdfiumErrorCode : std::uint8_t {
   InvalidPageIndex,
   PageOpenFailed,
   InvalidFallbackFont,
+  LastPageRequired,
+  InvalidAssemblyCommand,
+  SourceDocumentOpenFailed,
+  MutationFailed,
+  SaveFailed,
+  ValidationFailed,
+  UnsupportedText,
 };
 
 struct PdfiumError final {
@@ -49,8 +56,19 @@ class PdfiumLibrary final {
 /** Metadata that can be read while a page and its temporary text page exist. */
 struct PdfiumPageMetadata final {
   std::size_t pageIndex = 0;
+  // Page dimensions as exposed by PDFium for the rotated display page.
   double width = 0.0;
   double height = 0.0;
+  // PDFium quarter-turn value: 0, 1, 2, or 3.
+  int rotation = 0;
+  // Unrotated PDF MediaBox in PDF user-space coordinates.
+  double mediaBoxLeft = 0.0;
+  double mediaBoxBottom = 0.0;
+  double mediaBoxRight = 0.0;
+  double mediaBoxTop = 0.0;
+
+  double canonicalWidth() const { return mediaBoxRight - mediaBoxLeft; }
+  double canonicalHeight() const { return mediaBoxTop - mediaBoxBottom; }
 };
 
 struct PdfiumRenderRect final {

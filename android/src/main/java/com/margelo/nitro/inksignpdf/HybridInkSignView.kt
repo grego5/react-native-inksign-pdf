@@ -29,9 +29,13 @@ class HybridInkSignView internal constructor(
     private val context: Context,
 ) : HybridInkSignViewSpec() {
   private val artifactPolicy = CacheArtifactPolicy.initialize(context)
+  private val pageInputCoordinator = PageInputCoordinator(context, artifactPolicy)
   private val container = FrameLayout(context)
   private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-  private val pdfWorker = PdfSessionWorker()
+  private val coordinator = MutableDocumentCoordinator(
+    sessionWorker = PdfSessionWorker(),
+    artifactPolicy = artifactPolicy,
+  )
   private val inkEngine = InkEngine()
   private val lowLatencyPresenter = LowLatencyInkPresenter(
     context,
@@ -40,15 +44,14 @@ class HybridInkSignView internal constructor(
   private val traceRecorder = createStrokeTraceRecorder()
   private val surface = SurfaceView(
     context,
-    pdfWorker,
     inkEngine,
     traceRecorder,
     lowLatencyInk = lowLatencyPresenter,
+    documentCoordinator = coordinator,
   )
   private val textOverlay = TextInteractionOverlay(context, surface)
   private val pendingOutputs = LinkedHashSet<File>()
   private val ownedOutputs = LinkedHashSet<File>()
-  @Volatile private var documentGeneration = 0L
   @Volatile private var viewportRequestID = 0L
   private var pageNavigationRequestID = 0L
   @Volatile private var disposed = false
@@ -186,21 +189,190 @@ class HybridInkSignView internal constructor(
 
   override fun open(path: String, options: ViewportOptions?): Promise<PageInfo> {
     return launchPromise {
-      val request = beginOpen(path, options)
-      val info = awaitWorkerResult(request.generation) { completion ->
-        pdfWorker.replace(
-          path,
-          request.generation,
-          request.fallbackFont,
-          completion,
-        )
+      checkMainThread()
+      if (disposed) throw operationCancelled()
+      pageInputCoordinator.cancelPending()
+      val viewport = ViewportRequestParser.parseOpen(options)
+      val fallbackFontSnapshot = fallbackFont
+      val hadDocument = coordinator.hasDocument
+      val previousViewport = if (hadDocument) surface.currentViewportState() else null
+      val previousEditMode = editMode
+      logFallbackFontSnapshot(fallbackFontSnapshot)
+      val pageInfo = coordinator.executeOpen(
+        sourcePath = path,
+        fallbackFont = fallbackFontSnapshot,
+        preparePresentation = { info ->
+          surface.prepareDocumentPresentation(info.pages.first(), viewport)
+        },
+        installPresentation = { prepared ->
+          viewportRequestID += 1L
+          pageNavigationRequestID += 1L
+          surface.installDocumentPresentation(prepared, notifyContent = false)
+          editMode = false
+          surface.setEditMode(false)
+          toPublicPageInfo(surface.currentPageInfo())
+        },
+        restorePresentation = {
+          if (hadDocument) {
+            surface.installDocumentPresentation(
+              zoom = previousViewport?.zoom,
+              focus = previousViewport?.focus,
+              fitToPage = previousViewport == null,
+            )
+            editMode = previousEditMode
+            surface.setEditMode(previousEditMode)
+          } else {
+            surface.clearDocument()
+          }
+        },
+      )
+      lastInkState = InkState(false, false, false)
+      runCatching { textOverlay.syncContent() }
+      runCatching { emitState() }
+      pageInfo
+    }
+  }
+
+  private fun logFallbackFontSnapshot(fallbackFontSnapshot: PdfFallbackFont?) {
+    if (BuildConfig.DEBUG) {
+      Log.i(
+        "InkSignPdf",
+        "PDFium component fallback snapshot configured=${fallbackFontSnapshot != null} " +
+          "path=${fallbackFontSnapshot?.path ?: ""}",
+      )
+    }
+  }
+
+  override fun addPages(options: AddPagesOptions?): Promise<AddPagesResult> {
+    return launchPromise {
+      val fontFallbackSnapshot = fallbackFont
+      val requestedImageSize = options?.imagePageSize?.let {
+        if (!it.width.isFinite() || it.width <= 0.0 ||
+          !it.height.isFinite() || it.height <= 0.0
+        ) throw PdfSessionException("invalid_image_page_size", "Image page dimensions must be finite positive PDF points")
+        PdfPageDimensions(it.width, it.height)
       }
-      ensureCurrentOpen(request.generation, info)
-      surface.setDocument(info, request.zoom, request.focus, request.fitToPage)
-      textOverlay.syncContent()
-      editMode = false
-      surface.setEditMode(false)
-      toPublicPageInfo(surface.currentPageInfo())
+      val operation = beginStructuralOperation(allowNoDocument = true, deferPreflight = true)
+      var staged = emptyList<StagedPageInput>()
+      try {
+        val generation = coordinator.generation
+        val activePage = if (coordinator.hasDocument) surface.currentPageInfo() else null
+        val imageSize = requestedImageSize ?: activePage?.dimensions ?:
+          PdfPageDimensions(595.28, 841.89)
+        staged = pageInputCoordinator.stage(options)
+        if (staged.isEmpty()) {
+          return@launchPromise AddPagesResult(
+            pageInfo = activePage?.let { toPublicPageInfo(it) },
+            addedPageCount = 0.0,
+          )
+        }
+        prepareStructuralMutation(creatingDocument = activePage == null)
+        val inputs = withContext(Dispatchers.IO) {
+          staged.map { input ->
+            when (input.type) {
+              PageType.PDF -> PdfiumAppendRequest(PageType.PDF, sourcePath = input.file.path)
+              PageType.IMAGE -> ImagePageEncoder.encode(input.file, imageSize)
+            }
+          }
+        }
+        ensureCurrentStructural(generation)
+        val oldPageCount = coordinator.pageCount
+        val request = PdfiumAssemblyRequest(
+          operation = if (oldPageCount == 0) PdfiumAssemblyOperation.CREATE else PdfiumAssemblyOperation.APPEND,
+          appendInputs = inputs,
+        )
+        coordinator.executeStructuralMutation(
+          generation = generation,
+          request = request,
+          candidateBuilder = { info ->
+            val addedDimensions = info.pages.drop(oldPageCount)
+            if (addedDimensions.isEmpty()) {
+              throw PdfSessionException("pdf_mutation_failed", "The append candidate contains no added pages")
+            }
+            coordinator.appendCandidate(addedDimensions)
+          },
+          validate = { info, pageCandidate ->
+            surface.validateStructuralCandidate(info, pageCandidate.pages, pageCandidate.activePageId)
+          },
+          present = {
+            val pageInfo = if (oldPageCount == 0) {
+              surface.installDocumentPresentation(notifyState = true)
+              surface.currentPageInfo()
+            } else {
+              surface.installStructuralPresentation()
+            }
+            AddPagesResult(
+              pageInfo = toPublicPageInfo(pageInfo),
+              addedPageCount = (coordinator.pageCount - oldPageCount).toDouble(),
+            )
+          },
+          fontFallback = fontFallbackSnapshot,
+        )
+      } finally {
+        pageInputCoordinator.release(staged)
+        endOperation(operation)
+      }
+    }
+  }
+
+  override fun removePage(): Promise<PageInfo> {
+    return launchPromise {
+      val operation = beginStructuralOperation()
+      try {
+        val generation = coordinator.generation
+        val current = coordinator
+        if (current.pageCount <= 1) {
+          throw PdfSessionException("last_page_required", "The document must retain one page")
+        }
+        val removedIndex = current.activePageIndex
+        coordinator.executeStructuralMutation(
+          generation = generation,
+          request = PdfiumAssemblyRequest(
+              operation = PdfiumAssemblyOperation.REMOVE,
+              pageIndex = removedIndex,
+            ),
+          candidateBuilder = { coordinator.removeActiveCandidate() },
+          validate = { info, pageCandidate ->
+            surface.validateStructuralCandidate(info, pageCandidate.pages, pageCandidate.activePageId)
+          },
+          present = { toPublicPageInfo(surface.installStructuralPresentation()) },
+        )
+      } finally {
+        endOperation(operation)
+      }
+    }
+  }
+
+  override fun movePage(pageIndex: Double): Promise<PageInfo> {
+    return launchPromise {
+      val operation = beginStructuralOperation()
+      try {
+        val generation = coordinator.generation
+        val current = coordinator
+        if (!pageIndex.isFinite() || pageIndex < 0.0 || pageIndex >= current.pageCount ||
+          pageIndex != kotlin.math.floor(pageIndex)
+        ) {
+          throw PdfSessionException("invalid_page_index", "The destination page index is invalid")
+        }
+        val destination = pageIndex.toInt()
+        val source = current.activePageIndex
+        if (source == destination) return@launchPromise toPublicPageInfo(surface.currentPageInfo())
+        coordinator.executeStructuralMutation(
+          generation = generation,
+          request = PdfiumAssemblyRequest(
+              operation = PdfiumAssemblyOperation.MOVE,
+              pageIndex = source,
+              destinationIndex = destination,
+            ),
+          candidateBuilder = { coordinator.moveActiveCandidate(destination) },
+          validate = { info, pageCandidate ->
+            surface.validateStructuralCandidate(info, pageCandidate.pages, pageCandidate.activePageId)
+          },
+          present = { toPublicPageInfo(surface.installStructuralPresentation()) },
+        )
+      } finally {
+        endOperation(operation)
+      }
     }
   }
 
@@ -263,8 +435,16 @@ class HybridInkSignView internal constructor(
         textOverlay.finishForLifecycle()
         surface.transitionToMode(enabled = false, viewport = ViewportRequest.Preserve)
         if (disposed || requestID != viewportRequestID) throw operationCancelled()
-        textOverlay.armPlacement(documentGeneration)
+        textOverlay.armPlacement(coordinator.generation)
       }
+    }
+  }
+
+  override fun setTextDirection(direction: TextDirection) {
+    runOnMainSync {
+      checkMainThread()
+      if (disposed) throw operationCancelled()
+      textOverlay.setTextDirection(direction)
     }
   }
 
@@ -296,9 +476,9 @@ class HybridInkSignView internal constructor(
     pageNavigationRequestID += 1L
     val requestID = pageNavigationRequestID
     if (target == current.pageIndex) return
-    val requestGeneration = documentGeneration
+    val requestGeneration = coordinator.generation
     if (!Handler(Looper.getMainLooper()).post {
-        if (disposed || documentGeneration != requestGeneration ||
+        if (disposed || coordinator.generation != requestGeneration ||
           pageNavigationRequestID != requestID
         ) return@post
         try {
@@ -319,19 +499,24 @@ class HybridInkSignView internal constructor(
 
   override fun finalize(): Promise<String> {
     return launchPromise {
-      val snapshot = try {
-        captureExport()
-      } catch (error: Throwable) {
-        throw normalizeFinalizeError(error)
-      }
+      val operation = beginFinalizeOperation()
       try {
-        val output = awaitWorkerResult(snapshot.generation) { completion ->
-          pdfWorker.export(snapshot, artifactPolicy, completion)
+        val snapshot = try {
+          captureExport()
+        } catch (error: Throwable) {
+          throw normalizeFinalizeError(error)
         }
-        publishExport(snapshot, output)
-      } catch (error: Throwable) {
-        retireExport(snapshot.outputPath)
-        throw normalizeFinalizeError(error)
+        try {
+          val output = awaitWorkerResult(snapshot.generation) { completion ->
+            coordinator.exportSession(snapshot, completion)
+          }
+          publishExport(snapshot, output)
+        } catch (error: Throwable) {
+          retireExport(snapshot.outputPath)
+          throw normalizeFinalizeError(error)
+        }
+      } finally {
+        endOperation(operation)
       }
     }
   }
@@ -384,17 +569,17 @@ class HybridInkSignView internal constructor(
   }
 
   private fun <T> runTextCommand(action: () -> T): T {
-    val requestGeneration = synchronized(this) { documentGeneration }
+    val requestGeneration = synchronized(this) { coordinator.generation }
     return runOnMainSync {
       checkMainThread()
-      if (disposed || documentGeneration != requestGeneration) {
+      if (disposed || coordinator.generation != requestGeneration) {
         throw operationCancelled()
       }
       var result: T? = null
       surface.withStateTransaction {
         result = action()
       }
-      if (disposed || documentGeneration != requestGeneration) {
+      if (disposed || coordinator.generation != requestGeneration) {
         throw operationCancelled()
       }
       checkNotNull(result)
@@ -427,49 +612,45 @@ class HybridInkSignView internal constructor(
         )
       }
       continuation.invokeOnCancellation {
-        pdfWorker.cancel(generation)
+        coordinator.cancel(generation)
       }
     }
   }
 
-  private fun beginOpen(path: String, options: ViewportOptions?): OpenRequest {
+  private fun beginStructuralOperation(
+    allowNoDocument: Boolean = false,
+    deferPreflight: Boolean = false,
+  ): Long {
     checkMainThread()
     if (disposed) throw operationCancelled()
-
-    surface.withStateTransaction { textOverlay.finishForLifecycle() }
-    val viewport = ViewportRequestParser.parseOpen(options)
-    val fallbackFontSnapshot = fallbackFont
-    if (BuildConfig.DEBUG) {
-      Log.i(
-        "InkSignPdf",
-        "PDFium component fallback snapshot configured=${fallbackFontSnapshot != null} " +
-          "path=${fallbackFontSnapshot?.path ?: ""}",
-      )
+    return coordinator.beginOperation(requireDocument = !allowNoDocument) {
+      if (coordinator.hasDocument && !deferPreflight) {
+        prepareStructuralMutation()
+      }
     }
-
-    val generation = synchronized(this) {
-      documentGeneration += 1L
-      viewportRequestID += 1L
-      pageNavigationRequestID += 1L
-      documentGeneration
-    }
-    editMode = false
-    surface.setEditMode(false)
-    surface.clearDocument()
-    emitResetState()
-
-    return OpenRequest(
-      generation = generation,
-      focus = viewport.focus,
-      zoom = viewport.zoom,
-      fitToPage = viewport.fitToPage,
-      fallbackFont = fallbackFontSnapshot,
-    )
   }
 
-  private fun ensureCurrentOpen(generation: Long, info: PdfSessionInfo) {
+  private fun prepareStructuralMutation(creatingDocument: Boolean = false) {
     checkMainThread()
-    if (disposed || documentGeneration != generation || info.generation != generation) {
+    surface.withStateTransaction { textOverlay.finishForLifecycle() }
+    surface.requireStructuralMutationReady(creatingDocument)
+  }
+
+  private fun beginFinalizeOperation(): Long {
+    checkMainThread()
+    if (disposed) throw operationCancelled()
+    return coordinator.beginOperation {
+      surface.withStateTransaction { textOverlay.finishForLifecycle() }
+    }
+  }
+
+  private fun endOperation(operationID: Long) {
+    coordinator.endOperation(operationID)
+  }
+
+  private fun ensureCurrentStructural(generation: Long) {
+    checkMainThread()
+    if (disposed || coordinator.generation != generation) {
       throw operationCancelled()
     }
   }
@@ -477,30 +658,8 @@ class HybridInkSignView internal constructor(
   private fun captureExport(): PdfExportSnapshot {
     checkMainThread()
     if (disposed) throw operationCancelled()
-    val info = surface.currentDocumentInfo()
-    val pages = surface.completedPagesSnapshot()
-    if (pages.size != info.pageCount) {
-      throw PdfSessionException(
-        "view_not_ready",
-        "The loaded PDF page state is incomplete",
-      )
-    }
-    return PdfExportSnapshot(
-      sourcePath = info.sourcePath,
-      outputPath = artifactPolicy.allocateSignedOutput().path,
-      pages = pages.map { page ->
-        PdfPageExportSnapshot(
-          pageIndex = page.pageIndex,
-          dimensions = page.dimensions,
-          strokes = page.strokes,
-          textAnnotations = page.content.mapNotNull { content ->
-            (content as? PageContent.Text)?.annotation
-          },
-        )
-      },
-      generation = info.generation,
-      color = surface.strokeColor(),
-    ).also { snapshot ->
+    val snapshot = coordinator.captureExport(surface.strokeColor())
+    return snapshot.also { snapshot ->
       synchronized(this) { pendingOutputs += File(snapshot.outputPath) }
     }
   }
@@ -510,7 +669,7 @@ class HybridInkSignView internal constructor(
     val output = File(outputPath).canonicalFile
     val expected = File(snapshot.outputPath).canonicalFile
     synchronized(this) {
-      if (disposed || documentGeneration != snapshot.generation || output != expected) {
+      if (disposed || coordinator.generation != snapshot.generation || output != expected) {
         pendingOutputs.remove(expected)
         artifactPolicy.deleteExact(expected)
         throw operationCancelled()
@@ -607,26 +766,22 @@ class HybridInkSignView internal constructor(
     )
   }
 
-  private fun emitResetState() {
-    lastInkState = InkState(false, false, false)
-    emitState()
-  }
-
   override fun onDropView() {
     checkMainThread()
     val promises = synchronized(this) {
       if (disposed) return
       disposed = true
-      documentGeneration += 1L
       viewportRequestID += 1L
       val pending = pendingPromises.keys.toList()
       pendingPromises.clear()
       pending
     }
     promises.forEach { promise -> promise.reject(operationCancelled()) }
+    pageInputCoordinator.close()
     textOverlay.dispose()
     mainScope.cancel()
     lowLatencyPresenter.release()
+    val workingFiles = coordinator.workingFiles() + listOfNotNull(coordinator.currentWorkingFile())
     surface.dispose()
     inkEngine.close()
     val outputs = synchronized(this) {
@@ -635,7 +790,8 @@ class HybridInkSignView internal constructor(
         ownedOutputs.clear()
       }
     }
-    pdfWorker.close(outputs, artifactPolicy::deleteExact)
+    coordinator.dispose()
+    coordinator.closeSession(outputs + workingFiles, artifactPolicy::deleteExact)
     onStateChange = null
     onPageChange = null
     textOverlay.onInteractionModeChanged = null
@@ -666,13 +822,5 @@ class HybridInkSignView internal constructor(
       height = info.dimensions.height,
     )
   }
-
-  private class OpenRequest(
-    val generation: Long,
-    val focus: PagePoint?,
-    val zoom: Double?,
-    val fitToPage: Boolean,
-    val fallbackFont: PdfFallbackFont?,
-  )
 
 }

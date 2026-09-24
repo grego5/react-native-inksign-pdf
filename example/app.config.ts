@@ -18,6 +18,7 @@ const config: ExpoConfig = {
     'expo-sharing',
     'expo-asset',
     'expo-system-ui',
+    './x-build-mods/app-config/withGradleConfig.ts',
   ],
   ios: {
     bundleIdentifier: packageName,

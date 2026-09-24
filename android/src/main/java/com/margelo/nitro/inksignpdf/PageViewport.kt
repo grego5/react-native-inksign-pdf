@@ -66,6 +66,11 @@ internal data class PageTransform(
     )
   }
 
+  fun unmap(point: ViewPoint): PagePoint {
+    val mapped = inverse().map(PagePoint(point.x, point.y))
+    return PagePoint(mapped.x, mapped.y)
+  }
+
   fun inverse(): PageTransform {
     val determinant = a * d - b * c
     require(determinant.isFinite() && determinant != 0.0)

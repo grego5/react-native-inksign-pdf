@@ -12,20 +12,37 @@ import java.util.UUID
  * Startup scanning and runtime allocation/deletion deliberately share this
  * policy so no caller-owned source path can become a cleanup candidate.
  */
+internal interface DocumentArtifactPolicy {
+  fun allocateSignedOutput(): File
+  fun allocateDebugRecording(): File
+  fun allocateExportScratch(): File
+  fun allocateStagedInput(): File
+  fun allocateWorkingPdf(): File
+  fun allocateMutationScratch(): File
+  fun validatedSignedOutput(path: String, source: File): File
+  fun deleteExact(file: File)
+}
+
 internal class CacheArtifactPolicy private constructor(
   val root: File,
   private val debugArtifactsEnabled: Boolean,
-) {
-  fun allocateSignedOutput(): File = allocateReservedFile("signed-", ".pdf")
+) : DocumentArtifactPolicy {
+  override fun allocateSignedOutput(): File = allocateReservedFile("signed-", ".pdf")
 
-  fun allocateDebugRecording(): File {
+  override fun allocateDebugRecording(): File {
     check(debugArtifactsEnabled) { "Stroke trace recording is available only in debug builds" }
     return allocateReservedFile("android-stroke-", ".csv")
   }
 
-  fun allocateExportScratch(): File = allocateReservedFile(".signed-", ".tmp")
+  override fun allocateExportScratch(): File = allocateReservedFile(".signed-", ".tmp")
 
-  fun validatedSignedOutput(path: String, source: File): File {
+  override fun allocateStagedInput(): File = allocateReservedFile(".input-", ".tmp")
+
+  override fun allocateWorkingPdf(): File = allocateReservedFile(".working-", ".pdf")
+
+  override fun allocateMutationScratch(): File = allocateReservedFile(".mutation-", ".tmp")
+
+  override fun validatedSignedOutput(path: String, source: File): File {
     if (path.isBlank()) throw invalidOutputPath("The export path is invalid")
     val output = try {
       File(path).canonicalFile
@@ -43,7 +60,7 @@ internal class CacheArtifactPolicy private constructor(
     return output
   }
 
-  fun deleteExact(file: File) {
+  override fun deleteExact(file: File) {
     val candidate = try {
       file.canonicalFile
     } catch (_: IOException) {
@@ -95,6 +112,8 @@ internal class CacheArtifactPolicy private constructor(
     if (Files.isSymbolicLink(file.toPath()) || !file.isFile) return false
     if (!isOwnedDirectChild(file)) return false
     return SIGNED_OUTPUT.matches(file.name) || EXPORT_SCRATCH.matches(file.name) ||
+      STAGED_INPUT.matches(file.name) || WORKING_PDF.matches(file.name) ||
+      MUTATION_SCRATCH.matches(file.name) ||
       (debugArtifactsEnabled && DEBUG_RECORDING.matches(file.name))
   }
 
@@ -111,6 +130,9 @@ internal class CacheArtifactPolicy private constructor(
     private const val MAX_ALLOCATION_ATTEMPTS = 32
     private val SIGNED_OUTPUT = Regex("signed-[^/\\\\]+\\.pdf")
     private val EXPORT_SCRATCH = Regex("\\.signed-[^/\\\\]+\\.tmp")
+    private val STAGED_INPUT = Regex("\\.input-[^/\\\\]+\\.tmp")
+    private val WORKING_PDF = Regex("\\.working-[^/\\\\]+\\.pdf")
+    private val MUTATION_SCRATCH = Regex("\\.mutation-[^/\\\\]+\\.tmp")
     private val DEBUG_RECORDING = Regex("android-stroke-[^/\\\\]+\\.csv")
 
     @Volatile private var initialized: CacheArtifactPolicy? = null

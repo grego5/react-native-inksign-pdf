@@ -415,6 +415,11 @@ internal class InkDocumentController(
     return viewport?.state
   }
 
+  fun refreshVisibleTiles() {
+    requireOnUiThread()
+    requestVisibleTiles()
+  }
+
   fun fitZoomFor(dimensions: PdfPageDimensions): Double {
     requireOnUiThread()
     return PageViewport(dimensions, viewportSize).fitZoom()

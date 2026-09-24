@@ -14,10 +14,12 @@ $ErrorActionPreference = "Stop"
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $androidProject = Join-Path $repositoryRoot "example\android"
 $moduleAndroidProject = Join-Path $repositoryRoot "android"
-$gradleUserHome = if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-    $null
-} else {
+$gradleUserHome = if (-not [string]::IsNullOrWhiteSpace($env:GRADLE_USER_HOME)) {
+    $env:GRADLE_USER_HOME
+} elseif (-not [string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
     Join-Path $env:USERPROFILE ".gradle"
+} else {
+    $null
 }
 $moduleProject = ":grego5_react-native-inksign-pdf"
 $progressIntervalSeconds = 15
@@ -288,6 +290,9 @@ if ($null -ne $gradle.UserHome) {
     $gradleArguments += @("-g", $gradle.UserHome)
 }
 $gradleArguments += @("-p", $androidProject)
+if ($Mode -eq "build" -or $Mode -eq "connected") {
+    $gradleArguments += "-PreactNativeArchitectures=arm64-v8a,x86_64"
+}
 if ($Mode -eq "jvm") {
     $gradleArguments += "${moduleProject}:testDebugUnitTest"
     if (-not [string]::IsNullOrWhiteSpace($Test)) {
