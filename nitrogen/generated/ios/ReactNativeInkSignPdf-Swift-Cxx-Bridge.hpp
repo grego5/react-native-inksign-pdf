@@ -8,14 +8,22 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `AddPagesOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
+// Forward declaration of `AddPagesResult` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
+// Forward declaration of `PageType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageType; }
 // Forward declaration of `PdfFallbackFont` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
@@ -30,10 +38,14 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 
 // Include C++ defined types
+#include "AddPagesOptions.hpp"
+#include "AddPagesResult.hpp"
 #include "DoubleTapOptions.hpp"
 #include "HybridInkSignViewSpec.hpp"
+#include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
 #include "PageInfo.hpp"
+#include "PageType.hpp"
 #include "PdfFallbackFont.hpp"
 #include "StateChangeEvent.hpp"
 #include "Viewport.hpp"
@@ -46,6 +58,7 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 /**
  * Contains specialized versions of C++ templated types so they can be accessed from Swift,
@@ -251,6 +264,126 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::optional<PageInfo>
+  /**
+   * Specialized version of `std::optional<PageInfo>`.
+   */
+  using std__optional_PageInfo_ = std::optional<PageInfo>;
+  inline std::optional<PageInfo> create_std__optional_PageInfo_(const PageInfo& value) noexcept {
+    return std::optional<PageInfo>(value);
+  }
+  inline bool has_value_std__optional_PageInfo_(const std::optional<PageInfo>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline PageInfo get_std__optional_PageInfo_(const std::optional<PageInfo>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<AddPagesResult>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<AddPagesResult>>`.
+   */
+  using std__shared_ptr_Promise_AddPagesResult__ = std::shared_ptr<Promise<AddPagesResult>>;
+  inline std::shared_ptr<Promise<AddPagesResult>> create_std__shared_ptr_Promise_AddPagesResult__() noexcept {
+    return Promise<AddPagesResult>::create();
+  }
+  inline PromiseHolder<AddPagesResult> wrap_std__shared_ptr_Promise_AddPagesResult__(std::shared_ptr<Promise<AddPagesResult>> promise) noexcept {
+    return PromiseHolder<AddPagesResult>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const AddPagesResult& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const AddPagesResult&)>`.
+   */
+  using Func_void_AddPagesResult = std::function<void(const AddPagesResult& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const AddPagesResult& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_AddPagesResult_Wrapper final {
+  public:
+    explicit Func_void_AddPagesResult_Wrapper(std::function<void(const AddPagesResult& /* result */)>&& func): _function(std::make_unique<std::function<void(const AddPagesResult& /* result */)>>(std::move(func))) {}
+    inline void call(AddPagesResult result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const AddPagesResult& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_AddPagesResult create_Func_void_AddPagesResult(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_AddPagesResult_Wrapper wrap_Func_void_AddPagesResult(Func_void_AddPagesResult value) noexcept {
+    return Func_void_AddPagesResult_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::optional<PageType>
+  /**
+   * Specialized version of `std::optional<PageType>`.
+   */
+  using std__optional_PageType_ = std::optional<PageType>;
+  inline std::optional<PageType> create_std__optional_PageType_(const PageType& value) noexcept {
+    return std::optional<PageType>(value);
+  }
+  inline bool has_value_std__optional_PageType_(const std::optional<PageType>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline PageType get_std__optional_PageType_(const std::optional<PageType>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::vector<std::string>
+  /**
+   * Specialized version of `std::vector<std::string>`.
+   */
+  using std__vector_std__string_ = std::vector<std::string>;
+  inline std::vector<std::string> create_std__vector_std__string_(size_t size) noexcept {
+    std::vector<std::string> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  
+  // pragma MARK: std::optional<std::vector<std::string>>
+  /**
+   * Specialized version of `std::optional<std::vector<std::string>>`.
+   */
+  using std__optional_std__vector_std__string__ = std::optional<std::vector<std::string>>;
+  inline std::optional<std::vector<std::string>> create_std__optional_std__vector_std__string__(const std::vector<std::string>& value) noexcept {
+    return std::optional<std::vector<std::string>>(value);
+  }
+  inline bool has_value_std__optional_std__vector_std__string__(const std::optional<std::vector<std::string>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::vector<std::string> get_std__optional_std__vector_std__string__(const std::optional<std::vector<std::string>>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<ImagePageSize>
+  /**
+   * Specialized version of `std::optional<ImagePageSize>`.
+   */
+  using std__optional_ImagePageSize_ = std::optional<ImagePageSize>;
+  inline std::optional<ImagePageSize> create_std__optional_ImagePageSize_(const ImagePageSize& value) noexcept {
+    return std::optional<ImagePageSize>(value);
+  }
+  inline bool has_value_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline ImagePageSize get_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<AddPagesOptions>
+  /**
+   * Specialized version of `std::optional<AddPagesOptions>`.
+   */
+  using std__optional_AddPagesOptions_ = std::optional<AddPagesOptions>;
+  inline std::optional<AddPagesOptions> create_std__optional_AddPagesOptions_(const AddPagesOptions& value) noexcept {
+    return std::optional<AddPagesOptions>(value);
+  }
+  inline bool has_value_std__optional_AddPagesOptions_(const std::optional<AddPagesOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline AddPagesOptions get_std__optional_AddPagesOptions_(const std::optional<AddPagesOptions>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::shared_ptr<Promise<std::string>>
   /**
    * Specialized version of `std::shared_ptr<Promise<std::string>>`.
@@ -304,6 +437,15 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline Result_std__shared_ptr_Promise_PageInfo___ create_Result_std__shared_ptr_Promise_PageInfo___(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<Promise<PageInfo>>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<AddPagesResult>>>
+  using Result_std__shared_ptr_Promise_AddPagesResult___ = Result<std::shared_ptr<Promise<AddPagesResult>>>;
+  inline Result_std__shared_ptr_Promise_AddPagesResult___ create_Result_std__shared_ptr_Promise_AddPagesResult___(const std::shared_ptr<Promise<AddPagesResult>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<AddPagesResult>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_AddPagesResult___ create_Result_std__shared_ptr_Promise_AddPagesResult___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<AddPagesResult>>>::withError(error);
   }
   
   // pragma MARK: Result<void>

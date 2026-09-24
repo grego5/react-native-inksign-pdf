@@ -23,8 +23,14 @@ namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
+// Forward declaration of `AddPagesResult` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
+// Forward declaration of `AddPagesOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
 #include "PdfFallbackFont.hpp"
 #include <optional>
@@ -35,7 +41,10 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "PageInfo.hpp"
 #include <NitroModules/Promise.hpp>
 #include "ViewportOptions.hpp"
+#include "AddPagesResult.hpp"
+#include "AddPagesOptions.hpp"
 #include "Viewport.hpp"
+#include "TextDirection.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -98,6 +107,9 @@ namespace margelo::nitro::inksignpdf {
     public:
       // Methods
       virtual std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) = 0;
+      virtual std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) = 0;
+      virtual std::shared_ptr<Promise<PageInfo>> removePage() = 0;
+      virtual std::shared_ptr<Promise<PageInfo>> movePage(double pageIndex) = 0;
       virtual void nextPage() = 0;
       virtual void previousPage() = 0;
       virtual Viewport getViewport() = 0;
@@ -106,6 +118,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void undo() = 0;
       virtual void redo() = 0;
       virtual void clear() = 0;
+      virtual void setTextDirection(TextDirection direction) = 0;
       virtual void insertAnnotationOn() = 0;
       virtual void insertAnnotationOff() = 0;
       virtual double increaseTextSize() = 0;

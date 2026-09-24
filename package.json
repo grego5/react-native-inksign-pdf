@@ -17,7 +17,6 @@
     "core/pdfium-adapter",
     "android/ink-engine-release.json",
     "core/third_party/pdfium",
-    "tools/fetch-pdfium-ios.mjs",
     "tools/verify-pdfium.ps1",
     "THIRD_PARTY_NOTICES.md",
     "CREDITS.md",
@@ -32,7 +31,6 @@
   "scripts": {
     "nitrogen": "nitrogen",
     "build": "bob build",
-    "postinstall": "node tools/fetch-pdfium-ios.mjs",
     "test:stroke:fast": "node tools/test-stroke-replay-fast.mjs",
     "verify:pdfium": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-pdfium.ps1",
     "check:artifact-parity": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-managed-artifact-parity.ps1",

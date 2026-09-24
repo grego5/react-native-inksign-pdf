@@ -18,6 +18,31 @@ export interface PageInfo {
   height: number
 }
 
+export type PageType = 'pdf' | 'image'
+export type TextDirection = 'ltr' | 'rtl' | 'auto'
+
+/** Image page dimensions in PDF points. */
+export interface ImagePageSize {
+  width: number
+  height: number
+}
+
+export interface AddPagesOptions {
+  /** Restricts the native picker. Omission permits both `pdf` and `image`. */
+  type?: PageType
+  /** Ordered local file paths or file URLs to import without presenting a picker. */
+  sources?: string[]
+  /** Dimensions used for every imported image. Defaults to the active page size or portrait A4. */
+  imagePageSize?: ImagePageSize
+}
+
+export interface AddPagesResult {
+  /** Metadata for the active page; omitted when cancellation leaves no document. */
+  pageInfo?: PageInfo
+  /** Number of pages added. Cancellation and empty sources resolve with zero. */
+  addedPageCount: number
+}
+
 export interface StateChangeEvent {
   canUndo: boolean
   canRedo: boolean
@@ -57,7 +82,7 @@ export interface DoubleTapOptions {
 }
 
 export interface InkSignViewProps extends HybridViewProps {
-  /** Optional PDFium fallback resource captured on the next open; changing this requires reopening the document. */
+  /** Android-only PDFium fallback font; iOS uses Core Text system fallback. */
   fallbackFont?: PdfFallbackFont
   strokeColor?: StrokeColor
   strokeMinWidth?: number
@@ -84,6 +109,9 @@ export interface InkSignViewProps extends HybridViewProps {
 
 export interface InkSignViewMethods extends HybridViewMethods {
   open(path: string, options?: ViewportOptions): Promise<PageInfo>
+  addPages(options?: AddPagesOptions): Promise<AddPagesResult>
+  removePage(): Promise<PageInfo>
+  movePage(pageIndex: number): Promise<PageInfo>
   nextPage(): void
   previousPage(): void
   getViewport(): Viewport
@@ -92,6 +120,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   undo(): void
   redo(): void
   clear(): void
+  /** Sets the base direction for new text annotations; `auto` follows the active IME subtype or app default. */
+  setTextDirection(direction: TextDirection): void
   /** Arms one-shot native text placement at the next valid page tap. */
   insertAnnotationOn(): void
   /** Cancels a pending one-shot text placement, if any. */

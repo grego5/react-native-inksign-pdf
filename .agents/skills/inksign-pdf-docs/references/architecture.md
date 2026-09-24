@@ -1,121 +1,61 @@
-# Architecture contract
+# Architecture overview
 
-Cross-platform invariants and navigation to subsystem references.
+React Native InkSign PDF is a Fabric/Nitro view for signing ordered local PDF
+documents. JavaScript composes the screen and sends commands; native code owns
+document bytes, page presentation, input conversion, committed content, history,
+and export.
 
-The module is a Nitro/Fabric view for signing local, ordered PDFs. Native code
-owns PDF I/O, viewport/input conversion, text and ink state, history, and
-export; JavaScript sends commands and receives coarse state. One page is active
-at a time, with page-local history containing committed ink and text.
+## System boundaries
 
-Canonical geometry is PDF media-box-relative page units with a top-left origin
-and positive Y down. View transforms and high-frequency geometry never enter
-stored state or the JavaScript boundary.
+- The public contract lives in
+  [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts). JavaScript
+  receives coarse state and page events, not PDF data or per-frame geometry.
+- Each platform coordinator owns one published document with an ordered stable
+  page list, one active page, and page-local committed history. Android uses
+  PDFium for document I/O; iOS uses PDFKit with Quartz and CoreText. The UI
+  thread owns presentation and callbacks.
+- Each platform backend prepares, validates, and publishes its own detached
+  candidate as one document transition.
+- Document operations are coordinated per view. Worker results are accepted
+  only while their document and request remain current.
+- Android renders PDFium tiles beneath native annotation presentation and uses
+  the shared C++ stroke engine. iOS renders PDFKit pages through Quartz and
+  uses PencilKit for ink input; export retains source pages and adds committed
+  text and filled vector signatures as PDF annotations.
 
-## Reference map
+## Document model
 
-| Area | Reference | Summary |
-| --- | --- | --- |
-| Public API | src/InkSignView.nitro.ts | Props, methods, and callbacks. |
-| Android lifecycle/input | android/view-lifecycle.md, android/viewport-input.md | Ownership, readiness, transforms, navigation, and routing. |
-| Android rendering/export | android/rendering-front-buffer.md, android/export.md | Presentation, prediction, vector ink, text, and artifacts. |
-| iOS lifecycle/input | swift-ios/view-lifecycle.md, swift-ios/viewport-input.md | Ownership, readiness, modes, transforms, and routing. |
-| iOS rendering/history/export | swift-ios/rendering.md, swift-ios/history.md, swift-ios/export.md | Live drawing, committed history, and source-preserving export. |
-| C++ engine | stroke-engine/input-modeling.md, stroke-engine/geometry.md, stroke-engine/prediction-frames.md | Modeling, outlines, prediction, and platform frames. |
+- Page order and active-page identity are document state. Ink and text are
+  committed per-page content; active gestures, predictions, editor drafts, and
+  selection are temporary presentation state.
+- Stored geometry uses canonical page coordinates: media-box-relative with a
+  top-left origin. Viewport transforms are presentation-only.
+- Opening creates a module-owned working copy. Page mutations prepare and
+  validate a detached document candidate before publication. A failed,
+  cancelled, or stale operation leaves the published document in place; the
+  caller's source is never overwritten.
+- Finalize exports an immutable snapshot of committed content from the current
+  working document to a separate output. It does not consume or replace the
+  working document.
 
 ## Scope
 
-- React Native New Architecture/Fabric with Nitro on iOS and Android.
-- Local input/output paths; ordered PDF pages with one active page.
-- Ink, text annotations, undo, redo, clear, and source-preserving signed-PDF
-  export.
-- Finger and stylus input; Android stroke width is velocity-driven, while iOS
-  delegates pressure response to PencilKit.
-- Deferred: erasers, highlights, images, form fields, other annotation types,
-  raw stroke import/export, raster flattening, and ArrayBuffer PDF APIs.
-- Out of scope: Paper, web, Windows, and macOS.
+The v1 surface supports ordered PDFs, PDF and image page insertion, page-local
+ink and text, undo/redo, and signed-PDF export. iOS preserves visible source
+page content, order, supported boxes, and rotation, and exports module text and
+ink as locked annotations with vector appearances. Advanced source PDF
+semantics such as forms, links, outlines, tagged structure, layers, scripts,
+embedded files, and existing digital signatures are outside the editing
+contract; their loss does not block the workflow. Non-mobile platforms and
+unrelated PDF extensions are outside this scope.
 
-## Ownership and threading
+## Subsystem references
 
-- JavaScript owns composition, imperative commands, and coarse state. It never
-  receives PDF bytes, points, or per-frame geometry.
-- Native layers own document sessions, viewport/input conversion, text and ink
-  presentation, page-local history, and export. Android uses the shared C++
-  page-space outline engine; iOS uses PDFium/PencilKit, with PDFKit retained
-  only for source metadata and export. Platform document
-  resources and rendering work remain owned by their creating serial workers;
-  worker handles and platform objects never enter JavaScript or returned
-  snapshots.
-- UI state and callbacks are main/UI-thread-owned. PDF parsing, tile rendering,
-  and export run on serial workers. The C++ engine is synchronous, caller-owned,
-  and independent of UIKit, Android, and React Native.
-- Android and iOS text-field hints are immutable placement metadata. They stay
-  outside content, history, dirty state, previews, export, and JavaScript.
-- Any worker result carries only the platform generation, page index, and an
-  immutable detached value snapshot. It does not carry native handles,
-  pointers, worker-owned buffers, or platform containers.
-
-## Public contract
-
-- The authoritative API is src/InkSignView.nitro.ts.
-- Props: strokeColor, strokeMinWidth, strokeMaxWidth, strokeSmoothing,
-  defaultTextFontSize, defaultTextColor, outlineColor, selectedOutlineColor,
-  editorBackgroundColor, selectedBackgroundColor, doubleTap,
-  keyboardAvoidanceEnabled, onStateChange, and onPageChange.
-- defaultTextFontSize uses canonical page units: invalid values use 16 and
-  valid values are clamped to 8...72. defaultTextColor is captured as opaque
-  RRGGBB content color only for new annotations. Outline and editor/background
-  colors are presentation-only; an unspecified editor fill contrasts with the
-  saved text color. doubleTap configures an absolute zoom target, default 2.0,
-  and optional edit-mode entry.
-- Methods: open, nextPage, previousPage, getViewport, enterEditMode,
-  enterViewMode, undo, redo, clear, insertAnnotationOn,
-  insertAnnotationOff, increaseTextSize, decreaseTextSize,
-  removeTextAnnotation, and finalize. Android debug builds also expose the
-  debug-recording methods defined in the TypeScript spec.
-- insertAnnotationOn settles current editing, preserves the viewport, and arms
-  exactly one valid page tap; it does not create content or open the keyboard.
-  The next valid tap creates one native draft, disables placement, focuses its
-  editor, and opens the keyboard. insertAnnotationOff is idempotent and clears
-  only unconsumed placement. Empty drafts disappear without history; committed
-  text and deletion share page history with ink.
-- Text uses explicit newlines and intrinsic longest-line sizing. Font size is
-  annotation-local canonical data, so zoom changes presentation only. Native
-  text gestures remain outside PDF pan, zoom, ink, and page navigation.
-  JavaScript receives only coarse onStateChange snapshots; text commands throw
-  with text_not_focused when no selection is live.
-- getViewport returns the constrained canonical page center and absolute zoom.
-  It is synchronous and read-only, requires a live document and usable layout,
-  and throws when the view is not ready.
-- Viewport snapshots are application-owned bookmark data; the module provides
-  capture and restoration only and owns no bookmark registry or persistence.
-- enterEditMode and enterViewMode accept optional viewport options. Omitted
-  options preserve focus/zoom; an empty object fits and centers; paired x/y
-  focuses that page point; and zoom alone preserves focus. Coordinates must be
-  paired. Invalid values are rejected before mutation; focus is clamped to the
-  page and zoom to 0.1...16. Resolution means mapping and mode are ready, not
-  that asynchronous tiles have finished.
-- onStateChange reports canUndo, canRedo, isDirty, and mode:
-  view, draw, textPlacement, textSelected, or textEditing. open and page
-  opening returns PageInfo; navigation is an imperative command whose committed
-  result is reported by onPageChange. The mode prop and InkSignPdfMode type are
-  absent; mode changes are imperative and throw validation errors synchronously.
-  Boundary navigation is a successful no-op; superseded turns cancel silently;
-  onPageChange fires only after a real page switch is installed, never for open,
-  cancellation, or viewport changes.
-
-## Cross-platform invariants
-
-- open invalidates prior generation/work, installs page zero in view mode, fits
-  and centers by default, and does not emit onPageChange. Page switches are
-  generation-bound and emit only after a usable target mapping is installed.
-- Before a stroke, validate and freeze its page transform/configuration. A
-  successful end appends once to page history; cancellation discards only live
-  presentation. Prediction is disposable and never enters history or export.
-- finalize snapshots immutable committed content on the UI thread and exports
-  on a worker. It preserves source pages, never overwrites the source, and
-  never exports live or predicted geometry. Android preserves vector ink/text;
-  iOS preserves the source PDF with committed text and PencilKit ink.
-- View mode owns navigation and edit mode owns drawing. Page turns require a
-  matching current preview; stale callbacks cannot commit or install state.
-- Disposal is idempotent: invalidate generations, cancel active state, clear
-  presentation/callbacks, close worker resources, and reject stale work.
+| Area | Reference | Responsibility |
+| --- | --- | --- |
+| Public API | `src/InkSignView.nitro.ts` | Props, commands, and callbacks. |
+| Repository workflow | `development.md` | Source map, project policy, and validation entry points. |
+| Android lifecycle and export | `android/view-lifecycle.md`, `android/export.md` | Document publication and output ownership. |
+| iOS lifecycle and input | `swift-ios/view-lifecycle.md`, `swift-ios/viewport-input.md` | Document publication, viewport, and input boundaries. |
+| iOS rendering and export | `swift-ios/rendering.md`, `swift-ios/export.md` | Presentation state and export representation. |
+| C++ stroke engine | `stroke-engine/input-modeling.md`, `stroke-engine/geometry.md`, `stroke-engine/prediction-frames.md` | Shared stroke geometry and platform consumption. |

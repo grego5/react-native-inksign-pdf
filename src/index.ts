@@ -4,6 +4,11 @@ import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConf
 
 import type {
   PageInfo,
+  PageType,
+  TextDirection,
+  AddPagesOptions,
+  AddPagesResult,
+  ImagePageSize,
   StrokeColor,
   TextColor,
   DoubleTapOptions,
@@ -19,6 +24,11 @@ import type {
 
 export type {
   PageInfo,
+  PageType,
+  TextDirection,
+  AddPagesOptions,
+  AddPagesResult,
+  ImagePageSize,
   StrokeColor,
   TextColor,
   DoubleTapOptions,

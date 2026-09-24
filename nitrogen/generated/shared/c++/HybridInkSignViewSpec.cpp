@@ -45,6 +45,9 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridGetter("onPageChange", &HybridInkSignViewSpec::getOnPageChange);
       prototype.registerHybridSetter("onPageChange", &HybridInkSignViewSpec::setOnPageChange);
       prototype.registerHybridMethod("open", &HybridInkSignViewSpec::open);
+      prototype.registerHybridMethod("addPages", &HybridInkSignViewSpec::addPages);
+      prototype.registerHybridMethod("removePage", &HybridInkSignViewSpec::removePage);
+      prototype.registerHybridMethod("movePage", &HybridInkSignViewSpec::movePage);
       prototype.registerHybridMethod("nextPage", &HybridInkSignViewSpec::nextPage);
       prototype.registerHybridMethod("previousPage", &HybridInkSignViewSpec::previousPage);
       prototype.registerHybridMethod("getViewport", &HybridInkSignViewSpec::getViewport);
@@ -53,6 +56,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("undo", &HybridInkSignViewSpec::undo);
       prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
       prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
+      prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);
       prototype.registerHybridMethod("insertAnnotationOn", &HybridInkSignViewSpec::insertAnnotationOn);
       prototype.registerHybridMethod("insertAnnotationOff", &HybridInkSignViewSpec::insertAnnotationOff);
       prototype.registerHybridMethod("increaseTextSize", &HybridInkSignViewSpec::increaseTextSize);
