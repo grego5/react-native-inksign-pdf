@@ -638,11 +638,10 @@ final class InkSignPdfPageTurnLifecycle {
     return InkSignPdfPageNavigationPolicy.captureGesture(
       at: location,
       viewport: viewport,
-      bounds: owner.documentView.bounds,
       activePageIndex: state.activePageIndex,
       pageCount: state.pages.count,
       isRTL: isRTL,
-      density: max(UIScreen.main.scale, 1))
+      screenScale: max(UIScreen.main.scale, 1))
   }
 
   func previewRequest(
