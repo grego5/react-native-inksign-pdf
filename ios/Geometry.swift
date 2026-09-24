@@ -21,6 +21,13 @@ struct PageGeometry {
   }
 }
 
+/// Describes page boundaries visible at the viewport's physical edges.
+struct PageViewportEdgeCoverage {
+  let hasPageBoundaryAtLeftViewportEdge: Bool
+  let hasPageBoundaryAtRightViewportEdge: Bool
+  let visibleWidth: CGFloat
+}
+
 /// Immutable mapping for one accepted page viewport.
 ///
 /// Canonical points are media-box-relative with a top-left origin. PDF points
@@ -123,6 +130,29 @@ struct PageViewportTransform {
 
   func clampedCanonicalPoint(fromView point: CGPoint) -> CGPoint {
     clampedCanonicalPoint(canonicalPoint(fromView: point))
+  }
+
+  /// Reports page-edge visibility and width in the viewport's coordinate space.
+  func edgeCoverage(screenScale: CGFloat) -> PageViewportEdgeCoverage {
+    let leftViewportPageX = clampedCanonicalPoint(fromView: CGPoint(x: viewBounds.minX,
+                                                                     y: viewBounds.midY))
+      .applying(canonicalToDisplay).x
+    let rightViewportPageX = clampedCanonicalPoint(fromView: CGPoint(x: viewBounds.maxX,
+                                                                      y: viewBounds.midY))
+      .applying(canonicalToDisplay).x
+    let pageWidth = displaySize.width
+    let pageUnitsPerPixel = abs(rightViewportPageX - leftViewportPageX) /
+      viewBounds.width / screenScale
+    let pageMovesRight = rightViewportPageX >= leftViewportPageX
+    let leftPageBoundary = pageMovesRight ? 0.0 : pageWidth
+    let rightPageBoundary = pageMovesRight ? pageWidth : 0.0
+
+    return PageViewportEdgeCoverage(
+      hasPageBoundaryAtLeftViewportEdge:
+        abs(min(max(leftViewportPageX, 0), pageWidth) - leftPageBoundary) <= pageUnitsPerPixel,
+      hasPageBoundaryAtRightViewportEdge:
+        abs(min(max(rightViewportPageX, 0), pageWidth) - rightPageBoundary) <= pageUnitsPerPixel,
+      visibleWidth: pageFrame.intersection(viewBounds).width)
   }
 
   func pdfPoint(fromCanonical point: CGPoint) -> CGPoint {

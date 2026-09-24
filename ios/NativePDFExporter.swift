@@ -25,6 +25,8 @@ enum InkSignPdfNativeExporterError: LocalizedError {
 /// Adds editor content to the source pages as PDF annotations, then verifies
 /// the written document and each module-owned appearance stream.
 enum InkSignPdfNativeExporter {
+  static let signatureAppearanceMargin: CGFloat = 0.5
+
   private struct ModuleAnnotationExpectations {
     let text: [InkSignPdfTextAnnotation]
     let signatureBounds: [CGRect]
@@ -179,12 +181,19 @@ enum InkSignPdfNativeExporter {
       throw InkSignPdfNativeExporterError.invalidOutput(
         "signature path could not be transformed to PDF coordinates")
     }
-    let bounds = pathInPDF.boundingBoxOfPath
-    guard !bounds.isNull, !bounds.isEmpty,
-          bounds.minX.isFinite, bounds.minY.isFinite,
-          bounds.width.isFinite, bounds.height.isFinite else {
+    let pathBounds = pathInPDF.boundingBoxOfPath
+    guard !pathBounds.isNull, !pathBounds.isEmpty,
+          pathBounds.minX.isFinite, pathBounds.minY.isFinite,
+          pathBounds.width.isFinite, pathBounds.height.isFinite else {
       throw InkSignPdfNativeExporterError.invalidOutput(
         "signature path has invalid PDF bounds")
+    }
+    let bounds = pathBounds.insetBy(dx: -signatureAppearanceMargin,
+                                    dy: -signatureAppearanceMargin)
+    guard bounds.minX.isFinite, bounds.minY.isFinite,
+          bounds.width.isFinite, bounds.height.isFinite else {
+      throw InkSignPdfNativeExporterError.invalidOutput(
+        "signature annotation bounds are invalid")
     }
     var localize = CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY)
     guard let localPath = pathInPDF.copy(using: &localize) else {

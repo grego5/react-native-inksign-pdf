@@ -118,10 +118,10 @@ jobs:
               test_args="-only-testing:__TEST_TARGET__/InkSignViewStabilizationTests"
               ;;
             native-pdfkit)
-              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnPreviewTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnNavigationTests -only-testing:__TEST_TARGET__/InkSignViewTextInteractionTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
+              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/SignatureExportTests -only-testing:__TEST_TARGET__/SignatureVectorPathTests -only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnPreviewTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnNavigationTests -only-testing:__TEST_TARGET__/InkSignViewTextInteractionTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
               ;;
             native-pdf-backend)
-              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests"
+              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/SignatureExportTests -only-testing:__TEST_TARGET__/SignatureVectorPathTests"
               ;;
             page-input)
               test_args="-only-testing:__TEST_TARGET__/PageInputCoordinatorTests"
