@@ -5,7 +5,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $repositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$contractPath = Join-Path $repositoryRoot "tasks\01-text-interaction-contract.md"
+$contractPath = Join-Path $repositoryRoot ".agents\skills\inksign-pdf-docs\references\swift-ios\viewport-input.md"
 $fixturePath = Join-Path $repositoryRoot "tools\testdata\text-annotation-boundaries.json"
 
 if (-not (Test-Path -LiteralPath $contractPath -PathType Leaf)) {
@@ -16,21 +16,15 @@ if (-not (Test-Path -LiteralPath $fixturePath -PathType Leaf)) {
 }
 
 $contract = Get-Content -Raw -LiteralPath $contractPath
-$requiredContractCases = @(
-    "tap-to-edit",
-    "long-press-to-drag",
-    "unchanged-cancelled-drag",
-    "outside-tap-settlement",
-    "one-shot-placement",
-    "minimum-presentation-geometry",
-    "overlap-priority",
-    "caret-visibility",
-    "rtl-direction",
-    "lifecycle-history"
+$requiredContractStatements = @(
+    "Placement converts one valid tap into page coordinates.",
+    "Empty drafts are",
+    "History and export use committed content",
+    "Tool begin/end"
 )
-foreach ($case in $requiredContractCases) {
-    if ($contract -notmatch "(?m)^\|\s*``$([regex]::Escape($case))``\s*\|") {
-        throw "named text annotation contract case is missing: $case"
+foreach ($statement in $requiredContractStatements) {
+    if ($contract -notlike "*$statement*") {
+        throw "stable text interaction contract statement is missing: $statement"
     }
 }
 

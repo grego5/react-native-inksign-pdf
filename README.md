@@ -1,12 +1,16 @@
 # @grego5/react-native-inksign-pdf
 
-- PDF documents singing with ink signature module for React Native.
+- PDF document signing with ink in a React Native module.
+- Load document or images programatically by path, or through native file picker. Images converted to pdf pages automatically.
+- Add additional files to be added as pages. Can add/remove/reorder pages.
+- Can bring own scanner module and bridge it seamlessly by adding pages through path to the file in cacae directory.
 - Displays loaded PDF as background. Including swipe/method pagination.
-- Renders document with PDFium binaries, mainly to support option to provide fallback font, since this option unavailable in platform native pdf libraries. For example Acrobat Reader can handle missing fonts, many other pdf viewers just render blank space instead.
-- Supports velocity-driven ink, text annotations, and histroy.
+- Uses PDFium on Android for document loading, rendering, page assembly, and export; iOS uses PDFKit, Quartz, and CoreText for PDF operations.
+- Android's optional `fallbackFont` applies to source-PDF rendering.
+- Supports velocity-driven ink, text annotations, and history.
 - Android using custom c++ InkEngine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
-- iOS basic compatibility using PencilKit, because I can't test similar low level implementation without mac. No web support.
-- Export changes to new PDF as vector path, preserving minimal size and high quality on Android, rasterized overlay as iOS fallback.
+- iOS uses PDFKit and Quartz for PDF operations, CoreText for text, and PencilKit for ink input. No web support.
+- Exports a new PDF that retains visible source pages and adds text and signatures as locked annotations with vector appearances.
 
 Intended workflow: open pdf, double click an area or dedicated button to enter edit mode, zoom into tapped area or prefined coordinates,
 draw a signature, save to new file. The brush doesn't scale with zoom level, but the drawn shape does.
@@ -16,7 +20,7 @@ draw a signature, save to new file. The brush doesn't scale with zoom level, but
 ## Requirements
 
 - Node.js 20
-- Android 12/API 31 with Android S extension 18
+- Android 7.0/API 24 or newer
 - iOS 15.1
 - A native iOS or Android project
 
@@ -57,6 +61,7 @@ import { Button, StyleSheet, Text, View } from 'react-native';
 import {
   InkSignView,
   type PageInfo,
+  type TextDirection,
   type InkSignViewHandle,
   type StateChangeEvent,
 } from '@grego5/react-native-inksign-pdf';
@@ -71,6 +76,7 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
     mode: 'view',
   });
   const [status, setStatus] = useState('Choose a PDF to begin');
+  const [textDirection, setTextDirection] = useState<TextDirection>('auto');
 
   async function openPdf() {
     try {
@@ -159,10 +165,19 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
           disabled={!page}
           onPress={() => {
             try {
+              pdf.current?.setTextDirection(textDirection);
               pdf.current?.insertAnnotationOn();
             } catch (error) {
               console.warn('Text placement failed', error);
             }
+          }}
+        />
+        <Button
+          title={`Text direction: ${textDirection.toUpperCase()}`}
+          onPress={() => {
+            setTextDirection((current) =>
+              current === 'auto' ? 'ltr' : current === 'ltr' ? 'rtl' : 'auto',
+            );
           }}
         />
         <Button title="Undo" disabled={!state.canUndo} onPress={() => pdf.current?.undo()} />
@@ -193,12 +208,10 @@ const styles = StyleSheet.create({
 ```
 
 `open()` accepts a caller-owned local PDF path and starts in view mode. Keep the
-source file readable while the view is mounted. The `fallbackFont` component prop can
-provide one absolute local `.ttf`, `.otf`, or collection path for PDFium
-substitution. The resource is captured when `open()` runs, so changing it
-requires reopening the document. Invalid resources reject `open()`; a valid
-font is used on a best-effort basis even if some glyphs are missing. iOS
-support remains experimental until tested on macOS and a device. `finalize()`
+source file readable while the view is mounted. The `fallbackFont` component prop
+provides an optional local font for Android PDFium substitution. It is captured
+when `open()` or `addPages()` runs, so changing it takes effect on the next such
+operation. iOS uses CoreText and the system font fallback behavior. `finalize()`
 returns the path to the signed PDF; copy that file to durable application
 storage before unmounting the view. Native temporary artifacts are kept below
 the app cache directory; iOS can override its leaf directory with the
@@ -209,7 +222,7 @@ the app cache directory; iOS can override its leaf directory with the
 
 ### Props
 
-- `fallbackFont` — one optional PDFium fallback font resource; changes take effect on the next `open()`.
+- `fallbackFont` — one optional Android PDFium fallback font resource; changes take effect on the next `open()` or `addPages()`.
 - `strokeColor` — ink color as `#RRGGBB`.
 - `strokeMinWidth`, `strokeMaxWidth` — ink width range.
 - `strokeSmoothing` — Android input smoothing from `0` to `1`.
@@ -242,6 +255,9 @@ annotations; the other text colors control presentation.
 
 ```ts
 open(path, options?)
+addPages(options?)
+removePage()
+movePage(pageIndex)
 nextPage()
 previousPage()
 getViewport()
@@ -250,6 +266,7 @@ enterViewMode(viewport?)
 undo()
 redo()
 clear()
+setTextDirection(direction)
 insertAnnotationOn()
 insertAnnotationOff()
 increaseTextSize()
@@ -258,8 +275,42 @@ removeTextAnnotation()
 finalize()
 ```
 
-`open()` returns page metadata. Page navigation is synchronous to initiate and
-publishes the committed result through `onPageChange`:
+`open(path)` explicitly replaces the current PDF and returns its page metadata.
+If replacement fails, the current document remains open. Use `addPages()` for
+the native picker: with no document it creates one; otherwise it appends pages.
+The picker accepts PDFs and images by default, expands every selected PDF in
+page order, and creates one page per image. `type: 'pdf'` or `type: 'image'`
+restricts the picker. Selection order is retained.
+
+`imagePageSize` supplies image-page width and height in PDF points and applies
+to every selected image. Without it, images use the active page size when one
+exists, or portrait A4 (595.28 × 841.89 points) when creating a document.
+Pass `sources` to import ordered local paths or file URLs without showing a
+picker; this is intended for files produced by a scanner or another native
+flow.
+
+```ts
+const result = await pdf.current?.addPages({
+  type: 'image',
+  imagePageSize: { width: 420, height: 594 },
+});
+// { addedPageCount: number, pageInfo?: PageInfo }
+```
+
+Picker cancellation and an empty `sources` list leave the document unchanged
+and resolve with `addedPageCount: 0`. `pageInfo` describes the unchanged active
+page when a document exists and is omitted when no document exists. After pages
+are added, the first new page becomes active. `removePage()` removes and
+returns metadata for the current page; it rejects removal of the final page.
+`movePage(pageIndex)` moves the current page to a zero-based destination
+position, shifting intervening pages rather than swapping them. Moving to its
+current index is a no-op. Ink and text remain attached to their page when it
+moves.
+
+Open, add, remove, move, and finalize share one serialized document-operation
+boundary. A conflicting operation rejects with `operation_in_progress`.
+Page navigation is synchronous to initiate and publishes the committed result
+through `onPageChange`:
 
 ```ts
 {
@@ -290,6 +341,12 @@ argument preserves the current viewport where applicable.
   viewport fixed.
 - `insertAnnotationOn()` arms one text placement; the next page tap opens the
   native text editor.
+- `setTextDirection('ltr' | 'rtl' | 'auto')` controls the base direction for
+  new text annotations. The React app owns the direction selector and should
+  call this method before placement or while placement is pending. `auto` uses
+  the active keyboard language when Android can report it, then the app's
+  visible default direction. Once the box is created, its direction and anchor
+  side stay fixed; RTL anchors the right edge and LTR anchors the left.
 - Text, ink, undo, redo, and clear are managed by the native view.
 - `onStateChange` reports `canUndo`, `canRedo`, `isDirty`, and one of
   `view`, `draw`, `textPlacement`, `textSelected`, or `textEditing`.
@@ -311,4 +368,3 @@ application's durable destination when it must outlive the signing view.
 - [Architecture and invariants](./.agents/skills/inksign-pdf-docs/references/architecture.md)
 - [Android input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/android/viewport-input.md)
 - [iOS input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md)
-

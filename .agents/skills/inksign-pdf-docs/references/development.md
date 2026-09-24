@@ -9,7 +9,7 @@
 - Keep shared geometry in page coordinates and PDF I/O/export off the UI
   thread.
 - Preserve the v1 scope: multi-page PDFs, one active page, page-local history,
-  native Android export, source-preserving iOS export, and no Paper/web/
+  Android PDFium and iOS PDFKit/Quartz/CoreText backends, and no Paper/web/
   Windows/macOS implementation.
 
 ## Implementation workflow
@@ -68,6 +68,17 @@ Android path that compiles Google Ink and Abseil from `core/third_party` and doe
 not invoke the InkEngine downloader. The npm package contains the release pin,
 C ABI headers, and PDFium inputs, but no InkEngine archives or Google
 Ink/Abseil source trees.
+
+## iOS validation
+
+The iOS boundary has simulator tests for native behavior and a device archive
+for device integration. Changes to PDF handling also require fixture checks for
+visible source content, page geometry, locked text annotations, read-only vector
+signature annotations, write/reopen, and external-viewer interoperability.
+Advanced source PDF semantics are outside the editing contract. Use the
+narrowest simulator focus for a change; visual fidelity and device interaction
+remain separate runtime checks. Android PDFium packaging is validated by the
+PDFium verifier.
 
 ## Validation commands
 

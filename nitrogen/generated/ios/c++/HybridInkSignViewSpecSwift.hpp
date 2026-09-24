@@ -24,8 +24,18 @@ namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
+// Forward declaration of `AddPagesResult` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
+// Forward declaration of `AddPagesOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
+// Forward declaration of `PageType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageType; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
 #include "PdfFallbackFont.hpp"
 #include <optional>
@@ -37,7 +47,13 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "PageInfo.hpp"
 #include <NitroModules/Promise.hpp>
 #include "ViewportOptions.hpp"
+#include "AddPagesResult.hpp"
+#include "AddPagesOptions.hpp"
+#include "PageType.hpp"
+#include <vector>
+#include "ImagePageSize.hpp"
 #include "Viewport.hpp"
+#include "TextDirection.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
 
@@ -201,6 +217,30 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) override {
+      auto __result = _swiftPart.addPages(options);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<PageInfo>> removePage() override {
+      auto __result = _swiftPart.removePage();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<PageInfo>> movePage(double pageIndex) override {
+      auto __result = _swiftPart.movePage(std::forward<decltype(pageIndex)>(pageIndex));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline void nextPage() override {
       auto __result = _swiftPart.nextPage();
       if (__result.hasError()) [[unlikely]] {
@@ -247,6 +287,12 @@ namespace margelo::nitro::inksignpdf {
     }
     inline void clear() override {
       auto __result = _swiftPart.clear();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void setTextDirection(TextDirection direction) override {
+      auto __result = _swiftPart.setTextDirection(static_cast<int>(direction));
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
