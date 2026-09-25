@@ -15,8 +15,7 @@ enum InkSignPdfMutablePageImageEncoder {
   static func encode(_ url: URL, geometry: PageGeometry) throws -> PDFPage {
     let pageWidth = geometry.mediaBox.width
     let pageHeight = geometry.mediaBox.height
-    guard pageWidth.isFinite, pageHeight.isFinite, pageWidth > 0, pageHeight > 0,
-          let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
           CGImageSourceGetCount(source) > 0 else {
       throw InkSignView.MutablePageError.unsupportedContent
     }

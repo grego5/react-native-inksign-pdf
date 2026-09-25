@@ -17,13 +17,11 @@ final class InkSignPdfDocumentCoordinator {
   }
   enum PageMutationError: LocalizedError, Equatable {
     case lastPageRequired
-    case invalidPageIndex
     case activePageMissing
 
     var errorDescription: String? {
       switch self {
       case .lastPageRequired: return "last_page_required: The document must retain one page"
-      case .invalidPageIndex: return "invalid_page_index: The destination page index is invalid"
       case .activePageMissing: return "active_page_missing: The active page is not in the document"
       }
     }
@@ -82,9 +80,7 @@ final class InkSignPdfDocumentCoordinator {
                        addedPageCount: 0,
                        changed: true)
     case .moveActive(let destination):
-      guard destination >= 0, destination < current.count else {
-        throw PageMutationError.invalidPageIndex
-      }
+      assert(current.indices.contains(destination), "Admitted move destination is outside the document")
       guard destination != activeIndex else {
         return PageOrder(pages: current, activePageID: activePageID,
                          addedPageCount: 0, changed: false)

@@ -20,8 +20,6 @@ internal object ImagePageEncoder {
   private const val MAX_PAGE_DIMENSION_PX = 8192.0
 
   fun encode(source: File, page: PdfPageDimensions): PdfiumAppendRequest {
-    require(page.width.isFinite() && page.width > 0.0 &&
-      page.height.isFinite() && page.height > 0.0)
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(source.absolutePath, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {

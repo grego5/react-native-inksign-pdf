@@ -247,9 +247,6 @@ class HybridInkSignView internal constructor(
     return launchPromise {
       val fontFallbackSnapshot = fallbackFont
       val requestedImageSize = options?.imagePageSize?.let {
-        if (!it.width.isFinite() || it.width <= 0.0 ||
-          !it.height.isFinite() || it.height <= 0.0
-        ) throw PdfSessionException("invalid_image_page_size", "Image page dimensions must be finite positive PDF points")
         PdfPageDimensions(it.width, it.height)
       }
       val operation = beginStructuralOperation(allowNoDocument = true, deferPreflight = true)
@@ -349,9 +346,7 @@ class HybridInkSignView internal constructor(
       try {
         val generation = coordinator.generation
         val current = coordinator
-        if (!pageIndex.isFinite() || pageIndex < 0.0 || pageIndex >= current.pageCount ||
-          pageIndex != kotlin.math.floor(pageIndex)
-        ) {
+        if (pageIndex >= current.pageCount.toDouble()) {
           throw PdfSessionException("invalid_page_index", "The destination page index is invalid")
         }
         val destination = pageIndex.toInt()

@@ -23,7 +23,7 @@ extension InkSignView {
     let promise = Promise<PageInfo>()
     performOnMain {
       do {
-        let viewport = try Self.parseOpenViewport(options)
+        let viewport = Self.parseOpenViewport(options)
         self.beginLoad(
           path,
           zoom: viewport.zoom,
@@ -87,7 +87,7 @@ extension InkSignView {
 
   private func transition(toEditing: Bool, viewport: ViewportOptions?) throws {
     guard !disposed else { throw ViewportError.cancelled }
-    let request = try Self.parseViewport(viewport)
+    let request = Self.parseViewport(viewport)
     cancelPendingPageSwitch()
     try requireViewportReady(request: request)
     try applyModeTransition(toEditing: toEditing, request: request)

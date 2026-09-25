@@ -14,7 +14,6 @@ extension InkSignView {
     case invalidPageIndex
     case assemblyFailed
     case unsupportedContent
-    case invalidImagePageSize
 
     var errorDescription: String? {
       switch self {
@@ -26,7 +25,6 @@ extension InkSignView {
       case .invalidPageIndex: return "invalid_page_index: The destination page index is invalid"
       case .assemblyFailed: return "pdf_mutation_failed: Unable to assemble the updated PDF"
       case .unsupportedContent: return "unsupported_content: The selected image is unreadable"
-      case .invalidImagePageSize: return "invalid_image_page_size: Image page dimensions must be finite positive PDF points"
       }
     }
   }
@@ -36,12 +34,6 @@ extension InkSignView {
     performOnMain {
       let requestedImageSize = options?.imagePageSize.map {
         CGSize(width: CGFloat($0.width), height: CGFloat($0.height))
-      }
-      if let requestedImageSize,
-         !requestedImageSize.width.isFinite || requestedImageSize.width <= 0 ||
-         !requestedImageSize.height.isFinite || requestedImageSize.height <= 0 {
-        promise.reject(withError: MutablePageError.invalidImagePageSize)
-        return
       }
       guard let context = self.beginStructuralOperation(promise: promise,
                                                        requiresDocument: false) else { return }
@@ -116,18 +108,13 @@ extension InkSignView {
   func movePage(pageIndex: Double) throws -> Promise<PageInfo> {
     let promise = Promise<PageInfo>()
     performOnMain {
-      guard let state = self.documentCoordinator.document else {
-        promise.reject(withError: MutablePageError.notReady)
-        return
-      }
-      guard pageIndex.isFinite, pageIndex >= 0,
-            pageIndex.rounded(.towardZero) == pageIndex,
-            pageIndex < Double(state.pages.count) else {
+      guard let context = self.beginStructuralOperation(promise: promise) else { return }
+      guard pageIndex < Double(context.pages.count) else {
+        self.documentCoordinator.settle(context.operation, succeeded: false)
         promise.reject(withError: MutablePageError.invalidPageIndex)
         return
       }
       let destination = Int(pageIndex)
-      guard let context = self.beginStructuralOperation(promise: promise) else { return }
       let order: InkSignPdfDocumentCoordinator.PageOrder
       do {
         order = try InkSignPdfDocumentCoordinator.pageOrder(
