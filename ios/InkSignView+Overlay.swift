@@ -13,16 +13,6 @@ extension InkSignView {
     invalidateOverlayTransformCache()
   }
 
-  /// Gives an armed placement tap priority over every PDF navigation gesture
-  /// that could otherwise observe the same touch sequence.
-  func configureTextPlacementGestureRecognition() {
-    let placement = textInteractionOverlay.placementTapRecognizer
-    documentView.gestureRecognizers?.forEach { recognizer in
-      guard recognizer !== placement else { return }
-      recognizer.require(toFail: placement)
-    }
-  }
-
   /// Converts an overlay point into canonical media-box-relative page coordinates.
   func canonicalPagePoint(fromOverlay point: CGPoint) -> CGPoint? {
     guard let state = documentCoordinator.document,
@@ -46,12 +36,13 @@ extension InkSignView {
     guard !disposed,
           overlayProvider.canvasView(for: pageID) === overlay,
           isSupportedPage(pageID) else { return }
-    if textInteractionOverlay.superview !== overlay {
+    guard let overlayContainer = overlay.superview else { return }
+    if textInteractionOverlay.superview !== overlayContainer {
       textInteractionOverlay.removeFromSuperview()
-      textInteractionOverlay.frame = overlay.bounds
       textInteractionOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-      overlay.addSubview(textInteractionOverlay)
+      overlayContainer.addSubview(textInteractionOverlay)
     }
+    textInteractionOverlay.frame = overlay.frame
     attachedOverlayPage = pageID
     refreshOverlayTransform(overlay, for: pageID)
     textInteractionOverlay.syncContent()

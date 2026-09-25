@@ -1,37 +1,37 @@
-# 03 — Selection and immediate dragging
+# 03 — Selection and selected-text dragging
 
-[Task index](../TASKS.md) · Status: Complete · Complexity: Medium
+[Task index](../TASKS.md) · Status: Implemented; runtime validation pending · Complexity: Medium
 
 ## Objective
 
-An unselected annotation requires a long press to select, after which the held finger may drag. A selected annotation moves when a new touch inside its outline or box crosses touch slop, without another long press.
+Long-press unselected text to select and optionally drag it in the same hold. Once selected, a new touch inside its visible box can drag without another long press; a stationary tap still opens editing.
 
 ## Non-goals
 
-No new selection mode, drag handle, history format, or change to ordinary viewport panning outside a selected annotation.
+No new selection mode, drag handle, history format, or change to PDFView navigation outside text hit areas.
 
 ## Read before editing
 
-- `android/src/main/java/com/margelo/nitro/inksignpdf/TextInteractionOverlay.kt`: `InteractionState.Selected/Dragging`, `LongPressDragTracker`, `handlePendingTouch`, `hitTest`, `beginDragging`, `dragAnnotation`, `commitDrag`, `cancelDrag`.
-- `.agents/skills/inksign-pdf-docs/references/android/viewport-input.md`: touch ownership; `android/src/androidTest/kotlin/com/margelo/nitro/inksignpdf/TextPlacementInstrumentationTest.kt`: long-press, drag, and cancellation tests.
+- `ios/TextInteraction.swift`: `tapRecognizer`, `dragRecognizer`, gesture delegate, `handleTap`, `handleLongPress`, `selectForDrag`, `commitDrag`, `annotation(at:)`.
+- `ios/InkSignView+Document.swift`: `updatePDFViewInteractionOwnership`; `ios/InkSignView+Viewport.swift`: PDFView input ownership; `.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md`.
 
-## Current behavior and invariants
+## Baseline before implementation
 
-The tracker currently enters `Dragging` only after its long-press timeout. Before that timeout, motion past touch slop routes the touch to viewport pan. `commitDrag` replaces one annotation once, creating one history action only for a changed position; cancellation leaves the annotation selected without a mutation. Tap edits text.
+`UILongPressGestureRecognizer` always owns dragging with a 0.5-second hold. `handleTap` opens the editor. `commitDrag` records one text-move history action only for a changed position; cancellation adds none. The overlay intercepts annotation touches while PDFView owns ordinary navigation in view mode.
 
 ## Implementation
 
-1. On touch down, use the shared box hit area from Task 02 and the selected annotation ID to choose the gesture route. For an already selected annotation, start a drag candidate immediately; apply movement only after touch slop, so a stationary tap still opens editing. Do not start a long-press timer for this route.
-2. For unselected text, keep the long-press threshold. At the threshold, enter selected state and allow continued movement in the same held gesture to enter drag; release without movement leaves it selected. Preserve the pre-threshold movement-to-pan route.
-3. Reuse the existing `dragAnnotation`, `commitDrag`, and `cancelDrag` transaction path. Ensure touch cancellation and page/document replacement cannot commit a move. Keep hit testing aligned with the rectangle drawn in Task 02.
-4. Revise the Android viewport/input reference to describe the committed gesture contract.
+1. At touch admission, distinguish selected from unselected text using Task 02's visible rectangle. For selected text, start an immediate movement candidate; move only after a small gesture threshold so a stationary tap still edits. No long-press delay on this route.
+2. Retain long press for unselected text. Once recognized, select and let continued motion in the same hold drag; release without movement leaves selection. Before recognition, preserve ordinary PDFView/presentation gesture ownership.
+3. Route both movement paths through one `DragState` and existing `commitDrag`/cancel lifecycle. Verify document generation and active page before commit. Cancellation or page/document replacement cannot add a move.
+4. Update the iOS viewport/input reference with the gesture contract.
 
 ## Tests and acceptance
 
-- Cover long press/release selection, long press/move/release, immediate second-gesture selected drag, stationary selected tap opening the editor, pre-threshold unselected pan, cancellation, and one undoable history action per actual move.
-- Test touches inside the visible box, including its padding, in both directions; selection must not alter the hit area.
-- Run `tools\test-android.ps1 -Mode connected -Test com.margelo.nitro.inksignpdf.TextPlacementInstrumentationTest` when a compatible device is available, plus focused JVM text tests.
+- Keep an automated state/history check for one undoable move on changed position and no action for stationary, cancelled, or stale movement. Avoid synthetic timing tests that merely imitate UIKit recognizers.
+- Manually verify long-press selection, hold-and-drag, immediate selected drag, stationary selected tap-to-edit, PDF navigation outside text, and cancellation on simulator/device. Include LTR/RTL and visible padding.
+- Run `tools\test-ios-lifecycle.ps1` and focused text XCTest on macOS; report unavailable checks.
 
 ## Completion
 
-Selection and dragging follow the two routes without duplicate history actions or lost viewport pan. Proposed commit: `fix(android): drag selected text without a second hold`.
+Both gesture routes share one move transaction and do not steal unrelated PDFView navigation. Proposed commit: `fix(ios): drag selected text without another hold`.

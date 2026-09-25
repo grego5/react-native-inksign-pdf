@@ -1,38 +1,37 @@
 # 04 — Edit viewport and caret margin
 
-[Task index](../TASKS.md) · Status: Complete · Complexity: High
+[Task index](../TASKS.md) · Status: Implemented; runtime validation pending · Complexity: High
 
 ## Objective
 
-Entering Android text editing preserves zoom and pans to show as much of the text outline as possible. Caret following keeps both the caret and adjacent outline away from the screen edge, with a 24 dp margin in the usable viewport.
+Entering iOS text editing keeps the current PDFView zoom and pans to show as much of the editor outline as possible. Later caret movement keeps caret and adjacent outline away from the usable viewport edge with a 24-point screen-space margin when feasible.
 
 ## Non-goals
 
-No automatic fit-to-text zoom, change to normal page double-tap zoom, iOS viewport change, or guarantee that an outline wider than the screen is fully visible.
+No automatic fit-to-text zoom, change to normal PDFView double-tap, rewrite of annotation position during panning, or promise that an outline wider than the viewport fits entirely.
 
 ## Read before editing
 
-- `android/src/main/java/com/margelo/nitro/inksignpdf/InkDocumentController.kt`: `focusTextForEditing`, `ensurePageRectVisible`, `doubleTapZoom`.
-- `android/src/main/java/com/margelo/nitro/inksignpdf/PageViewport.kt`: `targetForTextEditing`, `ensurePageRectVisible`, usable viewport and focus allowance.
-- `android/src/main/java/com/margelo/nitro/inksignpdf/TextInteractionOverlay.kt`: `placeTextAt`, `beginEditing`, `reconcileEditorPresentation`, `activeEditorLineBounds`, `editorBounds`; `.agents/skills/inksign-pdf-docs/references/android/viewport-input.md`.
-- `android/src/test/kotlin/com/margelo/nitro/inksignpdf/PageViewportTest.kt` and `android/src/androidTest/kotlin/com/margelo/nitro/inksignpdf/TextPlacementInstrumentationTest.kt`.
+- `ios/TextInteraction.swift`: `showEditor`, `layoutEditor`, `followCaretIfNeeded`, `keyboardFrameChanged`, `updateKeyboardOcclusion`.
+- `ios/InkSignView+Viewport.swift`: `ensureTextVisible`, `panViewport`, `setTextKeyboardOcclusion`, PDFDestination navigation; `ios/InkSignView.swift`: PDFView configuration.
+- `.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md`; `ios/tests/InkSignViewLifecycleTests.swift`: zoom/viewport checks.
 
-## Current behavior and invariants
+## Baseline before implementation
 
-`focusTextForEditing` chooses at least `doubleTapZoom`; `targetForTextEditing` horizontally follows only the caret. Later reconciliation calls `ensureTextVisible` with 8 dp. The viewport uses the area remaining above the keyboard and may temporarily allow focus beyond ordinary page bounds so edge text remains reachable. The editor/page anchor must not be rewritten by viewport movement.
+The editor follows only a slightly expanded caret through `ensureTextVisible(..., padding: 8)`. That method pans PDFView at its current scale using a keyboard-reduced visible area. Editor and annotation positions are canonical page coordinates; viewport movement cannot mutate them.
 
 ## Implementation
 
-1. Keep `currentViewport.zoom` for edit entry. Replace caret-only entry targeting with a target based on the outer editor/annotation rectangle from Task 02 and the active caret. At fixed zoom, fit the whole outline within the usable width minus 24 dp on each side if it fits. If wider, position the viewport to show the greatest continuous portion around the active caret; keep the caret and its nearby outline at least 24 dp from the horizontal edge whenever the page permits.
-2. Use the same 24 dp margin for caret follow in `reconcileEditorPresentation`. Include editor padding and outline stroke in the visible target, and use the keyboard-adjusted usable height for vertical visibility. Pan only; do not change text position or zoom. Preserve the existing animation ownership and temporary edge-focus allowance.
-3. Update `PageViewportTest` expectations that currently encode caret-only edit entry. Update the Android viewport/input reference; update `README.md` only if it describes edit-entry zoom.
+1. At editor entry, retain `documentView.scaleFactor`. Use Task 02's outer editor rectangle plus caret to choose a fixed-scale pan target within the keyboard-adjusted visible container. If the full outline fits with 24 points on each side, show it; if wider, expose the greatest useful continuous area around the caret. Do not change zoom or saved page position.
+2. Use the same 24-point screen margin on text/selection and keyboard-frame changes. Include outline stroke/padding. Follow vertically and horizontally. Keep viewport panning in `InkSignView`, not PDFView's internal scroll hierarchy.
+3. Preserve the existing document/page guard on viewport movement. Editing does not invoke view-mode double-tap zoom. Update the iOS reference and README only where they describe edit visibility or zoom.
 
 ## Tests and acceptance
 
-- At edit entry, assert zoom is unchanged for short and wide LTR/RTL text. Short text's entire outline fits inside a 24 dp margin; wide text displays the maximum feasible portion around the caret rather than leaving most text clipped by a needless zoom.
-- With the keyboard visible and during caret movement, assert the caret and adjacent outline remain inside the 24 dp usable-screen margin when geometrically possible. Verify page anchors and annotation content remain unchanged by panning.
-- Run `tools\test-android.ps1 -Mode jvm -Test com.margelo.nitro.inksignpdf.PageViewportTest`, focused text JVM and connected tests, `tools\test-android.ps1 -Mode jvm`, `tools\test-android.ps1 -Mode build`, `npx tsc --noEmit --pretty false`, and `git diff --check -- ':!nitrogen/generated/**'`. Run the full connected suite if a compatible device is available. Report unavailable validation explicitly.
+- Add a deterministic viewport-target contract only if separable from PDFView internals: zoom unchanged, short outline inside usable margins when feasible, wide outline exposed around caret, and canonical annotation position unchanged.
+- On simulator/device, test short and wide LTR/RTL text at multiple zooms and page edges, keyboard shown/hidden, and caret movement. Inspect smooth panning without editor jumps or zoom changes.
+- Run focused iOS text and lifecycle XCTest on macOS, `tools\test-ios-lifecycle.ps1`, `npx tsc --noEmit --pretty false`, and `git diff --check -- ':!nitrogen/generated/**'`. Report unavailable Xcode/device checks.
 
 ## Completion
 
-All four tasks meet their observable checks; no public API was added; current zoom, edge visibility, and saved text geometry remain consistent. Proposed commit: `fix(android): keep edit zoom and expose text around caret`.
+All four tasks meet their observable contracts without new public API; zoom and saved text geometry stay stable as editing remains visible. Proposed commit: `fix(ios): keep edit zoom and expose text around caret`.

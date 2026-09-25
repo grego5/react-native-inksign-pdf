@@ -2,6 +2,48 @@ import CoreGraphics
 import PencilKit
 import UIKit
 
+enum InkSignPdfTextBoxGeometry {
+  static func initialFrame(caretAnchor: CGPoint,
+                           size: CGSize,
+                           isRTL: Bool,
+                           insets: UIEdgeInsets,
+                           pageSize: CGSize) -> CGRect {
+    let origin = CGPoint(x: isRTL
+      ? caretAnchor.x + insets.right - size.width
+      : caretAnchor.x - insets.left,
+                         y: caretAnchor.y - insets.top)
+    return CGRect(origin: clampedOrigin(for: size, preferred: origin, pageSize: pageSize),
+                  size: size)
+  }
+
+  static func contentCaretAnchor(in frame: CGRect,
+                                 isRTL: Bool,
+                                 insets: UIEdgeInsets) -> CGPoint {
+    CGPoint(x: isRTL ? frame.maxX - insets.right : frame.minX + insets.left,
+            y: frame.minY + insets.top)
+  }
+
+  static func outlineBounds(for bounds: CGRect,
+                            transform: CGAffineTransform) -> CGRect {
+    bounds.applying(transform)
+  }
+
+  static func clampedOrigin(for size: CGSize,
+                            preferred: CGPoint,
+                            pageSize: CGSize) -> CGPoint {
+    precondition(pageSize.width.isFinite && pageSize.height.isFinite &&
+                   pageSize.width > 0 && pageSize.height > 0,
+                 "Text annotation page size must be finite and positive")
+    let x = size.width >= pageSize.width
+      ? (pageSize.width - size.width) / 2
+      : min(max(preferred.x, 0), pageSize.width - size.width)
+    let y = size.height >= pageSize.height
+      ? (pageSize.height - size.height) / 2
+      : min(max(preferred.y, 0), pageSize.height - size.height)
+    return CGPoint(x: x, y: y)
+  }
+}
+
 /// Immutable committed text in canonical, media-box-relative page coordinates.
 /// UIKit editor state, selection, and viewport transforms are intentionally absent.
 struct InkSignPdfTextAnnotation: Equatable {
@@ -38,7 +80,9 @@ struct InkSignPdfTextAnnotation: Equatable {
   func replacingText(_ text: String, pageSize: CGSize) -> InkSignPdfTextAnnotation {
     let size = Self.intrinsicSize(of: text, fontSize: fontSize,
                                   isRTL: isRTL, maximumWidth: pageSize.width)
-    let origin = Self.clippedOrigin(for: size, preferred: position, pageSize: pageSize)
+    let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: size,
+                                                        preferred: position,
+                                                        pageSize: pageSize)
     return InkSignPdfTextAnnotation(id: id,
                                     text: text,
                                     bounds: CGRect(origin: origin, size: size),
@@ -48,7 +92,9 @@ struct InkSignPdfTextAnnotation: Equatable {
   }
 
   func moving(to position: CGPoint, pageSize: CGSize) -> InkSignPdfTextAnnotation {
-    let origin = Self.clippedOrigin(for: bounds.size, preferred: position, pageSize: pageSize)
+    let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: bounds.size,
+                                                        preferred: position,
+                                                        pageSize: pageSize)
     return InkSignPdfTextAnnotation(id: id, text: text,
                                     bounds: CGRect(origin: origin, size: bounds.size),
                                     fontSize: fontSize,
@@ -59,7 +105,9 @@ struct InkSignPdfTextAnnotation: Equatable {
   func changingFontSize(to fontSize: CGFloat, pageSize: CGSize) -> InkSignPdfTextAnnotation {
     let size = Self.intrinsicSize(of: text, fontSize: fontSize,
                                   isRTL: isRTL, maximumWidth: pageSize.width)
-    let origin = Self.clippedOrigin(for: size, preferred: position, pageSize: pageSize)
+    let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: size,
+                                                        preferred: position,
+                                                        pageSize: pageSize)
     return InkSignPdfTextAnnotation(id: id, text: text,
                                     bounds: CGRect(origin: origin, size: size),
                                     fontSize: fontSize,
@@ -77,22 +125,6 @@ struct InkSignPdfTextAnnotation: Equatable {
                                          maximumWidth: maximumWidth)
   }
 
-  private static func clippedOrigin(
-    for size: CGSize,
-    preferred: CGPoint,
-    pageSize: CGSize
-  ) -> CGPoint {
-    precondition(pageSize.width.isFinite && pageSize.height.isFinite &&
-                   pageSize.width > 0 && pageSize.height > 0,
-                 "Text annotation page size must be finite and positive")
-    let x = size.width >= pageSize.width
-      ? (pageSize.width - size.width) / 2
-      : min(max(preferred.x, 0), pageSize.width - size.width)
-    let y = size.height >= pageSize.height
-      ? (pageSize.height - size.height) / 2
-      : min(max(preferred.y, 0), pageSize.height - size.height)
-    return CGPoint(x: x, y: y)
-  }
 }
 
 /// The immutable page-content snapshot shared by history and downstream boundaries.

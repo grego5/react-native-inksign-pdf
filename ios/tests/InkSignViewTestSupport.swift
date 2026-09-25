@@ -85,16 +85,14 @@ func makeCenteredTextAnnotation(
                                                    fontSize: fontSize,
                                                    isRTL: isRTL,
                                                    maximumWidth: pageSize.width)
-  let x = size.width >= pageSize.width
-    ? (pageSize.width - size.width) / 2
-    : min(max((pageSize.width - size.width) / 2, 0), pageSize.width - size.width)
-  let y = size.height >= pageSize.height
-    ? (pageSize.height - size.height) / 2
-    : min(max((pageSize.height - size.height) / 2, 0), pageSize.height - size.height)
+  let origin = InkSignPdfTextBoxGeometry.clampedOrigin(
+    for: size,
+    preferred: CGPoint(x: (pageSize.width - size.width) / 2,
+                       y: (pageSize.height - size.height) / 2),
+    pageSize: pageSize)
   return InkSignPdfTextAnnotation(id: id,
                                   text: text,
-                                  bounds: CGRect(x: x, y: y,
-                                                 width: size.width, height: size.height),
+                                  bounds: CGRect(origin: origin, size: size),
                                   fontSize: fontSize,
                                   isRTL: isRTL)
 }

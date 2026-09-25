@@ -1,38 +1,38 @@
-# 02 — Consistent text box and caret placement
+# 02 — Text box and caret placement
 
-[Task index](../TASKS.md) · Status: Complete · Complexity: Medium
+[Task index](../TASKS.md) · Status: Implemented; runtime validation pending · Complexity: Medium
 
 ## Objective
 
-Make idle, selected, and editing outlines share the same outer geometry. Start a new empty box at approximately one character of content width, and make the placement tap indicate the initial caret content start rather than the box center.
+Make idle, selected, and editing text outlines use one outer rectangle. A new empty box starts about one character wide, and the placement tap indicates the initial caret content edge rather than the box center.
 
 ## Non-goals
 
-No change to text font size, export coordinates, iOS layout, or gesture policy. Do not make the persisted annotation bounds include presentation padding.
+No font-size change, export-coordinate change, persisted outline padding, or Android layout change.
 
 ## Read before editing
 
-- `android/src/main/java/com/margelo/nitro/inksignpdf/TextInteractionOverlay.kt`: `textEditorIntrinsicSize`, `editorSize`, `chooseTextPlacementPosition`, `placeTextAt`, `textOutlineRect`, `textPresentationRect`, `editorBoundsFor`, `layoutEditorFrame`, `annotationAt`.
-- `android/src/main/java/com/margelo/nitro/inksignpdf/TextLayout.kt`: text measurement and render bounds; `.agents/skills/inksign-pdf-docs/references/android/viewport-input.md`: canonical coordinates.
-- `android/src/test/kotlin/com/margelo/nitro/inksignpdf/TextInteractionContractTest.kt` and `android/src/androidTest/kotlin/com/margelo/nitro/inksignpdf/TextPlacementInstrumentationTest.kt`: placement/outline coverage.
+- `ios/TextInteraction.swift`: `placeTextAt`, `showEditor`, `layoutEditor`, `measureEditor`, `outlineBounds`, `annotation(at:)`, `draw`, `settledAnnotation`.
+- `ios/TextRendering.swift`: `InkSignPdfTextStyle.presentationInsets` and renderer measurement; `ios/TextState.swift`: annotation bounds; `ios/tests/InkSignViewTextInteractionTests.swift`.
+- `.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md`: canonical and presentation coordinates.
 
-## Current behavior and invariants
+## Baseline before implementation
 
-The empty editor minimum width is four font sizes. `chooseTextPlacementPosition` subtracts half the box width/height from the tap. `textOutlineRect` applies different padding for selected and idle annotations, so selection changes the visible dimensions. Annotation bounds remain canonical page units; editor padding and outline stroke are presentation pixels. RTL is anchored at the right content edge.
+`showEditor` centers a new box on the tap. Empty editor width can shrink to a device pixel. Editing draws `editor.frame`, while idle/selected outlines derive from transformed annotation bounds; hit testing has a separate minimum target. Stored bounds remain canonical page units.
 
 ## Implementation
 
-1. Replace the four-font-size empty width in both intrinsic and native editor measurement with a one-em minimum content width, bounded by the available page width. Keep one source for that minimum so the initial editor and later reconciliation agree.
-2. Make `placeTextAt` interpret the tapped page point as the caret content origin: the LTR content left edge or RTL content right edge, and the first line's caret top. Offset the visible editor frame by its existing padding; clamp only as required to keep the box on the page. Recompute the saved content anchor from the clamped frame so the displayed caret and eventual annotation position agree. Do not recenter around the tap.
-3. Derive idle and selected outer outlines from the same content bounds and editor-equivalent pixel padding at the current zoom. Only paint color, stroke, and optional fill may differ. Use that same rectangle in hit testing. Preserve the PDF/page-unit content bounds without padding.
-4. Update the Android viewport/input reference and the user-facing placement description in `README.md` after implementation.
+1. Use one one-em minimum empty content width, capped by available page width; retain TextKit-measured width for nonempty text. Keep the final TextKit container width, caret, and selection layout synchronized as the editor grows.
+2. Interpret placement as first-line caret content start: LTR left or RTL right at the tapped vertical start. Account for `presentationInsets` and page-to-overlay transform. Clamp the box to the page, then derive the saved content anchor from that frame. Do not center on the tap.
+3. Keep committed bounds and live editor in the same canonical content geometry. Derive idle and selected outlines from one outer-rectangle calculation with consistent screen-space padding and stroke at the current scale. Use the same visible rectangle for selection hit testing; keep presentation padding out of persisted bounds.
+4. Update the iOS viewport/input reference and README placement statement after implementation.
 
 ## Tests and acceptance
 
-- Assert idle and selected outline rectangles have the same edges at multiple zooms for LTR and RTL. Compare them with the visible editor frame after committing and reopening unchanged text.
-- For new placement, assert the first caret content edge maps to the tap in both directions when the box fits; near page edges assert the clamped frame and caret remain aligned. Assert the empty content minimum is one em rather than four.
-- Run `tools\test-android.ps1 -Mode jvm -Test com.margelo.nitro.inksignpdf.TextInteractionContractTest` and the focused connected `TextPlacementInstrumentationTest` when available.
+- Add a small deterministic contract for content-to-outline conversion, tap-to-anchor placement, and page-edge clamping in LTR/RTL. Do not use pixel-perfect automated assertions for caret/font visual fidelity.
+- On simulator/device, place text near center and edges at two zooms; compare caret, editor outline, committed outline, and selected outline. The tap should land at the caret edge unless clamped.
+- Run `tools\test-ios-lifecycle.ps1` and focused text XCTest on macOS; report unavailable checks.
 
 ## Completion
 
-Selection no longer changes outline dimensions; one-character-width placement aligns the caret with the tap except for necessary page-edge clamping. Proposed commit: `fix(android): align text outlines and placement caret`.
+The box starts near one em, follows the placement caret, and keeps one outline geometry through edit, commit, and selection. Proposed commit: `fix(ios): align text outlines and placement caret`.
