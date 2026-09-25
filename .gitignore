@@ -17,3 +17,4 @@ ios/build/
 .codex/
 .codex-remote-attachments/
 diagnostics/
+.DS_Store

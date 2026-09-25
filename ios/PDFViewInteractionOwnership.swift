@@ -1,9 +1,8 @@
 import PDFKit
 import UIKit
 
-/// Hands all PDF presentation gestures to PDFKit in view mode and to the page
-/// overlay in edit mode. The edit-mode walk follows PDFView's live child tree,
-/// so it does not depend on private view or recognizer names.
+/// Suspends PDFView input while PencilKit owns edit-mode drawing, then restores
+/// the previous interaction state when normal PDF navigation resumes.
 final class PDFViewInteractionOwnership {
   private final class ViewState {
     weak var view: UIView?
@@ -32,17 +31,16 @@ final class PDFViewInteractionOwnership {
               editing: Bool,
               interactionsEnabled: Bool,
               placementRecognizer: UIGestureRecognizer) {
-    guard editing || !interactionsEnabled else {
-      restore()
+    if editing || !interactionsEnabled {
+      suppress(pdfView,
+               isRoot: true,
+               editing: editing && interactionsEnabled,
+               placementRecognizer: placementRecognizer)
       return
     }
 
-    suppress(pdfView,
-             isRoot: true,
-             editing: editing && interactionsEnabled,
-             placementRecognizer: placementRecognizer)
+    restore()
   }
-
   private func suppress(_ view: UIView,
                         isRoot: Bool,
                         editing: Bool,

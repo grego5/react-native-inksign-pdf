@@ -7,6 +7,79 @@ private let maximumTextFontSize: CGFloat = 72
 private let textFontSizeStep: CGFloat = 1
 private let textEditorInsets = InkSignPdfTextStyle.presentationInsets
 
+struct InkSignPdfTextDirectionState: Equatable {
+  enum Request: Equatable {
+    case automatic
+    case fixed(Bool)
+  }
+
+  let request: Request
+  private(set) var effectiveRTL: Bool
+  private(set) var isLocked: Bool
+
+  static func writingDirectionHint(for languageTag: String?) -> Bool? {
+    guard let languageTag, !languageTag.isEmpty else { return nil }
+    let direction: Locale.LanguageDirection
+    if #available(iOS 16.0, *) {
+      direction = Locale.Language(identifier: languageTag).characterDirection
+    } else {
+      direction = Locale.characterDirection(forLanguage: languageTag)
+    }
+    switch direction {
+    case .rightToLeft: return true
+    case .leftToRight, .topToBottom, .bottomToTop: return false
+    case .unknown: return nil
+    @unknown default: return nil
+    }
+  }
+
+  init(request: Request, fallbackRTL: Bool) {
+    self.request = request
+    switch request {
+    case .automatic:
+      effectiveRTL = fallbackRTL
+      isLocked = false
+    case .fixed(let isRTL):
+      effectiveRTL = isRTL
+      isLocked = true
+    }
+  }
+
+  @discardableResult
+  mutating func adoptInputDirectionWhileEmpty(_ inputRTL: Bool?) -> Bool {
+    guard case .automatic = request, !isLocked, let inputRTL else { return false }
+    return setEffectiveDirection(inputRTL)
+  }
+
+  @discardableResult
+  mutating func lockForContent(_ inputRTL: Bool?) -> Bool {
+    guard case .automatic = request, !isLocked else { return false }
+    let changed = adoptInputDirectionWhileEmpty(inputRTL)
+    isLocked = true
+    return changed
+  }
+
+  @discardableResult
+  mutating func reopenEmptyEditor(_ inputRTL: Bool?) -> Bool {
+    guard case .automatic = request else { return false }
+    isLocked = false
+    return adoptInputDirectionWhileEmpty(inputRTL)
+  }
+
+  private mutating func setEffectiveDirection(_ isRTL: Bool) -> Bool {
+    guard effectiveRTL != isRTL else { return false }
+    effectiveRTL = isRTL
+    return true
+  }
+}
+
+enum InkSignPdfTextDragPhase: Equatable {
+  case began
+  case changed
+  case ended
+  case cancelled
+}
+
 /// Owns transient selection, editing, and movement presentation for page text.
 /// The page history remains the only owner of committed annotation values.
 final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
@@ -18,7 +91,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     let original: InkSignPdfTextAnnotation?
     var position: CGPoint
     var fontSize: CGFloat
-    var isRTL: Bool
+    var direction: InkSignPdfTextDirectionState
     var anchorX: CGFloat
     let textColor: String
   }
@@ -59,8 +132,10 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private var keyboardAvoidanceEnabled = true
   private var caretFollowEnabled = false
   private var keyboardFrameInScreen: CGRect?
+  private var keyboardScreen: UIScreen?
   private var keyboardObserver: NSObjectProtocol?
   private var keyboardHideObserver: NSObjectProtocol?
+  private var inputModeObserver: NSObjectProtocol?
   private let outlineStrokeWidth: CGFloat = 2
 
   var onInteractionModeChanged: (() -> Void)?
@@ -89,6 +164,15 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     return recognizer
   }()
 
+  private lazy var selectedDragRecognizer: UIPanGestureRecognizer = {
+    let recognizer = UIPanGestureRecognizer(target: self,
+                                           action: #selector(handleSelectedDrag(_:)))
+    recognizer.minimumNumberOfTouches = 1
+    recognizer.maximumNumberOfTouches = 1
+    recognizer.delegate = self
+    return recognizer
+  }()
+
   override init(frame: CGRect) {
     super.init(frame: frame)
     isOpaque = false
@@ -96,7 +180,9 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     isUserInteractionEnabled = true
     addGestureRecognizer(tapRecognizer)
     addGestureRecognizer(dragRecognizer)
+    addGestureRecognizer(selectedDragRecognizer)
     tapRecognizer.require(toFail: dragRecognizer)
+    tapRecognizer.require(toFail: selectedDragRecognizer)
     keyboardObserver = NotificationCenter.default.addObserver(
       forName: UIResponder.keyboardWillChangeFrameNotification,
       object: nil,
@@ -116,6 +202,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   deinit {
     if let keyboardObserver { NotificationCenter.default.removeObserver(keyboardObserver) }
     if let keyboardHideObserver { NotificationCenter.default.removeObserver(keyboardHideObserver) }
+    if let inputModeObserver { NotificationCenter.default.removeObserver(inputModeObserver) }
   }
 
   internal func interactionMode() -> InteractionMode {
@@ -203,17 +290,16 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   private func defaultWritingDirectionIsRTL() -> Bool {
-    guard let languageCode = Locale.current.languageCode?.lowercased() else { return false }
-    return Self.rightToLeftLanguageCodes.contains(languageCode)
+    if #available(iOS 16.0, *) {
+      return Locale.current.language.characterDirection == .rightToLeft
+    }
+    guard let languageCode = Locale.current.languageCode else { return false }
+    return InkSignPdfTextDirectionState.writingDirectionHint(for: languageCode) ?? false
   }
 
   private func inputLanguageWritingDirectionHint(_ languageTag: String?) -> Bool? {
-    guard let language = languageTag?.lowercased(), !language.isEmpty else { return nil }
-    if Self.rightToLeftLanguageCodes.contains(where: { language.hasPrefix($0) }) { return true }
-    return false
+    InkSignPdfTextDirectionState.writingDirectionHint(for: languageTag)
   }
-
-  private static let rightToLeftLanguageCodes = ["ar", "he", "fa", "ur"]
 
   internal func armPlacement(generation: UInt64) throws {
     if hasPendingPlacement() { return }
@@ -302,25 +388,52 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     if hasPendingPlacement() {
       return owner?.canonicalPagePoint(fromOverlay: point) == nil ? nil : self
     }
-    if editor != nil || selectedAnnotationID != nil || annotation(at: point) != nil { return self }
+    if editor != nil || annotation(at: point) != nil { return self }
     return nil
-  }
-
-  /// Routes an editor dismissal before the PDF canvas can observe the touch.
-  @discardableResult
-  internal func routeTouchBegan(at point: CGPoint) -> Bool {
-    if let editor {
-      let editorPoint = editor.convert(point, from: self)
-      guard !editor.point(inside: editorPoint, with: nil) else { return false }
-      finishForLifecycle()
-      return true
-    }
-    return false
   }
 
   internal func dragTarget(at point: CGPoint) -> String? {
     guard editor == nil, !hasPendingPlacement() else { return nil }
     return annotation(at: point)
+  }
+
+  @discardableResult
+  internal func routeTap(at location: CGPoint) -> Bool {
+    if let editor {
+      let editorPoint = editor.convert(location, from: self)
+      guard !editor.point(inside: editorPoint, with: nil) else { return false }
+      finishForLifecycle()
+    }
+    if let id = annotation(at: location) {
+      selectAndEdit(id)
+      return true
+    }
+    if selectedAnnotationID != nil { finishForLifecycle() }
+    return false
+  }
+
+  @discardableResult
+  internal func routeDrag(_ phase: InkSignPdfTextDragPhase,
+                          at location: CGPoint,
+                          selectedOnly: Bool) -> Bool {
+    switch phase {
+    case .began:
+      guard let id = dragTarget(at: location),
+            selectedOnly ? id == selectedAnnotationID : id != selectedAnnotationID else {
+        return false
+      }
+      return selectForDrag(id, startPoint: location)
+    case .changed:
+      return updateDrag(to: location)
+    case .ended:
+      guard case .dragging = interactionState else { return false }
+      commitDrag()
+      return true
+    case .cancelled:
+      guard case .dragging = interactionState else { return false }
+      cancelDrag()
+      return true
+    }
   }
 
   /// Completes the native placement tap after UIKit has ruled out competing
@@ -411,32 +524,52 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       let editorPoint = editor.convert(touch.location(in: self), from: self)
       return !editor.point(inside: editorPoint, with: nil)
     }
+    if gestureRecognizer === tapRecognizer {
+      return annotation(at: touch.location(in: self)) != nil
+    }
     if gestureRecognizer === dragRecognizer {
-      return dragTarget(at: touch.location(in: self)) != nil
+      guard let target = dragTarget(at: touch.location(in: self)) else { return false }
+      return target != selectedAnnotationID
+    }
+    if gestureRecognizer === selectedDragRecognizer {
+      guard let selectedAnnotationID else { return false }
+      return dragTarget(at: touch.location(in: self)) == selectedAnnotationID
     }
     return true
   }
 
   func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                          shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-    guard gestureRecognizer === tapRecognizer || gestureRecognizer === dragRecognizer,
-          let overlayView = gestureRecognizer.view,
-          let parent = otherGestureRecognizer.view,
-          overlayView !== parent else { return false }
-    return overlayView.isDescendant(of: parent)
+                         shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+    guard isTextInputGesture(gestureRecognizer),
+          !isTextInputGesture(otherGestureRecognizer),
+          otherGestureRecognizer !== placementTapRecognizer,
+          let owner,
+          otherGestureRecognizer !== owner.doubleTapGestureRecognizer,
+          isPDFViewGesture(otherGestureRecognizer) else { return false }
+    return true
+  }
+
+  private func isTextInputGesture(_ recognizer: UIGestureRecognizer) -> Bool {
+    recognizer === tapRecognizer || recognizer === dragRecognizer ||
+      recognizer === selectedDragRecognizer
+  }
+
+  private func isPDFViewGesture(_ recognizer: UIGestureRecognizer) -> Bool {
+    guard let owner,
+          let pdfView = owner.documentView,
+          var view = recognizer.view else { return false }
+    while view !== pdfView {
+      if view is InkSignPdfPageOverlayView || view === owner.textInteractionOverlay {
+        return false
+      }
+      guard let superview = view.superview else { return false }
+      view = superview
+    }
+    return true
   }
 
   @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
-    let location = recognizer.location(in: self)
-    if let editor {
-      let editorPoint = editor.convert(location, from: self)
-      if editor.point(inside: editorPoint, with: nil) { return }
-    }
-    if let id = annotation(at: location) {
-      selectAndEdit(id)
-    } else if selectedAnnotationID != nil {
-      finishForLifecycle()
-    }
+    _ = routeTap(at: recognizer.location(in: self))
   }
 
   @objc private func handlePlacementTap(_ recognizer: UITapGestureRecognizer) {
@@ -446,39 +579,35 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+    guard let phase = dragPhase(for: recognizer.state) else { return }
+    let began = phase == .began
+    guard routeDrag(phase, at: recognizer.location(in: self), selectedOnly: false) else { return }
+    if began { UIImpactFeedbackGenerator(style: .light).impactOccurred() }
+  }
+
+  @objc private func handleSelectedDrag(_ recognizer: UIPanGestureRecognizer) {
+    guard let phase = dragPhase(for: recognizer.state) else { return }
     let location = recognizer.location(in: self)
-    switch recognizer.state {
+    if phase == .began {
+      let translation = recognizer.translation(in: self)
+      let start = CGPoint(x: location.x - translation.x,
+                          y: location.y - translation.y)
+      guard routeDrag(.began, at: start, selectedOnly: true) else { return }
+      _ = routeDrag(.changed, at: location, selectedOnly: true)
+      return
+    }
+    _ = routeDrag(phase, at: location, selectedOnly: true)
+  }
+
+  private func dragPhase(for state: UIGestureRecognizer.State) -> InkSignPdfTextDragPhase? {
+    switch state {
     case .began:
-      guard let id = dragTarget(at: location) else { return }
-      selectForDrag(id, startPoint: location)
-      UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    case .changed:
-      guard case .dragging(let drag) = interactionState,
-            owner?.documentCoordinator.generation == drag.generation,
-            owner?.documentCoordinator.document?.activePageIndex == drag.pageIndex,
-            let transform = owner?.pageToOverlayTransform,
-            let inverse = transform.invertedIfFinite else { return }
-      let translation = CGPoint(x: location.x - drag.startPoint.x,
-                                y: location.y - drag.startPoint.y)
-      let delta = CGPoint(
-        x: inverse.a * translation.x + inverse.c * translation.y,
-        y: inverse.b * translation.x + inverse.d * translation.y)
-      var updated = drag
-      updated.position = drag.original.position.applying(
-        CGAffineTransform(translationX: delta.x, y: delta.y))
-      interactionState = .dragging(updated)
-      setNeedsDisplay()
-    case .ended:
-      commitDrag()
-    case .cancelled, .failed:
-      if case .dragging(let drag) = interactionState {
-        interactionState = owner?.documentCoordinator.generation == drag.generation &&
-          owner?.documentCoordinator.document?.activePageIndex == drag.pageIndex
-          ? .selected(id: drag.original.id) : .idle
-      }
-      syncPresentation()
+      return .began
+    case .changed: return .changed
+    case .ended: return .ended
+    case .cancelled, .failed: return .cancelled
     default:
-      break
+      return nil
     }
   }
 
@@ -489,21 +618,25 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   ) {
     let id = owner?.allocateTextAnnotationID() ?? ""
     guard !id.isEmpty else { return }
-    let isRTL = requestedTextDirectionRtl ?? defaultWritingDirectionIsRTL()
+    let direction = InkSignPdfTextDirectionState(
+      request: requestedTextDirectionRtl.map {
+        InkSignPdfTextDirectionState.Request.fixed($0)
+      } ?? .automatic,
+      fallbackRTL: defaultWritingDirectionIsRTL())
     interactionState = .editing(EditingState(id: id,
                                               generation: presentation.generation,
                                               pageIndex: presentation.pageIndex,
                                               original: nil,
                                               position: pagePoint,
                                               fontSize: defaultFontSize,
-                                              isRTL: isRTL,
+                                              direction: direction,
                                               anchorX: pagePoint.x,
                                               textColor: defaultTextColor))
-    showEditor(text: "", centeredAt: pagePoint)
+    showEditor(text: "", placementAnchor: pagePoint)
     syncPresentation()
   }
 
-  private func showEditor(text: String, centeredAt pagePoint: CGPoint? = nil) {
+  private func showEditor(text: String, placementAnchor: CGPoint? = nil) {
     closeEditor()
     guard case .editing(let state) = interactionState else { return }
     let textView = UITextView()
@@ -523,19 +656,27 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     addSubview(textView)
     applyTextStyle(to: textView, state: state)
     layoutEditor()
-    if let pagePoint, let pageSize = owner?.activePageSize() {
-      let origin = clampedPosition(CGPoint(x: pagePoint.x - lastEditorContentSize.width / 2,
-                                           y: pagePoint.y - lastEditorContentSize.height / 2),
-                                   size: lastEditorContentSize, pageSize: pageSize)
+    if let placementAnchor, let pageSize = owner?.activePageSize() {
       var presentationState = state
-      presentationState.position = origin
-      presentationState.anchorX = presentationState.isRTL
-        ? origin.x + lastEditorContentSize.width : origin.x
+      let frame = InkSignPdfTextBoxGeometry.initialFrame(
+        caretAnchor: placementAnchor,
+        size: lastEditorContentSize,
+        isRTL: presentationState.direction.effectiveRTL,
+        insets: textEditorInsets,
+        pageSize: pageSize)
+      presentationState.position = frame.origin
+      presentationState.anchorX = InkSignPdfTextBoxGeometry.contentCaretAnchor(
+        in: frame,
+        isRTL: presentationState.direction.effectiveRTL,
+        insets: textEditorInsets).x
       interactionState = .editing(presentationState)
       layoutEditor()
     }
+    observeInputModeChangesIfNeeded(for: state)
     textView.becomeFirstResponder()
-    adoptActiveInputDirectionIfAutomatic(from: textView)
+    updateDirection(in: textView,
+                    languageTag: textView.textInputMode?.primaryLanguage,
+                    contentIsEmpty: true)
     updateKeyboardOcclusion()
     caretFollowEnabled = true
     followCaretIfNeeded()
@@ -544,10 +685,32 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   func textViewDidChange(_ textView: UITextView) {
     guard textView === editor else { return }
+    let contentIsEmpty = textView.text.isEmpty
+    updateDirection(in: textView,
+                    languageTag: textView.textInputMode?.primaryLanguage,
+                    contentIsEmpty: contentIsEmpty,
+                    reopening: contentIsEmpty)
     layoutEditor()
     caretFollowEnabled = true
     followCaretIfNeeded()
     setNeedsDisplay()
+  }
+
+  func textView(_ textView: UITextView,
+                shouldChangeTextIn range: NSRange,
+                replacementText text: String) -> Bool {
+    guard textView === editor,
+          case .editing(let state) = interactionState,
+          state.original == nil,
+          state.direction.request == .automatic,
+          !state.direction.isLocked else { return true }
+    let updatedText = (textView.text as NSString).replacingCharacters(in: range, with: text)
+    if !updatedText.isEmpty {
+      updateDirection(in: textView,
+                      languageTag: textView.textInputMode?.primaryLanguage,
+                      contentIsEmpty: false)
+    }
+    return true
   }
 
   func textViewDidChangeSelection(_ textView: UITextView) {
@@ -564,24 +727,28 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     if editor != nil { finishForLifecycle() }
     guard let presentation = presentation(),
           let annotation = presentation.annotations.first(where: { $0.id == id }) else { return }
-    let isRTL = annotation.isRTL
+    let direction = InkSignPdfTextDirectionState(request: .fixed(annotation.isRTL),
+                                                  fallbackRTL: annotation.isRTL)
     interactionState = .editing(EditingState(id: id,
                                               generation: presentation.generation,
                                               pageIndex: presentation.pageIndex,
                                               original: annotation,
                                               position: annotation.position,
                                               fontSize: annotation.fontSize,
-                                              isRTL: isRTL,
-                                              anchorX: isRTL ? annotation.bounds.maxX : annotation.position.x,
+                                              direction: direction,
+                                              anchorX: InkSignPdfTextBoxGeometry.contentCaretAnchor(
+                                                in: annotation.bounds,
+                                                isRTL: annotation.isRTL,
+                                                insets: textEditorInsets).x,
                                               textColor: annotation.textColor))
     showEditor(text: annotation.text)
     syncPresentation()
   }
 
-  private func selectForDrag(_ id: String, startPoint: CGPoint) {
+  private func selectForDrag(_ id: String, startPoint: CGPoint) -> Bool {
     if editor != nil { finishEditing() }
     guard let presentation = presentation(),
-          let annotation = presentation.annotations.first(where: { $0.id == id }) else { return }
+          let annotation = presentation.annotations.first(where: { $0.id == id }) else { return false }
     interactionState = .dragging(DragState(generation: presentation.generation,
                                             pageIndex: presentation.pageIndex,
                                             original: annotation,
@@ -589,6 +756,37 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                             position: annotation.position))
     setNeedsDisplay()
     emitInteractionModeChanged()
+    return true
+  }
+
+  private func updateDrag(to location: CGPoint) -> Bool {
+    guard case .dragging(let drag) = interactionState else { return false }
+    guard let owner,
+          owner.documentCoordinator.generation == drag.generation,
+          owner.documentCoordinator.document?.activePageIndex == drag.pageIndex,
+          let transform = owner.pageToOverlayTransform,
+          let inverse = transform.invertedIfFinite else {
+      cancelDrag()
+      return false
+    }
+    let translation = CGPoint(x: location.x - drag.startPoint.x,
+                              y: location.y - drag.startPoint.y)
+    let delta = CGPoint(x: inverse.a * translation.x + inverse.c * translation.y,
+                        y: inverse.b * translation.x + inverse.d * translation.y)
+    var updated = drag
+    updated.position = drag.original.position.applying(
+      CGAffineTransform(translationX: delta.x, y: delta.y))
+    interactionState = .dragging(updated)
+    setNeedsDisplay()
+    return true
+  }
+
+  private func cancelDrag() {
+    guard case .dragging(let drag) = interactionState else { return }
+    interactionState = owner?.documentCoordinator.generation == drag.generation &&
+      owner?.documentCoordinator.document?.activePageIndex == drag.pageIndex
+      ? .selected(id: drag.original.id) : .idle
+    syncPresentation()
   }
 
   private func commitDrag() {
@@ -615,7 +813,9 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   private func finishEditing() {
-    guard case .editing(let state) = interactionState, let textView = editor else { return }
+    guard case .editing = interactionState, let textView = editor else { return }
+    layoutEditor()
+    guard case .editing(let state) = interactionState else { return }
     let text = textView.text ?? ""
     let original = state.original
     var finishedID: String?
@@ -637,7 +837,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let pageSize = owner?.activePageSize() {
       let annotation = settledAnnotation(state: state, text: text, pageSize: pageSize)
-        owner?.appendTextAnnotation(annotation,
+      owner?.appendTextAnnotation(annotation,
                                   generation: state.generation,
                                   pageIndex: state.pageIndex)
       finishedID = annotation.id
@@ -649,28 +849,19 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func settledAnnotation(state: EditingState, text: String,
                                   pageSize: CGSize) -> InkSignPdfTextAnnotation {
-    layoutEditor()
     let size = lastEditorContentSize
-    let preferred = CGPoint(x: state.isRTL ? state.anchorX - size.width : state.position.x,
+    let preferred = CGPoint(x: state.direction.effectiveRTL
+      ? state.anchorX + textEditorInsets.right - size.width
+      : state.anchorX - textEditorInsets.left,
                             y: state.position.y)
-    let origin = clampedPosition(preferred, size: size, pageSize: pageSize)
+    let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: size,
+                                                        preferred: preferred,
+                                                        pageSize: pageSize)
     return InkSignPdfTextAnnotation(id: state.id, text: text,
                                     bounds: CGRect(origin: origin, size: size),
                                     fontSize: state.fontSize,
                                     textColor: state.textColor,
-                                    isRTL: state.isRTL)
-  }
-
-  private func clampedPosition(_ position: CGPoint,
-                               size: CGSize,
-                               pageSize: CGSize) -> CGPoint {
-    let x = size.width >= pageSize.width
-      ? (pageSize.width - size.width) / 2
-      : min(max(position.x, 0), pageSize.width - size.width)
-    let y = size.height >= pageSize.height
-      ? (pageSize.height - size.height) / 2
-      : min(max(position.y, 0), pageSize.height - size.height)
-    return CGPoint(x: x, y: y)
+                                    isRTL: state.direction.effectiveRTL)
   }
 
   private func changeSelectedFont(by delta: CGFloat) throws -> Double {
@@ -684,6 +875,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       interactionState = .editing(next)
       if let editor { applyTextStyle(to: editor, state: next) }
       layoutEditor()
+      setNeedsDisplay()
+      followCaretIfNeeded()
       return Double(updated)
     }
     if case .editing(let state) = interactionState,
@@ -714,6 +907,10 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func closeEditor() {
     guard let editor else { return }
+    if let inputModeObserver {
+      NotificationCenter.default.removeObserver(inputModeObserver)
+      self.inputModeObserver = nil
+    }
     settlingEditor = true
     editor.resignFirstResponder()
     editor.delegate = nil
@@ -765,15 +962,22 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
           let transform = owner.pageToOverlayTransform else { return }
     let pageSize = owner.activePageSize()
     let editorSize = measureEditor(editor, maximumWidth: pageSize.width)
-    let positionX = state.isRTL ? state.anchorX - editorSize.width : state.position.x
+    let positionX = state.direction.effectiveRTL
+      ? state.anchorX + textEditorInsets.right - editorSize.width
+      : state.anchorX - textEditorInsets.left
+    let preferred = CGPoint(x: positionX, y: state.position.y)
+    let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: editorSize,
+                                                        preferred: preferred,
+                                                        pageSize: pageSize)
     var updatedState = state
-    updatedState.position.x = editorSize.width >= pageSize.width
-      ? (pageSize.width - editorSize.width) / 2
-      : min(max(positionX, 0), pageSize.width - editorSize.width)
-    updatedState.position.y = editorSize.height >= pageSize.height
-      ? (pageSize.height - editorSize.height) / 2
-      : min(max(state.position.y, 0), pageSize.height - editorSize.height)
-    if updatedState.position != state.position {
+    updatedState.position = origin
+    if origin.x != positionX {
+      updatedState.anchorX = InkSignPdfTextBoxGeometry.contentCaretAnchor(
+        in: CGRect(origin: origin, size: editorSize),
+        isRTL: state.direction.effectiveRTL,
+        insets: textEditorInsets).x
+    }
+    if updatedState.position != state.position || updatedState.anchorX != state.anchorX {
       interactionState = .editing(updatedState)
     }
     editor.bounds = CGRect(origin: .zero, size: editorSize)
@@ -790,69 +994,73 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private func measureEditor(_ editor: UITextView, maximumWidth: CGFloat) -> CGSize {
     let insets = textEditorInsets
     let availableWidth = max(1, maximumWidth - insets.left - insets.right)
-    editor.textContainer.size = CGSize(width: availableWidth,
-                                       height: .greatestFiniteMagnitude)
-    editor.bounds.size = CGSize(width: availableWidth + insets.left + insets.right,
-                                height: max(editor.bounds.height, editor.font?.lineHeight ?? 1))
-    editor.setContentOffset(.zero, animated: false)
-    editor.layoutManager.ensureLayout(for: editor.textContainer)
-    editor.layoutIfNeeded()
-    let scale = max(window?.screen.scale ?? UIScreen.main.scale, 1)
-    let contentWidth = min(availableWidth,
-                           max(layoutExtent(editor, insets: insets).width, 1 / scale))
-    editor.textContainer.size = CGSize(width: contentWidth,
-                                       height: .greatestFiniteMagnitude)
-    let finalWidth = contentWidth + insets.left + insets.right
-    editor.bounds.size = CGSize(width: finalWidth,
-                                height: max(editor.bounds.height, editor.font?.lineHeight ?? 1))
-    editor.setContentOffset(.zero, animated: false)
-    editor.layoutManager.ensureLayout(for: editor.textContainer)
-    editor.layoutIfNeeded()
-    let finalLayout = layoutExtent(editor, insets: insets)
     let font = editor.font ?? InkSignPdfTextStyle.font(size: defaultFontSize)
-    let contentHeight = max(finalLayout.height, font.lineHeight)
-    let size = CGSize(width: finalWidth,
-                  height: contentHeight + insets.top + insets.bottom)
+    func layout(at contentWidth: CGFloat) -> CGSize {
+      editor.textContainer.size = CGSize(width: contentWidth,
+                                         height: .greatestFiniteMagnitude)
+      editor.bounds.size = CGSize(width: contentWidth + insets.left + insets.right,
+                                  height: max(editor.bounds.height, font.lineHeight))
+      editor.setContentOffset(.zero, animated: false)
+      editor.layoutManager.ensureLayout(for: editor.textContainer)
+      editor.layoutIfNeeded()
+      return layoutExtent(editor, insets: insets)
+    }
+
+    let availableLayout = layout(at: availableWidth)
+    var contentWidth = editor.text.isEmpty
+      ? min(availableWidth, font.pointSize)
+      : min(availableWidth, availableLayout.width)
+    var finalLayout = layout(at: contentWidth)
+    if contentWidth < availableWidth, finalLayout.width > contentWidth {
+      contentWidth = min(availableWidth, finalLayout.width)
+      finalLayout = layout(at: contentWidth)
+    }
+
+    let size = CGSize(width: contentWidth + insets.left + insets.right,
+                      height: max(finalLayout.height, font.lineHeight) +
+                        insets.top + insets.bottom)
     editor.bounds.size = size
     editor.setContentOffset(.zero, animated: false)
     editor.layoutManager.ensureLayout(for: editor.textContainer)
     editor.layoutIfNeeded()
-    if let range = editor.selectedTextRange {
-      _ = editor.caretRect(for: range.end)
-      _ = editor.selectionRects(for: range)
-    }
     return size
   }
 
   private func layoutExtent(_ editor: UITextView, insets: UIEdgeInsets) -> CGSize {
-    let used = editor.layoutManager.usedRect(for: editor.textContainer)
-    let caret = editor.selectedTextRange.map { editor.caretRect(for: $0.end) } ?? .zero
-    let caretInContainer = caret.offsetBy(dx: -insets.left, dy: -insets.top)
-    let layoutBounds = used.union(caretInContainer)
-    return CGSize(width: max(layoutBounds.maxX - min(layoutBounds.minX, 0), 0),
-                  height: max(layoutBounds.maxY, 0))
+    let glyphBounds = editor.layoutManager.usedRect(for: editor.textContainer)
+    let caretInView = editor.selectedTextRange.map { editor.caretRect(for: $0.end) } ?? .null
+    let caretInContainer = caretInView.offsetBy(
+      dx: editor.contentOffset.x - insets.left,
+      dy: editor.contentOffset.y - insets.top)
+    let textAndCaretBounds = glyphBounds.union(caretInContainer)
+    return CGSize(width: max(textAndCaretBounds.width, 0),
+                  height: max(textAndCaretBounds.maxY, 0))
   }
 
   private func applyTextStyle(to textView: UITextView, state: EditingState) {
     InkSignPdfTextStyle.apply(to: textView,
                               fontSize: state.fontSize,
                               color: parseColor(state.textColor) ?? .black,
-                              isRTL: state.isRTL)
+                              isRTL: state.direction.effectiveRTL)
   }
 
   private func followCaretIfNeeded() {
-    guard let editor,
+    guard let editor, let owner,
           let range = editor.selectedTextRange else { return }
-    let caret = editor.caretRect(for: range.end).insetBy(dx: -2, dy: -2)
-    let caretInContainer = convert(caret, from: editor)
-    owner?.ensureTextVisible(caretInContainer, padding: 8)
+    let outlineInOverlay = editor.convert(editor.bounds, to: self)
+      .insetBy(dx: -outlineStrokeWidth / 2, dy: -outlineStrokeWidth / 2)
+    let outline = convert(outlineInOverlay, to: owner.container)
+    let caret = editor.convert(editor.caretRect(for: range.end), to: owner.container)
+    owner.ensureTextVisible(outline: outline, caret: caret)
   }
 
   private func keyboardFrameChanged(_ notification: Notification) {
     if notification.name == UIResponder.keyboardWillHideNotification {
       keyboardFrameInScreen = nil
+      keyboardScreen = nil
     } else if let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue {
       keyboardFrameInScreen = frameValue.cgRectValue
+      keyboardScreen = notification.object as? UIScreen
     }
     updateKeyboardOcclusion()
     if editor != nil { followCaretIfNeeded() }
@@ -861,26 +1069,58 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private func updateKeyboardOcclusion() {
     guard keyboardAvoidanceEnabled, editor != nil,
           let frame = keyboardFrameInScreen,
-          let window else {
+          let window,
+          let owner else {
       owner?.resetTextViewportAvoidance()
       return
     }
-    let keyboardFrame = convert(window.convert(frame, from: nil), from: window)
-    owner?.setTextKeyboardOcclusion(max(0, bounds.maxY - keyboardFrame.minY))
+    let keyboardFrame = (keyboardScreen ?? window.screen).coordinateSpace.convert(
+      frame, to: owner.container)
+    let overlap = owner.container.bounds.intersection(keyboardFrame)
+    owner.setTextKeyboardOcclusion(overlap.isNull
+      ? 0 : max(0, owner.container.bounds.maxY - overlap.minY))
   }
 
-  private func adoptActiveInputDirectionIfAutomatic(from textView: UITextView) {
-    guard requestedTextDirectionRtl == nil,
+  private func observeInputModeChangesIfNeeded(for state: EditingState) {
+    guard state.original == nil,
+          state.direction.request == .automatic,
+          inputModeObserver == nil else { return }
+    inputModeObserver = NotificationCenter.default.addObserver(
+      forName: UITextInputMode.currentInputModeDidChangeNotification,
+      object: nil,
+      queue: .main) { [weak self] notification in
+        guard let self, let editor = self.editor, editor.text.isEmpty else { return }
+        let inputMode = notification.object as? UITextInputMode
+        self.updateDirection(in: editor,
+                             languageTag: inputMode?.primaryLanguage,
+                             contentIsEmpty: true)
+        self.followCaretIfNeeded()
+      }
+  }
+
+  private func updateDirection(in textView: UITextView,
+                               languageTag: String?,
+                               contentIsEmpty: Bool,
+                               reopening: Bool = false) {
+    guard textView === editor,
           case .editing(var state) = interactionState,
-          state.original == nil,
-          let isRTL = inputLanguageWritingDirectionHint(
-            textView.textInputMode?.primaryLanguage),
-          state.isRTL != isRTL else { return }
-    state.isRTL = isRTL
-    state.anchorX = isRTL ? state.position.x + lastEditorContentSize.width : state.position.x
+          state.original == nil else { return }
+    let previousDirection = state.direction.effectiveRTL
+    let inputRTL = inputLanguageWritingDirectionHint(languageTag)
+    if contentIsEmpty {
+      if reopening {
+        state.direction.reopenEmptyEditor(inputRTL)
+      } else {
+        state.direction.adoptInputDirectionWhileEmpty(inputRTL)
+      }
+    } else {
+      state.direction.lockForContent(inputRTL)
+    }
     interactionState = .editing(state)
+    guard state.direction.effectiveRTL != previousDirection else { return }
     applyTextStyle(to: textView, state: state)
     layoutEditor()
+    setNeedsDisplay()
   }
 
   private func selectedAnnotation() -> InkSignPdfTextAnnotation? {
@@ -909,7 +1149,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func outlineBounds(for annotation: InkSignPdfTextAnnotation,
                              transform: CGAffineTransform) -> CGRect {
-    annotation.bounds.applying(transform)
+    InkSignPdfTextBoxGeometry.outlineBounds(for: annotation.bounds, transform: transform)
   }
 
   private func presentation() -> (generation: UInt64, pageIndex: Int,

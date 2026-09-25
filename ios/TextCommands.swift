@@ -14,7 +14,6 @@ extension InkSignView {
       try self.requireViewportReady(request: .preserve)
       self.textInteractionOverlay.finishForLifecycle()
       self.setInteractionMode(editing: false)
-      self.configureTextPlacementGestureRecognition()
       try self.textInteractionOverlay.armPlacement(generation: self.documentCoordinator.generation)
     }
   }

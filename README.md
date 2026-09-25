@@ -337,8 +337,8 @@ argument preserves the current viewport where applicable.
 ## Interaction model
 
 - View mode provides pan, pinch zoom, and page navigation.
-- Edit mode accepts finger or stylus input for velocity-driven ink and keeps the
-  viewport fixed.
+- Edit mode accepts finger or stylus input for velocity-driven ink. The
+  viewport stays fixed while drawing; text editing may pan at the current zoom.
 - `insertAnnotationOn()` arms one text placement; the next page tap opens the
   native text editor. The tap places the initial caret at the content edge
   (left for LTR, right for RTL); a new empty box starts at one em wide and
@@ -346,13 +346,20 @@ argument preserves the current viewport where applicable.
   frame, while saved text bounds exclude that presentation padding.
 - `setTextDirection('ltr' | 'rtl' | 'auto')` controls the base direction for
   new text annotations. The React app owns the direction selector and should
-  call this method before placement or while placement is pending. `auto` uses
-  the active keyboard language when Android can report it, then the app's
-  visible default direction. Android resamples `auto` while the draft is empty;
-  the first inserted text fixes its direction through keyboard changes and mixed
+  call this method before placement or while placement is pending. Explicit
+  directions are fixed. On iOS, `auto` follows the keyboard language when UIKit
+  reports one while a new editor is empty. It locks on first content and follows
+  again if erased. Committed annotations keep their saved direction. On Android,
+  `auto` uses the keyboard language when available, then the app's visible
+  default direction. Android resamples `auto` while the draft is empty; the
+  first inserted text fixes its direction through keyboard changes and mixed
   scripts. Erasing the whole draft makes `auto` eligible to resample. IME
   language reporting is best effort. RTL anchors the right edge and LTR anchors
   the left.
+- On iOS, the placement tap anchors the first caret edge. Text selection and
+  movement apply to text hit areas; other edit-mode touches remain available to
+  PencilKit. Editing keeps the current zoom and pans to keep the text outline and
+  caret visible with a 24-point margin when the keyboard-adjusted viewport allows.
 - Text, ink, undo, redo, and clear are managed by the native view.
 - `onStateChange` reports `canUndo`, `canRedo`, `isDirty`, and one of
   `view`, `draw`, `textPlacement`, `textSelected`, or `textEditing`.

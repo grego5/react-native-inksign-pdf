@@ -196,7 +196,6 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
           let pageID = pageID(for: page) else { return }
     displayedPages.insert(ObjectIdentifier(page))
     owner?.configureDoubleTapGestureRecognition()
-    owner?.configureTextPlacementGestureRecognition()
     owner?.overlayDidDisplay(overlay.canvasView, for: pageID)
     owner?.updatePDFViewInteractionOwnership()
   }

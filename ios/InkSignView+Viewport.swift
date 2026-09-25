@@ -29,6 +29,36 @@ struct ViewportTarget: Equatable {
   let focus: CGPoint
 }
 
+enum InkSignPdfTextViewportGeometry {
+  static func panDelta(outline: CGRect,
+                       caret: CGRect,
+                       visibleBounds: CGRect,
+                       margin: CGFloat = 24) -> CGPoint {
+    let safeBounds = visibleBounds.insetBy(dx: margin, dy: margin)
+    return CGPoint(x: axisDelta(min: outline.minX,
+                                max: outline.maxX,
+                                caretCenter: caret.midX,
+                                safeMin: safeBounds.minX,
+                                safeMax: safeBounds.maxX),
+                   y: axisDelta(min: outline.minY,
+                                max: outline.maxY,
+                                caretCenter: caret.midY,
+                                safeMin: safeBounds.minY,
+                                safeMax: safeBounds.maxY))
+  }
+
+  private static func axisDelta(min: CGFloat,
+                                max: CGFloat,
+                                caretCenter: CGFloat,
+                                safeMin: CGFloat,
+                                safeMax: CGFloat) -> CGFloat {
+    if max - min > safeMax - safeMin { return (safeMin + safeMax) / 2 - caretCenter }
+    if min < safeMin { return safeMin - min }
+    if max > safeMax { return safeMax - max }
+    return 0
+  }
+}
+
 extension InkSignView {
   @discardableResult
   func applyViewport(target: ViewportTarget) -> Bool {
@@ -234,7 +264,7 @@ extension InkSignView {
   }
 
   func setTextKeyboardOcclusion(_ bottom: CGFloat) {
-    textKeyboardOcclusion = max(0, bottom.isFinite ? bottom : 0)
+    textKeyboardOcclusion = bottom
   }
 
   func resetTextViewportAvoidance() {
@@ -263,19 +293,12 @@ extension InkSignView {
     documentView.go(to: destination)
   }
 
-  func ensureTextVisible(_ rect: CGRect, padding: CGFloat) {
-    guard rect.isNull == false,
-          rect.minX.isFinite, rect.maxX.isFinite,
-          rect.minY.isFinite, rect.maxY.isFinite else { return }
-    let caret = textInteractionOverlay.convert(rect, to: container)
-    let inset = max(0, padding.isFinite ? padding : 0)
+  func ensureTextVisible(outline: CGRect, caret: CGRect) {
     let visible = container.bounds.inset(by: UIEdgeInsets(
-      top: inset, left: inset, bottom: textKeyboardOcclusion + inset, right: inset))
-    var delta = CGPoint.zero
-    if caret.maxY > visible.maxY { delta.y = visible.maxY - caret.maxY }
-    else if caret.minY < visible.minY { delta.y = visible.minY - caret.minY }
-    if caret.maxX > visible.maxX { delta.x = visible.maxX - caret.maxX }
-    else if caret.minX < visible.minX { delta.x = visible.minX - caret.minX }
+      top: 0, left: 0, bottom: textKeyboardOcclusion, right: 0))
+    let delta = InkSignPdfTextViewportGeometry.panDelta(outline: outline,
+                                                       caret: caret,
+                                                       visibleBounds: visible)
     guard abs(delta.x) > 0.5 || abs(delta.y) > 0.5 else { return }
     panViewport(by: delta)
   }

@@ -24,6 +24,8 @@ $documentState = Read-Source "ios/DocumentState.swift"
 $candidateLoader = Read-Source "ios/DocumentCandidateLoader.swift"
 $mutableTransactions = Read-Source "ios/MutableDocumentTransactions.swift"
 $inputCoordinator = Read-Source "ios/PageInputCoordinator.swift"
+$interactionOwnership = Read-Source "ios/PDFViewInteractionOwnership.swift"
+$textInteraction = Read-Source "ios/TextInteraction.swift"
 $cacheArtifacts = Read-Source "ios/CacheArtifacts.swift"
 $export = Read-Source "ios/InkSignView+Export.swift"
 $nativeExporter = Read-Source "ios/NativePDFExporter.swift"
@@ -53,7 +55,13 @@ Assert-Contains $view 'let documentView = PDFView\(\)' 'PDFKit owns the iOS pres
 Assert-Contains $view 'usePageViewController\(true' 'PDFKit owns native page swipe navigation'
 Assert-Contains $view 'pageOverlayViewProvider = overlayProvider' 'PDFKit supplies page overlays'
 Assert-Contains $overlayProvider 'PDFPageOverlayViewProvider' 'ink uses PDFKit page overlays'
-Assert-Contains $overlayProvider 'configureTextPlacementGestureRecognition' 'page placement is coordinated with PDFKit gestures'
+Assert-Contains $overlayProvider 'updatePDFViewInteractionOwnership' 'page input ownership is refreshed after PDFKit installs overlays'
+Assert-NotContains $interactionOwnership 'require\(toFail:' 'PDFView ownership has no permanent recognizer failure relationships'
+Assert-Contains $interactionOwnership 'private func suppress' 'edit-mode suppression remains centralized'
+Assert-Contains $textInteraction 'shouldBeRequiredToFailBy' 'text input sets dynamic PDFView gesture priority'
+Assert-Contains $textInteraction 'private func isPDFViewGesture' 'dynamic priority follows the live PDFView hierarchy'
+Assert-Contains $textInteraction 'view is InkSignPdfPageOverlayView' 'dynamic priority excludes app-owned page overlay input'
+Assert-Contains $textInteraction 'return annotation\(at: touch\.location\(in: self\)\) != nil' 'text taps claim only text hit regions'
 Assert-Contains $pageNavigation 'documentView\.go\(to: page\)' 'imperative navigation uses PDFKit'
 Assert-NotContains $view 'InkPdfView|edgeNavigationGestureRecognizer|PageTurnPreview' 'the live view has no custom presentation engine'
 Assert-Contains $export 'InkSignPdfNativeExporter\.write\(' 'finalize calls the native exporter'

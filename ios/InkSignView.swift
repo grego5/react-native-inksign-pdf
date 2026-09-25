@@ -189,16 +189,13 @@ final class InkSignView: HybridInkSignViewSpec {
     documentView.addGestureRecognizer(doubleTapGestureRecognizer)
     documentView.addGestureRecognizer(textInteractionOverlay.placementTapRecognizer)
     configureDoubleTapGestureRecognition()
-    configureTextPlacementGestureRecognition()
     overlayProvider.owner = self
     canvasView.owner = self
     textInteractionOverlay.owner = self
     textInteractionOverlay.onInteractionModeChanged = { [weak self] in
       self?.emitChange()
     }
-    textInteractionOverlay.frame = canvasView.bounds
-    textInteractionOverlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    canvasView.addSubview(textInteractionOverlay)
+
     canvasView.delegate = canvasViewDelegate
     installPen(currentPen)
     backgroundObserver = NotificationCenter.default.addObserver(
