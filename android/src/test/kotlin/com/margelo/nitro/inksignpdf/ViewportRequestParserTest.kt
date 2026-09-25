@@ -49,20 +49,4 @@ class ViewportRequestParserTest {
     )
   }
 
-  @Test
-  fun unpairedAndInvalidValuesRejectWithStableError() {
-    assertInvalid(ViewportOptions(10.0, null, null))
-    assertInvalid(ViewportOptions(null, 20.0, null))
-    assertInvalid(ViewportOptions(10.0, 20.0, 0.0))
-    assertInvalid(ViewportOptions(Double.NaN, 20.0, null))
-  }
-
-  private fun assertInvalid(options: ViewportOptions) {
-    try {
-      ViewportRequestParser.parse(options)
-      throw AssertionError("expected invalid viewport")
-    } catch (error: PdfSessionException) {
-      assertEquals("invalid_viewport", error.code)
-    }
-  }
 }

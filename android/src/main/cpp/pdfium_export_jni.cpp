@@ -309,7 +309,15 @@ bool pathMatchesExpected(FPDF_PAGEOBJECT object,
                          int end,
                          const std::vector<jint>& commandTypes,
                          const std::vector<jfloat>& coordinates,
+                         double pageHeight,
                          std::string& mismatch) {
+  const auto expectedCoordinate = [&](int commandIndex, int slot) {
+    const float value = pathCoordinate(coordinates, commandIndex, slot);
+    if (slot == 1 || slot == 3 || slot == 5) {
+      return static_cast<float>(pageHeight - value);
+    }
+    return value;
+  };
   struct ExpectedSegment {
     int type;
     float x;
@@ -325,23 +333,23 @@ bool pathMatchesExpected(FPDF_PAGEOBJECT object,
   for (int commandIndex = begin; commandIndex < end; ++commandIndex) {
     const int commandType = commandTypes[commandIndex];
     if (commandType == 0) {
-      startX = currentX = pathCoordinate(coordinates, commandIndex, 0);
-      startY = currentY = pathCoordinate(coordinates, commandIndex, 1);
+      startX = currentX = expectedCoordinate(commandIndex, 0);
+      startY = currentY = expectedCoordinate(commandIndex, 1);
       hasCurrentPoint = true;
       expectedSegments.push_back({FPDF_SEGMENT_MOVETO, currentX, currentY});
     } else if (commandType == 1) {
-      currentX = pathCoordinate(coordinates, commandIndex, 0);
-      currentY = pathCoordinate(coordinates, commandIndex, 1);
+      currentX = expectedCoordinate(commandIndex, 0);
+      currentY = expectedCoordinate(commandIndex, 1);
       expectedSegments.push_back({FPDF_SEGMENT_LINETO, currentX, currentY});
     } else if (commandType == 2) {
       expectedSegments.push_back({FPDF_SEGMENT_BEZIERTO,
-          pathCoordinate(coordinates, commandIndex, 2),
-          pathCoordinate(coordinates, commandIndex, 3)});
+          expectedCoordinate(commandIndex, 2),
+          expectedCoordinate(commandIndex, 3)});
       expectedSegments.push_back({FPDF_SEGMENT_BEZIERTO,
-          pathCoordinate(coordinates, commandIndex, 4),
-          pathCoordinate(coordinates, commandIndex, 5)});
-      currentX = pathCoordinate(coordinates, commandIndex, 0);
-      currentY = pathCoordinate(coordinates, commandIndex, 1);
+          expectedCoordinate(commandIndex, 4),
+          expectedCoordinate(commandIndex, 5)});
+      currentX = expectedCoordinate(commandIndex, 0);
+      currentY = expectedCoordinate(commandIndex, 1);
       expectedSegments.push_back({FPDF_SEGMENT_BEZIERTO, currentX, currentY});
     } else if (commandType == 3) {
       expectedClose = true;
@@ -805,29 +813,37 @@ std::string exportPdf(
         begin < 0 || end <= begin || static_cast<std::size_t>(end) > pathCommandTypes.size()) {
       return "Path command offsets or page index are invalid";
     }
-    const auto commandAt = [&](int commandIndex, int slot) -> float {
-      return pathCoordinates[static_cast<std::size_t>(commandIndex) * 6 + slot];
+    auto page = pageFor(pageIndex);
+    if (page == nullptr) return "PDFium could not load the page for an ink path";
+    const double pageHeight = FPDF_GetPageHeightF(page);
+    const auto pageCoordinateAt = [&](int commandIndex, int slot) -> float {
+      const float value = pathCoordinates[static_cast<std::size_t>(commandIndex) * 6 + slot];
+      if (slot == 1 || slot == 3 || slot == 5) {
+        return static_cast<float>(pageHeight - value);
+      }
+      return value;
     };
     if (pathCommandTypes[begin] != 0) return "Path does not begin with a move command";
     ScopedPageObject pathObject(
-        FPDFPageObj_CreateNewPath(commandAt(begin, 0), commandAt(begin, 1)));
+        FPDFPageObj_CreateNewPath(pageCoordinateAt(begin, 0), pageCoordinateAt(begin, 1)));
     if (pathObject.get() == nullptr) return "PDFium could not create an ink path";
     bool pathOk = true;
     for (int commandIndex = begin + 1; commandIndex < end && pathOk; ++commandIndex) {
       switch (pathCommandTypes[commandIndex]) {
         case 0:
-          pathOk = FPDFPath_MoveTo(pathObject.get(), commandAt(commandIndex, 0),
-                                   commandAt(commandIndex, 1));
+          pathOk = FPDFPath_MoveTo(pathObject.get(), pageCoordinateAt(commandIndex, 0),
+                                   pageCoordinateAt(commandIndex, 1));
           break;
         case 1:
-          pathOk = FPDFPath_LineTo(pathObject.get(), commandAt(commandIndex, 0),
-                                   commandAt(commandIndex, 1));
+          pathOk = FPDFPath_LineTo(pathObject.get(), pageCoordinateAt(commandIndex, 0),
+                                   pageCoordinateAt(commandIndex, 1));
           break;
         case 2:
           pathOk = FPDFPath_BezierTo(
-              pathObject.get(), commandAt(commandIndex, 2), commandAt(commandIndex, 3),
-              commandAt(commandIndex, 4), commandAt(commandIndex, 5),
-              commandAt(commandIndex, 0), commandAt(commandIndex, 1));
+              pathObject.get(), pageCoordinateAt(commandIndex, 2),
+              pageCoordinateAt(commandIndex, 3), pageCoordinateAt(commandIndex, 4),
+              pageCoordinateAt(commandIndex, 5), pageCoordinateAt(commandIndex, 0),
+              pageCoordinateAt(commandIndex, 1));
           break;
         case 3:
           pathOk = FPDFPath_Close(pathObject.get());
@@ -841,8 +857,7 @@ std::string exportPdf(
         !FPDFPageObj_SetFillColor(pathObject.get(), red, green, blue, alpha)) {
       return "PDFium could not set ink path geometry or color";
     }
-    auto page = pageFor(pageIndex);
-    if (page == nullptr || !FPDFPage_InsertObject(page, pathObject.get())) {
+    if (!FPDFPage_InsertObject(page, pathObject.get())) {
       return "PDFium could not insert an ink path";
     }
     pathObject.release();
@@ -1043,7 +1058,8 @@ std::string exportPdf(
           const int begin = pathCommandOffsets[expectedIndex];
           const int end = pathCommandOffsets[expectedIndex + 1];
           std::string mismatch;
-          if (!pathMatchesExpected(object, begin, end, pathCommandTypes, pathCoordinates, mismatch)) {
+          if (!pathMatchesExpected(object, begin, end, pathCommandTypes, pathCoordinates,
+                                   FPDF_GetPageHeightF(page.get()), mismatch)) {
             return "Saved candidate path geometry does not match the export snapshot: " + mismatch;
           }
         }

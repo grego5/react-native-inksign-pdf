@@ -82,23 +82,6 @@ internal object PageNavigationPolicy {
       armDistancePx = armDistancePx)
   }
 
-  fun direction(
-    gesture: NavigationGesture,
-    currentX: Double,
-    currentY: Double,
-  ): NavigationDirection? {
-    if (!currentX.isFinite() || !currentY.isFinite()) return null
-    val deltaX = currentX - gesture.downX
-    val deltaY = currentY - gesture.downY
-    if (abs(deltaX) < gesture.deadZonePx || abs(deltaX) <= abs(deltaY)) return null
-    val physical = if (deltaX > 0.0) {
-      SwipeDirection.RIGHT
-    } else {
-      SwipeDirection.LEFT
-    }
-    return semanticDirection(gesture, physical)
-  }
-
   fun update(
     gesture: NavigationGesture,
     currentX: Double,

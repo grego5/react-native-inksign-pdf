@@ -64,7 +64,7 @@ function argumentError(code: string, message: string): Error {
 }
 
 function validateViewportOptions(value: unknown): void {
-  if (value === undefined || value === null) return;
+  if (value === undefined) return;
   if (!isRecord(value)) {
     throw argumentError('invalid_viewport', 'Viewport options must be an object');
   }
@@ -117,7 +117,7 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
     },
     addPages(options) {
       return callAsync(() => {
-        if (options === undefined || options === null) return;
+        if (options === undefined) return;
         if (!isRecord(options)) {
           throw argumentError('invalid_page_options', 'Page options must be an object');
         }
@@ -130,7 +130,7 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
           throw argumentError('invalid_page_sources', 'Page sources must be non-empty paths');
         }
         const imageSize = options.imagePageSize;
-        if (imageSize !== undefined && imageSize !== null &&
+        if (imageSize !== undefined &&
           (!isRecord(imageSize) ||
             typeof imageSize.width !== 'number' || !Number.isFinite(imageSize.width) || imageSize.width <= 0 ||
             typeof imageSize.height !== 'number' || !Number.isFinite(imageSize.height) || imageSize.height <= 0)) {
