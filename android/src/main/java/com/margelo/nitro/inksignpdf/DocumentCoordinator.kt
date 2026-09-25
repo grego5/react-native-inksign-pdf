@@ -106,7 +106,7 @@ internal class MutableDocumentCoordinator(
   }
 
   fun moveActiveCandidate(destination: Int): StructuralCandidate {
-    require(destination in mutablePages.indices)
+    check(destination in mutablePages.indices) { "Admitted move destination is outside the document" }
     val source = activePageIndex
     if (source == destination) return StructuralCandidate(mutablePages.toList(), checkNotNull(activePageId))
     val next = mutablePages.toMutableList().also {

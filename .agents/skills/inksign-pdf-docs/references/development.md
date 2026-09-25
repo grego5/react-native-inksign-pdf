@@ -5,6 +5,18 @@
 - Android production source is under `android/src/main/java/...`.
 - Prioritize correct, streamlined architecture over narrow patches and defensive
   checks that conceal implementation mistakes; internal breaking changes are acceptable.
+- Follow this validation boundary map: public React arguments in `src/index.ts`;
+  touch and gesture input at platform handlers; PDF, image, and OS data at their
+  loaders; state-dependent commands at the owning native operation before
+  mutation.
+- Before adding, moving, or removing a guard, inspect the relevant reference and
+  trace only the changed value's paths to its boundary. Validate there; do not
+  duplicate checks downstream. Types and expected callers are not proof. If the
+  boundary is unclear, treat the value as untrusted and establish its ingress
+  before changing the guard.
+- Downstream code relies on admitted values. Assert impossible internal states
+  instead of hiding logic defects with defensive gates. Test observable
+  behavior, not straightforward guard predicates or impossible states.
 - Treat existing tests and documentation as descriptions to revise, not constraints
   on a better design.
 - For cross-language changes, report ownership, lifetime, threading, data
@@ -22,9 +34,11 @@
    changes.
 5. After public Nitro API changes, run `npm run nitrogen`.
 6. Validate the narrowest useful layer, then run applicable checks.
-7. Automated tests should be added for stable, observable contracts and meaningful regressions.
-   Validate visual, geometric, timing, and interaction quality through representative
-   real-world use and inspection. Keep the test suite focused on checks that provide
+7. Automated tests should cover stable, observable contracts and meaningful
+   regressions. Do not add tests that merely repeat straightforward boundary
+   guard predicates or target impossible internal states. Validate visual,
+   geometric, timing, and interaction quality through representative real-world
+   use and inspection. Keep the test suite focused on checks that provide
    reliable confidence.
 
 ## iOS validation

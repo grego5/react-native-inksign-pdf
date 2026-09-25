@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import * as Sharing from 'expo-sharing';
-import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   InkSignView,
@@ -19,33 +19,13 @@ export default function App() {
     Platform.OS === 'android' && process.env.EXPO_PUBLIC_ENABLE_DEBUG_RECORDER === 'true';
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
-  const [imagePageWidth, setImagePageWidth] = useState('595.28');
-  const [imagePageHeight, setImagePageHeight] = useState('841.89');
-  const [moveDestinationText, setMoveDestinationText] = useState('');
+
   const [state, setState] = useState<StateChangeEvent>({
     canUndo: false,
     canRedo: false,
     isDirty: false,
     mode: 'view',
   });
-  const imagePageSize = {
-    width: Number(imagePageWidth),
-    height: Number(imagePageHeight),
-  };
-  const imagePageSizeIsValid =
-    Number.isFinite(imagePageSize.width) && imagePageSize.width > 0 &&
-    Number.isFinite(imagePageSize.height) && imagePageSize.height > 0;
-  const moveDestination = Number(moveDestinationText);
-  const moveDestinationIsValid =
-    moveDestinationText.trim() !== '' && Number.isInteger(moveDestination) &&
-    moveDestination >= 0 && pageInfo !== null && moveDestination < pageInfo.pageCount;
-
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    void ensureFallbackFont().catch((error) => {
-      console.warn('Unable to install Android PDFium fallback font', error);
-    });
-  }, []);
 
   async function addPages(options?: AddPagesOptions) {
     try {
@@ -70,9 +50,9 @@ export default function App() {
     }
     try {
       if (target === 'edit') {
-        await inkSignView.enterEditMode(viewport);
+        inkSignView.enterEditMode(viewport);
       } else {
-        await inkSignView.enterViewMode(viewport);
+        inkSignView.enterViewMode(viewport);
       }
     } catch (error) {
       Alert.alert('Mode change failed', String(error));
@@ -94,9 +74,9 @@ export default function App() {
 
     try {
       if (placementArmed) {
-        await inkSignView.insertAnnotationOff();
+        inkSignView.insertAnnotationOff();
       } else {
-        await inkSignView.insertAnnotationOn();
+        inkSignView.insertAnnotationOn();
       }
     } catch (error) {
       Alert.alert(
@@ -141,11 +121,11 @@ export default function App() {
     }
   }
 
-  async function moveActivePage(destination: number) {
+  async function moveActivePageBy(delta: -1 | 1) {
     const inkSignView = inkSignViewRef.current;
     if (inkSignView === null || pageInfo === null) return;
     try {
-      setPageInfo(await inkSignView.movePage(destination));
+      setPageInfo(await inkSignView.movePage(pageInfo.pageIndex + delta));
     } catch (error) {
       Alert.alert('Move page failed', String(error));
     }
@@ -176,9 +156,7 @@ export default function App() {
           <InkSignView
             ref={inkSignViewRef}
             style={styles.surface}
-            fallbackFont={
-              Platform.OS === 'android' ? { path: fallbackFontPath } : undefined
-            }
+            fallbackFont={Platform.OS === 'android' ? { path: fallbackFontPath } : undefined}
             strokeColor="#111111"
             strokeMinWidth={2.0}
             strokeMaxWidth={4.0}
@@ -193,38 +171,27 @@ export default function App() {
 
         <View style={styles.toolbar}>
           <View style={styles.row}>
-            <Action label="Add files" onPress={() => void addPages()} />
-            <Action label="Add PDF" onPress={() => void addPages({ type: 'pdf' })} />
+            {pageInfo === null ? (
+              <Action label="Open file" onPress={() => void addPages()} />
+            ) : (
+              <Action label="Export file" disabled={!state.isDirty} onPress={finalizePdf} />
+            )}
             <Action
-              label="Add image"
-              disabled={!imagePageSizeIsValid}
-              onPress={() => void addPages({ type: 'image', imagePageSize })}
+              label="Add pages"
+              disabled={pageInfo === null}
+              onPress={() => void addPages()}
+            />
+            <Action
+              label="Remove page"
+              disabled={pageInfo === null || pageInfo.pageCount <= 1}
+              onPress={() => void removeActivePage()}
             />
           </View>
 
           <View style={styles.row}>
-            <TextInput
-              accessibilityLabel="Image page width in PDF points"
-              keyboardType="decimal-pad"
-              onChangeText={setImagePageWidth}
-              placeholder="Width (pt)"
-              style={styles.numberInput}
-              value={imagePageWidth}
-            />
-            <TextInput
-              accessibilityLabel="Image page height in PDF points"
-              keyboardType="decimal-pad"
-              onChangeText={setImagePageHeight}
-              placeholder="Height (pt)"
-              style={styles.numberInput}
-              value={imagePageHeight}
-            />
-            <Text style={styles.hint}>Portrait A4 by default</Text>
-          </View>
-
-          <View style={styles.row}>
             <Action
-              label="Prev"
+              label="<"
+              accessibilityLabel="Previous page"
               disabled={pageInfo === null || pageInfo.pageIndex === 0}
               onPress={() => void navigatePage('previous')}
             />
@@ -234,35 +201,23 @@ export default function App() {
                 : `Page: ${pageInfo.pageIndex + 1}/${pageInfo.pageCount}`}
             </Text>
             <Action
-              label="Next"
+              label=">"
+              accessibilityLabel="Next Page"
               disabled={pageInfo === null || pageInfo.pageIndex >= pageInfo.pageCount - 1}
               onPress={() => void navigatePage('next')}
             />
             <Action
-              label="Remove"
-              disabled={pageInfo === null || pageInfo.pageCount <= 1}
-              onPress={() => void removeActivePage()}
+              label="<"
+              accessibilityLabel="Move page backward"
+              disabled={pageInfo === null || pageInfo.pageIndex === 0}
+              onPress={() => void moveActivePageBy(-1)}
             />
-          </View>
-
-          <View style={styles.row}>
-            <TextInput
-              accessibilityLabel="Destination page index, zero-based"
-              keyboardType="number-pad"
-              onChangeText={setMoveDestinationText}
-              placeholder="Destination index (0-based)"
-              style={styles.numberInput}
-              value={moveDestinationText}
-            />
+            <Text style={styles.pageIndicator}>Move</Text>
             <Action
-              label="Move current page"
-              disabled={!moveDestinationIsValid}
-              onPress={() => void moveActivePage(moveDestination)}
-            />
-            <Action
-              label="Export"
-              disabled={!state.isDirty}
-              onPress={finalizePdf}
+              label=">"
+              accessibilityLabel="Move page forward"
+              disabled={pageInfo === null || pageInfo.pageIndex >= pageInfo.pageCount - 1}
+              onPress={() => void moveActivePageBy(1)}
             />
           </View>
 
@@ -339,15 +294,18 @@ export default function App() {
 
 function Action({
   label,
+  accessibilityLabel,
   onPress,
   disabled = false,
 }: {
   label: string;
+  accessibilityLabel?: string;
   onPress: () => void;
   disabled?: boolean;
 }) {
   return (
     <Pressable
+      accessibilityLabel={accessibilityLabel ?? label}
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
@@ -378,20 +336,10 @@ const styles = StyleSheet.create({
   buttonDisabled: { backgroundColor: '#aeb7c7' },
   buttonText: { color: '#fff', fontWeight: '600' },
   pageIndicator: { alignSelf: 'center', color: '#333', paddingVertical: 10 },
-  numberInput: {
-    flex: 1,
-    minWidth: 72,
-    borderWidth: 1,
-    borderColor: '#c8cdd5',
-    borderRadius: 6,
-    backgroundColor: '#fff',
-    paddingHorizontal: 8,
-    paddingVertical: 8,
-    color: '#111',
-  },
   surfaceFrame: { flex: 1, overflow: 'hidden', borderRadius: 8, backgroundColor: '#ddd' },
   surface: { flex: 1 },
   state: { fontFamily: 'monospace', color: '#333' },
   hint: { fontSize: 12, color: '#666' },
   error: { fontSize: 12, color: '#b00020' },
 });
+

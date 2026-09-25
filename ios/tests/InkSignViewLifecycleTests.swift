@@ -169,10 +169,6 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(appendedOrder.addedPageCount, 1)
 
     XCTAssertThrowsError(try InkSignPdfDocumentCoordinator.pageOrder(
-      current: state.pages, activePageID: ids[1], mutation: .moveActive(to: 3))) { error in
-      XCTAssertEqual(error as? InkSignPdfDocumentCoordinator.PageMutationError, .invalidPageIndex)
-    }
-    XCTAssertThrowsError(try InkSignPdfDocumentCoordinator.pageOrder(
       current: [state.pages[0]], activePageID: ids[0], mutation: .removeActive)) { error in
       XCTAssertEqual(error as? InkSignPdfDocumentCoordinator.PageMutationError, .lastPageRequired)
     }

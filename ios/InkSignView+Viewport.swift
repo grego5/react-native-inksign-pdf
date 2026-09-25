@@ -352,9 +352,8 @@ extension InkSignView {
                    y: state.activePage.geometry.mediaBox.maxY - pdfPoint.y)
   }
 
-  static func parseViewport(_ options: ViewportOptions?) throws -> ViewportRequest {
+  static func parseViewport(_ options: ViewportOptions?) -> ViewportRequest {
     guard let options else { return .preserve }
-    try validateViewport(options)
     guard options.x != nil || options.y != nil || options.zoom != nil else { return .fit }
     let focus = options.x.flatMap { x in
       options.y.map { y in CGPoint(x: x, y: y) }
@@ -362,9 +361,8 @@ extension InkSignView {
     return .focus(focus, zoom: options.zoom)
   }
 
-  static func parseOpenViewport(_ options: ViewportOptions?) throws -> (zoom: Double?, focus: CGPoint?, fitToPage: Bool) {
+  static func parseOpenViewport(_ options: ViewportOptions?) -> (zoom: Double?, focus: CGPoint?, fitToPage: Bool) {
     guard let options else { return (nil, nil, true) }
-    try validateViewport(options)
     let focus = options.x.flatMap { x in
       options.y.map { y in CGPoint(x: x, y: y) }
     }
@@ -373,21 +371,5 @@ extension InkSignView {
     }
     return (options.zoom, focus, false)
   }
-
-  static func validateViewport(_ options: ViewportOptions) throws {
-    if (options.x == nil) != (options.y == nil) {
-      throw ViewportError.invalidOptions("x and y must be supplied together")
-    }
-    if let x = options.x, !x.isFinite {
-      throw ViewportError.invalidOptions("x must be finite")
-    }
-    if let y = options.y, !y.isFinite {
-      throw ViewportError.invalidOptions("y must be finite")
-    }
-    if let zoom = options.zoom, !zoom.isFinite || zoom <= 0 {
-      throw ViewportError.invalidOptions("zoom must be finite and positive")
-    }
-  }
-
 
 }

@@ -10,6 +10,12 @@ and export.
 - The public contract lives in
   [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts). JavaScript
   receives coarse state and page events, not PDF data or per-frame geometry.
+- Public method arguments are validated once by the host component in
+  [`src/index.ts`](../../../../src/index.ts) before native dispatch. Native
+  method implementations consume those validated arguments directly. A move
+  command's upper page bound depends on live document state, so each platform
+  checks it when admitting the command. PDF, image, and OS data are checked at
+  their respective ingress boundaries.
 - Each platform coordinator owns one published document with an ordered stable
   page list, one active page, and page-local committed history. Android uses
   PDFium for document I/O; iOS uses PDFKit with Quartz and CoreText. The UI
