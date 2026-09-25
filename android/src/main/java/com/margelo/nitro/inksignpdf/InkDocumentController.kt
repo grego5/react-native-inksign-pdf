@@ -201,19 +201,16 @@ internal class InkDocumentController(
     return viewportAnimator != null
   }
 
-  /** Animates one target: editor vertical focus and caret-based horizontal visibility. */
+  /** Animates the current zoom to expose the editor bounds around the active caret. */
   fun focusTextForEditing(rect: PageRect, caret: PageRect, paddingPx: Double): Boolean {
     requireOnUiThread()
     if (disposed) return false
     val currentViewport = viewport ?: return false
-    if (!listOf(rect.left, rect.top, rect.right, rect.bottom).all(Double::isFinite)) return false
-    val targetZoom = maxOf(currentViewport.zoom, doubleTapZoom)
     val target = currentViewport.targetForTextEditing(
-      editorCenterY = (rect.top + rect.bottom) / 2.0,
+      editorBounds = rect,
       caret = caret,
-      zoom = targetZoom,
       paddingPx = paddingPx,
-    ) ?: return false
+    )
     if (currentViewport.zoom == target.zoom && currentViewport.focus == target.focus) return false
     stopViewportAnimation()
     animateViewport(currentViewport, target)

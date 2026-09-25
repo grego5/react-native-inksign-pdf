@@ -83,40 +83,110 @@ class TextInteractionContractTest {
   }
 
   @Test
-  fun initialEditorBoundsUseTheSameMinimumWidthAsFreePlacement() {
-    val size = TextIntrinsicSize(64.0, 20.0)
+  fun emptyTextEditorMinimumContentWidthIsOneEmAndPlacementUsesTapAsBottomEdge() {
+    val size = TextIntrinsicSize(textEditorMinimumContentWidth(16.0), 20.0)
     val placement = chooseTextPlacementPosition(
       PagePoint(150.0, 150.0),
       size,
       page = PdfPageDimensions(300.0, 300.0),
+      isRtl = false,
+      horizontalPadding = 6.0,
+      verticalPadding = 4.0,
     )
 
-    assertEquals(64.0, size.width, 0.0)
+    assertEquals(16.0, size.width, 0.0)
     assertTrue(size.height > 0.0)
-    assertEquals(150.0 - size.width / 2.0, placement.x, 0.0)
-    assertEquals(150.0 - size.height / 2.0, placement.y, 0.0)
+    assertEquals(150.0, placement.x, 0.0)
+    assertEquals(150.0, placement.y + size.height + 4.0, 0.0)
   }
 
   @Test
-  fun presentationGeometryHasAStableScreenSpaceMinimum() {
-    val expansion = textPresentationExpansion(10f, 10f, 40f)
+  fun placementClampsTheVisibleFrameAndKeepsItsContentAnchorAligned() {
+    val page = PdfPageDimensions(300.0, 300.0)
+    val size = TextIntrinsicSize(16.0, 20.0)
 
-    assertEquals(15f, expansion.first, 0f)
-    assertEquals(15f, expansion.second, 0f)
+    val ltrAtLeftEdge = chooseTextPlacementPosition(
+      PagePoint(2.0, 3.0), size, page, false, 6.0, 4.0,
+    )
+    val ltrFrame = textEditorFrameBounds(
+      PageRect(
+        ltrAtLeftEdge.x,
+        ltrAtLeftEdge.y,
+        ltrAtLeftEdge.x + size.width,
+        ltrAtLeftEdge.y + size.height,
+      ),
+      6.0,
+      4.0,
+      6.0,
+    )
+    assertEquals(0.0, ltrFrame.left, 0.0)
+    assertEquals(0.0, ltrFrame.top, 0.0)
+    assertEquals(6.0, ltrAtLeftEdge.x, 0.0)
+    assertEquals(4.0, ltrAtLeftEdge.y, 0.0)
+
+    val rtlAtRightEdge = chooseTextPlacementPosition(
+      PagePoint(298.0, 297.0), size, page, true, 6.0, 4.0,
+    )
+    val rtlFrame = textEditorFrameBounds(
+      PageRect(
+        rtlAtRightEdge.x,
+        rtlAtRightEdge.y,
+        rtlAtRightEdge.x + size.width,
+        rtlAtRightEdge.y + size.height,
+      ),
+      6.0,
+      4.0,
+      6.0,
+    )
+    assertEquals(300.0, rtlFrame.right, 0.0)
+    assertEquals(297.0, rtlFrame.bottom, 0.0)
+    assertEquals(294.0, rtlAtRightEdge.x + size.width, 0.0)
+    assertEquals(273.0, rtlAtRightEdge.y, 0.0)
   }
 
   @Test
-  fun selectedOutlineUsesTheEditorPixelPaddingAtEveryZoom() {
-    val fontSizePx = 16.0 * 7.0
+  fun annotationOuterGeometryMatchesTheEditorFrameAtEveryZoomAndDirection() {
+    val content = PageRect(100.0, 40.0, 180.0, 64.0)
+    for (scale in listOf(1.0, 2.0, 7.0)) {
+      val transform = PageTransform(scale, 0.0, 0.0, scale, 13.0, 21.0)
+      val fontSizePx = 16.0 * scale
+      val horizontalPaddingPx = textEditorPaddingPx(
+        fontSizePx,
+        textEditorHorizontalPaddingRatio,
+      ).toFloat()
+      val verticalPaddingPx = textEditorPaddingPx(
+        fontSizePx,
+        textEditorVerticalPaddingRatio,
+      ).toFloat()
+      val outer = textAnnotationOuterBounds(
+        content,
+        transform,
+        horizontalPaddingPx.toDouble(),
+        verticalPaddingPx.toDouble(),
+      )
 
-    assertEquals(
-      42,
-      textEditorPaddingPx(fontSizePx, textEditorHorizontalPaddingRatio),
-    )
-    assertEquals(
-      28,
-      textEditorPaddingPx(fontSizePx, textEditorVerticalPaddingRatio),
-    )
+      for (isRtl in listOf(false, true)) {
+        val anchor = if (isRtl) content.right else content.left
+        val editorContent = textEditorPageBounds(
+          anchor,
+          content.top,
+          TextIntrinsicSize(content.right - content.left, content.bottom - content.top),
+          isRtl,
+        )
+        val frame = textEditorFrameBounds(
+          editorContent,
+          horizontalPaddingPx / scale,
+          verticalPaddingPx / scale,
+          horizontalPaddingPx / scale,
+        )
+        val mappedTopLeft = transform.map(PagePoint(frame.left, frame.top))
+        val mappedBottomRight = transform.map(PagePoint(frame.right, frame.bottom))
+        assertEquals(mappedTopLeft.x, outer.left, 0.01)
+        assertEquals(mappedTopLeft.y, outer.top, 0.01)
+        assertEquals(mappedBottomRight.x, outer.right, 0.01)
+        assertEquals(mappedBottomRight.y, outer.bottom, 0.01)
+      }
+    }
   }
 
   @Test
@@ -191,13 +261,15 @@ class TextInteractionContractTest {
   @Test
   fun paddedEditorKeepsCommittedGlyphOriginInBothDirections() {
     val ltr = textEditorFrameBounds(
-      PageRect(100.0, 20.0, 180.0, 44.0), false, 4.0, 3.0, 4.0,
+      PageRect(100.0, 20.0, 180.0, 44.0), 4.0, 3.0, 4.0,
     )
     assertEquals(100.0, ltr.left + 4.0, 0.0)
+    assertEquals(180.0, ltr.right - 4.0, 0.0)
     assertEquals(20.0, ltr.top + 3.0, 0.0)
+    assertEquals(44.0, ltr.bottom - 3.0, 0.0)
 
     val rtl = textEditorFrameBounds(
-      PageRect(100.0, 20.0, 180.0, 44.0), true, 4.0, 3.0, 4.0,
+      PageRect(100.0, 20.0, 180.0, 44.0), 4.0, 3.0, 4.0,
     )
     assertEquals(180.0, rtl.right - 4.0, 0.0)
     assertEquals(20.0, rtl.top + 3.0, 0.0)

@@ -236,35 +236,68 @@ internal class PageViewport(
     }
   }
 
-  /** Builds one edit-entry target whose horizontal focus shows the caret, not the editor center. */
+  /** Keeps the current zoom and exposes the editor bounds around its active caret. */
   fun targetForTextEditing(
-    editorCenterY: Double,
+    editorBounds: PageRect,
     caret: PageRect,
-    zoom: Double,
     paddingPx: Double,
-  ): PageViewportTarget? {
-    if (!listOf(editorCenterY, caret.left, caret.right, zoom, paddingPx).all(Double::isFinite)) return null
-    val base = targetFor(ViewportRequest.FocusAndZoom(
-      focus = PagePoint(currentFocusX, editorCenterY),
-      zoom = zoom,
-    )) ?: return null
+  ): PageViewportTarget {
+    val base = PageViewportTarget(
+      zoom = currentZoom,
+      focus = clampedFocus(
+        PagePoint(currentFocusX, (editorBounds.top + editorBounds.bottom) / 2.0),
+        currentZoom,
+      ),
+    )
     val scale = base.zoom * viewportSize.density
-    if (scale <= 0.0) return null
     val padding = paddingPx.coerceAtLeast(0.0)
-    val left = (caret.left - base.focus.x) * scale + viewportSize.widthPx / 2.0
-    val right = (caret.right - base.focus.x) * scale + viewportSize.widthPx / 2.0
-    val adjustment = when {
-      left < padding -> -(padding - left) / scale
-      right > viewportSize.widthPx - padding ->
-        (right - (viewportSize.widthPx - padding)) / scale
-      else -> 0.0
-    }
-    val focusX = base.focus.x + adjustment
+    val focusX = focusForVisibleAxis(
+      base.focus.x,
+      editorBounds.left,
+      editorBounds.right,
+      (caret.left + caret.right) / 2.0,
+      viewportSize.widthPx,
+      padding,
+      scale,
+    )
+    val focusY = focusForVisibleAxis(
+      base.focus.y,
+      editorBounds.top,
+      editorBounds.bottom,
+      (caret.top + caret.bottom) / 2.0,
+      usableHeightPx,
+      padding,
+      scale,
+    )
     temporaryHorizontalFocusAllowancePx = maxOf(
       temporaryHorizontalFocusAllowancePx,
       focusAllowancePx(focusX, page.width, viewportSize.widthPx / scale, scale),
     )
-    return base.copy(focus = PagePoint(focusX, base.focus.y))
+    temporaryVerticalFocusAllowancePx = maxOf(
+      temporaryVerticalFocusAllowancePx,
+      focusAllowancePx(focusY, page.height, usableHeightPx / scale, scale),
+    )
+    return base.copy(focus = PagePoint(focusX, focusY))
+  }
+
+  private fun focusForVisibleAxis(
+    currentFocus: Double,
+    boundsStart: Double,
+    boundsEnd: Double,
+    caretCenter: Double,
+    viewportExtentPx: Double,
+    paddingPx: Double,
+    scale: Double,
+  ): Double {
+    val margin = paddingPx / scale
+    val halfViewport = viewportExtentPx / (2.0 * scale)
+    val minimumFocus = boundsEnd - halfViewport + margin
+    val maximumFocus = boundsStart + halfViewport - margin
+    return if (minimumFocus <= maximumFocus) {
+      currentFocus.coerceIn(minimumFocus, maximumFocus)
+    } else {
+      caretCenter
+    }
   }
 
   fun setViewport(zoom: Double, focus: PagePoint) {

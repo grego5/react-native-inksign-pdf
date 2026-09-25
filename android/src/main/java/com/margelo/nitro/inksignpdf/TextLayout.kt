@@ -36,6 +36,20 @@ private fun firstStrongTextDirectionIsRtl(text: CharSequence): Boolean? {
   return null
 }
 
+internal fun countStrongRtlCharacters(text: CharSequence): Int {
+  var count = 0
+  var index = 0
+  while (index < text.length) {
+    val codePoint = Character.codePointAt(text, index)
+    val directionality = Character.getDirectionality(codePoint)
+    if (directionality == Character.DIRECTIONALITY_RIGHT_TO_LEFT ||
+      directionality == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC
+    ) count++
+    index += Character.charCount(codePoint)
+  }
+  return count
+}
+
 internal fun visibleDefaultTextDirectionIsRtl(): Boolean {
   return try {
     android.text.TextUtils.getLayoutDirectionFromLocale(Locale.getDefault()) == android.view.View.LAYOUT_DIRECTION_RTL

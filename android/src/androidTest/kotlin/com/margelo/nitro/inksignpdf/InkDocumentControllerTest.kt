@@ -229,7 +229,7 @@ class InkDocumentControllerTest {
   }
 
   @Test
-  fun enteringTextEditingTargetsCaretInsteadOfAnnotationCenter() {
+  fun enteringTextEditingPreservesZoomAndCentersACaretInAnOversizedEditor() {
     val harness = ControllerHarness(page = PdfPageDimensions(5000.0, 5000.0))
     try {
       harness.runOnMain {
@@ -239,14 +239,15 @@ class InkDocumentControllerTest {
         assertTrue(harness.controller.focusTextForEditing(
           PageRect(4000.0, 3500.0, 4500.0, 3520.0),
           PageRect(4002.0, 3500.0, 4004.0, 3520.0),
-          8.0,
+          24.0 * context.resources.displayMetrics.density,
         ))
       }
-      harness.awaitViewport { kotlin.math.abs(it.focus.y - 3510.0) < 0.001 }
+      harness.awaitViewport { kotlin.math.abs(it.focus.x - 4003.0) < 0.001 }
       val settled = requireNotNull(harness.viewportState())
+      assertEquals(2.0, settled.zoom, 0.0000001)
       val caretX = settled.pageToView.map(PagePoint(4002.0, 3510.0)).x
-      assertTrue(caretX >= 8.0 - 0.001 && caretX <= 512.0 - 8.0 + 0.001)
-      assertTrue(kotlin.math.abs(settled.focus.x - 4250.0) > 100.0)
+      val marginPx = 24.0 * context.resources.displayMetrics.density
+      assertTrue(caretX >= marginPx - 0.001 && caretX <= 512.0 - marginPx + 0.001)
     } finally {
       harness.close()
     }
