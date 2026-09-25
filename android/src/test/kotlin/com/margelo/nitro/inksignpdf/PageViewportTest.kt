@@ -303,30 +303,36 @@ class PageViewportTest {
   }
 
   @Test
-  fun editEntryTargetKeepsVisibleCaretOrMovesOnlyEnoughToShowIt() {
+  fun editEntryFitsShortBoundsAndCentersTheCaretInWideTextWithoutChangingZoom() {
     val viewport = PageViewport(
       page = PdfPageDimensions(1200.0, 800.0),
       initialSize = ViewportSize(400.0, 300.0, density = 1.0),
     )
     viewport.setZoom(2.0, PagePoint(600.0, 400.0))
 
-    val visible = viewport.targetForTextEditing(
-      editorCenterY = 400.0,
+    val short = viewport.targetForTextEditing(
+      editorBounds = PageRect(610.0, 390.0, 650.0, 410.0),
       caret = PageRect(610.0, 390.0, 611.0, 410.0),
-      zoom = 2.0,
-      paddingPx = 8.0,
-    )!!
-    assertEquals(600.0, visible.focus.x, epsilon)
+      paddingPx = 24.0,
+    )
+    assertEquals(2.0, short.zoom, epsilon)
+    assertEquals(600.0, short.focus.x, epsilon)
+    viewport.setViewport(short.zoom, short.focus)
+    val shortLeft = viewport.pageToView(PagePoint(610.0, 400.0)).x
+    val shortRight = viewport.pageToView(PagePoint(650.0, 400.0)).x
+    assertTrue(shortLeft >= 24.0 - epsilon)
+    assertTrue(shortRight <= 376.0 + epsilon)
 
-    val distant = viewport.targetForTextEditing(
-      editorCenterY = 400.0,
+    val wide = viewport.targetForTextEditing(
+      editorBounds = PageRect(300.0, 390.0, 1100.0, 410.0),
       caret = PageRect(1050.0, 390.0, 1051.0, 410.0),
-      zoom = 2.0,
-      paddingPx = 8.0,
-    )!!
-    assertTrue(distant.focus.x > visible.focus.x)
-    viewport.setViewport(distant.zoom, distant.focus)
-    assertEquals(392.0, viewport.pageToView(PagePoint(1051.0, 400.0)).x, epsilon)
+      paddingPx = 24.0,
+    )
+    assertEquals(2.0, wide.zoom, epsilon)
+    assertEquals(1050.5, wide.focus.x, epsilon)
+    viewport.setViewport(wide.zoom, wide.focus)
+    assertEquals(200.0, viewport.pageToView(PagePoint(1050.5, 400.0)).x, epsilon)
+    assertEquals(299.0, viewport.pageToView(PagePoint(1100.0, 400.0)).x, epsilon)
   }
 
   @Test

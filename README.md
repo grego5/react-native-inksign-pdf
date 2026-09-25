@@ -340,13 +340,19 @@ argument preserves the current viewport where applicable.
 - Edit mode accepts finger or stylus input for velocity-driven ink and keeps the
   viewport fixed.
 - `insertAnnotationOn()` arms one text placement; the next page tap opens the
-  native text editor.
+  native text editor. The tap places the initial caret at the content edge
+  (left for LTR, right for RTL); a new empty box starts at one em wide and
+  stays inside the page. Idle and selected outlines share the editor's padded
+  frame, while saved text bounds exclude that presentation padding.
 - `setTextDirection('ltr' | 'rtl' | 'auto')` controls the base direction for
   new text annotations. The React app owns the direction selector and should
   call this method before placement or while placement is pending. `auto` uses
   the active keyboard language when Android can report it, then the app's
-  visible default direction. Once the box is created, its direction and anchor
-  side stay fixed; RTL anchors the right edge and LTR anchors the left.
+  visible default direction. Android resamples `auto` while the draft is empty;
+  the first inserted text fixes its direction through keyboard changes and mixed
+  scripts. Erasing the whole draft makes `auto` eligible to resample. IME
+  language reporting is best effort. RTL anchors the right edge and LTR anchors
+  the left.
 - Text, ink, undo, redo, and clear are managed by the native view.
 - `onStateChange` reports `canUndo`, `canRedo`, `isDirty`, and one of
   `view`, `draw`, `textPlacement`, `textSelected`, or `textEditing`.

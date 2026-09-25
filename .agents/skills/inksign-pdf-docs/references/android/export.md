@@ -12,8 +12,10 @@ export snapshot includes selected font data; PDFium's HarfBuzz shapes each run
 and supplies glyph-cluster mappings, explicit positions, and embedded font
 objects when the font's embedding permissions allow it. A line-level
 `ActualText` mapping keeps extraction in logical Unicode order for mixed RTL and
-LTR text. Text direction is fixed when the annotation is placed and stored with
-the annotation; the React app selects it with the view ref method.
+LTR text. Direction is stored with each annotation and can be selected with the
+React view ref. In automatic mode, a newly created draft promotes to RTL when
+it contains a strong RTL character and returns to its automatic base direction
+when the last strong RTL character is deleted.
 
 Android does not expose selected font bytes on API 24–30. Those releases use
 PDFium's standard-font fallback as a best-effort path. Missing glyph coverage or

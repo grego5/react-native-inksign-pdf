@@ -120,7 +120,7 @@ export interface InkSignViewMethods extends HybridViewMethods {
   undo(): void
   redo(): void
   clear(): void
-  /** Sets the base direction for new text annotations; `auto` follows the active IME subtype or app default. */
+  /** Sets the base direction for new text; `auto` samples the IME while empty, then locks until the draft is erased. */
   setTextDirection(direction: TextDirection): void
   /** Arms one-shot native text placement at the next valid page tap. */
   insertAnnotationOn(): void
