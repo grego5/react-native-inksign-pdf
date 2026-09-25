@@ -172,6 +172,7 @@ internal class PageNavigationController(
       if (slot is PagePreviewSlot.Ready && slot.preview.request.key == request.key) return@forEach
       if (slot is PagePreviewSlot.Loading && slot.request.key == request.key) return@forEach
       val preparedRequest = request.copy(
+        textAnnotations = emptyList(),
         textLayer = TextRenderLayer.from(request.textAnnotations),
       )
       replaceSlot(direction, PagePreviewSlot.Loading(preparedRequest))

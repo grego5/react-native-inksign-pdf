@@ -249,7 +249,7 @@ internal class TextRenderLayer private constructor(
       return TextRenderLayer(
         annotations.map { annotation ->
           Entry(annotation, TextLayoutSpec.createLayout(annotation))
-        }.toList(),
+        },
       )
     }
   }

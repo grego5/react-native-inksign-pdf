@@ -122,6 +122,64 @@ internal class PdfExportContourTest {
     }
 
     @Test
+    fun exporterKeepsAsymmetricInkAtItsTopOriginOnANonSquarePage() {
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .targetContext
+        val policy = CacheArtifactPolicy.initialize(context)
+        val source = File.createTempFile("ink-asymmetric-source-", ".pdf", context.cacheDir)
+        val output = policy.allocateSignedOutput()
+        try {
+            writeBlankPdf(source, listOf(120 to 80))
+            val snapshot = PdfExportSnapshot(
+                sourcePath = source.path,
+                outputPath = output.path,
+                pages = listOf(
+                    PdfPageExportSnapshot(
+                        pageIndex = 0,
+                        dimensions = PdfPageDimensions(120.0, 80.0),
+                        strokes = listOf(StrokeOutline.fromCommands(listOf(
+                            InkPathCommand(InkPathCommand.MOVE, 12.0f, 8.0f),
+                            InkPathCommand(
+                                InkPathCommand.CUBIC,
+                                32.0f,
+                                8.0f,
+                                c1x = 16.0f,
+                                c1y = 3.0f,
+                                c2x = 30.0f,
+                                c2y = 24.0f,
+                            ),
+                            InkPathCommand(InkPathCommand.LINE, 20.0f, 18.0f),
+                            InkPathCommand(InkPathCommand.CLOSE),
+                        ))),
+                    ),
+                ),
+                generation = 1L,
+                color = Color.BLACK,
+            )
+
+            PdfExporter.export(snapshot, policy) { false }
+            val bitmap = Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888)
+            try {
+                renderPage(output, bitmap)
+                assertTrue(
+                    "Ink near the canonical top edge must remain near the top after export",
+                    darkPixelCount(bitmap, Rect(8, 4, 36, 21)) > 20,
+                )
+                assertEquals(
+                    "The top-origin contour must not be mirrored toward the bottom edge",
+                    0,
+                    darkPixelCount(bitmap, Rect(8, 58, 36, 77)),
+                )
+            } finally {
+                bitmap.recycle()
+            }
+        } finally {
+            source.delete()
+            policy.deleteExact(output)
+        }
+    }
+
+    @Test
     fun exporterPreservesEveryPageAndPlacesInkOnMatchingPages() {
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .targetContext

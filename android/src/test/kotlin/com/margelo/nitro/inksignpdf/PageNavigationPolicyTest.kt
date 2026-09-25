@@ -10,8 +10,8 @@ class PageNavigationPolicyTest {
     val previous = gesture(pageIndex = 1, focusX = 200.0)
     val next = gesture(pageIndex = 1, focusX = 800.0)
 
-    assertEquals("previous eligibility", NavigationDirection.PREVIOUS, direction(previous, 340.0))
-    assertEquals("next eligibility ${next.eligibility}", NavigationDirection.NEXT, direction(next, 0.0))
+    assertEquals(-1, PageNavigationPolicy.update(previous, 340.0, 100.0).targetDelta)
+    assertEquals(1, PageNavigationPolicy.update(next, 0.0, 100.0).targetDelta)
   }
 
   @Test
@@ -20,17 +20,17 @@ class PageNavigationPolicyTest {
     val last = gesture(pageIndex = 1, pageCount = 2, visibleWidth = 1_000.0, focusX = 500.0)
     val only = gesture(pageIndex = 0, pageCount = 1, visibleWidth = 1_000.0, focusX = 500.0)
 
-    assertEquals("first next ${first.eligibility}", NavigationDirection.NEXT, direction(first, 0.0))
-    assertEquals("last previous", NavigationDirection.PREVIOUS, direction(last, 540.0))
-    assertNull(direction(only, 460.0))
+    assertEquals(1, PageNavigationPolicy.update(first, 0.0, 100.0).targetDelta)
+    assertEquals(-1, PageNavigationPolicy.update(last, 540.0, 100.0).targetDelta)
+    assertNull(PageNavigationPolicy.update(only, 460.0, 100.0).targetDelta)
   }
 
   @Test
   fun thresholdAndVerticalDominanceDoNotNavigate() {
     val state = gesture(pageIndex = 1, focusX = 200.0)
 
-    assertNull("dead zone", direction(state, 115.0))
-    assertNull(PageNavigationPolicy.direction(state, 340.0, 400.0))
+    assertNull("dead zone", PageNavigationPolicy.update(state, 115.0, 100.0).targetDelta)
+    assertNull(PageNavigationPolicy.update(state, 340.0, 400.0).targetDelta)
   }
 
   @Test
@@ -38,8 +38,8 @@ class PageNavigationPolicyTest {
     val state = gesture(pageIndex = 1, focusX = 200.0)
 
     assertEquals(
-      NavigationDirection.PREVIOUS,
-      PageNavigationPolicy.direction(state, 660.0, 100.0),
+      -1,
+      PageNavigationPolicy.update(state, 660.0, 100.0).targetDelta,
     )
   }
 
@@ -59,9 +59,8 @@ class PageNavigationPolicyTest {
     val nextState = gesture(pageIndex = 1, focusX = 200.0, isRtl = true)
     val previousState = gesture(pageIndex = 1, focusX = 800.0, isRtl = true)
 
-    assertEquals(NavigationDirection.NEXT, direction(nextState, 340.0))
-    assertEquals(NavigationDirection.PREVIOUS,
-      PageNavigationPolicy.direction(previousState, -140.0, 100.0))
+    assertEquals(1, PageNavigationPolicy.update(nextState, 340.0, 100.0).targetDelta)
+    assertEquals(-1, PageNavigationPolicy.update(previousState, -140.0, 100.0).targetDelta)
   }
 
   @Test
@@ -103,10 +102,4 @@ class PageNavigationPolicyTest {
     )
   }
 
-  private fun direction(
-    state: NavigationGesture,
-    currentX: Double,
-  ): NavigationDirection? {
-    return PageNavigationPolicy.direction(state, currentX, 100.0)
-  }
 }

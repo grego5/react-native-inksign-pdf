@@ -564,18 +564,13 @@ class HybridInkSignView internal constructor(
   }
 
   private fun <T> runTextCommand(action: () -> T): T {
-    val requestGeneration = synchronized(this) { coordinator.generation }
     return runOnMainSync {
       checkMainThread()
-      if (disposed || coordinator.generation != requestGeneration) {
-        throw operationCancelled()
-      }
+      // Admit against the document state current when this command reaches the UI thread.
+      if (disposed) throw operationCancelled()
       var result: T? = null
       surface.withStateTransaction {
         result = action()
-      }
-      if (disposed || coordinator.generation != requestGeneration) {
-        throw operationCancelled()
       }
       checkNotNull(result)
     }
@@ -737,8 +732,6 @@ class HybridInkSignView internal constructor(
     val request = ViewportRequestParser.parse(viewport)
     surface.requireModeTransitionReady()
     viewportRequestID += 1L
-    val requestID = viewportRequestID
-    if (requestID != viewportRequestID) throw operationCancelled()
     surface.withStateTransaction {
       textOverlay.finishForLifecycle()
       surface.transitionToMode(edit, request)
