@@ -241,6 +241,7 @@ enterViewMode(viewport?)
 undo()
 redo()
 clear()
+addTextAnnotation(text, start, options?)
 setTextDirection(direction)
 insertAnnotationOn()
 insertAnnotationOff()
@@ -277,6 +278,30 @@ through `onPageChange`:
 `getViewport()` returns a viewport snapshot synchronously and throws when the
 view is not ready. Synchronous commands throw validation errors directly.
 
+`addTextAnnotation(text, position, options?)` commits text directly on the
+active page without opening the editor. `position`, `xLimit`, and `yLimit` use
+canonical PDF points from the page's top-left, independent of viewport zoom.
+Text wraps at `xLimit` or the page edge, then stops at `yLimit` or the page
+bottom; only complete lines that fit are shown. LTR flows right from
+`position.x`; RTL flows left. Limits default to the corresponding page edges.
+Explicit `ltr` or `rtl` sets the annotation direction; `auto` uses the app's
+resolved layout direction. If omitted, direction follows the last
+`setTextDirection()` choice, or app direction when unset/`auto`. Direction is
+saved with the annotation, along with the configured default text size and
+color.
+
+```ts
+pdf.current?.addTextAnnotation(
+  'Approved',
+  { x: 48, y: 72 },
+  {
+    direction: 'ltr',
+    xLimit: 220,
+    yLimit: 140,
+  },
+);
+```
+
 Page indexes are zero-based. Viewport values use canonical PDF page
 coordinates:
 
@@ -294,12 +319,10 @@ argument preserves the current viewport where applicable.
 
 - View mode supports panning, pinch zoom, and page navigation. Draw mode accepts
   finger or stylus ink.
-- Call `insertAnnotationOn()` and tap the page to place text. Use
-  `setTextDirection('ltr' | 'rtl' | 'auto')` to choose the direction for new text.
-- Tap existing text to select or edit it. Editing keeps the current zoom and
-  moves the view as needed to keep the text and caret visible.
-- The native view manages ink, text, undo, redo, and clear. `onStateChange`
-  reports editing mode, undo/redo availability, and whether the document changed.
+- Call `insertAnnotationOn()` and tap the page to place text. Use `setTextDirection('ltr' | 'rtl' | 'auto')` to choose the direction for new text or update an active editor. `auto` uses the app's current resolved layout
+  direction. Switching keeps the current input box in place; later text edits expand from the selected side, and caret following uses the new direction.
+- Tap existing text to select or edit it. Editing keeps the current zoom and moves the view as needed to keep the text and caret visible.
+- The native view manages ink, text, undo, redo, and clear. `onStateChange` reports editing mode, undo/redo availability, and whether the document changed.
 - The application owns its toolbar and any saved viewport bookmarks.
 
 ## Export
@@ -318,3 +341,4 @@ application's durable destination when it must outlive the signing view.
 - [Architecture and invariants](./.agents/skills/inksign-pdf-docs/references/architecture.md)
 - [Android input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/android/viewport-input.md)
 - [iOS input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md)
+

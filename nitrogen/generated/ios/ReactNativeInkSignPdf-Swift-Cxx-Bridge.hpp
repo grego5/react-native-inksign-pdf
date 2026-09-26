@@ -28,6 +28,10 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
+// Forward declaration of `TextAnnotationOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
@@ -48,6 +52,8 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "PageType.hpp"
 #include "PdfFallbackFont.hpp"
 #include "StateChangeEvent.hpp"
+#include "TextAnnotationOptions.hpp"
+#include "TextDirection.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
 #include <NitroModules/Promise.hpp>
@@ -381,6 +387,36 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline AddPagesOptions get_std__optional_AddPagesOptions_(const std::optional<AddPagesOptions>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextDirection>
+  /**
+   * Specialized version of `std::optional<TextDirection>`.
+   */
+  using std__optional_TextDirection_ = std::optional<TextDirection>;
+  inline std::optional<TextDirection> create_std__optional_TextDirection_(const TextDirection& value) noexcept {
+    return std::optional<TextDirection>(value);
+  }
+  inline bool has_value_std__optional_TextDirection_(const std::optional<TextDirection>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextDirection get_std__optional_TextDirection_(const std::optional<TextDirection>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextAnnotationOptions>
+  /**
+   * Specialized version of `std::optional<TextAnnotationOptions>`.
+   */
+  using std__optional_TextAnnotationOptions_ = std::optional<TextAnnotationOptions>;
+  inline std::optional<TextAnnotationOptions> create_std__optional_TextAnnotationOptions_(const TextAnnotationOptions& value) noexcept {
+    return std::optional<TextAnnotationOptions>(value);
+  }
+  inline bool has_value_std__optional_TextAnnotationOptions_(const std::optional<TextAnnotationOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextAnnotationOptions get_std__optional_TextAnnotationOptions_(const std::optional<TextAnnotationOptions>& optional) noexcept {
     return optional.value();
   }
   

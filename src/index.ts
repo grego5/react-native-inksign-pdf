@@ -4,6 +4,8 @@ import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConf
 
 import type {
   PageInfo,
+  PagePosition,
+  TextAnnotationOptions,
   PageType,
   TextDirection,
   AddPagesOptions,
@@ -24,6 +26,8 @@ import type {
 
 export type {
   PageInfo,
+  PagePosition,
+  TextAnnotationOptions,
   PageType,
   TextDirection,
   AddPagesOptions,
@@ -160,6 +164,28 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
     undo: () => native.undo(),
     redo: () => native.redo(),
     clear: () => native.clear(),
+    addTextAnnotation(text, position, options) {
+      if (typeof text !== 'string' || text.trim() === '') {
+        throw argumentError('invalid_text', 'Text must not be empty');
+      }
+      if (!isRecord(position) ||
+        typeof position.x !== 'number' || !Number.isFinite(position.x) ||
+        typeof position.y !== 'number' || !Number.isFinite(position.y)) {
+        throw argumentError('invalid_text_position', 'Text position must contain finite page x and y coordinates');
+      }
+      if (options !== undefined) {
+        if (!isRecord(options) ||
+          (options.direction !== undefined && options.direction !== 'ltr' &&
+            options.direction !== 'rtl' && options.direction !== 'auto') ||
+          (options.xLimit !== undefined &&
+            (typeof options.xLimit !== 'number' || !Number.isFinite(options.xLimit))) ||
+          (options.yLimit !== undefined &&
+            (typeof options.yLimit !== 'number' || !Number.isFinite(options.yLimit)))) {
+          throw argumentError('invalid_text_options', 'Text options must contain a valid direction and finite flow limits');
+        }
+      }
+      native.addTextAnnotation(text, position, options);
+    },
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
         throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');

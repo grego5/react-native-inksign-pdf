@@ -15,6 +15,9 @@
 
 - Store the annotation's base direction and logical Unicode text. Export uses that
   direction for shaping and placement; it does not reverse the source string.
+- Programmatic text uses its page-point flow width for wrapping. Export writes only
+  complete lines that fit above its vertical flow limit; glyphs never continue onto
+  later lines outside the region.
 - On API 31+, Android system fallback selects fonts and supplies font resources.
   PDFium's HarfBuzz shapes runs with cluster mappings and explicit positions.
   `ToUnicode` maps glyphs to characters; line-level `/ActualText` preserves logical

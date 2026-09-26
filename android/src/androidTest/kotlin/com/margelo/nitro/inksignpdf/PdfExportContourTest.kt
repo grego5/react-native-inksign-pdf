@@ -36,6 +36,60 @@ internal class PdfExportContourTest {
     }
 
     @Test
+    fun exporterKeepsBoundedTextWithinItsFlowRegion() {
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .targetContext
+        val policy = CacheArtifactPolicy.initialize(context)
+        val source = File.createTempFile("ink-bounded-text-source-", ".pdf", context.cacheDir)
+        val output = policy.allocateSignedOutput()
+        try {
+            writeBlankPdf(source, listOf(300 to 300))
+            val flowBounds = PageRect(40.0, 40.0, 82.0, 60.0)
+            val annotation = TextAnnotation(
+                id = "bounded-text",
+                text = "Alpha beta gamma delta epsilon",
+                bounds = flowBounds,
+                fontSize = 16.0,
+                directionRtl = false,
+                flowBounds = flowBounds,
+            )
+            val snapshot = PdfExportSnapshot(
+                sourcePath = source.path,
+                outputPath = output.path,
+                pages = listOf(
+                    PdfPageExportSnapshot(
+                        pageIndex = 0,
+                        dimensions = PdfPageDimensions(300.0, 300.0),
+                        strokes = emptyList(),
+                        textAnnotations = listOf(annotation),
+                    ),
+                ),
+                generation = 1L,
+                color = Color.BLACK,
+            )
+
+            PdfExporter.export(snapshot, policy) { false }
+
+            val extracted = extractTextWithPdfBox(output).replace("\uFEFF", "").trim()
+            assertTrue("The first visible line should remain extractable: $extracted", extracted.contains("Alpha"))
+            assertTrue("Text below the flow height should not be exported: $extracted", extracted.length < annotation.text.length)
+            val bitmap = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888)
+            try {
+                renderPage(output, bitmap)
+                val bounds = darkPixelBounds(bitmap, Rect(0, 0, 300, 300))
+                assertTrue("The bounded text should render", bounds != null)
+                assertTrue("Rendered text must stay within its horizontal flow limit: $bounds", bounds!!.right <= 82)
+                assertTrue("Rendered text must stay above its vertical flow limit: $bounds", bounds.bottom <= 60)
+            } finally {
+                bitmap.recycle()
+            }
+        } finally {
+            source.delete()
+            policy.deleteExact(output)
+        }
+    }
+
+    @Test
     fun exporterWritesIndependentFilledContourObjectsAndRasterizedOverlap() {
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .targetContext

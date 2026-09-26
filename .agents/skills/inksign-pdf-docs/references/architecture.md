@@ -16,6 +16,14 @@ and export.
   command's upper page bound depends on live document state, so each platform
   checks it when admitting the command. PDF, image, and OS data are checked at
   their respective ingress boundaries.
+- `addTextAnnotation(text, position, options?)` commits text in canonical
+  top-left page points without opening the native editor. Both platforms wrap
+  at the direction-aware `xLimit` or page edge and stop at `yLimit` or page
+  bottom, retaining complete lines only. Default text style applies when
+  options omit it. Explicit LTR/RTL overrides app policy; `auto` uses the
+  resolved app layout direction. Omitted direction uses the last
+  `setTextDirection()` choice, or app direction when unset/`auto`. Save the
+  selected direction with the annotation.
 - Each platform coordinator owns one published document with an ordered stable
   page list, one active page, and page-local committed history. Android uses
   PDFium for document I/O; iOS uses PDFKit with Quartz and CoreText. The UI

@@ -29,6 +29,10 @@ namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 namespace margelo::nitro::inksignpdf { enum class PageType; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
+// Forward declaration of `PagePosition` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PagePosition; }
+// Forward declaration of `TextAnnotationOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
@@ -63,6 +67,10 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 #include <vector>
 #include "ImagePageSize.hpp"
 #include "JImagePageSize.hpp"
+#include "PagePosition.hpp"
+#include "JPagePosition.hpp"
+#include "TextAnnotationOptions.hpp"
+#include "JTextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
 #include "JTextDirection.hpp"
 
@@ -345,6 +353,10 @@ namespace margelo::nitro::inksignpdf {
   void JHybridInkSignViewSpec::clear() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clear");
     method(_javaPart);
+  }
+  void JHybridInkSignViewSpec::addTextAnnotation(const std::string& text, const PagePosition& position, const std::optional<TextAnnotationOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<JPagePosition> /* position */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("addTextAnnotation");
+    method(_javaPart, jni::make_jstring(text), JPagePosition::fromCpp(position), options.has_value() ? JTextAnnotationOptions::fromCpp(options.value()) : nullptr);
   }
   void JHybridInkSignViewSpec::setTextDirection(TextDirection direction) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextDirection> /* direction */)>("setTextDirection");

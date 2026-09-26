@@ -309,12 +309,6 @@ class TextInteractionContractTest {
   }
 
   @Test
-  fun directionResolutionUsesTheFirstStrongCharacter() {
-    assertTrue(textIsRtl("123 العربية"))
-    assertTrue(!textIsRtl("123 English"))
-  }
-
-  @Test
   fun activeSelectionVisibilityFollowsTheEndpointThatChanged() {
     assertEquals(
       9,
@@ -332,24 +326,6 @@ class TextInteractionContractTest {
       5,
       activeSelectionOffsetAfterChange(5, 5, 5, 5, 5),
     )
-  }
-
-  @Test
-  fun emptyEditorCanRetainItsPreviousDirection() {
-    assertTrue(textDirectionIsRtl("", emptyDirectionRtl = true))
-    assertTrue(!textDirectionIsRtl("", emptyDirectionRtl = false))
-    assertTrue(textDirectionIsRtl("123 العربية", emptyDirectionRtl = false))
-  }
-
-  @Test
-  fun keyboardLanguageIsOnlyAnInitialDirectionHint() {
-    assertEquals(true, inputLanguageDirectionHint("he-IL"))
-    assertEquals(false, inputLanguageDirectionHint("en-US"))
-    assertEquals(null, inputLanguageDirectionHint(null))
-    assertEquals(null, inputLanguageDirectionHint("und"))
-    assertTrue(textDirectionIsRtl("עברית", inputLanguageDirectionHint("en-US")))
-    assertTrue(!textDirectionIsRtl("English", inputLanguageDirectionHint("he-IL")))
-    assertTrue(textDirectionIsRtl("", emptyDirectionRtl = true))
   }
 
   @Test

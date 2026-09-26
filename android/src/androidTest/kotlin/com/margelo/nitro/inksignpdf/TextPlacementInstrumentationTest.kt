@@ -2,6 +2,7 @@ package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
 import android.view.MotionEvent
+import android.view.View
 import android.widget.EditText
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -62,6 +63,112 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
+  fun programmaticTextUsesCanonicalPositionWithoutOpeningEditor() {
+    harness.runOnMain {
+      harness.setDocument(
+        harness.info,
+        zoom = 1.0,
+        focus = PagePoint(150.0, 150.0),
+        fitToPage = false,
+      )
+      val overlay = harness.createOverlay()
+
+      overlay.addTextAnnotation(PagePoint(20.0, 30.0), "Approved", null)
+
+      val annotation = harness.surface.textPresentationSnapshot()?.annotations?.single()
+      assertNotNull(annotation)
+      assertEquals("Approved", annotation?.text)
+      assertEquals(20.0, annotation?.bounds?.left ?: -1.0, 0.0)
+      assertEquals(30.0, annotation?.bounds?.top ?: -1.0, 0.0)
+      assertEquals(PageRect(20.0, 30.0, 300.0, 300.0), annotation?.flowBounds)
+      assertFalse(annotation?.directionRtl ?: true)
+      assertEquals(InteractionMode.VIEW, overlay.interactionMode())
+      assertEquals(0, editorCount(overlay))
+      overlay.dispose()
+    }
+  }
+
+  @Test
+  fun programmaticTextWrapsAndClipsToPagePointLimits() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        overlay.addTextAnnotation(
+          PagePoint(50.0, 40.0),
+          "one two three four five six seven eight nine ten",
+          TextAnnotationOptions(TextDirection.LTR, 92.0, 82.0),
+        )
+        overlay.addTextAnnotation(
+          PagePoint(250.0, 40.0),
+          "RTL text wraps near the left edge",
+          TextAnnotationOptions(TextDirection.RTL, 208.0, 82.0),
+        )
+        harness.surface.layoutDirection = View.LAYOUT_DIRECTION_RTL
+        overlay.addTextAnnotation(
+          PagePoint(250.0, 100.0),
+          "Auto follows app layout",
+          TextAnnotationOptions(TextDirection.AUTO, 208.0, 150.0),
+        )
+
+        val annotation = checkNotNull(harness.surface.textPresentationSnapshot())
+          .annotations.first()
+        val annotations = checkNotNull(harness.surface.textPresentationSnapshot()).annotations
+        val rtlAnnotation = annotations[1]
+        val autoAnnotation = annotations.last()
+        assertEquals(PageRect(50.0, 40.0, 92.0, 82.0), annotation.flowBounds)
+        assertTrue(annotation.bounds.left >= 50.0)
+        assertTrue(annotation.bounds.right <= 92.0)
+        assertTrue(annotation.bounds.top >= 40.0)
+        assertTrue(annotation.bounds.bottom <= 82.0)
+        val layout = TextLayoutSpec.createLayout(annotation)
+        assertTrue("The page-point width should wrap the text", layout.lineCount > 1)
+        assertTrue("The layout should extend below its clip region", layout.height > 42)
+        assertEquals(PageRect(208.0, 40.0, 250.0, 82.0), rtlAnnotation.flowBounds)
+        assertTrue(rtlAnnotation.directionRtl)
+        val rtlLayout = TextLayoutSpec.createLayout(rtlAnnotation)
+        assertTrue(rtlLayout.lineCount > 1)
+        assertTrue(autoAnnotation.directionRtl)
+
+        val bitmap = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888)
+        try {
+          TextRenderLayer.from(listOf(annotation)).draw(android.graphics.Canvas(bitmap))
+          assertTrue((0 until 300).any { y ->
+            (0 until 300).any { x -> android.graphics.Color.alpha(bitmap.getPixel(x, y)) > 0 }
+          })
+          assertEquals(0, android.graphics.Color.alpha(bitmap.getPixel(92, 50)))
+          assertEquals(0, android.graphics.Color.alpha(bitmap.getPixel(60, 82)))
+        } finally {
+          bitmap.recycle()
+        }
+
+        val snapshot = PdfExportSnapshot(
+          sourcePath = "unused-source.pdf",
+          outputPath = "unused-output.pdf",
+          pages = listOf(
+            PdfPageExportSnapshot(
+              pageIndex = 0,
+              dimensions = PdfPageDimensions(300.0, 300.0),
+              strokes = emptyList(),
+              textAnnotations = listOf(annotation, rtlAnnotation),
+            ),
+          ),
+          generation = 1L,
+          color = android.graphics.Color.BLACK,
+        )
+        val exported = PdfExportTextResolver.resolve(snapshot)
+        assertTrue(exported.runs.isNotEmpty())
+        assertTrue(exported.runs.all { it.baselineFromTop < 82.0f })
+        assertTrue(
+          exported.runs.map { it.lineId }.distinct().size < layout.lineCount + rtlLayout.lineCount,
+        )
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
   fun placementWaitsForTapEndAndLaterOutsideTapFinishesTheDraft() {
     lateinit var overlay: TextInteractionOverlay
     val modes = mutableListOf<InteractionMode>()
@@ -78,7 +185,9 @@ internal class TextPlacementInstrumentationTest {
 
       assertEquals(InteractionMode.TEXTPLACEMENT, overlay.interactionMode())
       assertTrue(overlay.hasPendingPlacement())
-      assertFalse(dispatch(overlay, MotionEvent.ACTION_DOWN, 350.0f, 350.0f, 990L))
+      val outsidePage = checkNotNull(harness.surface.textPresentationSnapshot())
+        .transform.map(PagePoint(-1.0, -1.0))
+      assertFalse(dispatch(overlay, MotionEvent.ACTION_DOWN, outsidePage.x.toFloat(), outsidePage.y.toFloat(), 990L))
       assertTrue(overlay.hasPendingPlacement())
 
       assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_000L))
@@ -851,59 +960,156 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
-  fun autoDirectionResamplesOnlyWhileEmptyAndPersistsWhenReopened() {
-    var keyboardRtl: Boolean? = true
+  fun autoDirectionUsesAppLayoutPolicyAndStaysFixedWhileTyping() {
+    listOf(
+      View.LAYOUT_DIRECTION_LTR to false,
+      View.LAYOUT_DIRECTION_RTL to true,
+    ).forEachIndexed { index, (layoutDirection, expectedRtl) ->
+      harness.runOnMain {
+        harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+        harness.surface.layoutDirection = layoutDirection
+        val overlay = harness.createOverlay()
+        try {
+          overlay.setTextDirection(TextDirection.AUTO)
+          overlay.armPlacement(1L)
+          val time = 5_500L + index * 100L
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, time))
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, time + 10L))
+          val editor = editorView(overlay)
+          val expectedViewDirection = if (expectedRtl) {
+            TextView.TEXT_DIRECTION_RTL
+          } else {
+            TextView.TEXT_DIRECTION_LTR
+          }
+          assertEquals(expectedViewDirection, editor.textDirection)
+
+          editor.setText(if (expectedRtl) "Latin first" else "שלום קודם")
+          assertEquals(expectedViewDirection, editor.textDirection)
+          editor.setText("")
+          assertEquals(expectedViewDirection, editor.textDirection)
+          editor.setText(if (expectedRtl) "Latin after clear" else "שלום אחרי מחיקה")
+          assertEquals(expectedViewDirection, editor.textDirection)
+          overlay.finishForLifecycle()
+
+          val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+          assertEquals(expectedRtl, saved.directionRtl)
+          val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+          val tap = presentation.transform.map(
+            PagePoint(
+              (saved.bounds.left + saved.bounds.right) / 2.0,
+              (saved.bounds.top + saved.bounds.bottom) / 2.0,
+            ),
+          )
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), time + 20L))
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), time + 30L))
+          assertEquals(expectedViewDirection, editorView(overlay).textDirection)
+        } finally {
+          overlay.dispose()
+        }
+      }
+    }
+  }
+
+  @Test
+  fun setTextDirectionUpdatesActiveDraftAndPersistsAfterReopen() {
+    listOf(
+      TextDirection.LTR to false,
+      TextDirection.RTL to true,
+    ).forEachIndexed { index, (direction, expectedRtl) ->
+      harness.runOnMain {
+        harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+        harness.surface.layoutDirection = if (expectedRtl) {
+          View.LAYOUT_DIRECTION_LTR
+        } else {
+          View.LAYOUT_DIRECTION_RTL
+        }
+        val overlay = harness.createOverlay()
+        try {
+          overlay.setTextDirection(TextDirection.AUTO)
+          overlay.armPlacement(1L)
+          val time = 5_800L + index * 100L
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, time))
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, time + 10L))
+          val editor = editorView(overlay)
+          var expectedText = "Direction remains active"
+          editor.setText(expectedText)
+          val beforeBounds = editorPageBounds(editor)
+
+          overlay.setTextDirection(direction)
+
+          assertEquals("Direction remains active", editor.text.toString())
+          assertEquals(
+            if (expectedRtl) TextView.TEXT_DIRECTION_RTL else TextView.TEXT_DIRECTION_LTR,
+            editor.textDirection,
+          )
+          assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+          assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.isEmpty())
+          val switchedBounds = editorPageBounds(editor)
+          assertFrameNear(beforeBounds, switchedBounds)
+          overlay.syncContent()
+          assertFrameNear(beforeBounds, editorPageBounds(editor))
+
+          val expansion = " with more text to expand"
+          editor.append(expansion)
+          expectedText += expansion
+          val expandedBounds = editorPageBounds(editor)
+          assertDirectionAnchorNear(switchedBounds, expandedBounds, expectedRtl)
+          if (expectedRtl) assertTrue(expandedBounds.left <= switchedBounds.left + 2.0)
+          else assertTrue(expandedBounds.right >= switchedBounds.right - 2.0)
+
+          overlay.finishForLifecycle()
+          val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+          assertEquals(expectedRtl, saved.directionRtl)
+          assertEquals(expectedText, saved.text.replace("\n", ""))
+
+          val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+          val tap = presentation.transform.map(
+            PagePoint(
+              (saved.bounds.left + saved.bounds.right) / 2.0,
+              (saved.bounds.top + saved.bounds.bottom) / 2.0,
+            ),
+          )
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), time + 20L))
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), time + 30L))
+          val reopened = editorView(overlay)
+          assertEquals(saved.text, reopened.text.toString())
+          assertEquals(
+            if (expectedRtl) TextView.TEXT_DIRECTION_RTL else TextView.TEXT_DIRECTION_LTR,
+            reopened.textDirection,
+          )
+        } finally {
+          overlay.dispose()
+        }
+      }
+    }
+  }
+
+  @Test
+  fun autoDirectionUpdatesActiveEditorFromCurrentAppLayout() {
     harness.runOnMain {
-      val overlay = harness.createOverlay { keyboardRtl }
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      harness.surface.layoutDirection = View.LAYOUT_DIRECTION_LTR
+      val overlay = harness.createOverlay()
       try {
         overlay.armPlacement(1L)
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_500L))
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_510L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 6_000L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 6_010L))
         val editor = editorView(overlay)
-        assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
+        editor.setText("Auto direction updates now")
+        val beforeBounds = editorPageBounds(editor)
 
-        val revisionBeforeTyping = harness.activeHistoryRevision()
-        keyboardRtl = false
-        editor.setText("1")
-        assertEquals(TextView.TEXT_DIRECTION_LTR, editor.textDirection)
+        harness.surface.layoutDirection = View.LAYOUT_DIRECTION_RTL
+        overlay.setTextDirection(TextDirection.AUTO)
 
-        keyboardRtl = true
-        editor.setText("1Latin שלום")
-        editor.setSelection(editor.text.length)
+        assertEquals("Auto direction updates now", editor.text.toString())
         assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
+        assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.isEmpty())
+        assertFrameNear(beforeBounds, editorPageBounds(editor))
 
-        editor.setText("")
-        assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
-        assertEquals(revisionBeforeTyping, harness.activeHistoryRevision())
-
-        editor.setText("1Latin שלום")
-        keyboardRtl = false
-        editor.setSelection(0)
-        assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
         overlay.finishForLifecycle()
-
         val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         assertTrue(saved.directionRtl)
-        val savedRevision = harness.activeHistoryRevision()
-        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
-        val tap = presentation.transform.map(
-          PagePoint(
-            (saved.bounds.left + saved.bounds.right) / 2.0,
-            (saved.bounds.top + saved.bounds.bottom) / 2.0,
-          ),
-        )
-        assertTrue(
-          dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 5_520L),
-        )
-        assertTrue(
-          dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 5_530L),
-        )
-
-        val reopened = editorView(overlay)
-        assertEquals(TextView.TEXT_DIRECTION_RTL, reopened.textDirection)
-        assertEquals(saved.text, reopened.text.toString())
-        assertEquals(savedRevision, harness.activeHistoryRevision())
-        assertEquals(saved, checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single())
+        assertEquals("Auto direction updates now", saved.text.replace("\n", ""))
       } finally {
         overlay.dispose()
       }
@@ -911,11 +1117,113 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
-  fun explicitDirectionOverridesKeyboardLanguageForNewText() {
+  fun directionSwitchNearPageEdgeKeepsTheWholeEditorFrame() {
     harness.runOnMain {
-      listOf(TextDirection.LTR to true, TextDirection.RTL to false).forEachIndexed { index, pair ->
-        val (direction, keyboardRtl) = pair
-        val overlay = harness.createOverlay { keyboardRtl }
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      harness.surface.layoutDirection = View.LAYOUT_DIRECTION_LTR
+      val overlay = harness.createOverlay()
+      try {
+        overlay.armPlacement(1L)
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 250f, 150f, 6_050L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 250f, 150f, 6_060L))
+        val editor = editorView(overlay)
+        editor.setText("Text near the right page edge")
+        val beforeBounds = editorPageBounds(editor)
+
+        overlay.setTextDirection(TextDirection.RTL)
+
+        assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
+        assertFrameNear(beforeBounds, editorPageBounds(editor))
+        overlay.syncContent()
+        assertFrameNear(beforeBounds, editorPageBounds(editor))
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun setTextDirectionUpdatesReopenedProgrammaticFlowBoundsEditor() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        overlay.addTextAnnotation(
+          PagePoint(80.0, 70.0),
+          "Programmatic flow text",
+          TextAnnotationOptions(TextDirection.LTR, 240.0, 160.0),
+        )
+        val original = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        val initialPresentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        val tap = initialPresentation.transform.map(
+          PagePoint(
+            (original.bounds.left + original.bounds.right) / 2.0,
+            (original.bounds.top + original.bounds.bottom) / 2.0,
+          ),
+        )
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 6_100L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 6_110L))
+        val editor = editorView(overlay)
+        val beforeBounds = editorPageBounds(editor)
+
+        overlay.setTextDirection(TextDirection.RTL)
+
+        assertEquals("Programmatic flow text", editor.text.toString())
+        assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
+        val stillCommitted = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        assertFalse(stillCommitted.directionRtl)
+        assertEquals(original.flowBounds, stillCommitted.flowBounds)
+        assertFrameNear(beforeBounds, editorPageBounds(editor))
+
+        overlay.finishForLifecycle()
+        val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        assertTrue(saved.directionRtl)
+        assertEquals(original.flowBounds, saved.flowBounds)
+
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        val reopenTap = presentation.transform.map(
+          PagePoint(
+            (saved.bounds.left + saved.bounds.right) / 2.0,
+            (saved.bounds.top + saved.bounds.bottom) / 2.0,
+          ),
+        )
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, reopenTap.x.toFloat(), reopenTap.y.toFloat(), 6_120L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, reopenTap.x.toFloat(), reopenTap.y.toFloat(), 6_130L))
+        assertEquals(TextView.TEXT_DIRECTION_RTL, editorView(overlay).textDirection)
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun setTextDirectionStillUpdatesArmedPlacement() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      harness.surface.layoutDirection = View.LAYOUT_DIRECTION_LTR
+      val overlay = harness.createOverlay()
+      try {
+        overlay.armPlacement(1L)
+        harness.surface.layoutDirection = View.LAYOUT_DIRECTION_RTL
+        overlay.setTextDirection(TextDirection.AUTO)
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 6_200L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 6_210L))
+        assertEquals(TextView.TEXT_DIRECTION_RTL, editorView(overlay).textDirection)
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun explicitDirectionOverridesAppLayoutPolicy() {
+    harness.runOnMain {
+      listOf(
+        Triple(View.LAYOUT_DIRECTION_RTL, TextDirection.LTR, false),
+        Triple(View.LAYOUT_DIRECTION_LTR, TextDirection.RTL, true),
+      ).forEachIndexed { index, (layoutDirection, direction, expectedRtl) ->
+        harness.surface.layoutDirection = layoutDirection
+        val overlay = harness.createOverlay()
         try {
           overlay.setTextDirection(direction)
           overlay.armPlacement(1L)
@@ -925,7 +1233,6 @@ internal class TextPlacementInstrumentationTest {
           assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, x, 80f, time + 10L))
           val editor = editorView(overlay)
           editor.setText("1")
-          val expectedRtl = direction == TextDirection.RTL
           assertEquals(
             if (expectedRtl) TextView.TEXT_DIRECTION_RTL else TextView.TEXT_DIRECTION_LTR,
             editor.textDirection,
@@ -951,6 +1258,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.armPlacement(1L)
         choosePlacementDirection(overlay, rtl = false)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 6_000L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 6_010L))
         val editor = editorView(overlay)
         editor.setText("abcdefghij".repeat(80))
         overlay.syncTransform()
@@ -1177,6 +1485,36 @@ internal class TextPlacementInstrumentationTest {
       .filterIsInstance<EditText>()
       .single()
 
+  private fun editorPageBounds(editor: EditText): PageRect {
+    val inverse = checkNotNull(harness.surface.textPresentationSnapshot()).transform.inverse()
+    val corners = listOf(
+      editor.left to editor.top,
+      editor.right to editor.top,
+      editor.left to editor.bottom,
+      editor.right to editor.bottom,
+    ).map { (x, y) -> inverse.map(PagePoint(x.toDouble(), y.toDouble())) }
+    return PageRect(
+      corners.minOf { it.x },
+      corners.minOf { it.y },
+      corners.maxOf { it.x },
+      corners.maxOf { it.y },
+    )
+  }
+
+  private fun assertDirectionAnchorNear(before: PageRect, after: PageRect, isRtl: Boolean) {
+    val anchoredEdgeBefore = if (isRtl) before.right else before.left
+    val anchoredEdgeAfter = if (isRtl) after.right else after.left
+    assertEquals(anchoredEdgeBefore, anchoredEdgeAfter, 2.0)
+    assertEquals(before.top, after.top, 2.0)
+  }
+
+  private fun assertFrameNear(before: PageRect, after: PageRect) {
+    assertEquals(before.left, after.left, 2.0)
+    assertEquals(before.top, after.top, 2.0)
+    assertEquals(before.right, after.right, 2.0)
+    assertEquals(before.bottom, after.bottom, 2.0)
+  }
+
   private suspend fun openCandidate(
     source: java.io.File,
     preparePresentation: ((PdfSessionInfo, ViewportSize) -> PreparedDocumentPresentation)? = null,
@@ -1332,13 +1670,10 @@ internal class TextPlacementInstrumentationTest {
       runOnMain { setDocument(result.get().getOrThrow()) }
     }
 
-    fun createOverlay(
-      inputLanguageDirectionProvider: (() -> Boolean?)? = null,
-    ): TextInteractionOverlay {
+    fun createOverlay(): TextInteractionOverlay {
       val overlay = TextInteractionOverlay(
         instrumentation.targetContext,
         surface,
-        inputLanguageDirectionProvider,
       )
       this.overlay = overlay
       surface.onTextContentChanged = overlay::syncContent

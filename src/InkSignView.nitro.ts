@@ -18,6 +18,22 @@ export interface PageInfo {
   height: number
 }
 
+/** Canonical PDF page position in points, measured from the top-left corner. */
+export interface PagePosition {
+  x: number
+  y: number
+}
+
+/** Optional flow limits in canonical PDF page points. Limits are absolute page coordinates. */
+export interface TextAnnotationOptions {
+  /** Base writing direction. `auto` follows the app's resolved layout direction. */
+  direction?: TextDirection
+  /** Opposite horizontal edge: rightward for LTR, leftward for RTL. Defaults to the page edge. */
+  xLimit?: number
+  /** Bottom edge for wrapped lines. Defaults to the page bottom. */
+  yLimit?: number
+}
+
 export type PageType = 'pdf' | 'image'
 export type TextDirection = 'ltr' | 'rtl' | 'auto'
 
@@ -120,7 +136,9 @@ export interface InkSignViewMethods extends HybridViewMethods {
   undo(): void
   redo(): void
   clear(): void
-  /** Sets the base direction for new text; `auto` samples the IME while empty, then locks until the draft is erased. */
+  /** Adds committed text at the active page position with optional page-point flow limits. Android supports this; iOS is currently a no-op. */
+  addTextAnnotation(text: string, position: PagePosition, options?: TextAnnotationOptions): void
+  /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
   /** Arms one-shot native text placement at the next valid page tap. */
   insertAnnotationOn(): void

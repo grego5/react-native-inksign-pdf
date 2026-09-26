@@ -9,9 +9,9 @@ import android.text.TextDirectionHeuristic
 import android.text.TextDirectionHeuristics
 import android.text.TextPaint
 import android.widget.TextView
-import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * The shared text-layout contract for page rendering, previews, hit bounds,
@@ -21,62 +21,6 @@ internal data class TextIntrinsicSize(
   val width: Double,
   val height: Double,
 )
-
-private fun firstStrongTextDirectionIsRtl(text: CharSequence): Boolean? {
-  var index = 0
-  while (index < text.length) {
-    val codePoint = Character.codePointAt(text, index)
-    when (Character.getDirectionality(codePoint)) {
-      Character.DIRECTIONALITY_LEFT_TO_RIGHT -> return false
-      Character.DIRECTIONALITY_RIGHT_TO_LEFT,
-      Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC -> return true
-    }
-    index += Character.charCount(codePoint)
-  }
-  return null
-}
-
-internal fun countStrongRtlCharacters(text: CharSequence): Int {
-  var count = 0
-  var index = 0
-  while (index < text.length) {
-    val codePoint = Character.codePointAt(text, index)
-    val directionality = Character.getDirectionality(codePoint)
-    if (directionality == Character.DIRECTIONALITY_RIGHT_TO_LEFT ||
-      directionality == Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC
-    ) count++
-    index += Character.charCount(codePoint)
-  }
-  return count
-}
-
-internal fun visibleDefaultTextDirectionIsRtl(): Boolean {
-  return try {
-    android.text.TextUtils.getLayoutDirectionFromLocale(Locale.getDefault()) == android.view.View.LAYOUT_DIRECTION_RTL
-  } catch (_: RuntimeException) {
-    Locale.getDefault().language in setOf("ar", "fa", "he", "iw", "ur", "ps", "sd", "ug", "yi")
-  }
-}
-
-/** Resolves the first-strong paragraph direction with locale fallback. */
-internal fun textIsRtl(text: CharSequence): Boolean = firstStrongTextDirectionIsRtl(text)
-  ?: visibleDefaultTextDirectionIsRtl()
-
-/** Uses a caller-owned direction when the text has no strong character. */
-internal fun textDirectionIsRtl(text: CharSequence, emptyDirectionRtl: Boolean? = null): Boolean =
-  firstStrongTextDirectionIsRtl(text) ?: emptyDirectionRtl ?: visibleDefaultTextDirectionIsRtl()
-
-/** Optional IME language hint for an empty new editor, not a content direction. */
-internal fun inputLanguageDirectionHint(languageTag: String?): Boolean? {
-  val tag = languageTag?.trim()?.replace('_', '-')?.takeIf { it.isNotEmpty() } ?: return null
-  val locale = Locale.forLanguageTag(tag)
-  if (locale.language.isEmpty() || locale.language == "und") return null
-  return try {
-    android.text.TextUtils.getLayoutDirectionFromLocale(locale) == android.view.View.LAYOUT_DIRECTION_RTL
-  } catch (_: RuntimeException) {
-    locale.language in setOf("ar", "fa", "he", "iw", "ur", "ps", "sd", "ug", "yi")
-  }
-}
 
 /**
  * Materializes only native soft-wrap boundaries as explicit newlines.
@@ -158,7 +102,7 @@ internal object TextLayoutSpec {
     text: String,
     fontSize: Double,
     width: Double,
-    baseDirectionRtl: Boolean = textIsRtl(text),
+    baseDirectionRtl: Boolean,
   ): TextIntrinsicSize {
     require(width.isFinite() && width > 0.0)
     val layoutWidth = max(1, ceil(width).toInt())
@@ -180,7 +124,9 @@ internal object TextLayoutSpec {
   fun createLayout(annotation: TextAnnotation): StaticLayout {
     val paint = createPaint(annotation.fontSize, annotation.textColor)
     val measuredWidth = measure(annotation.text, annotation.fontSize).width
-    val width = max(1, ceil(max(annotation.intrinsicWidth, measuredWidth)).toInt())
+    val layoutWidth = annotation.flowBounds?.let { it.right - it.left }
+      ?: max(annotation.intrinsicWidth, measuredWidth)
+    val width = max(1, ceil(layoutWidth).toInt())
     return StaticLayout.Builder.obtain(
       annotation.text,
       0,
@@ -193,6 +139,39 @@ internal object TextLayoutSpec {
       .setHyphenationFrequency(hyphenationFrequency)
       .setTextDirection(directionHeuristic(annotation.directionRtl))
       .build()
+  }
+
+  fun visibleBounds(annotation: TextAnnotation, flowBounds: PageRect): PageRect {
+    val layout = createLayout(annotation)
+    val flowWidth = flowBounds.right - flowBounds.left
+    val flowHeight = flowBounds.bottom - flowBounds.top
+    val visibleHeight = completeLineHeight(layout, flowHeight)
+    var left = flowWidth
+    var right = 0.0
+    var bottom = 0.0
+    for (lineIndex in 0 until layout.lineCount) {
+      if (layout.getLineBottom(lineIndex).toDouble() > visibleHeight) break
+      left = min(left, layout.getLineLeft(lineIndex).toDouble().coerceIn(0.0, flowWidth))
+      right = max(right, layout.getLineRight(lineIndex).toDouble().coerceIn(0.0, flowWidth))
+      bottom = max(bottom, min(flowHeight, layout.getLineBottom(lineIndex).toDouble()))
+    }
+    if (left > right) left = right
+    return PageRect(
+      flowBounds.left + left,
+      flowBounds.top,
+      flowBounds.left + right,
+      flowBounds.top + bottom,
+    )
+  }
+
+  fun completeLineHeight(layout: StaticLayout, flowHeight: Double): Double {
+    var visibleHeight = 0.0
+    for (lineIndex in 0 until layout.lineCount) {
+      val lineBottom = layout.getLineBottom(lineIndex).toDouble()
+      if (lineBottom > flowHeight) break
+      visibleHeight = lineBottom
+    }
+    return visibleHeight
   }
 
   fun configureEditor(
@@ -241,6 +220,7 @@ internal class TextRenderLayer private constructor(
   private data class Entry(
     val annotation: TextAnnotation,
     val layout: StaticLayout,
+    val clipBounds: PageRect?,
   )
 
   fun draw(canvas: android.graphics.Canvas, excludedAnnotationId: String? = null) {
@@ -248,9 +228,17 @@ internal class TextRenderLayer private constructor(
       if (entry.annotation.id == excludedAnnotationId) return@forEach
       canvas.save()
       canvas.translate(
-        entry.annotation.position.x.toFloat(),
-        entry.annotation.position.y.toFloat(),
+        (entry.clipBounds?.left ?: entry.annotation.position.x).toFloat(),
+        (entry.clipBounds?.top ?: entry.annotation.position.y).toFloat(),
       )
+      entry.clipBounds?.let { bounds ->
+        canvas.clipRect(
+          0f,
+          0f,
+          (bounds.right - bounds.left).toFloat(),
+          (bounds.bottom - bounds.top).toFloat(),
+        )
+      }
       entry.layout.draw(canvas)
       canvas.restore()
     }
@@ -262,7 +250,15 @@ internal class TextRenderLayer private constructor(
     fun from(annotations: List<TextAnnotation>): TextRenderLayer {
       return TextRenderLayer(
         annotations.map { annotation ->
-          Entry(annotation, TextLayoutSpec.createLayout(annotation))
+          val layout = TextLayoutSpec.createLayout(annotation)
+          val clipBounds = annotation.flowBounds?.let { bounds ->
+            val visibleHeight = TextLayoutSpec.completeLineHeight(
+              layout,
+              bounds.bottom - bounds.top,
+            )
+            PageRect(bounds.left, bounds.top, bounds.right, bounds.top + visibleHeight)
+          }
+          Entry(annotation, layout, clipBounds)
         },
       )
     }

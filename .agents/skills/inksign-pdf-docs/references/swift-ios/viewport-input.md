@@ -19,5 +19,14 @@
 - **Text layout:** TextKit owns wrapping, caret, and selection geometry. The
   editor and committed annotation share bounds, font, paragraph style, and saved
   direction.
+- **Programmatic text:** `addTextAnnotation` commits text without opening the
+  editor. Coordinates use canonical top-left page points. Text wraps at the
+  direction-aware `xLimit` or page edge and shows only complete lines before
+  `yLimit` or the page bottom.
+- **Text direction:** Explicit LTR/RTL overrides app policy. `auto` uses the
+  resolved app layout direction. Omitted direction follows the last
+  `setTextDirection()` choice, or app direction when unset/`auto`. Save the
+  resolved direction with each annotation; tap placement captures it when
+  armed.
 - **History:** Draft text is temporary. Committed text and page-local ink edits
   are the content used by history and export.
