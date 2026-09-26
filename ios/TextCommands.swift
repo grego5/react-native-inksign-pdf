@@ -32,6 +32,14 @@ extension InkSignView {
     }
   }
 
+  func addTextAnnotation(
+    text: String,
+    position: PagePosition,
+    options: TextAnnotationOptions?
+  ) throws {
+    // Android currently owns programmatic text insertion; keep the shared ref method callable on iOS.
+  }
+
   func increaseTextSize() throws -> Double {
     try performOnMainSync { try self.textInteractionOverlay.increaseTextSize() }
   }

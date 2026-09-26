@@ -19,10 +19,11 @@
 - Placement centers the box horizontally and aligns its inner bottom to the
   tap, subject to page clamping. Rule snapping is loaded lazily for the active
   page and discarded on page or document change.
-- Explicit text direction stays fixed. `auto` uses the IME language when
-  available, otherwise the app default. RTL text switches alignment while
-  present; deleting it restores the base direction. Save the effective
-  direction with the annotation.
+- `setTextDirection()` updates future placement and an active editor immediately.
+  Switching keeps the current editor frame in place; subsequent text edits
+  expand from the selected side, and caret following uses that direction.
+  Explicit LTR/RTL overrides app policy; `auto` uses the current resolved app
+  layout direction. The selected direction is saved when editing commits.
 - Placement zoom uses `doubleTap.zoom` (default 2×) without reducing a higher
   current zoom. Editing preserves the page anchor; keyboard avoidance and caret
   following move the viewport only as needed to expose the active text.

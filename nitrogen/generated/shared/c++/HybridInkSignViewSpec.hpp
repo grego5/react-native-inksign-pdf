@@ -29,6 +29,10 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
+// Forward declaration of `PagePosition` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PagePosition; }
+// Forward declaration of `TextAnnotationOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
@@ -44,6 +48,8 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
 #include "Viewport.hpp"
+#include "PagePosition.hpp"
+#include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
 
 namespace margelo::nitro::inksignpdf {
@@ -118,6 +124,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void undo() = 0;
       virtual void redo() = 0;
       virtual void clear() = 0;
+      virtual void addTextAnnotation(const std::string& text, const PagePosition& position, const std::optional<TextAnnotationOptions>& options) = 0;
       virtual void setTextDirection(TextDirection direction) = 0;
       virtual void insertAnnotationOn() = 0;
       virtual void insertAnnotationOff() = 0;

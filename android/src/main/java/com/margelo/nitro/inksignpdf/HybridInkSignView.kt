@@ -404,6 +404,18 @@ class HybridInkSignView internal constructor(
     runOnMainSync { runHistoryCommand(surface::clear) }
   }
 
+  override fun addTextAnnotation(
+    text: String,
+    position: PagePosition,
+    options: TextAnnotationOptions?,
+  ) {
+    runOnMainSync {
+      checkMainThread()
+      if (disposed) throw operationCancelled()
+      textOverlay.addTextAnnotation(PagePoint(position.x, position.y), text, options)
+    }
+  }
+
   private fun runHistoryCommand(command: () -> Unit) {
     checkMainThread()
     if (disposed) return

@@ -34,6 +34,10 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
+// Forward declaration of `PagePosition` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PagePosition; }
+// Forward declaration of `TextAnnotationOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
@@ -53,6 +57,8 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 #include <vector>
 #include "ImagePageSize.hpp"
 #include "Viewport.hpp"
+#include "PagePosition.hpp"
+#include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
@@ -287,6 +293,12 @@ namespace margelo::nitro::inksignpdf {
     }
     inline void clear() override {
       auto __result = _swiftPart.clear();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void addTextAnnotation(const std::string& text, const PagePosition& position, const std::optional<TextAnnotationOptions>& options) override {
+      auto __result = _swiftPart.addTextAnnotation(text, std::forward<decltype(position)>(position), options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

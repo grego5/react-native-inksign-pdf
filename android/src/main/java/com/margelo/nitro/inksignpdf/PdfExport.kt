@@ -150,18 +150,43 @@ internal object PdfExportTextResolver {
         val metrics = paint.fontMetrics
         val lineHeight = metrics.descent - metrics.ascent
         val firstBaseline = annotation.position.y.toFloat() - metrics.ascent
-        TextLayoutSpec.explicitLines(annotation.text).forEachIndexed { lineIndex, line ->
-          if (line.isEmpty()) return@forEachIndexed
+        val flowBounds = annotation.flowBounds
+        val exportLines = if (flowBounds == null) {
+          TextLayoutSpec.explicitLines(annotation.text).mapIndexed { lineIndex, line ->
+            line to (firstBaseline + lineIndex * lineHeight)
+          }
+        } else {
+          val layout = TextLayoutSpec.createLayout(annotation)
+          val visibleLines = mutableListOf<Pair<String, Float>>()
+          val clipHeight = TextLayoutSpec.completeLineHeight(
+            layout,
+            flowBounds.bottom - flowBounds.top,
+          ).toFloat()
+          for (lineIndex in 0 until layout.lineCount) {
+            if (layout.getLineBottom(lineIndex) > clipHeight) break
+            val start = layout.getLineStart(lineIndex)
+            val end = layout.getLineEnd(lineIndex)
+            val line = annotation.text.substring(start, end)
+              .removeSuffix("\n")
+              .removeSuffix("\r")
+            if (line.isNotEmpty()) {
+              visibleLines += line to (flowBounds.top.toFloat() + layout.getLineBaseline(lineIndex))
+            }
+          }
+          visibleLines
+        }
+        exportLines.forEach { (line, baselineFromTop) ->
+          if (line.isEmpty()) return@forEach
           val lineId = nextLineId++
           if (apiLevel >= Build.VERSION_CODES.S) {
             Api31FontResolver.appendLine(
               pageIndex = page.pageIndex,
               lineId = lineId,
               line = line,
-              boundsLeft = annotation.bounds.left.toFloat(),
-              boundsRight = annotation.bounds.right.toFloat(),
+              boundsLeft = (flowBounds?.left ?: annotation.bounds.left).toFloat(),
+              boundsRight = (flowBounds?.right ?: annotation.bounds.right).toFloat(),
               baseDirectionRtl = annotation.directionRtl,
-              baselineFromTop = firstBaseline + lineIndex * lineHeight,
+              baselineFromTop = baselineFromTop,
               fontSize = annotation.fontSize.toFloat(),
               color = annotation.textColor,
               paint = paint,
@@ -185,9 +210,9 @@ internal object PdfExportTextResolver {
               visualOrder = 0,
               baseDirectionRtl = annotation.directionRtl,
               fontIndex = -1,
-              boundsLeft = annotation.bounds.left.toFloat(),
-              boundsRight = annotation.bounds.right.toFloat(),
-              baselineFromTop = firstBaseline + lineIndex * lineHeight,
+              boundsLeft = (flowBounds?.left ?: annotation.bounds.left).toFloat(),
+              boundsRight = (flowBounds?.right ?: annotation.bounds.right).toFloat(),
+              baselineFromTop = baselineFromTop,
               fontSize = annotation.fontSize.toFloat(),
               estimatedAdvance = paint.measureText(line),
               color = annotation.textColor,

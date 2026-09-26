@@ -38,6 +38,8 @@ internal data class TextAnnotation(
   val textColor: Int = Color.BLACK,
   /** Fixed paragraph base direction selected before this annotation was created. */
   val directionRtl: Boolean = false,
+  /** Optional page-point flow and clip region for programmatically inserted text. */
+  val flowBounds: PageRect? = null,
 ) {
   init {
     require(id.isNotBlank()) { "Text annotation ID must not be blank" }
