@@ -132,10 +132,15 @@ extension InkSignView {
   @discardableResult
   func completeOpenIfReady() -> Bool {
     guard let pending = pendingOpen,
-          pending.token == documentCoordinator.generation,
-          !disposed,
+          documentCoordinator.isCurrent(pending.operation),
+          !disposed else {
+      return false
+    }
+
+    guard pending.phase == .awaitingReadiness,
           let state = documentCoordinator.document,
           state.activePageIndex == 0,
+          documentView.document === state.document,
           documentView.currentPage === state.activePage.page,
           attachedOverlayPage == state.activePage.id,
           state.activePage.geometry.isValid,
@@ -145,7 +150,6 @@ extension InkSignView {
     }
     if pending.fitToPage, usableFitScale() == nil { return false }
     guard let target = openViewportTarget(for: pending) else { return false }
-    let operation = pending.operation
     do {
       guard applyViewport(target: target),
             attachedOverlayPage == state.activePage.id,
@@ -153,37 +157,27 @@ extension InkSignView {
             pageToOverlayTransform != nil else {
         throw ViewportError.notReady
       }
-      pendingOpen = nil
-      if let operation { documentCoordinator.settle(operation, succeeded: true) }
+      let pageInfo = toPublicPageInfo(try currentPageInfo())
       setInteractionMode(editing: false)
-      pending.promise.resolve(withResult: toPublicPageInfo(try currentPageInfo()))
+      pendingOpen = nil
+      documentCoordinator.settle(pending.operation, succeeded: true)
+      pending.promise.resolve(withResult: pageInfo)
       emitChange(force: true)
       return true
     } catch {
-      let failed = pendingOpen
-      pendingOpen = nil
-      if let operation { documentCoordinator.settle(operation, succeeded: false) }
-      restoreDocumentAfterOpenFailure(pending: failed)
-      pending.promise.reject(withError: error)
-      return false
+      failOpenAttempt(error: error)
+      return true
     }
   }
 
-  func restoreDocumentAfterOpenFailure(pending: PendingOpen? = nil) {
-    guard let state = documentCoordinator.document else {
-      documentView.document = nil
-      overlayProvider.reset()
-      setInteractionMode(editing: false, interactionsEnabled: false)
-      return
-    }
-    overlayProvider.install(document: state.document,
-                            generation: documentCoordinator.generation)
-    documentView.document = state.document
-    documentView.go(to: state.activePage.page)
-    if let target = pending?.previousViewport {
-      _ = applyViewport(target: target)
-    }
-    setInteractionMode(editing: pending?.previousEditing ?? false)
+  func startQueuedOpen() {
+    guard let next = queuedOpen else { return }
+    queuedOpen = nil
+    beginLoad(next.path,
+              zoom: next.zoom,
+              focus: next.focus,
+              fitToPage: next.fitToPage,
+              promise: next.promise)
   }
 
   func currentViewportSnapshot() throws -> Viewport {

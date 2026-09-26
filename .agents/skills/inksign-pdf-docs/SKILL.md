@@ -28,6 +28,8 @@ Read the reference matching the task:
   [android/export.md](references/android/export.md)
 - Diagnostics, debug replay, tests, and Android validation:
   [android/diagnostics-validation.md](references/android/diagnostics-validation.md)
+- InkEngine release artifacts, Gradle consumption, and source/prebuilt modes:
+  [android/native-artifacts.md](references/android/native-artifacts.md)
 
 ## C++ stroke engine
 
@@ -43,7 +45,7 @@ Read the reference matching the task:
   [stroke-engine/prediction-frames.md](references/stroke-engine/prediction-frames.md)
 - Replay, native/platform tests, and engine invariants:
   [stroke-engine/replay-validation.md](references/stroke-engine/replay-validation.md)
-- Native archives, release packaging, and Android consumption:
+- Native archive production and release packaging:
   [stroke-engine/artifacts.md](references/stroke-engine/artifacts.md)
 
 ## Swift / iOS

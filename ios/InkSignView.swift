@@ -53,14 +53,31 @@ final class InkSignPdfViewGestureDelegate: NSObject, UIGestureRecognizerDelegate
 
 final class InkSignView: HybridInkSignViewSpec {
   struct PendingOpen {
-    let token: UInt64
-    let operation: InkSignPdfDocumentCoordinator.OperationToken?
+    enum Phase: Equatable {
+      case preparing
+      case installing
+      case awaitingReadiness
+      case clearing
+
+      var suppressesPresentationCallbacks: Bool {
+        self != .preparing
+      }
+    }
+
+    let operation: InkSignPdfDocumentCoordinator.OperationToken
     let promise: Promise<PageInfo>
     let zoom: Double?
     let focus: CGPoint?
     let fitToPage: Bool
-    var previousViewport: ViewportTarget? = nil
-    var previousEditing: Bool = false
+    var phase: Phase = .preparing
+  }
+
+  struct QueuedOpen {
+    let path: String
+    let zoom: Double?
+    let focus: CGPoint?
+    let fitToPage: Bool
+    let promise: Promise<PageInfo>
   }
 
   let container = UIView()
@@ -82,6 +99,7 @@ final class InkSignView: HybridInkSignViewSpec {
   var pendingPageSwitchCompletion: ((Result<PageInfo, Error>) -> Void)?
   var textKeyboardOcclusion: CGFloat = 0
   var pendingOpen: PendingOpen?
+  var queuedOpen: QueuedOpen?
   var editMode = false
   var viewInteractionsEnabled = true
   var doubleTap: DoubleTapOptions?
@@ -106,6 +124,10 @@ final class InkSignView: HybridInkSignViewSpec {
   var overlayTransformMediaBox = CGRect.zero
   var pageToOverlayTransform: CGAffineTransform?
   var disposed = false
+
+  var suppressesOpenPresentationCallbacks: Bool {
+    pendingOpen?.phase.suppressesPresentationCallbacks ?? false
+  }
 
   var view: UIView { container }
 
@@ -216,14 +238,16 @@ final class InkSignView: HybridInkSignViewSpec {
   }
 
   deinit {
-    pendingOpen = nil
     disposed = true
-    documentCoordinator.dispose()
+    pendingOpen = nil
+    queuedOpen?.promise.reject(withError: LoadError.cancelled)
+    queuedOpen = nil
     pageNavigationRequestID &+= 1
-    overlayProvider.owner = nil
-    canvasView.owner = nil
+    textInteractionOverlay.discardForDisposal()
+    documentView.document = nil
+    overlayProvider.dispose()
+    documentCoordinator.dispose()
     textInteractionOverlay.dispose()
-    canvasView.delegate = nil
     if let backgroundObserver {
       NotificationCenter.default.removeObserver(backgroundObserver)
     }
@@ -234,26 +258,28 @@ final class InkSignView: HybridInkSignViewSpec {
   func dispose() {
     performOnMain {
       guard !self.disposed else { return }
+      self.disposed = true
       self.pageInputCoordinator.cancelPending()
       self.cancelPendingPageSwitch()
-      self.disposed = true
-      self.documentCoordinator.dispose()
-      self.pageSwitchRequestID &+= 1
-      self.pageNavigationRequestID &+= 1
+      self.textInteractionOverlay.discardForDisposal()
+      self.cancelActiveStroke(clearLive: false)
       let pendingOpen = self.pendingOpen
       self.pendingOpen = nil
       pendingOpen?.promise.reject(withError: LoadError.cancelled)
-      self.textInteractionOverlay.finishForLifecycle()
-      self.cancelActiveStroke(clearLive: false)
+      let queuedOpen = self.queuedOpen
+      self.queuedOpen = nil
+      queuedOpen?.promise.reject(withError: LoadError.cancelled)
+      self.pageSwitchRequestID &+= 1
+      self.pageNavigationRequestID &+= 1
       self.documentView.document = nil
-      self.overlayProvider.reset()
-      self.setInteractionMode(editing: false, interactionsEnabled: false)
+      self.overlayProvider.dispose()
+      self.documentCoordinator.dispose()
+      self.applyInteractionMode(editing: false, interactionsEnabled: false)
       self.attachedOverlayPage = nil
       self.invalidateOverlayTransformCache()
       self.activeDrawingBaseline = nil
       self.pendingDrawingTransactionID = nil
       self.endedDrawingBaseline = nil
-      self.overlayProvider.owner = nil
       self.canvasView.owner = nil
       self.textInteractionOverlay.dispose()
       self.canvasView.delegate = nil

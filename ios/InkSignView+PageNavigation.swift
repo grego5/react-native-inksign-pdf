@@ -10,6 +10,7 @@ extension InkSignView {
   }
 
   func documentViewDidNavigate(to page: PDFPage) {
+    guard !suppressesOpenPresentationCallbacks else { return }
     guard let state = documentCoordinator.document else { return }
     let index = state.document.index(for: page)
     guard index >= 0, index < state.pages.count else { return }
@@ -22,6 +23,7 @@ extension InkSignView {
       setInteractionMode(editing: false, interactionsEnabled: false)
       attachedOverlayPage = nil
       documentCoordinator.selectPage(id: state.pages[index].id)
+      textInteractionOverlay.clearPlacementRules()
       invalidateOverlayTransformCache()
       textInteractionOverlay.syncContent()
       pageSwitchRequestID &+= 1
@@ -65,6 +67,7 @@ extension InkSignView {
       cancelPendingPageSwitch()
       throw ViewportError.notReady
     }
+    textInteractionOverlay.clearPlacementRules()
     invalidateOverlayTransformCache()
     textInteractionOverlay.syncContent()
 

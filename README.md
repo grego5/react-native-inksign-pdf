@@ -39,20 +39,6 @@ npx pod-install
 The module requires a native React Native build; it is not supported in Expo
 Go.
 
-### Android native artifacts
-
-Android builds use the pinned release record in
-`android/ink-engine-release.json`. Gradle downloads and verifies the single
-InkEngine archive during the native build, then caches its ABI libraries under
-the Gradle `build` directory. The npm package does not contain InkEngine
-static libraries or the Google Ink/Abseil source trees. A previously verified
-cache can be reused offline; a missing or invalid cache requires access to the
-pinned GitHub Release.
-
-Repository developers can deliberately compile the checked-out sources with
-`-PReactNativeInkSignPdf_useSourceInkEngine=true`. Normal consumer builds do
-not select source mode automatically.
-
 ## Quick start
 
 ```tsx
@@ -207,17 +193,6 @@ const styles = StyleSheet.create({
 });
 ```
 
-`open()` accepts a caller-owned local PDF path and starts in view mode. Keep the
-source file readable while the view is mounted. The `fallbackFont` component prop
-provides an optional local font for Android PDFium substitution. It is captured
-when `open()` or `addPages()` runs, so changing it takes effect on the next such
-operation. iOS uses CoreText and the system font fallback behavior. `finalize()`
-returns the path to the signed PDF; copy that file to durable application
-storage before unmounting the view. Native temporary artifacts are kept below
-the app cache directory; iOS can override its leaf directory with the
-`ReactNativeInkSignPdfCacheDirectoryName` Info.plist key, and Android with the
-`com.margelo.nitro.inksignpdf.CACHE_DIRECTORY_NAME` application metadata key.
-
 ## Component API
 
 ### Props
@@ -275,23 +250,9 @@ removeTextAnnotation()
 finalize()
 ```
 
-`open(path)` explicitly replaces the current PDF and returns its page metadata.
-The current document remains usable while the replacement is prepared. If the
-current open attempt fails, the viewer is cleared before rejection. A newer open
-supersedes preparation without changing the current viewer; if superseded after
-installation begins, that presentation is cleared before the newest open starts.
-Use `addPages()` for the native picker: with no document it creates one; otherwise
-it appends pages.
-The picker accepts PDFs and images by default, expands every selected PDF in
-page order, and creates one page per image. `type: 'pdf'` or `type: 'image'`
-restricts the picker. Selection order is retained.
-
-`imagePageSize` supplies image-page width and height in PDF points and applies
-to every selected image. Without it, images use the active page size when one
-exists, or portrait A4 (595.28 × 841.89 points) when creating a document.
-Pass `sources` to import ordered local paths or file URLs without showing a
-picker; this is intended for files produced by a scanner or another native
-flow.
+`addPages()` opens the native picker; pass `sources` to import local files
+directly. PDFs add all their pages, and each image adds one page. Use `type` to
+filter the picker and `imagePageSize` to set image-page dimensions.
 
 ```ts
 const result = await pdf.current?.addPages({
@@ -301,18 +262,9 @@ const result = await pdf.current?.addPages({
 // { addedPageCount: number, pageInfo?: PageInfo }
 ```
 
-Picker cancellation and an empty `sources` list leave the document unchanged
-and resolve with `addedPageCount: 0`. `pageInfo` describes the unchanged active
-page when a document exists and is omitted when no document exists. After pages
-are added, the first new page becomes active. `removePage()` removes and
-returns metadata for the current page; it rejects removal of the final page.
-`movePage(pageIndex)` moves the current page to a zero-based destination
-position, shifting intervening pages rather than swapping them. Moving to its
-current index is a no-op. Ink and text remain attached to their page when it
-moves.
+`removePage()` removes the current page; the final page cannot be removed.
+`movePage(pageIndex)` reorders the current page.
 
-Open, add, remove, move, and finalize share one serialized document-operation
-boundary. A conflicting operation rejects with `operation_in_progress`.
 Page navigation is synchronous to initiate and publishes the committed result
 through `onPageChange`:
 
@@ -340,43 +292,14 @@ argument preserves the current viewport where applicable.
 
 ## Interaction model
 
-- View mode provides pan, pinch zoom, and page navigation.
-- Edit mode accepts finger or stylus input for velocity-driven ink. The
-  viewport stays fixed while drawing; text editing may pan at the current zoom.
-- `insertAnnotationOn()` arms one text placement; the next page tap opens the
-  native text editor. The editor is horizontally centered on the tap for every
-  text direction. Without a nearby writing rule, the inner text area's bottom
-  edge aligns with the tap; when a scanned rule spans the tap, the padded box's
-  outer bottom edge aligns with that rule. On iOS and Android, opening reads
-  page metadata without scanning for rules; entering placement scans only the
-  active page asynchronously. Its result stays cached while that page remains
-  active, is reused when placement is re-entered, and is cleared on page or
-  document changes. A pending or failed scan uses ordinary placement. The
-  selected anchor stays fixed as text grows, subject to page-edge clamping. An
-  empty editor has a minimum content width of one font-size unit plus its
-  padding. Idle and selected outlines share the editor's padded frame, while
-  saved text bounds include the same measured box.
-- `setTextDirection('ltr' | 'rtl' | 'auto')` controls the base direction for
-  new text annotations. The React app owns the direction selector and should
-  call this method before placement or while placement is pending. Explicit
-  directions are fixed. On iOS, `auto` follows the keyboard language when UIKit
-  reports one while a new editor is empty. Text with a strong RTL character uses
-  RTL alignment; removing the last RTL character returns to the editor's
-  automatic base direction. Erasing the whole draft lets the direction follow
-  the keyboard again. Committed annotations keep their saved direction. On Android,
-  `auto` uses the keyboard language when available, then the app's visible
-  default direction. Android resamples `auto` while the draft is empty; the
-  first inserted text fixes its direction through keyboard changes and mixed
-  scripts. Erasing the whole draft makes `auto` eligible to resample. IME
-  language reporting is best effort. Text direction controls alignment inside
-  the centered box.
-- On iOS, text selection and movement apply to text hit areas; other edit-mode
-  touches remain available to PencilKit. Editing keeps the current zoom and pans
-  to keep the text outline and caret visible with a 24-point margin when the
-  keyboard-adjusted viewport allows.
-- Text, ink, undo, redo, and clear are managed by the native view.
-- `onStateChange` reports `canUndo`, `canRedo`, `isDirty`, and one of
-  `view`, `draw`, `textPlacement`, `textSelected`, or `textEditing`.
+- View mode supports panning, pinch zoom, and page navigation. Draw mode accepts
+  finger or stylus ink.
+- Call `insertAnnotationOn()` and tap the page to place text. Use
+  `setTextDirection('ltr' | 'rtl' | 'auto')` to choose the direction for new text.
+- Tap existing text to select or edit it. Editing keeps the current zoom and
+  moves the view as needed to keep the text and caret visible.
+- The native view manages ink, text, undo, redo, and clear. `onStateChange`
+  reports editing mode, undo/redo availability, and whether the document changed.
 - The application owns its toolbar and any saved viewport bookmarks.
 
 ## Export

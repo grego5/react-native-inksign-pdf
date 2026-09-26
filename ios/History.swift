@@ -38,6 +38,7 @@ extension InkSignView {
   }
 
   func emitChange(force: Bool = false) {
+    guard !suppressesOpenPresentationCallbacks else { return }
     guard let state = documentCoordinator.document else {
       let mode = textInteractionOverlay.interactionMode()
       let tuple = (false, false, false, mode.stringValue)
