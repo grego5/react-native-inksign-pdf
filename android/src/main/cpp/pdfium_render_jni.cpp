@@ -2,6 +2,7 @@
 
 #include <android/bitmap.h>
 
+#include <cassert>
 #include <cstdint>
 #include <cmath>
 #include <fstream>
@@ -269,7 +270,7 @@ extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativePageDimensions(
     JNIEnv* env, jclass, jlong handle, jint pageIndex) {
   const auto* session = reinterpret_cast<const PdfiumDocumentSession*>(handle);
-  if (session == nullptr || pageIndex < 0) return nullptr;
+  assert(session != nullptr);
 
   PdfiumPageMetadata metadata;
   if (!session->inspectPage(static_cast<std::size_t>(pageIndex), metadata)) {
@@ -280,6 +281,35 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativePageDimensions(
   const jdouble values[] = {metadata.width, metadata.height};
   env->SetDoubleArrayRegion(dimensions, 0, 2, values);
   return dimensions;
+}
+
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeHorizontalSnapCandidates(
+    JNIEnv* env, jclass, jlong handle, jint pageIndex) {
+  const auto* session = reinterpret_cast<const PdfiumDocumentSession*>(handle);
+  assert(session != nullptr);
+  std::vector<margelo::nitro::inksignpdf::pdfium::PdfiumHorizontalSnapCandidate>
+      candidates;
+  if (!session->inspectHorizontalSnapCandidates(
+          static_cast<std::size_t>(pageIndex), candidates)) {
+    return nullptr;
+  }
+  if (candidates.size() >
+      static_cast<std::size_t>((std::numeric_limits<jsize>::max)() / 3)) {
+    return nullptr;
+  }
+  const auto values = env->NewDoubleArray(static_cast<jsize>(candidates.size() * 3));
+  if (values == nullptr) return nullptr;
+  std::vector<jdouble> flattened;
+  flattened.reserve(candidates.size() * 3);
+  for (const auto& candidate : candidates) {
+    flattened.push_back(candidate.left);
+    flattened.push_back(candidate.right);
+    flattened.push_back(candidate.y);
+  }
+  env->SetDoubleArrayRegion(
+      values, 0, static_cast<jsize>(flattened.size()), flattened.data());
+  return values;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

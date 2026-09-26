@@ -60,6 +60,7 @@ class ImagePagePipelineInstrumentationTest {
 
       val session = PdfiumRenderSession.open(candidate.readBytes())
       try {
+        assertTrue(session.horizontalSnapCandidates(0).isEmpty())
         val rendered = Bitmap.createBitmap(160, 100, Bitmap.Config.ARGB_8888)
         try {
           assertTrue(

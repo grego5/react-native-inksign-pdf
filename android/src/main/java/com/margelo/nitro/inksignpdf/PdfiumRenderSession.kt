@@ -23,11 +23,31 @@ internal data class PdfiumPageSize(
   val height: Double,
 )
 
+internal data class PdfiumHorizontalSnapCandidate(
+  val left: Double,
+  val right: Double,
+  val y: Double,
+)
+
 /** Worker-owned bridge to one detached PDFium document session. */
 internal class PdfiumRenderSession private constructor(
   private var nativeHandle: Long,
   val pageCount: Int,
 ) : AutoCloseable {
+  fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> {
+    check(pageIndex in 0 until pageCount) { "Invalid PDFium page index: $pageIndex" }
+    val handle = nativeHandle
+    if (handle == 0L) {
+      throw PdfSessionException("pdfium_closed", "The PDFium render session is closed")
+    }
+    val values = nativeHorizontalSnapCandidates(handle, pageIndex) ?: DoubleArray(0)
+    check(values.size % 3 == 0) { "PDFium returned incomplete snap candidate data" }
+    return List(values.size / 3) { index ->
+      val offset = index * 3
+      PdfiumHorizontalSnapCandidate(values[offset], values[offset + 1], values[offset + 2])
+    }
+  }
+
   fun pageSize(pageIndex: Int): PdfiumPageSize {
     check(pageIndex in 0 until pageCount) { "Invalid PDFium page index: $pageIndex" }
     val handle = nativeHandle
@@ -131,6 +151,12 @@ internal class PdfiumRenderSession private constructor(
 
     @JvmStatic
     private external fun nativePageDimensions(handle: Long, pageIndex: Int): DoubleArray?
+
+    @JvmStatic
+    private external fun nativeHorizontalSnapCandidates(
+      handle: Long,
+      pageIndex: Int,
+    ): DoubleArray?
 
     @JvmStatic
     private external fun nativeRenderPageIntoBitmap(

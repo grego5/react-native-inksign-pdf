@@ -36,10 +36,12 @@ and export.
   selection are temporary presentation state.
 - Stored geometry uses canonical page coordinates: media-box-relative with a
   top-left origin. Viewport transforms are presentation-only.
-- Opening creates a module-owned working copy. Page mutations prepare and
-  validate a detached document candidate before publication. A failed,
-  cancelled, or stale operation leaves the published document in place; the
-  caller's source is never overwritten.
+- Opening prepares a module-owned candidate while the current presentation
+  remains usable. A current open failure clears the published document before
+  rejection; a superseded attempt cannot change a newer open. Page mutations
+  prepare and validate a detached candidate, and failed, cancelled, or stale
+  mutations leave the published document in place. The caller's source is
+  never overwritten.
 - Finalize exports an immutable snapshot of committed content from the current
   working document to a separate output. It does not consume or replace the
   working document.

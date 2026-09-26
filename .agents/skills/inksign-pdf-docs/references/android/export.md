@@ -1,29 +1,33 @@
 # Android PDF export
 
-Export uses a snapshot of committed page content from the published working
-document. PDF parsing, page-object creation, candidate validation, and
-serialization use PDFium on the export worker. Instrumentation uses PDFium for
-raster and page metadata checks and PDFBox for independent logical-text extraction.
+## Snapshot and output
 
-Original PDF pages and their order are preserved. Committed ink and text are
-added as vector PDF content; active gestures and editor state are excluded.
-Android chooses annotation fonts from system fallback. On API 31 and newer the
-export snapshot includes selected font data; PDFium's HarfBuzz shapes each run
-and supplies glyph-cluster mappings, explicit positions, and embedded font
-objects when the font's embedding permissions allow it. A line-level
-`ActualText` mapping keeps extraction in logical Unicode order for mixed RTL and
-LTR text. Direction is stored with each annotation and can be selected with the
-React view ref. In automatic mode, a newly created draft promotes to RTL when
-it contains a strong RTL character and returns to its automatic base direction
-when the last strong RTL character is deleted.
+- Export snapshots committed page content from the published working document.
+  Active gestures and editor drafts are excluded.
+- The PDFium worker preserves source pages and their order, adds ink as vector paths
+  and text as positioned PDF text objects, then serializes a candidate.
+- Reopen the candidate with PDFium and validate page metadata, object counts, path
+  geometry, text font sizes, and placements before atomically publishing it.
+- Export leaves the caller's source and working document unchanged. Stale or cancelled
+  work cannot publish an output.
 
-Android does not expose selected font bytes on API 24–30. Those releases use
-PDFium's standard-font fallback as a best-effort path. Missing glyph coverage or
-embedding permission alone does not reject finalize; affected glyphs may be
-blank or partial.
+## Text and fonts
 
-PDFium reopens the serialized candidate before publication and checks page
-metadata, vector-object counts, path geometry, text-object font sizes, and text
-placements against the export snapshot. Export does not replace the caller's
-source or the working document, and stale or cancelled work cannot publish an
-output.
+- Store the annotation's base direction and logical Unicode text. Export uses that
+  direction for shaping and placement; it does not reverse the source string.
+- On API 31+, Android system fallback selects fonts and supplies font resources.
+  PDFium's HarfBuzz shapes runs with cluster mappings and explicit positions.
+  `ToUnicode` maps glyphs to characters; line-level `/ActualText` preserves logical
+  extraction order for mixed RTL and LTR text. Embed a selected font only when its
+  embedding rights allow it.
+- On API 24–30, selected Android font bytes are unavailable; use PDFium's standard-font
+  fallback as a best-effort path. Missing glyph coverage or embedding rights alone do
+  not reject finalize; affected glyphs may be blank or partial.
+
+## Verification
+
+- Android instrumentation checks PDFium rendering and metadata plus independent logical-text
+  extraction with PDFBox.
+
+Direction selection and editing behavior are described in
+[viewport-input.md](viewport-input.md).

@@ -336,6 +336,59 @@ class PageViewportTest {
   }
 
   @Test
+  fun textFocusKeepsVisibleEditorPositionAndMovesOnlyWhenKeyboardObscuresIt() {
+    val viewport = PageViewport(
+      page = PdfPageDimensions(1000.0, 800.0),
+      initialSize = ViewportSize(400.0, 300.0, density = 1.0),
+    )
+    viewport.setZoom(2.0, PagePoint(500.0, 400.0))
+    val bounds = PageRect(500.0, 410.0, 550.0, 440.0)
+    val caret = PageRect(500.0, 410.0, 501.0, 430.0)
+
+    val visible = viewport.targetForTextEditing(bounds, caret, paddingPx = 24.0)
+    assertEquals(PagePoint(500.0, 400.0), visible.focus)
+
+    viewport.setBottomInsetPx(100.0)
+    val obscured = viewport.targetForTextEditing(bounds, caret, paddingPx = 24.0)
+    assertTrue(obscured.focus.y > 400.0)
+    viewport.setViewport(obscured.zoom, obscured.focus)
+    assertTrue(
+      viewport.pageToView(PagePoint(550.0, 440.0)).y <= viewport.usableHeightPx - 24.0 + epsilon,
+    )
+  }
+
+  @Test
+  fun placementZoomTargetsEditorWithoutReducingHigherCurrentZoom() {
+    val viewport = PageViewport(
+      page = PdfPageDimensions(1000.0, 800.0),
+      initialSize = ViewportSize(400.0, 300.0, density = 1.0),
+    )
+    viewport.setZoom(1.0, PagePoint(500.0, 400.0))
+    val bounds = PageRect(600.0, 410.0, 650.0, 440.0)
+    val caret = PageRect(600.0, 410.0, 601.0, 430.0)
+
+    val zoomed = viewport.targetForTextEditing(
+      bounds,
+      caret,
+      paddingPx = 24.0,
+      minimumZoom = 2.5,
+      zoomAnchor = PagePoint(640.0, 420.0),
+    )
+    assertEquals(2.5, zoomed.zoom, epsilon)
+    assertEquals(PagePoint(640.0, 420.0), zoomed.focus)
+
+    viewport.setZoom(3.0, PagePoint(500.0, 400.0))
+    val higher = viewport.targetForTextEditing(
+      editorBounds = PageRect(450.0, 390.0, 500.0, 410.0),
+      caret = PageRect(450.0, 390.0, 451.0, 410.0),
+      paddingPx = 24.0,
+      minimumZoom = 2.0,
+    )
+    assertEquals(3.0, higher.zoom, epsilon)
+    assertEquals(PagePoint(500.0, 400.0), higher.focus)
+  }
+
+  @Test
   fun textLineVisibilityMovesOnlyVerticallyAsNativeCaretScrolls() {
     val viewport = PageViewport(
       page = PdfPageDimensions(1000.0, 800.0),

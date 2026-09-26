@@ -1,58 +1,37 @@
 # Android viewport and input
 
-## Contract
+## Viewport
 
-- View/document state is UI-thread-owned. Viewport work requires a loaded page
-  and usable layout; stale worker results cannot replace newer state.
-- Geometry uses media-box-relative page units with a top-left origin. The shared
-  transform drives tiles, ink, text, hit testing, and editor placement, while
-  stored content remains in canonical units.
-- `open()` and page switches fit and center the page unless options override it.
-  Synchronous commands validate before returning; `getViewport()` throws when
-  the document or layout is not ready.
-- Page commands validate on the UI thread, then post the switch. A newer
-  request silently supersedes an older one; `onPageChange` fires only after the
-  target is installed, and post-return failures are logged natively.
+- View and document state belong to the UI thread. Page geometry stays in
+  canonical, top-left page coordinates; one transform maps it to the view.
+- Opening and page changes fit the page unless viewport options override it.
+  Page-change events follow installation, and newer navigation requests replace
+  older pending requests.
 
-## Text input
+## Text
 
-- `TextInteractionOverlay` owns hit testing, editing, dragging, keyboard
-  avoidance, and one-shot placement. Text taps edit immediately; completed
-  drags create at most one history mutation, while cancelled or unchanged
-  interactions create none.
-- New annotation direction comes from the explicit LTR/RTL choice or, in
-  `auto`, the current IME subtype while the draft is empty. The first inserted
-  text locks direction through keyboard changes and mixed scripts; erasing the
-  full draft makes `auto` eligible to sample again. Missing subtype data keeps
-  the current empty-editor direction, and IME reporting is best effort.
-- Text-owned streams do not enter ink or navigation. Placement consumes one
-  valid in-page tap after inverse-transforming it into page coordinates.
-- An unselected text hit selects on long press and can drag during that hold.
-  Once selected, movement past touch slop starts a drag immediately; a stationary
-  tap edits it, and movement past slop on unselected text pans the viewport.
-- The placement tap marks the bottom of the editor frame; horizontal anchoring
-  remains left for LTR and right for RTL. Empty content width starts at one em.
-  The measured editor frame is clamped to the page; near the top edge, this can
-  move its bottom below the tap.
-- Idle outlines, selected outlines, and text hit testing share the content
-  bounds expanded by the editor's pixel padding at the current zoom. Saved
-  annotation bounds keep native text-layout dimensions without that padding.
-- Editor frames and active selection endpoints are reconciled through the
-  shared page-to-view transform. Entering edit preserves the current zoom and
-  pans the outer editor into the usable viewport; if it is too wide, focus stays
-  around the active caret. Caret follow runs once after editor layout with the
-  current page transform, keeping the caret and adjacent padded line within a
-  24 dp margin where the page permits and using the keyboard-adjusted usable
-  height. Viewport movement never changes the stored page anchor.
-- After the placement tap ends, a drag that starts outside the editor pans the
-  viewport while the editor remains active; the completed placement stream is
-  required before a later drag can be routed this way.
+- `TextInteractionOverlay` owns text placement, hit testing, editing, dragging,
+  and keyboard avoidance. Text gestures do not enter ink or page navigation.
+- `insertAnnotationOn()` arms placement and reports `textPlacement`. A valid
+  page tap creates one editor on finger-up; an out-of-page tap leaves placement
+  armed. A later outside-editor tap finishes editing. Failed commands return
+  their errors to the caller.
+- Placement centers the box horizontally and aligns its inner bottom to the
+  tap, subject to page clamping. Rule snapping is loaded lazily for the active
+  page and discarded on page or document change.
+- Explicit text direction stays fixed. `auto` uses the IME language when
+  available, otherwise the app default. RTL text switches alignment while
+  present; deleting it restores the base direction. Save the effective
+  direction with the annotation.
+- Placement zoom uses `doubleTap.zoom` (default 2×) without reducing a higher
+  current zoom. Editing preserves the page anchor; keyboard avoidance and caret
+  following move the viewport only as needed to expose the active text.
+- Editing or dragging an existing annotation does not apply placement snapping.
+  Text selection, outlines, and editing share the same page-to-view geometry.
 
-## Ink and navigation input
+## Ink and navigation
 
-- View mode owns page navigation; ordinary pan and pinch remain viewport input.
-  RTL reverses page mapping. Reversal, context changes, mode changes,
-  replacement, detachment, and disposal cancel pending navigation.
-- Edit mode accepts one direct finger or stylus pointer. Unsupported tools,
-  secondary contacts, and out-of-page points are rejected; samples use a frozen
-  transform and pen configuration for the stroke.
+- View mode owns page navigation; pan and pinch remain viewport input. RTL
+  reverses page mapping.
+- Edit mode accepts a single finger or stylus stroke using the transform and
+  pen settings captured at stroke start.

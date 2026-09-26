@@ -4,6 +4,8 @@ param(
     [string]$Mode = "jvm",
     [Alias("Selector")]
     [string]$Test,
+    [ValidateSet("arm64-v8a", "x86", "x86_64")]
+    [string]$Abi = "arm64-v8a",
     [switch]$AllDevices,
     [switch]$RefreshDependencies
 )
@@ -280,6 +282,9 @@ function Get-ArtifactPaths([string]$ArtifactMode) {
 if ($AllDevices -and $Mode -ne "connected") {
     Stop-Runner "-AllDevices is only valid with -Mode connected"
 }
+if ($Mode -eq "jvm" -and $PSBoundParameters.ContainsKey("Abi")) {
+    Stop-Runner "-Abi is only valid with -Mode build or connected"
+}
 if ($Mode -eq "build" -and -not [string]::IsNullOrWhiteSpace($Test)) {
     Stop-Runner "-Test is only valid with -Mode jvm or -Mode connected"
 }
@@ -291,7 +296,7 @@ if ($null -ne $gradle.UserHome) {
 }
 $gradleArguments += @("-p", $androidProject)
 if ($Mode -eq "build" -or $Mode -eq "connected") {
-    $gradleArguments += "-PreactNativeArchitectures=arm64-v8a,x86_64"
+    $gradleArguments += "-PreactNativeArchitectures=$Abi"
 }
 if ($Mode -eq "jvm") {
     $gradleArguments += "${moduleProject}:testDebugUnitTest"

@@ -1,38 +1,56 @@
-# 02 — Text box and caret placement
+# 02 — Text box placement and writing-rule snapping
 
-[Task index](../TASKS.md) · Status: Implemented; runtime validation pending · Complexity: Medium
+[Task index](../TASKS.md) · Status: Implementation in progress · Complexity: High
 
 ## Objective
 
-Make idle, selected, and editing text outlines use one outer rectangle. A new empty box starts about one character wide, and the placement tap indicates the initial caret content edge rather than the box center.
+Place a new text box horizontally centered on its original tap. With no matching
+writing rule, align the inner text area's bottom edge to the tap. When a nearby
+horizontal rule spans the tap, align the padded box's outer bottom edge to the
+rule. Preserve the chosen center and bottom anchor as text grows, subject to
+page-edge clamping.
 
-## Non-goals
+## Direction
 
-No font-size change, export-coordinate change, persisted outline padding, or Android layout change.
+- Explicit `ltr` and `rtl` remain authoritative.
+- For `auto`, use the keyboard language when available and otherwise the device
+  locale while the new editor is empty. Keyboard-language changes may update
+  the empty editor.
+- Text containing a strong RTL character uses RTL alignment. When the last such
+  character is deleted, restore the editor's automatic base direction. Erasing
+  all content allows the keyboard language to update that base again.
+- Direction changes affect alignment inside the box; they do not move its
+  horizontal center or selected vertical anchor. Save the effective direction
+  with the committed annotation.
 
-## Read before editing
+## Writing rules
 
-- `ios/TextInteraction.swift`: `placeTextAt`, `showEditor`, `layoutEditor`, `measureEditor`, `outlineBounds`, `annotation(at:)`, `draw`, `settledAnnotation`.
-- `ios/TextRendering.swift`: `InkSignPdfTextStyle.presentationInsets` and renderer measurement; `ios/TextState.swift`: annotation bounds; `ios/tests/InkSignViewTextInteractionTests.swift`.
-- `.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md`: canonical and presentation coordinates.
+- Opening reads page metadata without scanning for placement rules. Entering
+  placement scans only the active page asynchronously for horizontal stroked
+  paths and rows of small, evenly spaced filled rectangles.
+- Keep the result in memory while that page remains active and reuse it when
+  placement is entered again. Clear it when the page or document changes. A
+  replaced, closed, or disposed document ignores late results. Apply this
+  lifetime on both Android and iOS.
+- A tap selects only a nearby candidate whose horizontal span contains the
+  touch. Until candidates are ready, or when no candidate qualifies, use
+  ordinary placement.
+- Select the rule before measuring and showing the editor. If its box cannot
+  fit above the rule, use ordinary placement. Keep the choice as temporary
+  editor state; do not add detector metadata to annotations.
 
-## Baseline before implementation
+## Verification
 
-`showEditor` centers a new box on the tap. Empty editor width can shrink to a device pixel. Editing draws `editor.frame`, while idle/selected outlines derive from transformed annotation bounds; hit testing has a separate minimum target. Stored bounds remain canonical page units.
-
-## Implementation
-
-1. Use one one-em minimum empty content width, capped by available page width; retain TextKit-measured width for nonempty text. Keep the final TextKit container width, caret, and selection layout synchronized as the editor grows.
-2. Interpret placement as first-line caret content start: LTR left or RTL right at the tapped vertical start. Account for `presentationInsets` and page-to-overlay transform. Clamp the box to the page, then derive the saved content anchor from that frame. Do not center on the tap.
-3. Keep committed bounds and live editor in the same canonical content geometry. Derive idle and selected outlines from one outer-rectangle calculation with consistent screen-space padding and stroke at the current scale. Use the same visible rectangle for selection hit testing; keep presentation padding out of persisted bounds.
-4. Update the iOS viewport/input reference and README placement statement after implementation.
-
-## Tests and acceptance
-
-- Add a small deterministic contract for content-to-outline conversion, tap-to-anchor placement, and page-edge clamping in LTR/RTL. Do not use pixel-perfect automated assertions for caret/font visual fidelity.
-- On simulator/device, place text near center and edges at two zooms; compare caret, editor outline, committed outline, and selected outline. The tap should land at the caret edge unless clamped.
-- Run `tools\test-ios-lifecycle.ps1` and focused text XCTest on macOS; report unavailable checks.
+- Cover the supplied four-rule and dotted-row PDFs, ordinary placement while a
+  scan is pending, no match, stale generations, and page-edge clamping.
+- Cover LTR, RTL, automatic direction, strong-RTL insertion and deletion, and
+  keyboard-language changes while empty.
+- Verify that the first displayed box is centered on the touch, uses the
+  selected bottom anchor, and retains that anchor while text grows.
+- Inspect representative placement on an iOS simulator or device at multiple
+  zoom levels, alongside drawing and PDF navigation.
 
 ## Completion
 
-The box starts near one em, follows the placement caret, and keeps one outline geometry through edit, commit, and selection. Proposed commit: `fix(ios): align text outlines and placement caret`.
+Automated tests cover stable geometry and scanner contracts. Visual placement
+and gesture quality are verified through representative runtime inspection.

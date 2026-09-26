@@ -52,6 +52,7 @@ class HybridInkSignView internal constructor(
   private val textOverlay = TextInteractionOverlay(context, surface)
   private val pendingOutputs = LinkedHashSet<File>()
   private val ownedOutputs = LinkedHashSet<File>()
+  private val mainHandler = Handler(Looper.getMainLooper())
   @Volatile private var viewportRequestID = 0L
   private var pageNavigationRequestID = 0L
   @Volatile private var disposed = false
@@ -174,16 +175,18 @@ class HybridInkSignView internal constructor(
       if (surface.isEditMode) textOverlay.clearSelectionForHostMode()
     }
     surface.onWindowFocusLost = textOverlay::finishForLifecycle
-    textOverlay.onInteractionModeChanged = { emitState() }
+    textOverlay.onInteractionModeChanged = {
+      if (!surface.isOpenHandoffInProgress) emitState()
+    }
     textOverlay.setDefaultFontSize(defaultTextFontSize)
     surface.onStateChange = { state ->
-      if (!disposed) {
+      if (!disposed && !surface.isOpenHandoffInProgress) {
         lastInkState = state
         emitState()
       }
     }
     surface.onPageChange = { page ->
-      if (!disposed) onPageChange?.invoke(toPublicPageInfo(page))
+      if (!disposed && !surface.isOpenHandoffInProgress) onPageChange?.invoke(toPublicPageInfo(page))
     }
   }
 
@@ -191,43 +194,35 @@ class HybridInkSignView internal constructor(
     return launchPromise {
       checkMainThread()
       if (disposed) throw operationCancelled()
-      pageInputCoordinator.cancelPending()
       val viewport = ViewportRequestParser.parseOpen(options)
       val fallbackFontSnapshot = fallbackFont
-      val hadDocument = coordinator.hasDocument
-      val previousViewport = if (hadDocument) surface.currentViewportState() else null
-      val previousEditMode = editMode
       logFallbackFontSnapshot(fallbackFontSnapshot)
       val pageInfo = coordinator.executeOpen(
         sourcePath = path,
         fallbackFont = fallbackFontSnapshot,
-        preparePresentation = { info ->
-          surface.prepareDocumentPresentation(info.pages.first(), viewport)
+        awaitContainerSize = { surface.awaitUsableViewportSize() },
+        preparePresentation = { info, size ->
+          val presentation = surface.prepareDocumentPresentation(info, viewport, size)
+          presentation to toPublicPageInfo(presentation.pageInfo)
         },
-        installPresentation = { prepared ->
+        beginHandoff = {
+          pageInputCoordinator.cancelPending()
+          surface.beginOpenHandoff()
+          textOverlay.finishForLifecycle()
+        },
+        publishPresentation = { (prepared, pageInfo) ->
           viewportRequestID += 1L
           pageNavigationRequestID += 1L
-          surface.installDocumentPresentation(prepared, notifyContent = false)
+          surface.publishOpenDocumentPresentation(prepared)
           editMode = false
-          surface.setEditMode(false)
-          toPublicPageInfo(surface.currentPageInfo())
+          pageInfo
         },
-        restorePresentation = {
-          if (hadDocument) {
-            surface.installDocumentPresentation(
-              zoom = previousViewport?.zoom,
-              focus = previousViewport?.focus,
-              fitToPage = previousViewport == null,
-            )
-            editMode = previousEditMode
-            surface.setEditMode(previousEditMode)
-          } else {
-            surface.clearDocument()
-          }
+        notifyPublished = {
+          surface.notifyPublishedOpenDocumentPresentation()
         },
+        abortHandoff = { surface.abortOpenHandoff() },
       )
       lastInkState = InkState(false, false, false)
-      runCatching { textOverlay.syncContent() }
       runCatching { emitState() }
       pageInfo
     }
@@ -426,11 +421,27 @@ class HybridInkSignView internal constructor(
       surface.requireModeTransitionReady()
       viewportRequestID += 1L
       val requestID = viewportRequestID
+      val generation = coordinator.generation
+      val pageIndex = surface.currentPageInfo().pageIndex
       surface.withStateTransaction {
         textOverlay.finishForLifecycle()
         surface.transitionToMode(enabled = false, viewport = ViewportRequest.Preserve)
         if (disposed || requestID != viewportRequestID) throw operationCancelled()
-        textOverlay.armPlacement(coordinator.generation)
+        textOverlay.armPlacement(generation)
+      }
+      loadSnapCandidatesForTextPlacement(generation, pageIndex)
+    }
+  }
+
+  private fun loadSnapCandidatesForTextPlacement(generation: Long, pageIndex: Int) {
+    if (surface.hasSnapCandidateMeasurement(generation, pageIndex)) return
+    val pageSwitchId = surface.currentPageSwitchId
+    coordinator.horizontalSnapCandidates(generation, pageIndex) { result ->
+      val candidates = result.getOrNull() ?: return@horizontalSnapCandidates
+      mainHandler.post {
+        if (!disposed) {
+          surface.installSnapCandidateMeasurement(generation, pageIndex, pageSwitchId, candidates)
+        }
       }
     }
   }

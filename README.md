@@ -276,8 +276,12 @@ finalize()
 ```
 
 `open(path)` explicitly replaces the current PDF and returns its page metadata.
-If replacement fails, the current document remains open. Use `addPages()` for
-the native picker: with no document it creates one; otherwise it appends pages.
+The current document remains usable while the replacement is prepared. If the
+current open attempt fails, the viewer is cleared before rejection. A newer open
+supersedes preparation without changing the current viewer; if superseded after
+installation begins, that presentation is cleared before the newest open starts.
+Use `addPages()` for the native picker: with no document it creates one; otherwise
+it appends pages.
 The picker accepts PDFs and images by default, expands every selected PDF in
 page order, and creates one page per image. `type: 'pdf'` or `type: 'image'`
 restricts the picker. Selection order is retained.
@@ -340,26 +344,36 @@ argument preserves the current viewport where applicable.
 - Edit mode accepts finger or stylus input for velocity-driven ink. The
   viewport stays fixed while drawing; text editing may pan at the current zoom.
 - `insertAnnotationOn()` arms one text placement; the next page tap opens the
-  native text editor. The tap places the initial caret at the content edge
-  (left for LTR, right for RTL); a new empty box starts at one em wide and
-  stays inside the page. Idle and selected outlines share the editor's padded
-  frame, while saved text bounds exclude that presentation padding.
+  native text editor. The editor is horizontally centered on the tap for every
+  text direction. Without a nearby writing rule, the inner text area's bottom
+  edge aligns with the tap; when a scanned rule spans the tap, the padded box's
+  outer bottom edge aligns with that rule. On iOS and Android, opening reads
+  page metadata without scanning for rules; entering placement scans only the
+  active page asynchronously. Its result stays cached while that page remains
+  active, is reused when placement is re-entered, and is cleared on page or
+  document changes. A pending or failed scan uses ordinary placement. The
+  selected anchor stays fixed as text grows, subject to page-edge clamping. An
+  empty editor has a minimum content width of one font-size unit plus its
+  padding. Idle and selected outlines share the editor's padded frame, while
+  saved text bounds include the same measured box.
 - `setTextDirection('ltr' | 'rtl' | 'auto')` controls the base direction for
   new text annotations. The React app owns the direction selector and should
   call this method before placement or while placement is pending. Explicit
   directions are fixed. On iOS, `auto` follows the keyboard language when UIKit
-  reports one while a new editor is empty. It locks on first content and follows
-  again if erased. Committed annotations keep their saved direction. On Android,
+  reports one while a new editor is empty. Text with a strong RTL character uses
+  RTL alignment; removing the last RTL character returns to the editor's
+  automatic base direction. Erasing the whole draft lets the direction follow
+  the keyboard again. Committed annotations keep their saved direction. On Android,
   `auto` uses the keyboard language when available, then the app's visible
   default direction. Android resamples `auto` while the draft is empty; the
   first inserted text fixes its direction through keyboard changes and mixed
   scripts. Erasing the whole draft makes `auto` eligible to resample. IME
-  language reporting is best effort. RTL anchors the right edge and LTR anchors
-  the left.
-- On iOS, the placement tap anchors the first caret edge. Text selection and
-  movement apply to text hit areas; other edit-mode touches remain available to
-  PencilKit. Editing keeps the current zoom and pans to keep the text outline and
-  caret visible with a 24-point margin when the keyboard-adjusted viewport allows.
+  language reporting is best effort. Text direction controls alignment inside
+  the centered box.
+- On iOS, text selection and movement apply to text hit areas; other edit-mode
+  touches remain available to PencilKit. Editing keeps the current zoom and pans
+  to keep the text outline and caret visible with a 24-point margin when the
+  keyboard-adjusted viewport allows.
 - Text, ink, undo, redo, and clear are managed by the native view.
 - `onStateChange` reports `canUndo`, `canRedo`, `isDirty`, and one of
   `view`, `draw`, `textPlacement`, `textSelected`, or `textEditing`.

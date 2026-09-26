@@ -880,10 +880,10 @@ class SurfaceViewTest {
       val completed = CountDownLatch(1)
       worker.prepareOpen(generation, "test.pdf", null) { prepared ->
         result.set(prepared)
-        assertTrue(worker.commitPreparedOpen(generation) { committed ->
+        worker.commitPreparedOpen(generation) { committed ->
           if (committed.isFailure) result.set(Result.failure(checkNotNull(committed.exceptionOrNull())))
           completed.countDown()
-        })
+        }
       }
       assertTrue(completed.await(5L, TimeUnit.SECONDS))
       val info = result.get().getOrThrow()
