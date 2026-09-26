@@ -87,6 +87,13 @@ struct PdfiumRenderMatrix final {
   double f = 0.0;
 };
 
+/** Horizontal writing guide in canonical top-left page coordinates. */
+struct PdfiumHorizontalSnapCandidate final {
+  double left = 0.0;
+  double right = 0.0;
+  double y = 0.0;
+};
+
 struct PdfiumOpenResult final {
   std::unique_ptr<class PdfiumDocumentSession> session;
   PdfiumError error;
@@ -134,6 +141,9 @@ class PdfiumDocumentSession final {
   std::size_t pageCount() const;
   PdfiumError inspectPage(std::size_t pageIndex,
                           PdfiumPageMetadata& metadata) const;
+  PdfiumError inspectHorizontalSnapCandidates(
+      std::size_t pageIndex,
+      std::vector<PdfiumHorizontalSnapCandidate>& candidates) const;
   PdfiumError renderPage(const PdfiumPageRenderRequest& request) const;
   PdfiumError close() noexcept;
 

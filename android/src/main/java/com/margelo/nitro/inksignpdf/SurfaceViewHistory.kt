@@ -12,6 +12,17 @@ internal fun SurfaceView.notifyStateChange() {
   onStateChange?.invoke(state)
 }
 
+internal fun SurfaceView.reconcileStateAfterOpenAbort() {
+  requireOnUiThread()
+  val state = reportedState()
+  lastReportedState = state
+  if (stateNotificationsSuspended > 0) {
+    stateNotificationPending = true
+  } else {
+    onStateChange?.invoke(state)
+  }
+}
+
 internal fun SurfaceView.withStateTransaction(action: () -> Unit) {
   requireOnUiThread()
   stateNotificationsSuspended += 1

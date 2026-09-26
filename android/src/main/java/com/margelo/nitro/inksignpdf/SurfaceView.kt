@@ -10,10 +10,12 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.HapticFeedbackConstants
 import kotlin.math.max
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 internal data class PreparedDocumentPresentation(
-  val dimensions: PdfPageDimensions,
-  val viewport: OpenViewport,
+  val viewport: PageViewport,
+  val pageInfo: PdfPageInfo,
 )
 
 /**
@@ -65,6 +67,7 @@ internal class SurfaceView(
   internal val inkRenderer = InkRenderer()
   internal val sessionWorker: PdfSessionWorker = documentCoordinator.sessionWorker
   private var pageSwitchRequestId = 0L
+  internal val currentPageSwitchId: Long get() = pageSwitchRequestId
   internal val documentController = InkDocumentController(
     context = context,
     sessionWorker = sessionWorker,
@@ -123,6 +126,14 @@ internal class SurfaceView(
   internal var predictionDurationNanos = 0L
   internal val perfetto = InkPerfetto()
   private var editMode = false
+  private var openHandoffInProgress = false
+  private data class SnapCandidateMeasurement(
+    val generation: Long,
+    val pageIndex: Int,
+    val candidates: List<PdfiumHorizontalSnapCandidate>,
+  )
+  private var snapCandidateMeasurement: SnapCandidateMeasurement? = null
+  internal val isOpenHandoffInProgress: Boolean get() = openHandoffInProgress
   // Standalone test hosts are not attached to a window; explicit focus-loss callbacks still
   // gate preparation exactly like a real attached view.
   private var pageNavigationWindowFocus = true
@@ -195,36 +206,85 @@ internal class SurfaceView(
     fitToPage: Boolean = true,
     notifyState: Boolean = false,
   ) {
-    val dimensions = documentCoordinator.pageSnapshot(0).dimensions
+    val snapshot = documentCoordinator.presentationSnapshot()
+    val dimensions = snapshot.pages[snapshot.activePageIndex].dimensions
     installDocumentPresentationForPage(dimensions, zoom, focus, fitToPage, notifyState)
   }
 
+  fun publishOpenDocumentPresentation(prepared: PreparedDocumentPresentation): PdfPageInfo {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    lastReportedState = InkState(false, false, false)
+    inkRenderer.clearCompleted()
+    clearActivePresentation()
+    clearSnapCandidateMeasurement()
+    pageSwitchRequestId += 1L
+    documentController.installPreparedPage(prepared.viewport)
+    inkRenderer.setCompletedHistory(emptyList())
+    committedTextLayer = TextRenderLayer.empty()
+    editMode = false
+    openHandoffInProgress = false
+    invalidate()
+    return prepared.pageInfo
+  }
+
+  fun beginOpenHandoff() {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    openHandoffInProgress = true
+    cancelActiveStroke()
+    pageNavigationController.cancel()
+    documentController.suspendTileRequests()
+  }
+
+  fun abortOpenHandoff() {
+    requireOnUiThread()
+    if (disposed) return
+    openHandoffInProgress = false
+    documentController.resumeTileRequests()
+    invalidate()
+    reconcileStateAfterOpenAbort()
+  }
+
+  fun notifyPublishedOpenDocumentPresentation() {
+    requireOnUiThread()
+    if (disposed) return
+    documentController.resumeTileRequests()
+    invalidate()
+    runCatching { onTextContentChanged?.invoke() }
+    runCatching { onPageChange?.invoke(currentPageInfo()) }
+  }
+
+  suspend fun awaitUsableViewportSize(): ViewportSize {
+    requireOnUiThread()
+    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    documentController.usableViewportSize()?.let { return it }
+    return suspendCancellableCoroutine { continuation ->
+      val removeListener = documentController.onUsableViewportSize { size ->
+        if (continuation.isActive) continuation.resume(size)
+      }
+      continuation.invokeOnCancellation { removeListener() }
+    }
+  }
+
   fun prepareDocumentPresentation(
-    dimensions: PdfPageDimensions,
+    info: PdfSessionInfo,
     viewport: OpenViewport,
+    size: ViewportSize,
   ): PreparedDocumentPresentation {
     requireOnUiThread()
     if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
-    if (!dimensions.width.isFinite() || dimensions.width <= 0.0 ||
-      !dimensions.height.isFinite() || dimensions.height <= 0.0
-    ) {
-      throw PdfSessionException("pdf_load_failed", "The opened PDF contains invalid page dimensions")
+    val dimensions = info.pages.first()
+    val pageViewport = PageViewport(dimensions, size)
+    val target = if (viewport.fitToPage) {
+      PageViewportTarget(pageViewport.fitZoom(), PagePoint(dimensions.width / 2.0, dimensions.height / 2.0))
+    } else {
+      checkNotNull(pageViewport.targetFor(ViewportRequest.FocusAndZoom(viewport.focus, viewport.zoom)))
     }
-    return PreparedDocumentPresentation(dimensions, viewport)
-  }
-
-  fun installDocumentPresentation(
-    prepared: PreparedDocumentPresentation,
-    notifyState: Boolean = false,
-    notifyContent: Boolean = true,
-  ) {
-    installDocumentPresentationForPage(
-      prepared.dimensions,
-      prepared.viewport.zoom,
-      prepared.viewport.focus,
-      prepared.viewport.fitToPage,
-      notifyState,
-      notifyContent,
+    pageViewport.setViewport(target.zoom, target.focus)
+    return PreparedDocumentPresentation(
+      viewport = pageViewport,
+      pageInfo = PdfPageInfo(pageIndex = 0, pageCount = info.pageCount, dimensions = dimensions),
     )
   }
 
@@ -241,6 +301,7 @@ internal class SurfaceView(
     cancelActiveStroke()
     pageNavigationController.cancel()
     resetDocumentHistories()
+    clearSnapCandidateMeasurement()
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()
     clearActivePresentation()
@@ -251,6 +312,11 @@ internal class SurfaceView(
       focus = focus,
       fitToPage = fitToPage,
     )
+    if (documentCoordinator.hasDocument) {
+      val snapshot = documentCoordinator.presentationSnapshot()
+      val active = snapshot.pages[snapshot.activePageIndex]
+      inkRenderer.setCompletedHistory(active.content.mapNotNull { it.inkOutlineOrNull() })
+    }
     rebuildCommittedTextLayer()
     val previousState = lastReportedState
     lastReportedState = reportedState()
@@ -262,9 +328,11 @@ internal class SurfaceView(
   fun clearDocument() {
     requireOnUiThread()
     if (disposed) return
+    openHandoffInProgress = false
     cancelActiveStroke()
     pageNavigationController.cancel()
     resetDocumentHistories()
+    clearSnapCandidateMeasurement()
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()
     clearActivePresentation()
@@ -303,6 +371,7 @@ internal class SurfaceView(
     pageNavigationController.cancel()
     pageSwitchRequestId += 1L
     val active = snapshot.pages[snapshot.activePageIndex]
+    clearSnapCandidateMeasurement()
     documentController.setPage(dimensions = active.dimensions, fitToPage = true)
     inkRenderer.setCompletedHistory(active.content.mapNotNull { it.inkOutlineOrNull() })
     rebuildCommittedTextLayer()
@@ -394,6 +463,7 @@ internal class SurfaceView(
     if (pageIndex == state.activePageIndex) return currentPageInfo()
     cancelActiveStroke()
     val target = state.activatePage(pageIndex)
+    clearSnapCandidateMeasurement()
     pageSwitchRequestId += 1L
     documentController.setPage(
       dimensions = target.dimensions,
@@ -422,6 +492,7 @@ internal class SurfaceView(
     }
     cancelActiveStroke()
     val target = state.activatePage(handoff.targetPageIndex)
+    clearSnapCandidateMeasurement()
     pageSwitchRequestId = handoff.pageSwitchId
     documentController.setPage(dimensions = target.dimensions, fitToPage = true)
     inkRenderer.setCompletedHistory(target.content.mapNotNull { it.inkOutlineOrNull() })
@@ -494,6 +565,16 @@ internal class SurfaceView(
   internal fun focusTextForEditing(rect: PageRect, caret: PageRect, paddingPx: Double): Boolean {
     requireOnUiThread()
     return documentController.focusTextForEditing(rect, caret, paddingPx)
+  }
+
+  internal fun focusTextForPlacement(
+    rect: PageRect,
+    caret: PageRect,
+    paddingPx: Double,
+    zoomAnchor: PagePoint,
+  ): Boolean {
+    requireOnUiThread()
+    return documentController.focusTextForPlacement(rect, caret, paddingPx, zoomAnchor)
   }
 
   private fun enterEditModeFromDoubleTap() {
@@ -619,7 +700,34 @@ internal class SurfaceView(
       page = page.dimensions,
       transform = transform,
       annotations = page.content.mapNotNull { it.textAnnotationOrNull() },
+      snapCandidates = snapCandidateMeasurement
+        ?.takeIf { it.generation == state.generation && it.pageIndex == state.activePageIndex }
+        ?.candidates
+        .orEmpty(),
     )
+  }
+
+  internal fun hasSnapCandidateMeasurement(generation: Long, pageIndex: Int): Boolean =
+    snapCandidateMeasurement?.let {
+      it.generation == generation && it.pageIndex == pageIndex
+    } == true
+
+  internal fun installSnapCandidateMeasurement(
+    generation: Long,
+    pageIndex: Int,
+    pageSwitchId: Long,
+    candidates: List<PdfiumHorizontalSnapCandidate>,
+  ) {
+    requireOnUiThread()
+    val state = documentCoordinator.takeIf { it.hasDocument } ?: return
+    if (state.generation != generation || state.activePageIndex != pageIndex ||
+      pageSwitchRequestId != pageSwitchId
+    ) return
+    snapCandidateMeasurement = SnapCandidateMeasurement(generation, pageIndex, candidates)
+  }
+
+  private fun clearSnapCandidateMeasurement() {
+    snapCandidateMeasurement = null
   }
 
   internal fun textTransformSnapshot(): TextTransformSnapshot? {
@@ -888,6 +996,7 @@ internal class SurfaceView(
 
   override fun onTouchEvent(event: MotionEvent): Boolean {
     if (disposed) return false
+    if (openHandoffInProgress) return true
     perfetto.eventReceived(event.eventTime)
     if (editMode) {
       eventCount += 1L
@@ -956,6 +1065,7 @@ internal class SurfaceView(
     pageNavigationController.cancel()
     cancelActiveStroke(cancelEngineWhenIdle = true)
     documentController.dispose()
+    clearSnapCandidateMeasurement()
     onPageChange = null
     resetDocumentHistories()
     pageSwitchRequestId += 1L

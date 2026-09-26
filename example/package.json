@@ -6,15 +6,16 @@
   "main": "index.ts",
   "dependencies": {
     "@grego5/react-native-inksign-pdf": "file:../",
-    "expo": "^58.0.0-preview.6",
+    "expo": "^58.0.0-preview.7",
     "expo-asset": "~58.0.3",
-    "expo-dev-client": "~58.0.6",
+    "expo-build-properties": "~58.0.7",
+    "expo-dev-client": "~58.0.7",
     "expo-file-system": "~58.0.0",
-    "expo-modules-core": "~58.0.6",
-    "expo-sharing": "~58.0.9",
+    "expo-modules-core": "~58.0.7",
+    "expo-sharing": "~58.0.10",
     "expo-system-ui": "~58.0.2",
     "react": "19.3.0",
-    "react-native": "0.88.0-rc.1",
+    "react-native": "^0.88.0-rc.2",
     "react-native-nitro-modules": "0.37.1",
     "react-native-safe-area-context": "~5.9.1"
   },
@@ -24,7 +25,7 @@
   "devDependencies": {
     "@expo/config-plugins": "~58.0.2",
     "@types/react": "~19.3.0",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "typescript": "~6.0.3"
   },
   "scripts": {
     "start": "expo start",

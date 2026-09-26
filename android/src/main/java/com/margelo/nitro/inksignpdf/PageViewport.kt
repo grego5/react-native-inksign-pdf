@@ -236,18 +236,25 @@ internal class PageViewport(
     }
   }
 
-  /** Keeps the current zoom and exposes the editor bounds around its active caret. */
+  /** Targets the editor while keeping its active caret visible in the usable viewport. */
   fun targetForTextEditing(
     editorBounds: PageRect,
     caret: PageRect,
     paddingPx: Double,
+    minimumZoom: Double? = null,
+    zoomAnchor: PagePoint? = null,
   ): PageViewportTarget {
+    val zoom = minimumZoom?.let { maxOf(currentZoom, clampZoom(it)) } ?: currentZoom
+    val focus = if (zoom > currentZoom) {
+      val anchor = checkNotNull(zoomAnchor)
+      val viewPoint = pageToView(anchor)
+      checkNotNull(zoomTo(viewPoint.x, viewPoint.y, zoom)).focus
+    } else {
+      PagePoint(currentFocusX, currentFocusY)
+    }
     val base = PageViewportTarget(
-      zoom = currentZoom,
-      focus = clampedFocus(
-        PagePoint(currentFocusX, (editorBounds.top + editorBounds.bottom) / 2.0),
-        currentZoom,
-      ),
+      zoom = zoom,
+      focus = clampedFocus(focus, zoom),
     )
     val scale = base.zoom * viewportSize.density
     val padding = paddingPx.coerceAtLeast(0.0)

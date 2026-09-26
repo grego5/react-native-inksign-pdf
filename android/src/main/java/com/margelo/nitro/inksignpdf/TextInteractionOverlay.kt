@@ -53,6 +53,7 @@ internal data class TextPresentationSnapshot(
   val page: PdfPageDimensions,
   val transform: PageTransform,
   val annotations: List<TextAnnotation>,
+  val snapCandidates: List<PdfiumHorizontalSnapCandidate> = emptyList(),
 )
 
 internal data class TextTransformSnapshot(
@@ -130,12 +131,11 @@ internal fun chooseTextPlacementPosition(
   pagePoint: PagePoint,
   size: TextIntrinsicSize,
   page: PdfPageDimensions,
-  isRtl: Boolean,
   horizontalPadding: Double,
   verticalPadding: Double,
 ): PagePoint {
-  val contentLeft = if (isRtl) pagePoint.x - size.width else pagePoint.x
-  val contentTop = pagePoint.y - size.height - verticalPadding
+  val contentLeft = pagePoint.x - size.width / 2.0
+  val contentTop = pagePoint.y - size.height
   val frame = textEditorFrameBounds(
     PageRect(contentLeft, contentTop, contentLeft + size.width, contentTop + size.height),
     horizontalPadding,
@@ -151,6 +151,23 @@ internal fun chooseTextPlacementPosition(
     contentLeft + boundedFrame.x - frame.left,
     contentTop + boundedFrame.y - frame.top,
   )
+}
+
+internal fun nearestTextSnapCandidate(
+  pagePoint: PagePoint,
+  transform: PageTransform,
+  candidates: List<PdfiumHorizontalSnapCandidate>,
+  maximumDistancePx: Double,
+): PdfiumHorizontalSnapCandidate? {
+  val touchY = transform.map(pagePoint).y
+  return candidates.asSequence()
+    .filter { pagePoint.x in it.left..it.right }
+    .map { candidate ->
+      candidate to abs(transform.map(PagePoint(pagePoint.x, candidate.y)).y - touchY)
+    }
+    .filter { (_, distancePx) -> distancePx <= maximumDistancePx }
+    .minByOrNull { it.second }
+    ?.first
 }
 
 internal fun textAnnotationOuterBounds(
@@ -324,6 +341,12 @@ internal class TextInteractionOverlay(
     var panning: Boolean = false,
   )
 
+  private data class PendingPlacementGesture(
+    val presentation: TextPresentationSnapshot,
+    val placement: InteractionState.Placing,
+    val pagePoint: PagePoint,
+  )
+
   private val density = resources.displayMetrics.density.toDouble().coerceAtLeast(0.1)
   private val outlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
     style = Paint.Style.STROKE
@@ -350,7 +373,7 @@ internal class TextInteractionOverlay(
   private var editorBackgroundColor: Int? = null
   private var selectedBackgroundColor: Int? = null
   private var lastPresentation: TextPresentationSnapshot? = null
-  private var consumingPlacementGesture = false
+  private var pendingPlacementGesture: PendingPlacementGesture? = null
   private var consumingDismissalGesture = false
   private var settlingEditor = false
   private var suppressEditorTextChanges = false
@@ -519,9 +542,9 @@ internal class TextInteractionOverlay(
   }
 
   private fun clearPlacementForLifecycle() {
-    val changed = interactionState is InteractionState.Placing || consumingPlacementGesture
+    val changed = interactionState is InteractionState.Placing || pendingPlacementGesture != null
     if (interactionState is InteractionState.Placing) transitionTo(InteractionState.Idle)
-    consumingPlacementGesture = false
+    pendingPlacementGesture = null
     if (changed) emitInteractionModeChanged()
   }
 
@@ -551,21 +574,36 @@ internal class TextInteractionOverlay(
     val entry = showEditor("")
     val scale = checkNotNull(presentation.transform.uniformScale())
     val size = editorSize(entry, state, presentation)
-    val position = chooseTextPlacementPosition(
+    val horizontalPadding = entry.compoundPaddingLeft / scale
+    val verticalPadding = entry.compoundPaddingTop / scale
+    val snap = nearestTextSnapCandidate(
       pagePoint,
+      presentation.transform,
+      presentation.snapCandidates,
+      dp(12).toDouble(),
+    )
+    val placementPoint = snap?.let {
+      PagePoint(pagePoint.x, it.y - dp(3) / scale - verticalPadding)
+    } ?: pagePoint
+    val position = chooseTextPlacementPosition(
+      placementPoint,
       size,
       presentation.page,
-      state.directionRtl,
-      entry.compoundPaddingLeft / scale,
-      entry.compoundPaddingTop / scale,
+      horizontalPadding,
+      verticalPadding,
     )
     state.anchorX = if (state.directionRtl) position.x + size.width else position.x
     state.positionY = position.y
     reconcileEditorPresentation(entry, presentation)
-    surface.focusTextForEditing(
-      editorFocusBounds(entry, state, presentation),
+    val focusBounds = editorFocusBounds(entry, state, presentation)
+    surface.focusTextForPlacement(
+      focusBounds,
       activeEditorLineBounds(entry, state, presentation),
       dp(24).toDouble(),
+      PagePoint(
+        (focusBounds.left + focusBounds.right) / 2.0,
+        (focusBounds.top + focusBounds.bottom) / 2.0,
+      ),
     )
     syncContent()
   }
@@ -803,9 +841,16 @@ internal class TextInteractionOverlay(
   }
 
   override fun onTouchEvent(event: MotionEvent): Boolean {
-    if (consumingPlacementGesture) {
-      if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-        consumingPlacementGesture = false
+    pendingPlacementGesture?.let { gesture ->
+      when (event.actionMasked) {
+        MotionEvent.ACTION_UP -> {
+          pendingPlacementGesture = null
+          if (interactionState === gesture.placement) {
+            transitionTo(InteractionState.Idle)
+            placeTextAt(gesture.pagePoint, gesture.presentation, gesture.placement)
+          }
+        }
+        MotionEvent.ACTION_CANCEL -> pendingPlacementGesture = null
       }
       return true
     }
@@ -829,9 +874,7 @@ internal class TextInteractionOverlay(
         pagePoint.x < 0.0 || pagePoint.x > presentation.page.width ||
         pagePoint.y < 0.0 || pagePoint.y > presentation.page.height
       ) return false
-      transitionTo(InteractionState.Idle)
-      consumingPlacementGesture = true
-      placeTextAt(pagePoint, presentation, placement)
+      pendingPlacementGesture = PendingPlacementGesture(presentation, placement, pagePoint)
       return true
     }
     if (consumingDismissalGesture) {

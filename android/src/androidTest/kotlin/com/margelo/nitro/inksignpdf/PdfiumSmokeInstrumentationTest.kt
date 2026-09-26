@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
 import java.io.File
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
@@ -66,6 +67,52 @@ class PdfiumSmokeInstrumentationTest {
       }
     } finally {
       session.close()
+    }
+  }
+
+  @Test
+  fun suppliedDiagnosticPdfsExposeBothHorizontalRuleStyles() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val testAssets = instrumentation.context.assets
+    val linePdf = testAssets.open("horizontal-rule-lines.pdf").use { it.readBytes() }
+    val filledRowPdf = testAssets.open("filled-dot-row.pdf").use { it.readBytes() }
+    PdfiumRenderSession.open(linePdf).use { lineSession ->
+      PdfiumRenderSession.open(filledRowPdf).use { filledRowSession ->
+        val lineCandidates = lineSession.horizontalSnapCandidates(0)
+        val filledRowCandidates = filledRowSession.horizontalSnapCandidates(0)
+        val linePage = lineSession.pageSize(0)
+        val filledRowPage = filledRowSession.pageSize(0)
+        assertTrue("The line-rule fixture should expose horizontal paths", lineCandidates.isNotEmpty())
+        assertTrue(
+          "The filled-row fixture should expose aligned shape rows",
+          filledRowCandidates.isNotEmpty(),
+        )
+        val candidatesByPage = listOf(
+          lineCandidates to linePage,
+          filledRowCandidates to filledRowPage,
+        )
+        candidatesByPage.forEach { (candidates, page) ->
+          candidates.forEach { candidate ->
+            assertTrue(candidate.left >= 0.0 && candidate.left <= candidate.right)
+            assertTrue(candidate.right <= page.width)
+            assertTrue(candidate.y in 0.0..page.height)
+          }
+        }
+        val transform = PageTransform(3.0, 0.0, 0.0, 3.0, 0.0, 0.0)
+        (lineCandidates + filledRowCandidates).forEach { candidate ->
+          val centerX = (candidate.left + candidate.right) / 2.0
+          assertTrue(
+            nearestTextSnapCandidate(
+              PagePoint(centerX, candidate.y + 3.0), transform, listOf(candidate), 12.0,
+            ) == candidate,
+          )
+          assertNull(
+            nearestTextSnapCandidate(
+              PagePoint(centerX, candidate.y + 5.0), transform, listOf(candidate), 12.0,
+            ),
+          )
+        }
+      }
     }
   }
 

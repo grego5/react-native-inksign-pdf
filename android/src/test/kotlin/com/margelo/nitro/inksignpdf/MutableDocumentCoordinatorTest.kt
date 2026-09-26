@@ -4,10 +4,13 @@ import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -159,45 +162,80 @@ class MutableDocumentCoordinatorTest {
   }
 
   @Test
-  fun installationFailureDiscardsCandidateBeforeWorkerCommit() = runBlocking {
+  fun failedReplacementPreparationAndCommitPreservePublishedDocument() = runBlocking {
     val sourceA = File.createTempFile("open-install-a-", ".pdf").apply { writeText("A") }
-    val sourceB = File.createTempFile("open-install-b-", ".pdf").apply { writeText("B") }
+    val sourceB = File.createTempFile("open-install-b-", ".pdf").apply { writeText("invalid") }
+    val sourceC = File.createTempFile("open-install-c-", ".pdf").apply { writeText("C") }
     val opened = mutableListOf<OpenTestSession>()
     val worker = PdfSessionWorker(opener = PdfSessionOpener { path, generation ->
+      if (File(path).readText() == "invalid") {
+        throw PdfSessionException("pdf_load_failed", "invalid candidate")
+      }
       OpenTestSession(path, generation, listOf(PdfPageDimensions(100.0, 100.0)))
         .also(opened::add)
     })
+    val artifactPolicy = TestDocumentArtifactPolicy()
     val coordinator = MutableDocumentCoordinator(
       sessionWorker = worker,
-      artifactPolicy = TestDocumentArtifactPolicy(),
+      artifactPolicy = artifactPolicy,
     )
     try {
       coordinator.executeOpen(
         sourcePath = sourceA.absolutePath,
         fallbackFont = null,
-        preparePresentation = { it },
-        installPresentation = { it },
+        awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
+        preparePresentation = { info, _ -> info },
+        publishPresentation = { it },
       )
       val committedPath = coordinator.sourcePath
       val committedGeneration = coordinator.generation
-      val committedPages = coordinator.pages.map { it.id }
-      var restored = false
-      val failure = runCatching {
+      var replacementNotified = false
+      val preparationFailure = runCatching {
         coordinator.executeOpen(
           sourcePath = sourceB.absolutePath,
           fallbackFont = null,
-          preparePresentation = { it },
-          installPresentation = { throw IllegalStateException("presentation failed") },
-          restorePresentation = { restored = true },
+          awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
+          preparePresentation = { info, _ -> info },
+          publishPresentation = { it },
+          notifyPublished = { replacementNotified = true },
         )
       }
-      assertTrue(failure.isFailure)
-      assertTrue(restored)
+      assertTrue(preparationFailure.isFailure)
+      assertFalse(replacementNotified)
+      assertTrue(coordinator.hasDocument)
       assertEquals(committedPath, coordinator.sourcePath)
       assertEquals(committedGeneration, coordinator.generation)
-      assertEquals(committedPages, coordinator.pages.map { it.id })
+      assertFalse(opened[0].closed)
       assertTrue(File(committedPath).exists())
-      assertTrue(!opened[0].closed)
+
+      var handoffAborted = false
+      val commitFailure = runCatching {
+        coordinator.executeOpen(
+          sourcePath = sourceC.absolutePath,
+          fallbackFont = null,
+          awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
+          preparePresentation = { info, _ ->
+            worker.reserveOpenAttemptId(info.generation)
+            info
+          },
+          beginHandoff = {},
+          publishPresentation = { it },
+          notifyPublished = { replacementNotified = true },
+          abortHandoff = { handoffAborted = true },
+        )
+      }
+      assertTrue(commitFailure.isFailure)
+      assertTrue(handoffAborted)
+      assertFalse(replacementNotified)
+      assertTrue(coordinator.hasDocument)
+      assertEquals(committedPath, coordinator.sourcePath)
+      assertEquals(committedGeneration, coordinator.generation)
+      assertFalse(opened[0].closed)
+      assertTrue(opened.last().closed)
+      assertTrue(File(committedPath).exists())
+      assertEquals(setOf(File(committedPath)), coordinator.workingFiles())
+      assertTrue(artifactPolicy.allocatedWorkingFiles.last().let { !it.exists() })
+
       worker.updateTileEpoch(committedGeneration, 1L)
       val completed = CountDownLatch(1)
       val rendered = AtomicReference<Result<List<PdfTile>>>()
@@ -211,12 +249,214 @@ class MutableDocumentCoordinatorTest {
       worker.close()
       sourceA.delete()
       sourceB.delete()
+      sourceC.delete()
     }
     Unit
   }
 
   @Test
-  fun openBCFailsAndDCommitsBeforeBFinishes() = runBlocking {
+  fun initialOpenFailureLeavesDocumentEmpty() = runBlocking {
+    val invalidSource = File.createTempFile("open-initial-invalid-", ".pdf").apply {
+      writeText("invalid")
+    }
+    val worker = PdfSessionWorker(opener = PdfSessionOpener { path, _ ->
+      if (File(path).readText() == "invalid") {
+        throw PdfSessionException("pdf_load_failed", "invalid candidate")
+      }
+      error("Unexpected valid candidate")
+    })
+    val artifactPolicy = TestDocumentArtifactPolicy()
+    val coordinator = MutableDocumentCoordinator(
+      sessionWorker = worker,
+      artifactPolicy = artifactPolicy,
+    )
+    try {
+      val failure = runCatching {
+        coordinator.executeOpen(
+          sourcePath = invalidSource.absolutePath,
+          fallbackFont = null,
+          awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
+          preparePresentation = { info, _ -> info },
+          publishPresentation = { it },
+        )
+      }
+
+      assertTrue(failure.isFailure)
+      assertFalse(coordinator.hasDocument)
+      assertEquals("", coordinator.sourcePath)
+      assertTrue(coordinator.pages.isEmpty())
+      assertTrue(coordinator.workingFiles().isEmpty())
+      assertFalse(artifactPolicy.allocatedWorkingFiles.single().exists())
+    } finally {
+      worker.close()
+      invalidSource.delete()
+    }
+    Unit
+  }
+
+  @Test
+  fun replacementPublishesAndReleasesOldReaderOnlyAfterReadiness() = runBlocking {
+    val sourceA = File.createTempFile("open-ready-a-", ".pdf").apply { writeText("A") }
+    val sourceB = File.createTempFile("open-ready-b-", ".pdf").apply { writeText("B") }
+    val opened = mutableListOf<OpenTestSession>()
+    val worker = PdfSessionWorker(opener = PdfSessionOpener { path, generation ->
+      OpenTestSession(path, generation, listOf(PdfPageDimensions(100.0, 100.0)))
+        .also(opened::add)
+    })
+    val coordinator = MutableDocumentCoordinator(
+      sessionWorker = worker,
+      artifactPolicy = TestDocumentArtifactPolicy(),
+    )
+    val readinessEntered = CompletableDeferred<Unit>()
+    val releaseReadiness = CompletableDeferred<Unit>()
+    var replacementNotified = false
+    val publicationEvents = mutableListOf<String>()
+    try {
+      coordinator.executeOpen(
+        sourcePath = sourceA.absolutePath,
+        fallbackFont = null,
+        awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
+        preparePresentation = { info, _ -> info },
+        publishPresentation = { it },
+      )
+      val oldPath = coordinator.sourcePath
+      val oldGeneration = coordinator.generation
+      val replacement = async(Dispatchers.IO) {
+        coordinator.executeOpen(
+          sourcePath = sourceB.absolutePath,
+          fallbackFont = null,
+          awaitContainerSize = {
+            readinessEntered.complete(Unit)
+            releaseReadiness.await()
+            ViewportSize(300.0, 200.0, 1.0)
+          },
+          preparePresentation = { info, size ->
+            assertEquals(300.0, size.widthPx, 0.0)
+            publicationEvents += "prepare"
+            info
+          },
+          beginHandoff = { publicationEvents += "handoff" },
+          publishPresentation = { publicationEvents += "install"; it },
+          notifyPublished = {
+            replacementNotified = true
+            publicationEvents += "notify"
+          },
+        )
+      }
+      readinessEntered.await()
+      assertEquals(oldPath, coordinator.sourcePath)
+      assertEquals(oldGeneration, coordinator.generation)
+      assertTrue(File(oldPath).exists())
+      assertFalse(opened[0].closed)
+      assertTrue(publicationEvents.isEmpty())
+      worker.updateTileEpoch(oldGeneration, 1L)
+      val oldReaderRender = CompletableDeferred<Result<List<PdfTile>>>()
+      worker.renderTiles(oldGeneration, 1L, emptyList()) { result ->
+        oldReaderRender.complete(result)
+      }
+      assertTrue(oldReaderRender.await().isSuccess)
+      assertEquals(1, opened[0].renderCount)
+
+      releaseReadiness.complete(Unit)
+      assertEquals(100.0, replacement.await().pages.single().width, 0.0)
+      assertTrue(coordinator.sourcePath != oldPath)
+      assertTrue(coordinator.generation > oldGeneration)
+      assertTrue(replacementNotified)
+      assertFalse(File(oldPath).exists())
+      assertTrue(opened[0].closed)
+      assertEquals(listOf("prepare", "handoff", "install", "notify"), publicationEvents)
+    } finally {
+      releaseReadiness.complete(Unit)
+      worker.close()
+      sourceA.delete()
+      sourceB.delete()
+    }
+    Unit
+  }
+
+  @Test
+  fun newestOpenQueuedDuringHandoffWinsWithoutAllocatingOlderCandidate() = runBlocking {
+    val sourceA = File.createTempFile("open-queued-a-", ".pdf").apply { writeText("A") }
+    val sourceB = File.createTempFile("open-queued-b-", ".pdf").apply { writeText("B") }
+    val sourceC = File.createTempFile("open-queued-c-", ".pdf").apply { writeText("C") }
+    val opened = mutableListOf<OpenTestSession>()
+    val openedContents = mutableListOf<String>()
+    val worker = PdfSessionWorker(opener = PdfSessionOpener { path, generation ->
+      val contents = File(path).readText()
+      openedContents += contents
+      val width = when (contents) {
+        "A" -> 100.0
+        "B" -> 200.0
+        else -> 300.0
+      }
+      OpenTestSession(path, generation, listOf(PdfPageDimensions(width, width)))
+        .also(opened::add)
+    })
+    val artifactPolicy = TestDocumentArtifactPolicy()
+    val coordinator = MutableDocumentCoordinator(
+      sessionWorker = worker,
+      artifactPolicy = artifactPolicy,
+    )
+    val handoffEntered = CountDownLatch(1)
+    val releaseHandoff = CountDownLatch(1)
+    val viewportSize = { ViewportSize(300.0, 200.0, 1.0) }
+    try {
+      val openA = async(Dispatchers.IO) {
+        coordinator.executeOpen(
+          sourcePath = sourceA.absolutePath,
+          fallbackFont = null,
+          awaitContainerSize = viewportSize,
+          preparePresentation = { info, _ -> info },
+          beginHandoff = {
+            handoffEntered.countDown()
+            check(releaseHandoff.await(5L, TimeUnit.SECONDS))
+          },
+          publishPresentation = { it },
+        )
+      }
+      assertTrue(handoffEntered.await(5L, TimeUnit.SECONDS))
+
+      val openB = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+        runCatching {
+          coordinator.executeOpen(
+            sourcePath = sourceB.absolutePath,
+            fallbackFont = null,
+            awaitContainerSize = viewportSize,
+            preparePresentation = { info, _ -> info },
+            publishPresentation = { it },
+          )
+        }
+      }
+      val openC = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
+        coordinator.executeOpen(
+          sourcePath = sourceC.absolutePath,
+          fallbackFont = null,
+          awaitContainerSize = viewportSize,
+          preparePresentation = { info, _ -> info },
+          publishPresentation = { it },
+        )
+      }
+      assertEquals(1, artifactPolicy.allocatedWorkingFiles.size)
+
+      releaseHandoff.countDown()
+      assertEquals(100.0, openA.await().pages.single().width, 0.0)
+      assertTrue(openB.await().isFailure)
+      assertEquals(300.0, openC.await().pages.single().width, 0.0)
+      assertEquals(2, artifactPolicy.allocatedWorkingFiles.size)
+      assertEquals(listOf("A", "C"), openedContents)
+      assertEquals(File(coordinator.sourcePath), artifactPolicy.allocatedWorkingFiles.last())
+    } finally {
+      releaseHandoff.countDown()
+      worker.close()
+      sourceA.delete()
+      sourceB.delete()
+      sourceC.delete()
+    }
+    Unit
+  }
+
+  @Test
+  fun waitingBIsSupersededByFailingCAndDThenPublishes() = runBlocking {
     val sourceA = File.createTempFile("open-a-", ".pdf").apply { writeText("A") }
     val sourceB = File.createTempFile("open-b-", ".pdf").apply { writeText("B") }
     val sourceC = File.createTempFile("open-c-", ".pdf").apply { writeText("C") }
@@ -233,23 +473,33 @@ class MutableDocumentCoordinatorTest {
       val pages = listOf(PdfPageDimensions(pageSize, pageSize))
       OpenTestSession(path, generation, pages).also(opened::add)
     })
+    val artifactPolicy = TestDocumentArtifactPolicy()
     val coordinator = MutableDocumentCoordinator(
       sourcePath = "",
       generation = 0L,
       pages = emptyList(),
       sessionWorker = worker,
-      artifactPolicy = TestDocumentArtifactPolicy(),
+      artifactPolicy = artifactPolicy,
     )
     val fontA = PdfFallbackFont("a.ttf", null)
     val fontB = PdfFallbackFont("b.ttf", null)
     val fontC = PdfFallbackFont("c.ttf", null)
     val fontD = PdfFallbackFont("d.ttf", null)
-    suspend fun open(path: File, font: PdfFallbackFont, prepare: (PdfSessionInfo) -> Unit = {}) =
+    suspend fun open(
+      path: File,
+      font: PdfFallbackFont,
+      prepare: (PdfSessionInfo) -> Unit = {},
+      awaitReady: suspend () -> Unit = {},
+    ) =
       coordinator.executeOpen(
         sourcePath = path.absolutePath,
         fallbackFont = font,
-        preparePresentation = { info -> prepare(info); info },
-        installPresentation = { it },
+        preparePresentation = { info, _ -> prepare(info); info },
+        publishPresentation = { it },
+        awaitContainerSize = {
+          awaitReady()
+          ViewportSize(300.0, 200.0, 1.0)
+        },
       )
 
     assertTrue(!coordinator.hasDocument)
@@ -260,54 +510,51 @@ class MutableDocumentCoordinatorTest {
     assertEquals(fontA, coordinator.fallbackFont)
     assertEquals("A", File(committedAPath).readText())
 
-    val replacementPresented = CountDownLatch(1)
-    val releaseReplacement = CountDownLatch(1)
+    val replacementPresented = CompletableDeferred<Unit>()
     var committedDPath = ""
     var committedDGeneration = 0L
     val openB = async(Dispatchers.IO) {
       runCatching {
-        open(sourceB, fontB) { info ->
-          assertEquals(200.0, info.pages.single().width, 0.0)
-            replacementPresented.countDown()
-            check(releaseReplacement.await(5L, TimeUnit.SECONDS))
-        }
+        open(sourceB, fontB, awaitReady = {
+          replacementPresented.complete(Unit)
+          CompletableDeferred<Unit>().await()
+        })
       }
     }
-    assertTrue(replacementPresented.await(5L, TimeUnit.SECONDS))
+    replacementPresented.await()
+    assertEquals(committedAPath, coordinator.sourcePath)
 
-    try {
-      val failedC = runCatching {
-        open(sourceC, fontC) {
-          throw PdfSessionException("presentation_rejected", "candidate presentation failed")
-        }
+    val failedC = runCatching {
+      open(sourceC, fontC) {
+        throw PdfSessionException("pdf_load_failed", "candidate preparation failed")
       }
-      assertTrue(failedC.isFailure)
-      assertEquals(committedAPath, coordinator.sourcePath)
-      assertEquals(committedAGeneration, coordinator.generation)
-      assertEquals(fontA, coordinator.fallbackFont)
-      assertEquals("A", File(coordinator.sourcePath).readText())
-
-      val openedD = open(sourceD, fontD)
-      assertEquals(400.0, openedD.pages.single().width, 0.0)
-      committedDPath = coordinator.sourcePath
-      committedDGeneration = coordinator.generation
-      assertTrue(committedDGeneration > committedAGeneration)
-      assertEquals(fontD, coordinator.fallbackFont)
-      assertEquals("D", File(committedDPath).readText())
-      assertTrue("A's working file retires after D commits", !File(committedAPath).exists())
-
-      worker.updateTileEpoch(committedDGeneration, 1L)
-      val renderCompleted = CountDownLatch(1)
-      val rendered = AtomicReference<Result<List<PdfTile>>>()
-      worker.renderTiles(committedDGeneration, 1L, emptyList()) {
-        rendered.set(it)
-        renderCompleted.countDown()
-      }
-      assertTrue(renderCompleted.await(5L, TimeUnit.SECONDS))
-      assertTrue(rendered.get().isSuccess)
-    } finally {
-      releaseReplacement.countDown()
     }
+    assertTrue(failedC.isFailure)
+    assertTrue(coordinator.hasDocument)
+    assertEquals(committedAPath, coordinator.sourcePath)
+    assertEquals(committedAGeneration, coordinator.generation)
+    assertEquals(fontA, coordinator.fallbackFont)
+    assertTrue(File(committedAPath).exists())
+    assertFalse(opened.single { it.info.pages.single().width == 100.0 }.closed)
+
+    val openedD = open(sourceD, fontD)
+    assertEquals(400.0, openedD.pages.single().width, 0.0)
+    committedDPath = coordinator.sourcePath
+    committedDGeneration = coordinator.generation
+    assertTrue(committedDGeneration > committedAGeneration)
+    assertEquals(fontD, coordinator.fallbackFont)
+    assertEquals("D", File(committedDPath).readText())
+    assertTrue("A's working file retires after D commits", !File(committedAPath).exists())
+
+    worker.updateTileEpoch(committedDGeneration, 1L)
+    val renderCompleted = CountDownLatch(1)
+    val rendered = AtomicReference<Result<List<PdfTile>>>()
+    worker.renderTiles(committedDGeneration, 1L, emptyList()) {
+      rendered.set(it)
+      renderCompleted.countDown()
+    }
+    assertTrue(renderCompleted.await(5L, TimeUnit.SECONDS))
+    assertTrue(rendered.get().isSuccess)
 
     assertTrue(openB.await().isFailure)
     assertEquals(committedDPath, coordinator.sourcePath)
@@ -315,6 +562,10 @@ class MutableDocumentCoordinatorTest {
     assertEquals(fontD, coordinator.fallbackFont)
     assertEquals("D", File(coordinator.sourcePath).readText())
     assertTrue(opened.first { it.info.sourcePath == committedDPath }.renderCount >= 1)
+    assertTrue(opened.single { it.info.pages.single().width == 100.0 }.closed)
+    assertTrue(opened.single { it.info.pages.single().width == 200.0 }.closed)
+    assertTrue(opened.single { it.info.pages.single().width == 300.0 }.closed)
+    assertFalse(opened.single { it.info.pages.single().width == 400.0 }.closed)
     worker.close()
     sourceA.delete()
     sourceB.delete()

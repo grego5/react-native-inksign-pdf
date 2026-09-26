@@ -18,7 +18,15 @@ const config: ExpoConfig = {
     'expo-sharing',
     'expo-asset',
     'expo-system-ui',
-    './x-build-mods/app-config/withGradleConfig.ts',
+    [
+      'expo-build-properties',
+      {
+        android: {
+          cmakeVersion: '4.1.2',
+          buildArchs: ['arm64-v8a'],
+        },
+      },
+    ],
   ],
   ios: {
     bundleIdentifier: packageName,

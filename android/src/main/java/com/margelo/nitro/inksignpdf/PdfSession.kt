@@ -6,17 +6,6 @@ import java.io.IOException
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.ThreadFactory
-import java.util.concurrent.CountDownLatch
-
-/** Holds a queued open commit until the UI has installed or rejected its presentation. */
-internal class OpenCommitGate {
-  private val ready = CountDownLatch(1)
-  @Volatile private var accepted = false
-
-  fun accept() { accepted = true; ready.countDown() }
-  fun reject() { ready.countDown() }
-  fun awaitDecision(): Boolean { ready.await(); return accepted }
-}
 
 internal const val pdfiumAndroidDisplayFlags = 0x13
 
@@ -41,6 +30,7 @@ internal data class PdfSessionInfo(
 
   val pageCount: Int
     get() = pages.size
+
 }
 
 /** Stable open failures at the Android PDF boundary. */
@@ -56,6 +46,8 @@ internal class PdfSessionException(
  */
 internal interface PdfSessionResource : AutoCloseable {
   val info: PdfSessionInfo
+
+  fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> = emptyList()
 
   /** Transfers the returned bitmaps to the caller; the worker no longer owns them. */
   fun renderTiles(
@@ -76,13 +68,20 @@ internal fun validatePdfTileBatch(
 ) {
   if (requests.isEmpty()) return
   val pageIndex = requests.first().key.pageIndex
-  if (pageIndex !in 0 until info.pageCount ||
-    requests.any { it.key.pageIndex != pageIndex || it.key.pageIndex !in 0 until info.pageCount }
-  ) {
+  if (pageIndex !in 0 until info.pageCount) {
     throw PdfSessionException(
       "invalid_tile_request",
       "A tile batch must contain one valid page index",
     )
+  }
+  val remainingRequests = requests.listIterator(1)
+  while (remainingRequests.hasNext()) {
+    if (remainingRequests.next().key.pageIndex != pageIndex) {
+      throw PdfSessionException(
+        "invalid_tile_request",
+        "A tile batch must contain one valid page index",
+      )
+    }
   }
 }
 
@@ -108,6 +107,9 @@ internal class PdfSession private constructor(
     closed = true
     pdfiumSession.close()
   }
+
+  override fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> =
+    pdfiumSession.horizontalSnapCandidates(pageIndex)
 
   override fun renderTiles(
     requests: List<PdfTileRequest>,
@@ -281,12 +283,14 @@ internal class PdfSessionWorker(
   threadFactory: ThreadFactory = PdfWorkerThreadFactory,
   private val assembler: (File?, PdfiumAssemblyRequest, File) -> List<PdfPageDimensions> =
     PdfiumPageAssembler::assemble,
+  executorOverride: ExecutorService? = null,
 ) : AutoCloseable {
-  private val executor: ExecutorService = Executors.newSingleThreadExecutor(threadFactory)
+  private val executor: ExecutorService = executorOverride ?: Executors.newSingleThreadExecutor(threadFactory)
   private val stateLock = Any()
   private var current: PdfSessionResource? = null
   private var preparedMutation: PreparedMutation? = null
   private val preparedOpenSessions = mutableMapOf<Long, PdfSessionResource>()
+  private var replacedOpenSession: PdfSessionResource? = null
   private val acceptedOpenAttemptIds = HashSet<Long>()
   private val discardedOpenAttemptIds = HashSet<Long>()
   private var openAttemptSequence = 0L
@@ -330,51 +334,76 @@ internal class PdfSessionWorker(
   }
 
   /**
-   * Enqueues the commit only while this attempt is still latest. A true return
-   * reserves the commit in worker order before any newer open can be queued.
+   * Enqueues only the latest candidate. Once accepted, its publication transaction
+   * completes before later worker operations so the published viewer stays renderable.
    */
   fun commitPreparedOpen(
     attemptId: Long,
     completion: (Result<Unit>) -> Unit,
-  ): Boolean = commitPreparedOpen(attemptId, OpenCommitGate().apply { accept() }, completion)
-
-  fun commitPreparedOpen(
-    attemptId: Long,
-    gate: OpenCommitGate,
-    completion: (Result<Unit>) -> Unit,
-  ): Boolean = synchronized(stateLock) {
-    if (closed || latestOpenAttemptId != attemptId || attemptId !in preparedOpenSessions) {
-      return@synchronized false
+  ) {
+    val accepted = synchronized(stateLock) {
+      if (closed || latestOpenAttemptId != attemptId || attemptId !in preparedOpenSessions) {
+        false
+      } else {
+        acceptedOpenAttemptIds += attemptId
+        try {
+          executor.execute {
+            val result = try {
+              synchronized(stateLock) {
+                check(acceptedOpenAttemptIds.remove(attemptId)) { "Open candidate was not accepted" }
+                val candidate = preparedOpenSessions.remove(attemptId) ?: throw cancelled(attemptId)
+                val previous = current
+                previous?.let {
+                  check(replacedOpenSession == null) {
+                    "Open attempt already owns a replaced reader"
+                  }
+                  replacedOpenSession = it
+                }
+                current = candidate
+                requestedGeneration = attemptId
+                requestedTileEpoch = Long.MIN_VALUE
+                requestedPreviewEpoch = Long.MIN_VALUE
+              }
+              Result.success(Unit)
+            } catch (error: Throwable) {
+              val rejectedCandidate = synchronized(stateLock) {
+                acceptedOpenAttemptIds.remove(attemptId)
+                preparedOpenSessions.remove(attemptId)
+              }
+              rejectedCandidate?.let { runCatching { it.close() } }
+              Result.failure(error)
+            }
+            completion(result)
+          }
+          true
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+          acceptedOpenAttemptIds -= attemptId
+          false
+        }
+      }
     }
-    acceptedOpenAttemptIds += attemptId
+    if (!accepted) completion(Result.failure(cancelled(attemptId)))
+  }
+
+  /** Retires the reader replaced by a published open on the serialized PDF worker. */
+  fun retireReplacedOpenSession(attemptId: Long, completion: (Result<Unit>) -> Unit) {
     try {
       executor.execute {
         val result = try {
-          if (!gate.awaitDecision()) throw cancelled(attemptId)
-          val candidate = synchronized(stateLock) {
-            check(acceptedOpenAttemptIds.remove(attemptId)) { "Open candidate was not accepted" }
-            preparedOpenSessions.remove(attemptId)
-          } ?: throw cancelled(attemptId)
-          val previous = current
-          current = candidate
-          requestedGeneration = attemptId
-          requestedTileEpoch = Long.MIN_VALUE
-          requestedPreviewEpoch = Long.MIN_VALUE
-          runCatching { previous?.close() }
+          val replaced = synchronized(stateLock) {
+            if (current?.info?.generation != attemptId) throw cancelled(attemptId)
+            replacedOpenSession.also { replacedOpenSession = null }
+          }
+          replaced?.let { runCatching { it.close() } }
           Result.success(Unit)
         } catch (error: Throwable) {
-          synchronized(stateLock) {
-            acceptedOpenAttemptIds.remove(attemptId)
-            preparedOpenSessions.remove(attemptId)
-          }?.let { runCatching { it.close() } }
           Result.failure(error)
         }
         completion(result)
       }
-      true
     } catch (_: java.util.concurrent.RejectedExecutionException) {
-      acceptedOpenAttemptIds -= attemptId
-      false
+      // Worker shutdown owns any remaining readers through closeCurrent().
+      completion(Result.success(Unit))
     }
   }
 
@@ -521,6 +550,29 @@ internal class PdfSessionWorker(
       Result.failure(error)
     }
     completion(result)
+  }
+
+  fun horizontalSnapCandidates(
+    generation: Long,
+    pageIndex: Int,
+    completion: (Result<List<PdfiumHorizontalSnapCandidate>>) -> Unit,
+  ) {
+    if (closed) {
+      completion(Result.failure(cancelled(generation)))
+      return
+    }
+    try {
+      executor.execute {
+        val result = runCatching {
+          val session = current ?: throw cancelled(generation)
+          if (session.info.generation != generation) throw cancelled(generation)
+          session.horizontalSnapCandidates(pageIndex)
+        }
+        completion(result)
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      completion(Result.failure(cancelled(generation)))
+    }
   }
 
   fun renderTiles(
@@ -735,6 +787,8 @@ internal class PdfSessionWorker(
     val session = current
     current = null
     session?.close()
+    replacedOpenSession?.let { runCatching { it.close() } }
+    replacedOpenSession = null
     preparedOpenSessions.values.forEach { it.close() }
     preparedOpenSessions.clear()
     acceptedOpenAttemptIds.clear()

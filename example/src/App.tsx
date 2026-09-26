@@ -18,6 +18,7 @@ export default function App() {
   const debugRecorderEnabled =
     Platform.OS === 'android' && process.env.EXPO_PUBLIC_ENABLE_DEBUG_RECORDER === 'true';
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
+  const modeRef = useRef<StateChangeEvent['mode']>('view');
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
 
   const [state, setState] = useState<StateChangeEvent>({
@@ -26,6 +27,11 @@ export default function App() {
     isDirty: false,
     mode: 'view',
   });
+
+  function handleStateChange(nextState: StateChangeEvent) {
+    modeRef.current = nextState.mode;
+    setState(nextState);
+  }
 
   async function addPages(options?: AddPagesOptions) {
     try {
@@ -70,7 +76,7 @@ export default function App() {
   async function toggleTextPlacement() {
     const inkSignView = inkSignViewRef.current;
     if (inkSignView === null || pageInfo === null) return;
-    const placementArmed = state.mode === 'textPlacement';
+    const placementArmed = modeRef.current === 'textPlacement';
 
     try {
       if (placementArmed) {
@@ -162,7 +168,7 @@ export default function App() {
             strokeMaxWidth={4.0}
             strokeSmoothing={0.4}
             defaultTextFontSize={16}
-            onStateChange={setState}
+            onStateChange={handleStateChange}
             onPageChange={setPageInfo}
           />
         </View>
@@ -245,6 +251,7 @@ export default function App() {
             <Action
               label="Text +"
               disabled={pageInfo === null}
+              active={state.mode === 'textPlacement'}
               onPress={() => void toggleTextPlacement()}
             />
             <Action
@@ -297,11 +304,13 @@ function Action({
   accessibilityLabel,
   onPress,
   disabled = false,
+  active = false,
 }: {
   label: string;
   accessibilityLabel?: string;
   onPress: () => void;
   disabled?: boolean;
+  active?: boolean;
 }) {
   return (
     <Pressable
@@ -309,7 +318,11 @@ function Action({
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={[styles.button, disabled && styles.buttonDisabled]}>
+      style={[
+        styles.button,
+        active && styles.buttonActive,
+        disabled && styles.buttonDisabled,
+      ]}>
       <Text style={styles.buttonText}>{label}</Text>
     </Pressable>
   );
@@ -334,6 +347,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#2457a6',
   },
   buttonDisabled: { backgroundColor: '#aeb7c7' },
+  buttonActive: { backgroundColor: '#17386b' },
   buttonText: { color: '#fff', fontWeight: '600' },
   pageIndicator: { alignSelf: 'center', color: '#333', paddingVertical: 10 },
   surfaceFrame: { flex: 1, overflow: 'hidden', borderRadius: 8, backgroundColor: '#ddd' },
@@ -342,4 +356,3 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: '#666' },
   error: { fontSize: 12, color: '#b00020' },
 });
-

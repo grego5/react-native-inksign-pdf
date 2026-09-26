@@ -7,6 +7,8 @@
 #include <fpdfview.h>
 
 #include <cassert>
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -322,6 +324,207 @@ PdfiumError PdfiumDocumentSession::inspectPage(
   metadata.mediaBoxBottom = mediaBoxBottom;
   metadata.mediaBoxRight = mediaBoxRight;
   metadata.mediaBoxTop = mediaBoxTop;
+  return {};
+}
+
+PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
+    std::size_t pageIndex,
+    std::vector<PdfiumHorizontalSnapCandidate>& candidates) const {
+  candidates.clear();
+  if (!impl_) {
+    return {PdfiumErrorCode::Closed, "PDFium document session is closed"};
+  }
+  if (pageIndex >= impl_->pageCount) {
+    return {PdfiumErrorCode::InvalidPageIndex,
+            "PDFium page index is outside the document"};
+  }
+
+  struct Point final { double x; double y; };
+  struct Shape final {
+    double left;
+    double right;
+    double centerY;
+  };
+
+  auto& state = pdfiumLibraryState();
+  std::lock_guard apiLock(state.apiMutex);
+  ScopedFontRegistry activeRegistry(impl_->fontRegistry.get());
+  ScopedPage page(FPDF_LoadPage(impl_->document, static_cast<int>(pageIndex)));
+  if (page.get() == nullptr) {
+    const auto error = FPDF_GetLastError();
+    return {PdfiumErrorCode::PageOpenFailed,
+            "FPDF_LoadPage failed (PDFium error " + std::to_string(error) +
+                ")"};
+  }
+
+  const double pageWidth = FPDF_GetPageWidth(page.get());
+  const double pageHeight = FPDF_GetPageHeight(page.get());
+  if (!std::isfinite(pageWidth) || !std::isfinite(pageHeight) ||
+      pageWidth <= 0.0 || pageHeight <= 0.0 ||
+      pageWidth > static_cast<double>((std::numeric_limits<int>::max)()) ||
+      pageHeight > static_cast<double>((std::numeric_limits<int>::max)())) {
+    return {PdfiumErrorCode::PageOpenFailed,
+            "PDFium page geometry is invalid"};
+  }
+  const auto deviceWidth = static_cast<int>(std::ceil(pageWidth));
+  const auto deviceHeight = static_cast<int>(std::ceil(pageHeight));
+  const auto toDisplayPoint = [&](double x, double y) -> std::optional<Point> {
+    if (!std::isfinite(x) || !std::isfinite(y)) return std::nullopt;
+    int deviceX = 0;
+    int deviceY = 0;
+    // The loaded page matrix already applies its intrinsic /Rotate value.
+    // Zero here asks PDFium only for the top-left, upright page coordinates.
+    if (!FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight,
+                           0, x, y, &deviceX, &deviceY)) {
+      return std::nullopt;
+    }
+    return Point{static_cast<double>(deviceX) * pageWidth /
+                     static_cast<double>(deviceWidth),
+                 static_cast<double>(deviceY) * pageHeight /
+                     static_cast<double>(deviceHeight)};
+  };
+  const auto appendLine = [&](Point first, Point last) {
+    if (std::abs(first.y - last.y) > 2.0 ||
+        std::abs(first.x - last.x) < 50.0) {
+      return;
+    }
+    const double left = std::max(0.0, std::min(first.x, last.x));
+    const double right = std::min(pageWidth, std::max(first.x, last.x));
+    const double centerY = (first.y + last.y) / 2.0;
+    if (right > left && centerY >= 0.0 && centerY <= pageHeight) {
+      candidates.push_back({left, right, centerY});
+    }
+  };
+
+  std::vector<Shape> filledShapes;
+  const int objectCount = FPDFPage_CountObjects(page.get());
+  for (int objectIndex = 0; objectIndex < objectCount; ++objectIndex) {
+    FPDF_PAGEOBJECT object = FPDFPage_GetObject(page.get(), objectIndex);
+    if (object == nullptr || FPDFPageObj_GetType(object) != FPDF_PAGEOBJ_PATH) {
+      continue;
+    }
+    int fillMode = FPDF_FILLMODE_NONE;
+    FPDF_BOOL stroke = false;
+    if (!FPDFPath_GetDrawMode(object, &fillMode, &stroke)) continue;
+    if (stroke) {
+      FS_MATRIX matrix{};
+      if (FPDFPageObj_GetMatrix(object, &matrix)) {
+        const int segmentCount = FPDFPath_CountSegments(object);
+        std::optional<Point> current;
+        for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+          FPDF_PATHSEGMENT segment = FPDFPath_GetPathSegment(object, segmentIndex);
+          if (segment == nullptr) continue;
+          const int type = FPDFPathSegment_GetType(segment);
+          FPDF_PATHSEGMENT pointSegment = segment;
+          if (type == FPDF_SEGMENT_BEZIERTO) {
+            pointSegment = FPDFPath_GetPathSegment(object, segmentIndex + 2);
+            if (pointSegment == nullptr ||
+                FPDFPathSegment_GetType(pointSegment) != FPDF_SEGMENT_BEZIERTO) {
+              current.reset();
+              continue;
+            }
+            segmentIndex += 2;
+          }
+          float x = 0.0f;
+          float y = 0.0f;
+          if (!FPDFPathSegment_GetPoint(pointSegment, &x, &y)) {
+            current.reset();
+            continue;
+          }
+          // Segment points are path-local; apply the page-object matrix once.
+          const Point point{
+              matrix.a * x + matrix.c * y + matrix.e,
+              matrix.b * x + matrix.d * y + matrix.f};
+          if (type == FPDF_SEGMENT_MOVETO) {
+            current = point;
+          } else if (type == FPDF_SEGMENT_LINETO && current) {
+            const auto first = toDisplayPoint(current->x, current->y);
+            const auto last = toDisplayPoint(point.x, point.y);
+            if (first && last) appendLine(*first, *last);
+            current = point;
+          } else {
+            current = point;
+          }
+        }
+      }
+    }
+    float left = 0.0f;
+    float bottom = 0.0f;
+    float right = 0.0f;
+    float top = 0.0f;
+    if (!FPDFPageObj_GetBounds(object, &left, &bottom, &right, &top)) continue;
+    const std::array<Point, 4> bounds = {
+        Point{left, bottom}, Point{left, top},
+        Point{right, bottom}, Point{right, top}};
+    double minX = (std::numeric_limits<double>::infinity)();
+    double minY = (std::numeric_limits<double>::infinity)();
+    double maxX = -(std::numeric_limits<double>::infinity)();
+    double maxY = -(std::numeric_limits<double>::infinity)();
+    bool validBounds = true;
+    for (const auto& corner : bounds) {
+      const auto display = toDisplayPoint(corner.x, corner.y);
+      if (!display) {
+        validBounds = false;
+        break;
+      }
+      minX = std::min(minX, display->x);
+      minY = std::min(minY, display->y);
+      maxX = std::max(maxX, display->x);
+      maxY = std::max(maxY, display->y);
+    }
+    if (!validBounds) continue;
+    const double width = maxX - minX;
+    const double height = maxY - minY;
+    const double clippedLeft = std::max(0.0, minX);
+    const double clippedRight = std::min(pageWidth, maxX);
+    const double centerY = (minY + maxY) / 2.0;
+    if (fillMode != FPDF_FILLMODE_NONE && width > 0.1 && height > 0.1 &&
+        width <= 8.0 && height <= 8.0 && clippedRight > clippedLeft &&
+        centerY >= 0.0 && centerY <= pageHeight) {
+      filledShapes.push_back({clippedLeft, clippedRight, centerY});
+    }
+  }
+
+  std::sort(filledShapes.begin(), filledShapes.end(),
+            [](const Shape& left, const Shape& right) {
+              return left.centerY < right.centerY;
+            });
+  for (std::size_t rowBegin = 0; rowBegin < filledShapes.size();) {
+    const double rowY = filledShapes[rowBegin].centerY;
+    std::size_t rowEnd = rowBegin + 1;
+    while (rowEnd < filledShapes.size() &&
+           std::abs(filledShapes[rowEnd].centerY - rowY) <= 2.5) {
+      ++rowEnd;
+    }
+    std::sort(filledShapes.begin() + static_cast<std::ptrdiff_t>(rowBegin),
+              filledShapes.begin() + static_cast<std::ptrdiff_t>(rowEnd),
+              [](const Shape& left, const Shape& right) {
+                return left.left < right.left;
+              });
+    std::size_t runBegin = rowBegin;
+    while (runBegin < rowEnd) {
+      std::size_t runEnd = runBegin + 1;
+      std::vector<double> gaps;
+      while (runEnd < rowEnd) {
+        const double gap =
+            (filledShapes[runEnd].left + filledShapes[runEnd].right) / 2.0 -
+            (filledShapes[runEnd - 1].left + filledShapes[runEnd - 1].right) / 2.0;
+        if (gap < 1.0 || gap > 20.0) break;
+        gaps.push_back(gap);
+        if (gaps.size() >= 2) {
+          const double mean = (gaps.front() + gaps.back()) / 2.0;
+          if (std::abs(gap - mean) > std::max(1.5, mean * 0.4)) break;
+        }
+        ++runEnd;
+      }
+      if (runEnd - runBegin >= 4) {
+        candidates.push_back({filledShapes[runBegin].left,
+                              filledShapes[runEnd - 1].right, rowY});
+      }
+      runBegin = runEnd;
+    }
+    rowBegin = rowEnd;
+  }
   return {};
 }
 

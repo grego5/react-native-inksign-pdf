@@ -49,6 +49,39 @@
   vector signatures, write/reopen, and external-viewer interoperability.
   Advanced source PDF semantics are outside the editing contract.
 
+### Run iOS tests on the VM Mac
+
+- Connect from Windows with `ssh mac-vm`. The SSH alias uses the host's key;
+  do not copy credentials into the repository.
+- Require host execution context, not availabe in sandbox.
+- VMware exposes `C:\dev` at `/Network/dev/`. The repo is
+  `/Network/dev/react-native-inksign-pdf` on the Mac.
+- Run the focused text, lifecycle, and PDF navigation tests from that checkout:
+
+  ```sh
+  ssh mac-vm
+  cd "/Network/dev/react-native-inksign-pdf"
+  INKSIGN_IOS_MAC_SOURCE="$PWD" ./tools/test-ios-mac-vm.sh
+  ```
+
+- Set `IOS_MAC_TEST_ONLY` to a test selector, such as
+  `InkSignViewLifecycleTests/testFailedReplacementClearsDocumentAndEditingMode()`,
+  to run one test. Set `IOS_MAC_RESULT_NAME` to name its `.xcresult` bundle.
+  `INKSIGN_IOS_MAC_SOURCE` can point to another Mac-visible checkout; otherwise
+  the script resolves the repository root relative to its own path.
+- The runner keeps its build cache, logs, and result bundles under
+  `~/ios-validation` on the Mac. It syncs source into a Mac-local checkout and
+  reuses installed Node, CocoaPods, and simulator build products; set
+  `IOS_MAC_NPM_INSTALL=1`, `IOS_MAC_POD_INSTALL=1`, or `IOS_MAC_PREBUILD=1` only
+  when those inputs need refreshing.
+- Check Xcode selection with `xcode-select -p` and simulator discovery with
+  `xcrun --find simctl`. If needed, set `DEVELOPER_DIR` to the installed Xcode's
+  `Contents/Developer` directory; the current VM installation is
+  `/Users/admin/Downloads/Xcode 2.app/Contents/Developer`.
+- The script prints a bounded diagnostic summary on failure. The complete
+  `xcodebuild.log` and `.xcresult` remain in `~/ios-validation/logs` and
+  `~/ios-validation/results` for inspection.
+
 ## Validation commands
 
 Use repository runners instead of manually reconstructing their commands:
@@ -57,6 +90,8 @@ Use repository runners instead of manually reconstructing their commands:
 tools\test-android.ps1 -Mode jvm
 tools\test-android.ps1 -Mode jvm -Test <fully.qualified.TestClass>
 tools\test-android.ps1 -Mode build
+tools\test-android.ps1 -Mode build -Abi x86
+tools\test-android.ps1 -Mode connected -Abi x86
 tools\test-android.ps1 -Mode connected
 tools\test-android.ps1 -Mode connected -Test <fully.qualified.TestClass>
 tools\test-native.ps1 -Suite geometry
@@ -65,6 +100,9 @@ tools\test-native.ps1 -Suite all
 tools\test-ios-lifecycle.ps1
 git diff --check -- ':!nitrogen/generated/**'
 ```
+
+Build and connected modes default to `arm64-v8a`. Select `x86_64`
+with `-Abi` if necessary.
 
 Use `-Build` with `test-native.ps1` only when the selected native targets need
 building. Use `-RefreshDependencies` with `test-android.ps1` only when cached
@@ -99,3 +137,4 @@ When a tool returns a live process/session:
 
 Use the runner's final `PASS` or `FAIL` line as the result. The heartbeat is
 the liveness signal; intermediate polling is not validation.
+

@@ -96,6 +96,83 @@ class PdfSessionWorkerTest {
   }
 
   @Test
+  fun rejectedOpenCommitSettlesOnceAndKeepsPublishedReader() {
+    val opened = mutableListOf<FakeSession>()
+    val opener = object : PdfSessionOpener {
+      override fun open(path: String, generation: Long): PdfSessionResource =
+        FakeSession(path, generation).also(opened::add)
+    }
+    val worker = PdfSessionWorker(opener = opener)
+    try {
+      val committedId = openAndCommit(worker, "working.pdf", afterGeneration = 0L).generation
+      val candidateId = worker.reserveOpenAttemptId(committedId)
+      prepare(worker, candidateId, "candidate.pdf")
+      worker.reserveOpenAttemptId(committedId)
+
+      var callbackCount = 0
+      var commitError: Throwable? = null
+      worker.commitPreparedOpen(candidateId) { result ->
+        callbackCount += 1
+        commitError = result.exceptionOrNull()
+      }
+
+      assertEquals(1, callbackCount)
+      assertTrue(commitError is PdfSessionException)
+      assertFalse(opened[0].closed)
+      assertFalse(opened[1].closed)
+
+      val discarded = CountDownLatch(1)
+      worker.discardPreparedOpen(candidateId) { result ->
+        assertTrue(result.isSuccess)
+        discarded.countDown()
+      }
+      assertTrue(discarded.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertTrue(opened[1].closed)
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
+  fun committedReaderRetiresTheReplacedReaderOnlyOnRequest() {
+    val opened = mutableListOf<FakeSession>()
+    val worker = PdfSessionWorker(opener = PdfSessionOpener { path, generation ->
+      FakeSession(path, generation).also(opened::add)
+    })
+    try {
+      val initial = openAndCommit(worker, "working.pdf", afterGeneration = 0L)
+      val attemptId = worker.reserveOpenAttemptId(initial.generation)
+      val candidateReady = CountDownLatch(1)
+      worker.prepareOpen(attemptId, "replacement.pdf", null) {
+        assertTrue(it.isSuccess)
+        candidateReady.countDown()
+      }
+      assertTrue(candidateReady.await(5L, TimeUnit.SECONDS))
+
+      val installed = CountDownLatch(1)
+      worker.commitPreparedOpen(attemptId) {
+        assertTrue(it.isSuccess)
+        installed.countDown()
+      }
+      assertTrue(installed.await(5L, TimeUnit.SECONDS))
+      assertFalse(opened[0].closed)
+      assertFalse(opened[1].closed)
+
+      val retired = CountDownLatch(1)
+      worker.retireReplacedOpenSession(attemptId) {
+        assertTrue(it.isSuccess)
+        retired.countDown()
+      }
+      assertTrue(retired.await(5L, TimeUnit.SECONDS))
+      assertTrue(opened[0].closed)
+      assertFalse(opened[1].closed)
+    } finally {
+      worker.close()
+    }
+  }
+
+  @Test
   fun preparedMutationDoesNotReplaceCurrentSessionUntilCommit() {
     val opened = mutableListOf<FakeSession>()
     val opener = object : PdfSessionOpener {
@@ -250,10 +327,10 @@ class PdfSessionWorkerTest {
       val oldRender = render(worker, oldInfo.generation, 1L)
       assertTrue(oldRender.isSuccess)
       val newCommitted = CountDownLatch(1)
-      assertTrue(worker.commitPreparedOpen(newAttemptId) {
+      worker.commitPreparedOpen(newAttemptId) {
         assertTrue(it.isSuccess)
         newCommitted.countDown()
-      })
+      }
       assertTrue(newCommitted.await(5L, TimeUnit.SECONDS))
 
       val staleResult = render(worker, oldInfo.generation, 2L)
@@ -320,10 +397,10 @@ class PdfSessionWorkerTest {
       assertTrue(opener.oldResource.get().closed)
       assertEquals("new.pdf", newResult.get().getOrThrow().sourcePath)
       val committed = CountDownLatch(1)
-      assertTrue(worker.commitPreparedOpen(latestAttemptId) {
+      worker.commitPreparedOpen(latestAttemptId) {
         assertTrue(it.isSuccess)
         committed.countDown()
-      })
+      }
       assertTrue(committed.await(5L, TimeUnit.SECONDS))
       assertTrue(render(worker, latestAttemptId, 1L).isSuccess)
     } finally {
@@ -369,10 +446,10 @@ class PdfSessionWorkerTest {
       val replacement = prepare(worker, replacementId, sourceB.absolutePath)
       assertEquals(sourceB.absolutePath, replacement.sourcePath)
       val committed = CountDownLatch(1)
-      assertTrue(worker.commitPreparedOpen(replacementId) {
+      worker.commitPreparedOpen(replacementId) {
         assertTrue(it.isSuccess)
         committed.countDown()
-      })
+      }
       assertTrue(committed.await(5L, TimeUnit.SECONDS))
       assertTrue(sourceA.exists())
       assertTrue(sourceB.exists())
@@ -432,10 +509,10 @@ class PdfSessionWorkerTest {
     val attemptId = worker.reserveOpenAttemptId(afterGeneration)
     val info = prepare(worker, attemptId, path, fallbackFont)
     val committed = CountDownLatch(1)
-    assertTrue(worker.commitPreparedOpen(attemptId) { result ->
+    worker.commitPreparedOpen(attemptId) { result ->
       assertTrue(result.isSuccess)
       committed.countDown()
-    })
+    }
     assertTrue(committed.await(5L, TimeUnit.SECONDS))
     return info
   }

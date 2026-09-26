@@ -2,47 +2,44 @@
 
 ## Ownership
 
-`HybridInkSignView` adapts the Nitro/Fabric API and owns the long-lived
-document coordinator. The coordinator owns the published document, ordered
-pages, active page, dirty state, and module-created working artifacts.
+- `HybridInkSignView` exposes the Nitro/Fabric API and owns the document coordinator.
+- The coordinator owns the published working PDF, page order, active page, histories,
+  dirty state, and module-created files.
+- `PdfSessionWorker` serializes PDFium sessions and document work. `SurfaceView` owns
+  presentation and input; the text overlay owns draft and editor state.
+- Android stages files and owns display surfaces. PDFium parses, assembles, renders,
+  and exports PDFs.
 
-`SurfaceView` owns Android presentation and input routing. `PdfSessionWorker`
-owns serialized PDFium sessions and document work. PDF open, page assembly,
-rendering, and export use PDFium; Android owns file staging and bitmap surfaces.
-The text overlay owns temporary editor state.
+## Opening
 
-## Publication
+- Each `open()` gets an attempt ID and a module-owned working copy; the caller's file
+  is left untouched.
+- Prepare and validate the PDFium candidate while the published document and editor
+  remain usable. Wait cancellably for a nonzero host viewport without changing the
+  viewer, editor, or tile requests.
+- Before commit, build the candidate model and fully configured viewport. The handoff
+  finishes editing and blocks input and tile requests; after worker acceptance, a
+  non-cancellable UI transaction installs the matching model and prepared presentation.
+  It invokes no public callbacks midway. Callbacks and tile requests follow publication.
+- Retire the replaced reader and working file after publication. A superseded attempt
+  releases only its candidate and working copy.
+- A failed initial open leaves the viewer empty. If replacement preparation or worker
+  commit fails, abort the handoff, reconcile the old document's editor/undo/dirty state,
+  and keep its published model and reader. Superseded attempts release only their candidate.
+- Requests arriving after handoff starts wait for that handoff to finish before proceeding.
+- Reopen each assembled candidate before publication and validate page count, order,
+  dimensions, and rotation. Compare image-page dimensions at PDFium's serialization
+  precision; use reopened metadata as the published dimensions.
 
-Opening a document creates a module-owned working copy; the caller's source
-remains untouched. Replacement and page changes are prepared as detached
-candidates. The coordinator publishes the candidate document, page order, active
-page, and worker session together only after validation. Until then, the current
-document remains published. A failed, cancelled, or stale operation cannot
-partially replace it.
+## Page history and disposal
 
-The PDFium assembler reopens each saved candidate before publication and checks
-its page count, order, dimensions, and rotation. Image page dimensions are
-compared at the precision PDFium can serialize and report; published page
-dimensions come from the reopened candidate.
+- Page identities and histories travel with pages through structural edits. Structural
+  dirty state is document-level; undo and redo history is page-local.
+- Clearing a page is one undoable action. Dirty state reflects remaining ink and
+  document structure; clearing the last ink in an otherwise clean document leaves it clean.
+- Disposal rejects pending work, clears presentation and callbacks, and closes PDFium
+  readers and module-owned files.
 
-Page identities and their histories follow the pages through structural changes.
-Structural dirty state belongs to the document and remains separate from
-page-local undo and redo.
-
-Clearing a page records one undoable clear action: the page becomes empty and
-`canUndo` remains true. Dirty state reflects remaining ink across pages and
-document structure, so clearing the final ink in an otherwise clean document
-returns the document to clean state.
-
-Navigation previews retire a failed loading slot. The next gesture retries a
-missing preview only when its down-time page-edge eligibility matches that
-target; late preview callbacks cannot replace a newer slot.
-
-## Presentation and disposal
-
-PDFium supplies the base page imagery; annotation presentation is layered above
-it. Active input and editor state are temporary until committed to page history.
-Disposal invalidates pending work, clears UI callbacks and presentation, and
-releases native resources.
-
-See [export.md](export.md) for the separate export snapshot and output contract.
+See [viewport-input.md](viewport-input.md) for navigation and input,
+[rendering-front-buffer.md](rendering-front-buffer.md) for page and ink presentation,
+and [export.md](export.md) for exported-document behavior.

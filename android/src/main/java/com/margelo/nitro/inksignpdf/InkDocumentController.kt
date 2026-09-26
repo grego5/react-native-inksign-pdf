@@ -96,8 +96,10 @@ internal class InkDocumentController(
   private var lastPlannedWidthPx = Double.NaN
   private var lastPlannedHeightPx = Double.NaN
   private var disposed = false
+  private var tileRequestsSuspended = false
   private var viewportAnimator: ValueAnimator? = null
   private var fitToPageOnLayout = false
+  private var usableViewportWaiter: ((ViewportSize) -> Unit)? = null
   private var doubleTapZoom = DEFAULT_DOUBLE_TAP_ZOOM
   private var doubleTapEntersEditMode = false
   var onDoubleTapEditMode: (() -> Unit)? = null
@@ -143,6 +145,48 @@ internal class InkDocumentController(
     invalidateTiles()
     requestVisibleTiles()
     requestInvalidate()
+    signalUsableViewportSize()
+  }
+
+  /** Installs a viewport fully configured before an open candidate is committed. */
+  fun installPreparedPage(prepared: PageViewport) {
+    requireOnUiThread()
+    if (disposed) return
+    stopViewportAnimation()
+    stopFling()
+    pageDimensions = prepared.page
+    fitToPageOnLayout = false
+    viewport = prepared
+    invalidateTiles()
+    requestInvalidate()
+  }
+
+  fun hasUsableViewportSize(): Boolean =
+    viewportSize.widthPx > 0.0 && viewportSize.heightPx > 0.0
+
+  fun usableViewportSize(): ViewportSize? = viewportSize.takeIf { hasUsableViewportSize() }
+
+  fun suspendTileRequests() {
+    requireOnUiThread()
+    tileRequestsSuspended = true
+  }
+
+  fun resumeTileRequests() {
+    requireOnUiThread()
+    tileRequestsSuspended = false
+    requestVisibleTiles()
+  }
+
+  fun onUsableViewportSize(listener: (ViewportSize) -> Unit): () -> Unit {
+    usableViewportSize()?.let(listener) ?: run { usableViewportWaiter = listener }
+    return { if (usableViewportWaiter === listener) usableViewportWaiter = null }
+  }
+
+  private fun signalUsableViewportSize() {
+    if (!hasUsableViewportSize()) return
+    val waiter = usableViewportWaiter ?: return
+    usableViewportWaiter = null
+    waiter(viewportSize)
   }
 
   fun clearDocument() {
@@ -151,6 +195,7 @@ internal class InkDocumentController(
     stopViewportAnimation()
     stopFling()
     fitToPageOnLayout = false
+    tileRequestsSuspended = false
     pageDimensions = null
     viewport = null
     invalidateTiles()
@@ -169,6 +214,7 @@ internal class InkDocumentController(
       requestInvalidate()
     }
     requestVisibleTiles()
+    signalUsableViewportSize()
   }
 
   fun setKeyboardOcclusion(bottomPx: Double) {
@@ -203,6 +249,31 @@ internal class InkDocumentController(
 
   /** Animates the current zoom to expose the editor bounds around the active caret. */
   fun focusTextForEditing(rect: PageRect, caret: PageRect, paddingPx: Double): Boolean {
+    return focusText(rect, caret, paddingPx, minimumZoom = null)
+  }
+
+  fun focusTextForPlacement(
+    rect: PageRect,
+    caret: PageRect,
+    paddingPx: Double,
+    zoomAnchor: PagePoint,
+  ): Boolean {
+    return focusText(
+      rect,
+      caret,
+      paddingPx,
+      minimumZoom = doubleTapZoom,
+      zoomAnchor = zoomAnchor,
+    )
+  }
+
+  private fun focusText(
+    rect: PageRect,
+    caret: PageRect,
+    paddingPx: Double,
+    minimumZoom: Double?,
+    zoomAnchor: PagePoint? = null,
+  ): Boolean {
     requireOnUiThread()
     if (disposed) return false
     val currentViewport = viewport ?: return false
@@ -210,6 +281,8 @@ internal class InkDocumentController(
       editorBounds = rect,
       caret = caret,
       paddingPx = paddingPx,
+      minimumZoom = minimumZoom,
+      zoomAnchor = zoomAnchor,
     )
     if (currentViewport.zoom == target.zoom && currentViewport.focus == target.focus) return false
     stopViewportAnimation()
@@ -468,7 +541,7 @@ internal class InkDocumentController(
 
   private fun requestVisibleTiles() {
     requireOnUiThread()
-    if (disposed) return
+    if (disposed || tileRequestsSuspended) return
     InkPerfetto.section("InkSign/tile planning") {
       requestVisibleTilesInternal()
     }

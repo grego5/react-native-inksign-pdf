@@ -396,10 +396,10 @@ class InkDocumentControllerTest {
       val opened = CountDownLatch(1)
       worker.prepareOpen(generation, "controller-test.pdf", null) { result ->
         assertTrue(result.isSuccess)
-        assertTrue(worker.commitPreparedOpen(generation) { committed ->
+        worker.commitPreparedOpen(generation) { committed ->
           assertTrue(committed.isSuccess)
           opened.countDown()
-        })
+        }
       }
       assertTrue(opened.await(5L, TimeUnit.SECONDS))
       runOnMain {
