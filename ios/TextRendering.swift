@@ -113,16 +113,29 @@ enum InkSignPdfTextRenderer {
         return false
       }
       let insets = InkSignPdfTextStyle.presentationInsets
-      let contentWidth = max(1, annotation.bounds.width - insets.left - insets.right)
+      let contentWidth = annotation.flowBounds.map { $0.width } ??
+        max(1, annotation.bounds.width - insets.left - insets.right)
       let lines = makeLineFragments(annotation.text,
                                     fontSize: annotation.fontSize,
                                     color: color,
                                     isRTL: annotation.isRTL,
                                     contentWidth: contentWidth)
+        .filter { fragment in
+          guard let flowBounds = annotation.flowBounds else { return true }
+          return fragment.lineBounds.maxY <= flowBounds.height
+        }
       let attributes = InkSignPdfTextStyle.attributes(fontSize: annotation.fontSize,
                                                        color: color,
                                                        isRTL: annotation.isRTL)
       context.saveGState()
+      let origin: CGPoint
+      if let flowBounds = annotation.flowBounds {
+        context.clip(to: flowBounds)
+        origin = flowBounds.origin
+      } else {
+        origin = CGPoint(x: annotation.position.x + insets.left,
+                         y: annotation.position.y + insets.top)
+      }
       context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
       for fragment in lines {
         let value = fragment.text
@@ -130,8 +143,8 @@ enum InkSignPdfTextRenderer {
         let line = CTLineCreateWithAttributedString(attributed)
         var ascent: CGFloat = 0
         _ = CTLineGetTypographicBounds(line, &ascent, nil, nil)
-        context.textPosition = CGPoint(x: annotation.position.x + insets.left + fragment.rect.minX,
-                                       y: annotation.position.y + insets.top + fragment.rect.minY + ascent)
+        context.textPosition = CGPoint(x: origin.x + fragment.rect.minX,
+                                       y: origin.y + fragment.rect.minY + ascent)
         CTLineDraw(line, context)
       }
       context.restoreGState()
@@ -157,6 +170,37 @@ enum InkSignPdfTextRenderer {
   private struct LineFragment {
     let text: String
     let rect: CGRect
+    let lineBounds: CGRect
+
+    var visibleBounds: CGRect {
+      CGRect(x: rect.minX, y: lineBounds.minY,
+             width: rect.width, height: lineBounds.height)
+    }
+  }
+
+  static func visibleBounds(for text: String,
+                            fontSize: CGFloat,
+                            isRTL: Bool,
+                            flowBounds: CGRect) -> CGRect {
+    let fragments = makeLineFragments(text,
+                                      fontSize: fontSize,
+                                      color: .black,
+                                      isRTL: isRTL,
+                                      contentWidth: flowBounds.width)
+      .filter { $0.lineBounds.maxY <= flowBounds.height }
+    guard let first = fragments.first else {
+      return CGRect(origin: flowBounds.origin, size: .zero)
+    }
+    let visible = fragments.dropFirst().reduce(first.visibleBounds) {
+      $0.union($1.visibleBounds)
+    }
+    let pageSpace = visible.offsetBy(dx: flowBounds.minX, dy: flowBounds.minY)
+    let left = max(pageSpace.minX, flowBounds.minX)
+    let top = max(pageSpace.minY, flowBounds.minY)
+    return CGRect(x: left,
+                  y: top,
+                  width: max(0, min(pageSpace.maxX, flowBounds.maxX) - left),
+                  height: max(0, min(pageSpace.maxY, flowBounds.maxY) - top))
   }
 
   private static func makeLineFragments(_ text: String,
@@ -179,12 +223,13 @@ enum InkSignPdfTextRenderer {
     manager.ensureLayout(for: container)
     let glyphRange = NSRange(location: 0, length: manager.numberOfGlyphs)
     var fragments: [LineFragment] = []
-    manager.enumerateLineFragments(forGlyphRange: glyphRange) { _, usedRect, _, lineGlyphRange, _ in
+    manager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, usedRect, _, lineGlyphRange, _ in
       let characterRange = manager.characterRange(forGlyphRange: lineGlyphRange,
                                                     actualGlyphRange: nil)
       let value = (text as NSString).substring(with: characterRange)
       fragments.append(LineFragment(text: value.hasSuffix("\n") ? String(value.dropLast()) : value,
-                                    rect: usedRect))
+                                    rect: usedRect,
+                                    lineBounds: lineRect))
     }
     return fragments
   }

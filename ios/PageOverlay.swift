@@ -178,6 +178,12 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
     generation = nil
   }
 
+  func dispose() {
+    reset()
+    fallbackOverlay.removeFromSuperview()
+    owner = nil
+  }
+
   func canvasView(for pageID: UUID) -> InkCanvasView? {
     guard let page = owner?.documentCoordinator.document?.pages.first(where: { $0.id == pageID })?.page else {
       return nil

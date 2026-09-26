@@ -9,18 +9,42 @@ enum InkSignPdfTextBoxGeometry {
   }
 
   struct PlacementAnchor: Equatable {
-    let centerX: CGFloat
-    let bottomY: CGFloat
-    let bottomEdge: BottomEdge
+    enum Horizontal: Equatable {
+      case centered
+      case left
+      case right
+    }
+
+    enum Vertical: Equatable {
+      case top
+      case bottom(BottomEdge)
+    }
+
+    let x: CGFloat
+    let y: CGFloat
+    let horizontal: Horizontal
+    let vertical: Vertical
   }
 
   static func initialFrame(anchor: PlacementAnchor,
                            size: CGSize,
                            insets: UIEdgeInsets,
                            pageSize: CGSize) -> CGRect {
-    let bottomInset = anchor.bottomEdge == .innerTextArea ? insets.bottom : 0
-    let origin = CGPoint(x: anchor.centerX - size.width / 2,
-                         y: anchor.bottomY - size.height + bottomInset)
+    let x: CGFloat
+    switch anchor.horizontal {
+    case .centered: x = anchor.x - size.width / 2
+    case .left: x = anchor.x
+    case .right: x = anchor.x - size.width
+    }
+    let y: CGFloat
+    switch anchor.vertical {
+    case .top:
+      y = anchor.y
+    case .bottom(let edge):
+      let bottomInset = edge == .innerTextArea ? insets.bottom : 0
+      y = anchor.y - size.height + bottomInset
+    }
+    let origin = CGPoint(x: x, y: y)
     return CGRect(origin: clampedOrigin(for: size, preferred: origin, pageSize: pageSize),
                   size: size)
   }
@@ -56,9 +80,12 @@ struct InkSignPdfTextAnnotation: Equatable {
   let isRTL: Bool
   /// Canonical opaque RGB color captured with the annotation for export/rendering.
   let textColor: String
+  /// Optional page-space wrapping and complete-line clipping region.
+  let flowBounds: CGRect?
 
   init(id: String, text: String, bounds: CGRect, fontSize: CGFloat,
-       textColor: String = "#000000", isRTL: Bool = false) {
+       textColor: String = "#000000", isRTL: Bool = false,
+       flowBounds: CGRect? = nil) {
     precondition(!id.isEmpty, "Text annotation ID must not be empty")
     precondition(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                  "Committed text annotation must not be blank")
@@ -74,12 +101,22 @@ struct InkSignPdfTextAnnotation: Equatable {
     self.fontSize = fontSize
     self.isRTL = isRTL
     self.textColor = textColor
+    self.flowBounds = flowBounds
   }
 
   var position: CGPoint { bounds.origin }
   var intrinsicSize: CGSize { bounds.size }
 
   func replacingText(_ text: String, pageSize: CGSize) -> InkSignPdfTextAnnotation {
+    if let flowBounds {
+      let bounds = InkSignPdfTextRenderer.visibleBounds(for: text,
+                                                        fontSize: fontSize,
+                                                        isRTL: isRTL,
+                                                        flowBounds: flowBounds)
+      return InkSignPdfTextAnnotation(id: id, text: text, bounds: bounds,
+                                      fontSize: fontSize, textColor: textColor,
+                                      isRTL: isRTL, flowBounds: flowBounds)
+    }
     let size = Self.intrinsicSize(of: text, fontSize: fontSize,
                                   isRTL: isRTL, maximumWidth: pageSize.width)
     let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: size,
@@ -94,17 +131,36 @@ struct InkSignPdfTextAnnotation: Equatable {
   }
 
   func moving(to position: CGPoint, pageSize: CGSize) -> InkSignPdfTextAnnotation {
-    let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: bounds.size,
-                                                        preferred: position,
+    let sourceFrame = flowBounds ?? bounds
+    let requestedFrameOrigin = CGPoint(x: sourceFrame.minX + position.x - bounds.minX,
+                                       y: sourceFrame.minY + position.y - bounds.minY)
+    let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: sourceFrame.size,
+                                                        preferred: requestedFrameOrigin,
                                                         pageSize: pageSize)
+    let offset = CGPoint(x: origin.x - sourceFrame.minX, y: origin.y - sourceFrame.minY)
+    let movedFlowBounds = flowBounds.map { $0.offsetBy(dx: offset.x, dy: offset.y) }
+    let movedBounds = movedFlowBounds.map {
+      InkSignPdfTextRenderer.visibleBounds(for: text, fontSize: fontSize,
+                                           isRTL: isRTL, flowBounds: $0)
+    } ?? bounds.offsetBy(dx: offset.x, dy: offset.y)
     return InkSignPdfTextAnnotation(id: id, text: text,
-                                    bounds: CGRect(origin: origin, size: bounds.size),
+                                    bounds: movedBounds,
                                     fontSize: fontSize,
                                     textColor: textColor,
-                                    isRTL: isRTL)
+                                    isRTL: isRTL,
+                                    flowBounds: movedFlowBounds)
   }
 
   func changingFontSize(to fontSize: CGFloat, pageSize: CGSize) -> InkSignPdfTextAnnotation {
+    if let flowBounds {
+      let bounds = InkSignPdfTextRenderer.visibleBounds(for: text,
+                                                        fontSize: fontSize,
+                                                        isRTL: isRTL,
+                                                        flowBounds: flowBounds)
+      return InkSignPdfTextAnnotation(id: id, text: text, bounds: bounds,
+                                      fontSize: fontSize, textColor: textColor,
+                                      isRTL: isRTL, flowBounds: flowBounds)
+    }
     let size = Self.intrinsicSize(of: text, fontSize: fontSize,
                                   isRTL: isRTL, maximumWidth: pageSize.width)
     let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: size,

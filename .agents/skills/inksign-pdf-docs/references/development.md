@@ -52,7 +52,7 @@
 ### Run iOS tests on local network Mac
 
 - From Windows, connect with `ssh mac-vm`. The SSH alias uses the host's key; do not copy credentials into the repository.
-- VMware exposes `C:\dev` at `/Network/dev/`. At the Mac prompt, enter the shared checkout or worktree you want to test and run. Replace the example path below when testing another worktree:
+- VMware exposes `C:\dev` at `~/Network/dev/`. At the Mac prompt, enter the shared checkout or worktree you want to test and run. Replace the example path below when testing another worktree:
 
   ```sh
   cd "/Network/dev/react-native-inksign-pdf"
@@ -129,3 +129,4 @@ When a tool returns a live process/session:
 
 Use the runner's final `PASS` or `FAIL` line as the result. The heartbeat is
 the liveness signal; intermediate polling is not validation.
+
