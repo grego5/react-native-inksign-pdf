@@ -28,7 +28,7 @@ extension InkSignView {
   func setTextDirection(direction: TextDirection) throws {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
-      self.textInteractionOverlay.setTextDirection(direction)
+      self.textInteractionOverlay.setTextDirection(direction: direction)
     }
   }
 
@@ -37,7 +37,12 @@ extension InkSignView {
     position: PagePosition,
     options: TextAnnotationOptions?
   ) throws {
-    // Android currently owns programmatic text insertion; keep the shared ref method callable on iOS.
+    try performOnMainSync {
+      guard !self.disposed else { throw TextError.cancelled }
+      try self.textInteractionOverlay.addTextAnnotation(text: text,
+                                                         position: position,
+                                                         options: options)
+    }
   }
 
   func increaseTextSize() throws -> Double {

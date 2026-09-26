@@ -27,6 +27,9 @@
   resolved app layout direction. Omitted direction follows the last
   `setTextDirection()` choice, or app direction when unset/`auto`. Save the
   resolved direction with each annotation; tap placement captures it when
-  armed.
+  armed. Calling `setTextDirection()` also updates an active editor without
+  moving its box at the switch. Later text growth expands the box toward the
+  selected direction; caret visibility is reconciled with the viewport. Save
+  the chosen direction when editing commits.
 - **History:** Draft text is temporary. Committed text and page-local ink edits
   are the content used by history and export.

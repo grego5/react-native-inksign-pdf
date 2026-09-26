@@ -84,7 +84,9 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
         bounds: coder.decodeCGRect(forKey: "inksign.textBounds"),
         fontSize: CGFloat(coder.decodeDouble(forKey: "inksign.fontSize")),
         textColor: textColor,
-        isRTL: coder.decodeBool(forKey: "inksign.isRTL"))
+        isRTL: coder.decodeBool(forKey: "inksign.isRTL"),
+        flowBounds: coder.containsValue(forKey: "inksign.flowBounds")
+          ? coder.decodeCGRect(forKey: "inksign.flowBounds") : nil)
     }
     super.init(coder: coder)
   }
@@ -104,6 +106,9 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
       coder.encode(textValue.bounds, forKey: "inksign.textBounds")
       coder.encode(Double(textValue.fontSize), forKey: "inksign.fontSize")
       coder.encode(textValue.isRTL, forKey: "inksign.isRTL")
+      if let flowBounds = textValue.flowBounds {
+        coder.encode(flowBounds, forKey: "inksign.flowBounds")
+      }
     }
   }
 

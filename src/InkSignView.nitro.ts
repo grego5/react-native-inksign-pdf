@@ -136,7 +136,7 @@ export interface InkSignViewMethods extends HybridViewMethods {
   undo(): void
   redo(): void
   clear(): void
-  /** Adds committed text at the active page position with optional page-point flow limits. Android supports this; iOS is currently a no-op. */
+  /** Commits text at an active-page position with optional canonical page-point flow limits. */
   addTextAnnotation(text: string, position: PagePosition, options?: TextAnnotationOptions): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void

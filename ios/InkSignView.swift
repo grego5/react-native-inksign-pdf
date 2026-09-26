@@ -363,6 +363,8 @@ final class InkSignView: HybridInkSignViewSpec {
   enum TextError: LocalizedError {
     case notReady
     case notFocused
+    case invalidText
+    case invalidBounds
     case cancelled
 
     var errorDescription: String? {
@@ -371,6 +373,10 @@ final class InkSignView: HybridInkSignViewSpec {
         return "view_not_ready: The PDF view is not ready for text interaction"
       case .notFocused:
         return "text_not_focused: No text annotation is selected"
+      case .invalidText:
+        return "invalid_text: Text must not be empty"
+      case .invalidBounds:
+        return "invalid_text_bounds: Text start and flow limits must define a non-empty region inside the active page"
       case .cancelled:
         return "operation_cancelled: The text request was disposed or superseded"
       }

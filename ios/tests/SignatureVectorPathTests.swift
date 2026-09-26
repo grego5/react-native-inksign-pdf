@@ -6,10 +6,11 @@ import XCTest
 
 final class SignatureVectorPathTests: XCTestCase {
   func testSweptStrokeRetainsRecordedWidthsAndCompleteEndpointFootprints() throws {
-    let drawing = straightVariableWidthDrawing()
-    let stroke = try XCTUnwrap(drawing.strokes.first)
+    let sourceDrawing = straightVariableWidthDrawing()
+    let stroke = try XCTUnwrap(sourceDrawing.strokes.first)
     let samples = Array(stroke.path.interpolatedPoints(by: .distance(1)))
-    let path = try XCTUnwrap(InkSignPdfSignatureVectorPath.filledStrokes(in: drawing).first).path
+    let path = try XCTUnwrap(
+      InkSignPdfSignatureVectorPath.filledStrokes(in: sourceDrawing).first).path
     let narrow = try XCTUnwrap(samples.min { $0.size.width < $1.size.width })
     let wide = try XCTUnwrap(samples.max { $0.size.width < $1.size.width })
 

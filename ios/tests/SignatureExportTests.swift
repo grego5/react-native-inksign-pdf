@@ -167,14 +167,14 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
         let expectedBounds = pdfBounds.insetBy(
           dx: -InkSignPdfNativeExporter.signatureAppearanceMargin,
           dy: -InkSignPdfNativeExporter.signatureAppearanceMargin)
-        assertBounds(annotation.bounds, equals: expectedBounds)
+        self.assertBounds(annotation.bounds, equals: expectedBounds)
         let pdfAttachment = XCTAttachment(data: try Data(contentsOf: url),
                                           uniformTypeIdentifier: "com.adobe.pdf")
         pdfAttachment.name = "finalized-signature-workflow.pdf"
         pdfAttachment.lifetime = .keepAlways
-        add(pdfAttachment)
-        attach(page.thumbnail(of: CGSize(width: 792, height: 612), for: .mediaBox),
-               named: "finalized-signature-workflow.png")
+        self.add(pdfAttachment)
+        self.attach(page.thumbnail(of: CGSize(width: 792, height: 612), for: .mediaBox),
+                    named: "finalized-signature-workflow.png")
       } catch {
         XCTFail("The finalized signature must reopen as a vector annotation: \(error)")
       }
