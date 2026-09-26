@@ -1,4 +1,4 @@
-## Development rules
+## Development insructions
 
 - Change authoritative source files, do not edit `nitrogen/generated/**` by hand.
 - Public Nitro API source: `src/InkSignView.nitro.ts`, `src/index.ts`, and `nitro.json`.
@@ -49,40 +49,32 @@
   vector signatures, write/reopen, and external-viewer interoperability.
   Advanced source PDF semantics are outside the editing contract.
 
-### Run iOS tests on the VM Mac
+### Run iOS tests on local network Mac
 
-- Connect from Windows with `ssh mac-vm`. The SSH alias uses the host's key;
-  do not copy credentials into the repository.
-- Require host execution context, not availabe in sandbox.
-- VMware exposes `C:\dev` at `/Network/dev/`. The repo is
-  `/Network/dev/react-native-inksign-pdf` on the Mac.
-- Run the focused text, lifecycle, and PDF navigation tests from that checkout:
+- From Windows, connect with `ssh mac-vm`. The SSH alias uses the host's key; do not copy credentials into the repository.
+- VMware exposes `C:\dev` at `/Network/dev/`. At the Mac prompt, enter the shared checkout or worktree you want to test and run. Replace the example path below when testing another worktree:
 
   ```sh
-  ssh mac-vm
   cd "/Network/dev/react-native-inksign-pdf"
-  INKSIGN_IOS_MAC_SOURCE="$PWD" ./tools/test-ios-mac-vm.sh
+  ./tools/test-ios-mac-vm.sh
   ```
 
-- Set `IOS_MAC_TEST_ONLY` to a test selector, such as
-  `InkSignViewLifecycleTests/testFailedReplacementClearsDocumentAndEditingMode()`,
-  to run one test. Set `IOS_MAC_RESULT_NAME` to name its `.xcresult` bundle.
-  `INKSIGN_IOS_MAC_SOURCE` can point to another Mac-visible checkout; otherwise
-  the script resolves the repository root relative to its own path.
-- The runner keeps its build cache, logs, and result bundles under
-  `~/ios-validation` on the Mac. It syncs source into a Mac-local checkout and
-  reuses installed Node, CocoaPods, and simulator build products; set
-  `IOS_MAC_NPM_INSTALL=1`, `IOS_MAC_POD_INSTALL=1`, or `IOS_MAC_PREBUILD=1` only
-  when those inputs need refreshing.
-- Check Xcode selection with `xcode-select -p` and simulator discovery with
-  `xcrun --find simctl`. If needed, set `DEVELOPER_DIR` to the installed Xcode's
-  `Contents/Developer` directory; the current VM installation is
-  `/Users/admin/Downloads/Xcode 2.app/Contents/Developer`.
-- The script prints a bounded diagnostic summary on failure. The complete
-  `xcodebuild.log` and `.xcresult` remain in `~/ios-validation/logs` and
-  `~/ios-validation/results` for inspection.
+- Set `IOS_TEST_ONLY` to a test selector, such as `InkSignViewLifecycleTests/testFailedReplacementClearsDocumentAndEditingMode()`,
+  to run one test. Set `IOS_RESULT_NAME` to name its `.xcresult` bundle.
+  The script resolves the source root relative to its own path, so running it from another shared worktree tests that worktree.
+- The runner keeps its Mac-local checkout and validation state under `~/projects/react-native-inksign-pdf`:
+- Source is synced to `checkout`, with tooling, build cache, logs, and result bundles alongside it.
+- It reuses installed Node, CocoaPods, and simulator build products; set `IOS_NPM_INSTALL=1`, `IOS_POD_INSTALL=1`, or `IOS_PREBUILD=1` only when those
+  inputs need refreshing.
+- The script prints concise stage updates and test totals. On failure it prints parser-filtered diagnostics and leaves the complete log and `.xcresult`
+  bundle under the project directory for inspection.
 
-## Validation commands
+### Fallback: run iOS tests on GitHub Actions
+
+- When the local Mac VM is unavailable, use the repository's iOS workflow on a
+  GitHub-hosted macOS runner and select the narrowest focus for the change.
+
+## Run Android tests and builds locally
 
 Use repository runners instead of manually reconstructing their commands:
 
@@ -137,4 +129,3 @@ When a tool returns a live process/session:
 
 Use the runner's final `PASS` or `FAIL` line as the result. The heartbeat is
 the liveness signal; intermediate polling is not validation.
-

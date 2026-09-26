@@ -322,6 +322,7 @@ extension InkSignView {
                                              viewport: Viewport?,
                                              wasEditing: Bool) {
     let page = state.activePage
+    textInteractionOverlay.clearPlacementRules()
     overlayProvider.install(document: state.document, generation: generation)
     documentView.document = state.document
     documentView.go(to: page.page)
@@ -336,6 +337,7 @@ extension InkSignView {
     pageSwitchRequestID &+= 1
     pendingPageSwitchID = nil
     let page = state.activePage
+    textInteractionOverlay.clearPlacementRules()
     overlayProvider.install(document: state.document, generation: generation)
     documentView.document = state.document
     documentView.go(to: page.page)

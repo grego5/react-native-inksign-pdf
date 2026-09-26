@@ -3,14 +3,41 @@ set -euo pipefail
 
 # Run the focused iOS text interaction suite from a Mac, including when this
 # script and source tree are reached through a VMware shared folder. Keep a
-# Mac-local checkout and build cache; rsync updates only changed source files.
+# Mac-local checkout and build cache; checksum source files while syncing.
 source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-state="${INKSIGN_IOS_MAC_STATE:-$HOME/ios-validation}"
-repo="$state/ios-text-interaction-plan-8811106b-local"
+state="${IOS_STATE:-$HOME/projects/react-native-inksign-pdf}"
+repo="$state/checkout"
 tooling="$state/tooling"
 logs="$state/logs"
 results="$state/results"
 mkdir -p "$repo" "$tooling" "$logs" "$results"
+result_name="${IOS_RESULT_NAME:-text-interaction}"
+log="$logs/$result_name.log"
+exec 3>&1
+: > "$log"
+exec >> "$log" 2>&1
+
+progress() {
+  printf '%s\n' "$*" >&3
+}
+
+report_failure() {
+  exit_code=$?
+  trap - EXIT
+  if [[ "$exit_code" -ne 0 ]]; then
+    printf 'iOS test runner failed (exit %s). Full log: %s\n' "$exit_code" "$log" >&3
+    python3 "$source_root/tools/summarize-ios-test-log.py" "$log" >&3 || true
+  fi
+  exit "$exit_code"
+}
+trap report_failure EXIT
+
+ruby_bin="${IOS_RUBY_BIN:-}"
+if [[ -z "$ruby_bin" && -x /opt/local/bin/ruby ]]; then
+  ruby_bin=/opt/local/bin
+fi
+if [[ -n "$ruby_bin" ]]; then export PATH="$ruby_bin:$PATH"; fi
+ruby_version="$(ruby -e 'print RUBY_VERSION')"
 
 developer_dir="${DEVELOPER_DIR:-$(xcode-select -p)}"
 if ! DEVELOPER_DIR="$developer_dir" xcrun simctl list devices available >/dev/null 2>&1; then
@@ -30,10 +57,42 @@ fi
 export DEVELOPER_DIR="$developer_dir"
 export PATH="$DEVELOPER_DIR/usr/bin:$PATH"
 
-echo "Syncing changed files into persistent Mac checkout: $repo"
-rsync -a --delete --exclude='.git/' --exclude='node_modules/' \
-  --exclude='/example/ios/' --exclude='/ios/Pods/' \
-  --exclude='diagnostics/' --exclude='.DS_Store' "$source_root/" "$repo/"
+if [[ -x /opt/local/bin/rsync ]]; then
+  rsync_bin=/opt/local/bin/rsync
+else
+  rsync_bin="$(command -v rsync)"
+fi
+if [[ "${IOS_SKIP_SYNC:-0}" == 1 ]]; then
+  progress "Using the existing Mac-local checkout without source sync: $repo"
+else
+  progress "Syncing changed files into the Mac-local checkout: $repo"
+  "$rsync_bin" -ac --delete --exclude='.git/' --exclude='node_modules/' \
+    --exclude='/example/ios/' --exclude='/example/android/' \
+    --exclude='/example/.expo/' --exclude='/example/ios/Pods/' \
+    --exclude='/android/build/' --exclude='/android/.gradle/' \
+    --exclude='/android/.cxx/' --exclude='/build/' --exclude='/coverage/' \
+    --exclude='/ios/Pods/' \
+    --exclude='/diagnostics/***' --exclude='.DS_Store' "$source_root/" "$repo/"
+fi
+
+if [[ -z "${INKSIGN_PDF_TEST_FIXTURES:-}" ]]; then
+  fixture_source_root="$source_root"
+  if [[ "${IOS_SKIP_SYNC:-0}" == 1 ]]; then
+    fixture_source_root="$repo"
+  fi
+  fixture_dir="$repo/diagnostics"
+  mkdir -p "$fixture_dir"
+  if [[ "$fixture_source_root" != "$repo" ]]; then
+    for fixture in 'RaDaLqz0kjfZbrgDjeEd.pdf' 'גיל אייזנברג 3206.pdf'; do
+      if [[ -f "$fixture_source_root/diagnostics/$fixture" ]]; then
+        cp -f "$fixture_source_root/diagnostics/$fixture" "$fixture_dir/$fixture"
+      else
+        rm -f "$fixture_dir/$fixture"
+      fi
+    done
+  fi
+  export INKSIGN_PDF_TEST_FIXTURES="$fixture_dir"
+fi
 
 node_version="${NODE_VERSION:-22.23.3}"
 node_arch="$(uname -m)"
@@ -57,11 +116,19 @@ node_bin="$(dirname "$(command -v node)")"
 
 cd "$repo/example"
 npm pkg set 'dependencies.@grego5/react-native-inksign-pdf=file:..'
-npm install --no-package-lock --ignore-scripts --install-links --no-audit --no-fund
-if [[ ! -f ios/Podfile || "${IOS_MAC_PREBUILD:-0}" == 1 ]]; then
+if [[ "${IOS_NPM_INSTALL:-0}" == 1 || ! -d node_modules/react-native || \
+      ! -f node_modules/expo/package.json ]]; then
+  npm install --no-package-lock --ignore-scripts --install-links --no-audit --no-fund
+else
+  progress 'Using existing npm dependencies (set IOS_NPM_INSTALL=1 to refresh them).'
+fi
+linked_package="$repo/example/node_modules/@grego5/react-native-inksign-pdf"
+rm -rf "$linked_package"
+ln -s "$repo" "$linked_package"
+if [[ ! -f ios/Podfile || "${IOS_PREBUILD:-0}" == 1 ]]; then
   npx expo prebuild --platform ios --no-install
 else
-  echo 'Using the existing generated iOS project (set IOS_MAC_PREBUILD=1 to refresh it).'
+  progress 'Using the existing generated iOS project (set IOS_PREBUILD=1 to refresh it).'
 fi
 
 podfile="$repo/example/ios/Podfile"
@@ -77,32 +144,69 @@ unless text.include?(declaration)
 end
 RUBY
 
-gem_home="$tooling/gems"
-system_gem_path="$(gem env path)"
-export GEM_HOME="$gem_home"
-export GEM_PATH="$GEM_HOME:$system_gem_path"
-export PATH="$GEM_HOME/bin:$PATH"
-if ! "$GEM_HOME/bin/bundle" _2.4.22_ --version >/dev/null 2>&1; then
-  gem install bundler -v 2.4.22 --no-document --install-dir "$GEM_HOME" --bindir "$GEM_HOME/bin"
-fi
-cat > "$tooling/Gemfile" <<'GEMFILE'
+ios_source_manifest="$(find ../ios -type f \( -name '*.swift' -o -name '*.m' -o -name '*.mm' -o -name '*.h' \) -print | LC_ALL=C sort | shasum -a 256 | awk '{print $1}')"
+pod_fingerprint="$(
+  {
+    printf '%s\n' "$ios_source_manifest"
+    shasum -a 256 ios/Podfile ../ReactNativeInkSignPdf.podspec package.json
+  } | shasum -a 256 | awk '{print $1}'
+)"
+pod_fingerprint_file="$tooling/pod-manifest.sha256"
+if [[ "${IOS_POD_INSTALL:-0}" == 1 || ! -f ios/Pods/Manifest.lock || \
+      ! -f "$pod_fingerprint_file" || "$(cat "$pod_fingerprint_file")" != "$pod_fingerprint" ]]; then
+  gem_home="$tooling/ruby-$ruby_version/gems"
+  mkdir -p "$gem_home"
+  system_gem_path="$(gem env path)"
+  export GEM_HOME="$gem_home"
+  export GEM_PATH="$GEM_HOME:$system_gem_path"
+  # Ruby 4 ships logger as a separate gem. Bundler narrows GEM_PATH while
+  # building native extensions, so resolve the file before Bundler and preload
+  # it by absolute path.
+  logger_path="$("$ruby_bin/ruby" -e 'print Gem.find_files("logger.rb").first')"
+  if [[ -z "$logger_path" ]]; then
+    gem install logger --no-document
+    logger_path="$(find "$GEM_HOME" -path '*/logger-*/lib/logger.rb' -print -quit)"
+  fi
+  export PATH="$GEM_HOME/bin:$PATH"
+  bundle_path="$tooling/ruby-$ruby_version/bundle"
+  gemfile="$tooling/ruby-$ruby_version/Gemfile"
+cat > "$gemfile" <<'GEMFILE'
 source 'https://rubygems.org'
-gem 'cocoapods', '1.16.2'
-gem 'ffi', '1.17.1'
-gem 'activesupport', '6.1.7.10'
-gem 'logger', '1.3.0'
+gem 'cocoapods'
+gem 'bigdecimal'
+gem 'benchmark'
 GEMFILE
-export BUNDLE_GEMFILE="$tooling/Gemfile"
-export BUNDLE_APP_CONFIG="$tooling/bundle-config"
-tool_path="$GEM_HOME/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-unset DEVELOPER_DIR
-export PATH="$tool_path"
-export LANG=en_US.UTF-8
-export RUBYOPT=-rlogger
-bundle _2.4.22_ install --path "$tooling/bundle"
-export DEVELOPER_DIR="$developer_dir"
-export PATH="$DEVELOPER_DIR/usr/bin:$node_bin:$tool_path"
-bundle _2.4.22_ exec pod install --project-directory=ios
+  export BUNDLE_GEMFILE="$gemfile"
+  export BUNDLE_APP_CONFIG="$tooling/ruby-$ruby_version/bundle-config"
+  if [[ "$ruby_bin" == /usr/bin ]]; then
+    unset BUNDLE_PATH
+  else
+    export BUNDLE_PATH="$bundle_path"
+  fi
+  # This runner's lockfile is local Mac tooling state; use the installed
+  # Bundler instead of downloading a version pinned by a stale local lock.
+  export BUNDLE_VERSION=system
+  tool_path="$GEM_HOME/bin:$ruby_bin:/opt/local/bin:/opt/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin"
+  unset DEVELOPER_DIR
+  export PATH="$tool_path"
+  export LANG=en_US.UTF-8
+  if [[ -z "$logger_path" ]]; then
+    echo 'Ruby logger gem was not found.' >&2
+    exit 1
+  fi
+  export RUBYOPT="-r$logger_path"
+  if [[ "${IOS_POD_INSTALL:-0}" == 1 && -f "$gemfile.lock" ]]; then
+    bundle update cocoapods
+  else
+    bundle install
+  fi
+  export DEVELOPER_DIR="$developer_dir"
+  export PATH="$DEVELOPER_DIR/usr/bin:$node_bin:$tool_path"
+  bundle exec pod install --project-directory=ios
+  printf '%s\n' "$pod_fingerprint" > "$pod_fingerprint_file"
+else
+  progress 'Using existing CocoaPods installation (set IOS_POD_INSTALL=1 to refresh it).'
+fi
 
 workspace="$(find ios -maxdepth 1 -type d -name '*.xcworkspace' -print -quit)"
 if [[ -z "$workspace" ]]; then
@@ -126,20 +230,37 @@ if [[ -z "$simulator_id" ]]; then
   exit 1
 fi
 
-echo "Running $scheme/InkSignViewTextInteractionTests on simulator $simulator_id."
-log="$logs/xcodebuild.log"
-result_bundle="$results/text-interaction.xcresult"
+progress "Running focused placement, text, lifecycle, and PDF navigation tests on simulator $simulator_id."
+result_bundle="$results/$result_name.xcresult"
 rm -rf "$result_bundle"
+test_selection=(
+  -only-testing:"$scheme/InkSignViewTextInteractionTests"
+  -only-testing:"$scheme/InkSignViewLifecycleTests"
+  -only-testing:"$scheme/InkSignViewPDFNavigationTests"
+  -only-testing:"$scheme/PlacementRuleDetectorTests"
+)
+if [[ -n "${IOS_TEST_ONLY:-}" ]]; then
+  test_identifier="$IOS_TEST_ONLY"
+  if [[ "$test_identifier" != */* && "$test_identifier" != *Tests ]]; then
+    test_identifier="InkSignViewTextInteractionTests/$test_identifier"
+  fi
+  test_selection=(-only-testing:"$scheme/$test_identifier")
+fi
 if xcodebuild \
   -workspace "$workspace" \
   -scheme "$scheme" \
   -destination "platform=iOS Simulator,id=$simulator_id,arch=$(uname -m)" \
   -derivedDataPath "$state/derived-data" \
   -resultBundlePath "$result_bundle" \
-  -only-testing:"$scheme/InkSignViewTextInteractionTests" \
-  test > "$log" 2>&1; then
-  grep -E 'Executed [0-9]+ tests|TEST SUCCEEDED|Result bundle written' "$log" | tail -20 || true
+  "${test_selection[@]}" \
+  test; then
+  if ! grep -Eq "^Test Case .* (passed|failed|skipped) \\(" "$log"; then
+    echo "Xcode reported success without executing any XCTest cases. Check IOS_TEST_ONLY." >&2
+    exit 1
+  fi
+  case_count="$(grep -Ec "^Test Case .* (passed|failed|skipped) \\(" "$log" || true)"
+  progress "Completed $case_count XCTest cases. Full log: $log"
+  grep -E 'Executed [0-9]+ tests|TEST SUCCEEDED|Result bundle written' "$log" | tail -20 >&3 || true
 else
-  grep -E -i 'error:|failed|Executed [0-9]+ tests|TEST FAILED' "$log" | tail -80 || tail -80 "$log"
   exit 1
 fi

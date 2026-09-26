@@ -7,6 +7,18 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport {
+  private func cachePlacementRules(_ rules: [InkSignPdfPlacementRule],
+                                  overlay: InkSignPdfTextInteractionOverlay,
+                                  generation: UInt64,
+                                  pageID: UUID) throws {
+    let requestID = try XCTUnwrap(overlay.beginPlacementRuleScan(generation: generation,
+                                                                 pageID: pageID))
+    overlay.installPlacementRules(rules,
+                                  generation: generation,
+                                  pageID: pageID,
+                                  requestID: requestID)
+  }
+
   func testKeyboardLanguageUsesLocaleCharacterDirection() {
     XCTAssertEqual(InkSignPdfTextDirectionState.writingDirectionHint(for: "he-IL"), true)
     XCTAssertEqual(InkSignPdfTextDirectionState.writingDirectionHint(for: "ps-AF"), true)
@@ -19,24 +31,30 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
     XCTAssertTrue(direction.adoptInputDirectionWhileEmpty(true))
     XCTAssertTrue(direction.effectiveRTL)
-    XCTAssertTrue(direction.lockForContent(false))
-    XCTAssertFalse(direction.effectiveRTL)
+    XCTAssertFalse(direction.lockForContent(hasStrongRTL: false))
+    XCTAssertTrue(direction.effectiveRTL)
     XCTAssertTrue(direction.isLocked)
     XCTAssertFalse(direction.adoptInputDirectionWhileEmpty(true))
-    XCTAssertFalse(direction.effectiveRTL)
-
-    XCTAssertTrue(direction.reopenEmptyEditor(true))
     XCTAssertTrue(direction.effectiveRTL)
+
+    XCTAssertTrue(direction.reopenEmptyEditor(false))
+    XCTAssertFalse(direction.effectiveRTL)
     XCTAssertFalse(direction.isLocked)
-    XCTAssertFalse(direction.lockForContent(nil))
+    XCTAssertFalse(direction.lockForContent(hasStrongRTL: false))
+    XCTAssertTrue(direction.lockForContent(hasStrongRTL: true))
     XCTAssertTrue(direction.isLocked)
     XCTAssertTrue(direction.effectiveRTL)
+    XCTAssertTrue(direction.lockForContent(hasStrongRTL: false))
+    XCTAssertFalse(direction.effectiveRTL,
+                   "Removing RTL content restores the direction adopted while empty")
+    XCTAssertFalse(direction.reopenEmptyEditor(false))
+    XCTAssertFalse(direction.effectiveRTL)
   }
 
   func testExplicitAndReopenedTextDirectionsIgnoreKeyboardLanguage() {
     var explicitLTR = InkSignPdfTextDirectionState(request: .fixed(false), fallbackRTL: true)
     XCTAssertFalse(explicitLTR.adoptInputDirectionWhileEmpty(true))
-    XCTAssertFalse(explicitLTR.lockForContent(true))
+    XCTAssertFalse(explicitLTR.lockForContent(hasStrongRTL: true))
     XCTAssertFalse(explicitLTR.effectiveRTL)
 
     var reopenedRTL = InkSignPdfTextDirectionState(request: .fixed(true), fallbackRTL: false)
@@ -90,52 +108,253 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     }
   }
 
-  func testTextBoxGeometryPlacesTheCaretEdgeAndClampsAtPageEdges() {
+  func testTextBoxGeometryCentersTouchAndPreservesSelectedBottomEdge() {
     let insets = UIEdgeInsets(top: 6, left: 4, bottom: 6, right: 4)
     let pageSize = CGSize(width: 200, height: 100)
-    let boxSize = CGSize(width: 40, height: 28)
+    let anchor = InkSignPdfTextBoxGeometry.PlacementAnchor(centerX: 80,
+                                                           bottomY: 50,
+                                                           bottomEdge: .innerTextArea)
 
-    let ltr = InkSignPdfTextBoxGeometry.initialFrame(caretAnchor: CGPoint(x: 80, y: 20),
-                                                     size: boxSize,
-                                                     isRTL: false,
-                                                     insets: insets,
-                                                     pageSize: pageSize)
-    XCTAssertEqual(ltr, CGRect(x: 76, y: 14, width: 40, height: 28))
-    XCTAssertEqual(InkSignPdfTextBoxGeometry.contentCaretAnchor(in: ltr,
-                                                                 isRTL: false,
-                                                                 insets: insets),
-                   CGPoint(x: 80, y: 20))
+    let compact = InkSignPdfTextBoxGeometry.initialFrame(anchor: anchor,
+                                                         size: CGSize(width: 40, height: 28),
+                                                         insets: insets,
+                                                         pageSize: pageSize)
+    XCTAssertEqual(compact, CGRect(x: 60, y: 28, width: 40, height: 28))
+    XCTAssertEqual(compact.midX, anchor.centerX)
+    XCTAssertEqual(compact.maxY - insets.bottom, anchor.bottomY)
 
-    let rtl = InkSignPdfTextBoxGeometry.initialFrame(caretAnchor: CGPoint(x: 80, y: 20),
-                                                     size: boxSize,
-                                                     isRTL: true,
-                                                     insets: insets,
-                                                     pageSize: pageSize)
-    XCTAssertEqual(rtl, CGRect(x: 44, y: 14, width: 40, height: 28))
-    XCTAssertEqual(InkSignPdfTextBoxGeometry.contentCaretAnchor(in: rtl,
-                                                                 isRTL: true,
-                                                                 insets: insets),
-                   CGPoint(x: 80, y: 20))
+    let expanded = InkSignPdfTextBoxGeometry.initialFrame(anchor: anchor,
+                                                          size: CGSize(width: 72, height: 44),
+                                                          insets: insets,
+                                                          pageSize: pageSize)
+    XCTAssertEqual(expanded.midX, anchor.centerX)
+    XCTAssertEqual(expanded.maxY - insets.bottom, anchor.bottomY)
 
-    let ltrAtLeadingEdge = InkSignPdfTextBoxGeometry.initialFrame(
-      caretAnchor: .zero, size: boxSize, isRTL: false, insets: insets, pageSize: pageSize)
-    XCTAssertEqual(ltrAtLeadingEdge, CGRect(x: 0, y: 0, width: 40, height: 28))
-    XCTAssertEqual(InkSignPdfTextBoxGeometry.contentCaretAnchor(in: ltrAtLeadingEdge,
-                                                                 isRTL: false,
-                                                                 insets: insets),
-                   CGPoint(x: 4, y: 6))
+    let snapped = InkSignPdfTextBoxGeometry.initialFrame(
+      anchor: .init(centerX: 80, bottomY: 50, bottomEdge: .outerBox),
+      size: CGSize(width: 40, height: 28), insets: insets, pageSize: pageSize)
+    XCTAssertEqual(snapped, CGRect(x: 60, y: 22, width: 40, height: 28))
+    XCTAssertEqual(snapped.maxY, 50)
 
-    let rtlAtTrailingEdge = InkSignPdfTextBoxGeometry.initialFrame(
-      caretAnchor: CGPoint(x: 200, y: 0),
-      size: boxSize,
-      isRTL: true,
-      insets: insets,
-      pageSize: pageSize)
-    XCTAssertEqual(rtlAtTrailingEdge, CGRect(x: 160, y: 0, width: 40, height: 28))
-    XCTAssertEqual(InkSignPdfTextBoxGeometry.contentCaretAnchor(in: rtlAtTrailingEdge,
-                                                                 isRTL: true,
-                                                                 insets: insets),
-                   CGPoint(x: 196, y: 6))
+    let edge = InkSignPdfTextBoxGeometry.initialFrame(
+      anchor: .init(centerX: 0, bottomY: 0, bottomEdge: .innerTextArea),
+      size: CGSize(width: 40, height: 28), insets: insets, pageSize: pageSize)
+    XCTAssertEqual(edge.origin, .zero)
+  }
+
+  func testInitialPlacementIsCenteredForLTRRTLAndAutomaticDirection() throws {
+    let tap = CGPoint(x: 150, y: 140)
+    var frames: [CGRect] = []
+    let directions: [Bool?] = [nil, false, true]
+    for direction in directions {
+      let fixture = makeFixture(pageCount: 1)
+      let overlay = fixture.view.textInteractionOverlay
+      overlay.setTextDirection(isRTL: direction)
+      try overlay.armPlacement(generation: fixture.view.documentCoordinator.generation)
+      XCTAssertTrue(overlay.routePlacementTap(at: tap))
+      let editor = try XCTUnwrap(textEditor(in: overlay))
+      frames.append(editor.frame)
+      XCTAssertEqual(editor.frame.midX, tap.x, accuracy: 0.001)
+      XCTAssertEqual(editor.frame.maxY - InkSignPdfTextStyle.presentationInsets.bottom,
+                     tap.y,
+                     accuracy: 0.001)
+      fixture.view.dispose()
+      fixture.window.isHidden = true
+    }
+    XCTAssertEqual(frames[0].origin, frames[1].origin)
+    XCTAssertEqual(frames[1].origin, frames[2].origin)
+  }
+
+  func testSnappedPlacementUsesRuleBeforeDisplayAndKeepsOuterBottomDuringGrowth() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let overlay = fixture.view.textInteractionOverlay
+    let generation = fixture.view.documentCoordinator.generation
+    let pageID = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.id)
+    let rule = InkSignPdfPlacementRule(minX: 40, maxX: 260, y: 200)
+    try cachePlacementRules([rule], overlay: overlay, generation: generation, pageID: pageID)
+    try overlay.armPlacement(generation: generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 150, y: 195)))
+
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    XCTAssertEqual(editor.frame.midX, 150, accuracy: 0.001)
+    XCTAssertEqual(editor.frame.maxY, rule.y, accuracy: 0.001)
+    editor.text = "A note that grows above the selected rule while it is edited"
+    editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
+    overlay.textViewDidChange(editor)
+    XCTAssertGreaterThan(editor.frame.height, 16)
+    XCTAssertEqual(editor.frame.maxY, rule.y, accuracy: 0.001)
+    XCTAssertEqual(editor.frame.midX, 150, accuracy: 0.001)
+  }
+
+  func testRuleSnapUsesTheSameScreenDistanceAtDifferentZoomLevels() throws {
+    let rule = InkSignPdfPlacementRule(minX: 40, maxX: 260, y: 200)
+
+    func placementIsSnapped(zoom: CGFloat, screenDistance: CGFloat) throws -> Bool {
+      let fixture = makeFixture(pageCount: 1)
+      defer { fixture.view.dispose(); fixture.window.isHidden = true }
+      let overlay = fixture.view.textInteractionOverlay
+      let generation = fixture.view.documentCoordinator.generation
+      let pageID = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.id)
+      let transform = CGAffineTransform(scaleX: zoom, y: zoom)
+      fixture.view.pageToOverlayTransform = transform
+      try cachePlacementRules([rule], overlay: overlay, generation: generation, pageID: pageID)
+      try overlay.armPlacement(generation: generation)
+
+      let point = CGPoint(x: 80 * zoom, y: rule.y * zoom - screenDistance)
+      XCTAssertTrue(overlay.routePlacementTap(at: point))
+      let editor = try XCTUnwrap(textEditor(in: overlay))
+      return abs(editor.frame.maxY - rule.y * zoom) < 0.001
+    }
+
+    for screenDistance in [CGFloat(20), 28] {
+      let atOneX = try placementIsSnapped(zoom: 1, screenDistance: screenDistance)
+      let atTwoX = try placementIsSnapped(zoom: 2, screenDistance: screenDistance)
+      XCTAssertEqual(atOneX, atTwoX, "A \(screenDistance)-point gap must have the same snap decision at 1x and 2x")
+      XCTAssertEqual(atOneX, screenDistance <= 24,
+                     "Only rules within the fixed 24-point screen-space tolerance should snap")
+    }
+  }
+
+  func testRuleWithoutRoomForInitialBoxFallsBackToTapPlacement() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let overlay = fixture.view.textInteractionOverlay
+    let generation = fixture.view.documentCoordinator.generation
+    let pageID = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.id)
+    let rule = InkSignPdfPlacementRule(minX: 40, maxX: 260, y: 20)
+    let tap = CGPoint(x: 150, y: 40)
+    try cachePlacementRules([rule], overlay: overlay, generation: generation, pageID: pageID)
+    try overlay.armPlacement(generation: generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: tap))
+
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    XCTAssertEqual(editor.frame.midX, tap.x, accuracy: 0.001)
+    XCTAssertEqual(editor.frame.maxY - InkSignPdfTextStyle.presentationInsets.bottom,
+                   tap.y,
+                   accuracy: 0.001)
+    XCTAssertNotEqual(editor.frame.maxY, rule.y)
+  }
+
+  func testEmptyPlacementRuleResultLeavesOrdinaryPlacementAvailable() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let overlay = fixture.view.textInteractionOverlay
+    let generation = fixture.view.documentCoordinator.generation
+    let pageID = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.id)
+    try cachePlacementRules([], overlay: overlay, generation: generation, pageID: pageID)
+    let tap = CGPoint(x: 150, y: 140)
+    try overlay.armPlacement(generation: generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: tap))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    XCTAssertEqual(editor.frame.midX, tap.x, accuracy: 0.001)
+    XCTAssertEqual(editor.frame.maxY - InkSignPdfTextStyle.presentationInsets.bottom,
+                   tap.y,
+                   accuracy: 0.001)
+  }
+
+  func testPlacementUsesOrdinaryFallbackUntilCurrentScanCompletesAndReusesResults() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let overlay = fixture.view.textInteractionOverlay
+    let generation = fixture.view.documentCoordinator.generation
+    let pageID = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.id)
+    let nearbyRule = InkSignPdfPlacementRule(minX: 40, maxX: 260, y: 200)
+
+    let obsoleteRequestID = try XCTUnwrap(overlay.beginPlacementRuleScan(
+      generation: generation, pageID: pageID))
+    overlay.clearPlacementRules()
+    let activeRequestID = try XCTUnwrap(overlay.beginPlacementRuleScan(
+      generation: generation, pageID: pageID))
+    overlay.installPlacementRules([nearbyRule],
+                                  generation: generation,
+                                  pageID: pageID,
+                                  requestID: obsoleteRequestID)
+    try overlay.armPlacement(generation: generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 150, y: 195)))
+    var editor = try XCTUnwrap(textEditor(in: overlay))
+    XCTAssertEqual(editor.frame.maxY - InkSignPdfTextStyle.presentationInsets.bottom,
+                   195,
+                   accuracy: 0.001)
+    overlay.finishForLifecycle()
+
+    overlay.installPlacementRules([nearbyRule],
+                                  generation: generation,
+                                  pageID: pageID,
+                                  requestID: activeRequestID)
+    try overlay.armPlacement(generation: generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 150, y: 195)))
+    editor = try XCTUnwrap(textEditor(in: overlay))
+    XCTAssertEqual(editor.frame.maxY, nearbyRule.y, accuracy: 0.001)
+  }
+
+  func testPlacementRuleCacheIsPageLocalAndRejectsPreviousPageResults() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let overlay = fixture.view.textInteractionOverlay
+    let generation = fixture.view.documentCoordinator.generation
+    let firstPageID = fixture.pages[0]
+    let rule = InkSignPdfPlacementRule(minX: 40, maxX: 260, y: 200)
+    let firstRequestID = try XCTUnwrap(overlay.beginPlacementRuleScan(
+      generation: generation, pageID: firstPageID))
+    overlay.installPlacementRules([rule],
+                                  generation: generation,
+                                  pageID: firstPageID,
+                                  requestID: firstRequestID)
+    try overlay.armPlacement(generation: generation)
+    overlay.finishForLifecycle()
+    XCTAssertNil(overlay.beginPlacementRuleScan(generation: generation, pageID: firstPageID),
+                 "Re-entering placement on the active page reuses its completed scan")
+
+    let secondPage = try XCTUnwrap(fixture.view.documentCoordinator.document?.pages[1].page)
+    fixture.view.documentView.go(to: secondPage)
+    fixture.view.documentViewDidNavigate(to: secondPage)
+    let secondOverlay = try XCTUnwrap(fixture.view.overlayProvider.pdfView(
+      fixture.view.documentView,
+      overlayViewFor: secondPage))
+    fixture.view.overlayProvider.pdfView(fixture.view.documentView,
+                                         willDisplayOverlayView: secondOverlay,
+                                         for: secondPage)
+    let secondPageID = fixture.pages[1]
+    let secondRequestID = try XCTUnwrap(overlay.beginPlacementRuleScan(
+      generation: generation, pageID: secondPageID))
+    XCTAssertNotEqual(secondRequestID, firstRequestID)
+
+    let firstPage = try XCTUnwrap(fixture.view.documentCoordinator.document?.pages[0].page)
+    fixture.view.documentView.go(to: firstPage)
+    fixture.view.documentViewDidNavigate(to: firstPage)
+    let firstOverlay = try XCTUnwrap(fixture.view.overlayProvider.pdfView(
+      fixture.view.documentView,
+      overlayViewFor: firstPage))
+    fixture.view.overlayProvider.pdfView(fixture.view.documentView,
+                                         willDisplayOverlayView: firstOverlay,
+                                         for: firstPage)
+    let newFirstPageRequestID = try XCTUnwrap(overlay.beginPlacementRuleScan(
+      generation: generation, pageID: firstPageID))
+    XCTAssertNotEqual(newFirstPageRequestID, firstRequestID)
+    overlay.installPlacementRules([rule],
+                                  generation: generation,
+                                  pageID: firstPageID,
+                                  requestID: firstRequestID)
+
+    try overlay.armPlacement(generation: generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 150, y: 195)))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    XCTAssertEqual(editor.frame.maxY - InkSignPdfTextStyle.presentationInsets.bottom,
+                   195,
+                   accuracy: 0.001,
+                   "The old page result must not snap after switching away and back")
+  }
+
+  func testAutomaticDirectionUsesStrongRTLContentThenReturnsToEmptyDirection() {
+    var direction = InkSignPdfTextDirectionState(request: .automatic, fallbackRTL: false)
+    XCTAssertFalse(InkSignPdfTextDirectionState.containsStrongRTLCharacter("abc 123 —"))
+    XCTAssertTrue(InkSignPdfTextDirectionState.containsStrongRTLCharacter("mixed אבג"))
+    XCTAssertTrue(InkSignPdfTextDirectionState.containsStrongRTLCharacter("العربية 123"))
+    direction.lockForContent(hasStrongRTL: true)
+    XCTAssertTrue(direction.effectiveRTL)
+    direction.lockForContent(hasStrongRTL: false)
+    XCTAssertFalse(direction.effectiveRTL)
   }
 
   func testCommittedTextBoundsTransformToTheSameOuterOutline() {
@@ -206,6 +425,8 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     var didDraw = false
     let image = UIGraphicsImageRenderer(size: CGSize(width: 300, height: 200),
                                         format: format).image { rendererContext in
+      UIColor.white.setFill()
+      rendererContext.fill(CGRect(x: 0, y: 0, width: 300, height: 200))
       didDraw = InkSignPdfTextRenderer.drawCanonical(
         [annotation],
         pageSize: CGSize(width: 300, height: 200),
@@ -419,18 +640,27 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 2)
     defer { fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
+    let generation = fixture.view.documentCoordinator.generation
+    let firstPageID = fixture.pages[0]
 
-    try overlay.armPlacement(generation: fixture.view.documentCoordinator.generation)
+    try overlay.armPlacement(generation: generation)
+    XCTAssertNil(overlay.beginPlacementRuleScan(generation: generation, pageID: firstPageID),
+                 "Entering placement starts a scan for the active page")
     fixture.view.setInteractionMode(editing: true)
     XCTAssertFalse(overlay.hasPendingPlacement())
+    XCTAssertNil(overlay.beginPlacementRuleScan(generation: generation, pageID: firstPageID),
+                 "Leaving placement keeps the active page's scan result")
 
-    try overlay.armPlacement(generation: fixture.view.documentCoordinator.generation)
+    try overlay.armPlacement(generation: generation)
     try fixture.view.switchPage(to: 1) { result in
       if case .failure(let error) = result {
         XCTFail("unexpected page switch failure: \(error)")
       }
     }
     XCTAssertFalse(overlay.hasPendingPlacement())
+    XCTAssertNotNil(overlay.beginPlacementRuleScan(generation: generation,
+                                                   pageID: fixture.pages[1]),
+                    "Changing pages clears the previous page's scan")
   }
 
   func testTextPlacementCancelsOnDocumentReplacementAndDisposal() throws {
@@ -454,7 +684,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertFalse(disposalOverlay.hasPendingPlacement())
   }
 
-  func testRTLTextKeepsTheCaretContentEdgeOnCommit() throws {
+  func testRTLTextKeepsCenteredPlacementAndInnerBottomOnCommit() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
@@ -470,8 +700,9 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
     let annotations = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history.content.textAnnotations)
     XCTAssertEqual(annotations.count, 1)
-    XCTAssertEqual(annotations[0].bounds.maxX - InkSignPdfTextStyle.presentationInsets.right,
-                   placementPoint.x,
+    XCTAssertEqual(annotations[0].bounds.midX, placementPoint.x, accuracy: 0.001)
+    XCTAssertEqual(annotations[0].bounds.maxY - InkSignPdfTextStyle.presentationInsets.bottom,
+                   placementPoint.y,
                    accuracy: 0.001)
   }
 

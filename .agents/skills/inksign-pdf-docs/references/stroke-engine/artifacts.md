@@ -24,17 +24,5 @@ existing release tag. The release contains raw archives, per-ABI metadata, a
 combined manifest, checksums, and Google Ink/Abseil notices. Profiling archives
 are never selected by this workflow.
 
-Android Gradle consumes the pinned release in `android/ink-engine-release.json`.
-In prebuilt mode, `prepareInkEngine` downloads the single
-`ink-engine-1.0.0-android-static.zip` release asset when the verified cache is
-missing, validates its pinned ZIP/checksum hashes, inner manifest, per-ABI
-metadata and archives, then installs the selected archives under
-`android/build/ink-engine/<abi>/` before CMake configuration. A valid cache is
-reused offline. CMake performs the final ABI, API version, expected NDK, byte
-size, SHA-256, and trace-disabled checks before linking the imported target.
-Repository development and tests explicitly opt into source mode with
-`ReactNativeInkSignPdf_useSourceInkEngine=true`; source mode remains the only
-Android path that compiles Google Ink and Abseil from `core/third_party` and does
-not invoke the InkEngine downloader. The npm package contains the release pin,
-C ABI headers, and PDFium inputs, but no InkEngine archives or Google
-Ink/Abseil source trees.
+Android Gradle consumption, package contents, and source/prebuilt mode are
+documented in [the Android native artifacts reference](../android/native-artifacts.md).

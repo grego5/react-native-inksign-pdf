@@ -3,24 +3,26 @@ import PencilKit
 import UIKit
 
 enum InkSignPdfTextBoxGeometry {
-  static func initialFrame(caretAnchor: CGPoint,
-                           size: CGSize,
-                           isRTL: Bool,
-                           insets: UIEdgeInsets,
-                           pageSize: CGSize) -> CGRect {
-    let origin = CGPoint(x: isRTL
-      ? caretAnchor.x + insets.right - size.width
-      : caretAnchor.x - insets.left,
-                         y: caretAnchor.y - insets.top)
-    return CGRect(origin: clampedOrigin(for: size, preferred: origin, pageSize: pageSize),
-                  size: size)
+  enum BottomEdge: Equatable {
+    case innerTextArea
+    case outerBox
   }
 
-  static func contentCaretAnchor(in frame: CGRect,
-                                 isRTL: Bool,
-                                 insets: UIEdgeInsets) -> CGPoint {
-    CGPoint(x: isRTL ? frame.maxX - insets.right : frame.minX + insets.left,
-            y: frame.minY + insets.top)
+  struct PlacementAnchor: Equatable {
+    let centerX: CGFloat
+    let bottomY: CGFloat
+    let bottomEdge: BottomEdge
+  }
+
+  static func initialFrame(anchor: PlacementAnchor,
+                           size: CGSize,
+                           insets: UIEdgeInsets,
+                           pageSize: CGSize) -> CGRect {
+    let bottomInset = anchor.bottomEdge == .innerTextArea ? insets.bottom : 0
+    let origin = CGPoint(x: anchor.centerX - size.width / 2,
+                         y: anchor.bottomY - size.height + bottomInset)
+    return CGRect(origin: clampedOrigin(for: size, preferred: origin, pageSize: pageSize),
+                  size: size)
   }
 
   static func outlineBounds(for bounds: CGRect,
