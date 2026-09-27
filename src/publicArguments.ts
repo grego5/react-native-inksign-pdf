@@ -42,19 +42,51 @@ export function validateAddPagesOptions(value: unknown): void {
   }
 }
 
+export function validateTextAnnotationBounds(value: unknown): void {
+  if (!isRecord(value) ||
+    typeof value.x !== 'number' || !Number.isFinite(value.x) ||
+    typeof value.y !== 'number' || !Number.isFinite(value.y) ||
+    typeof value.width !== 'number' || !Number.isFinite(value.width) || value.width <= 0 ||
+    typeof value.height !== 'number' || !Number.isFinite(value.height) || value.height <= 0) {
+    throw argumentError(
+      'invalid_text_bounds',
+      'Text bounds must have finite x/y coordinates and positive finite width/height',
+    );
+  }
+}
+
 export function validateTextAnnotationOptions(value: unknown): void {
   if (value === undefined) return;
   if (!isRecord(value) ||
     (value.direction !== undefined && value.direction !== 'ltr' &&
       value.direction !== 'rtl' && value.direction !== 'auto') ||
-    (value.xLimit !== undefined &&
-      (typeof value.xLimit !== 'number' || !Number.isFinite(value.xLimit))) ||
-    (value.yLimit !== undefined &&
-      (typeof value.yLimit !== 'number' || !Number.isFinite(value.yLimit))) ||
     (value.maxLines !== undefined &&
       (typeof value.maxLines !== 'number' || !Number.isInteger(value.maxLines) || value.maxLines < 0)) ||
+    (value.alignment !== undefined && value.alignment !== 'start' &&
+      value.alignment !== 'end' && value.alignment !== 'center') ||
     (value.verticalAnchor !== undefined && value.verticalAnchor !== 'top' &&
       value.verticalAnchor !== 'bottom')) {
-    throw argumentError('invalid_text_options', 'Text options must contain valid direction, flow limits, line count, and vertical anchor');
+    throw argumentError(
+      'invalid_text_options',
+      'Text options must contain a valid direction, alignment, line count, and vertical anchor',
+    );
+  }
+}
+
+export function validateTextPlacementOptions(value: unknown): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    throw argumentError('invalid_text_placement_options', 'Placement options must be an object');
+  }
+  validateTextAnnotationOptions(value);
+  const hasWidth = value.width !== undefined;
+  const hasHeight = value.height !== undefined;
+  if (hasWidth !== hasHeight ||
+    (hasWidth && (typeof value.width !== 'number' || !Number.isFinite(value.width) || value.width <= 0)) ||
+    (hasHeight && (typeof value.height !== 'number' || !Number.isFinite(value.height) || value.height <= 0))) {
+    throw argumentError(
+      'invalid_text_placement_options',
+      'Manual box width and height must be supplied together as finite positive page points',
+    );
   }
 }

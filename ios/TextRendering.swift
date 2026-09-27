@@ -15,30 +15,37 @@ enum InkSignPdfTextStyle {
     UIFont.systemFont(ofSize: size)
   }
 
-  static func paragraph(isRTL: Bool) -> NSParagraphStyle {
+  static func paragraph(isRTL: Bool,
+                        alignment: InkSignPdfTextAlignment = .start) -> NSParagraphStyle {
     let style = NSMutableParagraphStyle()
     style.baseWritingDirection = isRTL ? .rightToLeft : .leftToRight
-    style.alignment = isRTL ? .right : .left
+    switch alignment {
+    case .start: style.alignment = isRTL ? .right : .left
+    case .end: style.alignment = isRTL ? .left : .right
+    case .center: style.alignment = .center
+    }
     style.lineBreakMode = .byWordWrapping
     return style
   }
 
   static func attributes(fontSize: CGFloat,
                          color: UIColor,
-                         isRTL: Bool) -> [NSAttributedString.Key: Any] {
+                         isRTL: Bool,
+                         alignment: InkSignPdfTextAlignment = .start) -> [NSAttributedString.Key: Any] {
     [.font: font(size: fontSize),
      .foregroundColor: color,
-     .paragraphStyle: paragraph(isRTL: isRTL)]
+     .paragraphStyle: paragraph(isRTL: isRTL, alignment: alignment)]
   }
 
   static func apply(to textView: UITextView,
                     fontSize: CGFloat,
                     color: UIColor,
-                    isRTL: Bool) {
-    let attributes = attributes(fontSize: fontSize, color: color, isRTL: isRTL)
+                    isRTL: Bool,
+                    alignment: InkSignPdfTextAlignment = .start) {
+    let attributes = attributes(fontSize: fontSize, color: color, isRTL: isRTL, alignment: alignment)
     textView.font = font(size: fontSize)
     textView.textColor = color
-    textView.textAlignment = isRTL ? .right : .left
+    textView.textAlignment = paragraph(isRTL: isRTL, alignment: alignment).alignment
     textView.semanticContentAttribute = isRTL ? .forceRightToLeft : .forceLeftToRight
     if textView.textStorage.length > 0 {
       textView.textStorage.addAttributes(attributes,
@@ -119,7 +126,8 @@ enum InkSignPdfTextRenderer {
                                     fontSize: annotation.fontSize,
                                     color: color,
                                     isRTL: annotation.isRTL,
-                                    contentWidth: contentWidth)
+                                    contentWidth: contentWidth,
+                                    alignment: annotation.alignment)
       let visibleLines: [LineFragment]
       if let flowBounds = annotation.flowBounds {
         visibleLines = selectedLineFragments(lines,
@@ -127,11 +135,13 @@ enum InkSignPdfTextRenderer {
                                              maxLines: annotation.maxLines,
                                              verticalAnchor: annotation.verticalAnchor)
       } else {
-        visibleLines = lines
+        visibleLines = annotation.maxLines > 0
+          ? Array(lines.prefix(annotation.maxLines)) : lines
       }
       let attributes = InkSignPdfTextStyle.attributes(fontSize: annotation.fontSize,
                                                        color: color,
-                                                       isRTL: annotation.isRTL)
+                                                       isRTL: annotation.isRTL,
+                                                       alignment: annotation.alignment)
       context.saveGState()
       let origin: CGPoint
       if let flowBounds = annotation.flowBounds {
@@ -194,13 +204,15 @@ enum InkSignPdfTextRenderer {
                             isRTL: Bool,
                             flowBounds: CGRect,
                             maxLines: Int = 0,
-                            verticalAnchor: InkSignPdfTextVerticalAnchor = .top) -> CGRect {
+                            verticalAnchor: InkSignPdfTextVerticalAnchor = .top,
+                            alignment: InkSignPdfTextAlignment = .start) -> CGRect {
     let fragments = selectedLineFragments(
       makeLineFragments(text,
                         fontSize: fontSize,
                         color: .black,
                         isRTL: isRTL,
-                        contentWidth: flowBounds.width),
+                        contentWidth: flowBounds.width,
+                        alignment: alignment),
       flowBounds: flowBounds,
       maxLines: maxLines,
       verticalAnchor: verticalAnchor)
@@ -223,16 +235,35 @@ enum InkSignPdfTextRenderer {
                    fontSize: CGFloat,
                    isRTL: Bool,
                    flowBounds: CGRect,
-                   maxLines: Int) -> Bool {
+                   maxLines: Int,
+                   alignment: InkSignPdfTextAlignment = .start) -> Bool {
     let fragments = makeLineFragments(text,
                                       fontSize: fontSize,
                                       color: .black,
                                       isRTL: isRTL,
-                                      contentWidth: flowBounds.width)
+                                      contentWidth: flowBounds.width,
+                                      alignment: alignment)
     return selectedLineFragments(fragments,
                                  flowBounds: flowBounds,
                                  maxLines: maxLines,
                                  verticalAnchor: .top).count == fragments.count
+  }
+
+  static func fitsMaxLines(_ text: String,
+                           fontSize: CGFloat,
+                           isRTL: Bool,
+                           maxLines: Int,
+                           maximumWidth: CGFloat,
+                           alignment: InkSignPdfTextAlignment) -> Bool {
+    guard !text.isEmpty, maxLines > 0 else { return true }
+    let insets = InkSignPdfTextStyle.presentationInsets
+    let width = max(1, maximumWidth - insets.left - insets.right)
+    return makeLineFragments(text,
+                             fontSize: fontSize,
+                             color: .black,
+                             isRTL: isRTL,
+                             contentWidth: width,
+                             alignment: alignment).count <= maxLines
   }
 
   private static func selectedLineFragments(
@@ -252,12 +283,14 @@ enum InkSignPdfTextRenderer {
                                         fontSize: CGFloat,
                                         color: UIColor,
                                         isRTL: Bool,
-                                        contentWidth: CGFloat) -> [LineFragment] {
+                                        contentWidth: CGFloat,
+                                        alignment: InkSignPdfTextAlignment = .start) -> [LineFragment] {
     let storage = NSTextStorage(attributedString: NSAttributedString(
       string: text,
       attributes: InkSignPdfTextStyle.attributes(fontSize: fontSize,
                                                   color: color,
-                                                  isRTL: isRTL)))
+                                                  isRTL: isRTL,
+                                                  alignment: alignment)))
     let manager = NSLayoutManager()
     let container = NSTextContainer(size: CGSize(width: contentWidth,
                                                  height: .greatestFiniteMagnitude))

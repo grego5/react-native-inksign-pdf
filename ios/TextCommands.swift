@@ -7,7 +7,7 @@ extension InkSignView {
     return "text-\(nextTextAnnotationID)"
   }
 
-  func insertAnnotationOn(options: TextAnnotationOptions?) throws {
+  func insertAnnotationOn(options: TextPlacementOptions?) throws {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
       if self.textInteractionOverlay.hasPendingPlacement() { return }
@@ -35,13 +35,13 @@ extension InkSignView {
 
   func addTextAnnotation(
     text: String,
-    position: PagePosition,
+    bounds: TextAnnotationBounds,
     options: TextAnnotationOptions?
   ) throws {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
       try self.textInteractionOverlay.addTextAnnotation(text: text,
-                                                         position: position,
+                                                         bounds: bounds,
                                                          options: options)
     }
   }

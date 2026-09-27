@@ -36,14 +36,18 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
-// Forward declaration of `PagePosition` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PagePosition; }
+// Forward declaration of `TextAnnotationBounds` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `TextAlignment` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
+// Forward declaration of `TextPlacementOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
 #include "PdfFallbackFont.hpp"
 #include <optional>
@@ -62,10 +66,12 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "ImagePageSize.hpp"
 #include "AddPagesActivePage.hpp"
 #include "Viewport.hpp"
-#include "PagePosition.hpp"
+#include "TextAnnotationBounds.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
+#include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
+#include "TextPlacementOptions.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
 
@@ -303,8 +309,8 @@ namespace margelo::nitro::inksignpdf {
         std::rethrow_exception(__result.error());
       }
     }
-    inline void addTextAnnotation(const std::string& text, const PagePosition& position, const std::optional<TextAnnotationOptions>& options) override {
-      auto __result = _swiftPart.addTextAnnotation(text, std::forward<decltype(position)>(position), options);
+    inline void addTextAnnotation(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) override {
+      auto __result = _swiftPart.addTextAnnotation(text, std::forward<decltype(bounds)>(bounds), options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
@@ -315,7 +321,7 @@ namespace margelo::nitro::inksignpdf {
         std::rethrow_exception(__result.error());
       }
     }
-    inline void insertAnnotationOn(const std::optional<TextAnnotationOptions>& options) override {
+    inline void insertAnnotationOn(const std::optional<TextPlacementOptions>& options) override {
       auto __result = _swiftPart.insertAnnotationOn(options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());

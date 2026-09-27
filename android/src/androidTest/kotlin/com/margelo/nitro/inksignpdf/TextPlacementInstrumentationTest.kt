@@ -80,7 +80,7 @@ internal class TextPlacementInstrumentationTest {
       )
       val overlay = harness.createOverlay()
 
-      overlay.addTextAnnotation(PagePoint(20.0, 30.0), "Approved", null)
+      overlay.addTextAnnotation(TextAnnotationBounds(20.0, 30.0, 280.0, 270.0), "Approved", null)
 
       val annotation = harness.surface.textPresentationSnapshot()?.annotations?.single()
       assertNotNull(annotation)
@@ -96,26 +96,189 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
+  fun physicalRectangleAndAlignmentStayDirectionIndependent() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        val bounds = TextAnnotationBounds(40.0, 30.0, 180.0, 70.0)
+        val cases = listOf(
+          TextDirection.LTR to TextAlignment.START,
+          TextDirection.RTL to TextAlignment.START,
+          TextDirection.LTR to TextAlignment.END,
+          TextDirection.RTL to TextAlignment.END,
+          TextDirection.RTL to TextAlignment.CENTER,
+        )
+        cases.forEach { (direction, alignment) ->
+          overlay.addTextAnnotation(
+            bounds,
+            "short",
+            TextAnnotationOptions(direction, null, alignment, null),
+          )
+        }
+        overlay.addTextAnnotation(
+          bounds,
+          "short",
+          TextAnnotationOptions(
+            TextDirection.RTL,
+            null,
+            TextAlignment.START,
+            TextVerticalAnchor.BOTTOM,
+          ),
+        )
+        val annotations = checkNotNull(harness.surface.textPresentationSnapshot()).annotations
+        assertEquals(6, annotations.size)
+        assertTrue(annotations.all { it.flowBounds == PageRect(40.0, 30.0, 220.0, 100.0) })
+        val flowWidth = 180.0
+        fun layout(annotation: TextAnnotation) = TextLayoutSpec.createLayout(annotation)
+        val leftStart = layout(annotations[0]).getLineLeft(0)
+        val rightStart = layout(annotations[1]).getLineRight(0)
+        val rightEnd = layout(annotations[2]).getLineRight(0)
+        val leftEnd = layout(annotations[3]).getLineLeft(0)
+        val center = layout(annotations[4])
+        assertEquals(0f, leftStart, 1f)
+        assertEquals(flowWidth.toFloat(), rightStart, 1f)
+        assertEquals(flowWidth.toFloat(), rightEnd, 1f)
+        assertEquals(0f, leftEnd, 1f)
+        assertEquals(flowWidth / 2.0, (center.getLineLeft(0) + center.getLineRight(0)) / 2.0, 1.0)
+
+        val export = PdfExportTextResolver.resolve(
+          PdfExportSnapshot(
+            sourcePath = "unused-source.pdf",
+            outputPath = "unused-output.pdf",
+            pages = listOf(
+              PdfPageExportSnapshot(
+                pageIndex = 0,
+                dimensions = PdfPageDimensions(300.0, 300.0),
+                strokes = emptyList(),
+                textAnnotations = annotations,
+              ),
+            ),
+            generation = 1L,
+            color = android.graphics.Color.BLACK,
+          ),
+        )
+        val exportedLines = export.runs.groupBy { it.lineId }.values.toList()
+        assertEquals("Every one-line preview remains one exported line", 6, exportedLines.size)
+        assertEquals(listOf(0, 2, 2, 0, 1, 2), exportedLines.map { it.first().textAlignment })
+
+        val before = annotations.toList()
+        val error = assertThrows(PdfSessionException::class.java) {
+          overlay.addTextAnnotation(
+            TextAnnotationBounds(280.0, 20.0, 40.0, 40.0),
+            "outside page",
+            null,
+          )
+        }
+        assertEquals("invalid_text_bounds", error.code)
+        assertEquals(before, harness.surface.textPresentationSnapshot()?.annotations)
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun maxLinesDoesNotForceLinesBeyondThePhysicalBoxHeight() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        val oneLineLayout = TextLayoutSpec.createLayout(
+          text = "one",
+          fontSize = defaultTextFontSize,
+          textColor = android.graphics.Color.BLACK,
+          layoutWidth = 100.0,
+          baseDirectionRtl = false,
+        )
+        val box = TextAnnotationBounds(
+          40.0,
+          30.0,
+          100.0,
+          oneLineLayout.height + 0.01,
+        )
+        overlay.addTextAnnotation(
+          box,
+          "one\ntwo",
+          TextAnnotationOptions(TextDirection.LTR, 2.0, TextAlignment.START, null),
+        )
+        val annotation = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        val layout = TextLayoutSpec.createLayout(annotation)
+        val selection = TextLayoutSpec.selectVisibleLines(
+          layout,
+          checkNotNull(annotation.flowBounds),
+          annotation.maxLines,
+          annotation.verticalAnchor,
+        )
+        assertEquals(2, layout.lineCount)
+        assertEquals(1, selection.lineCount)
+        assertTrue(annotation.bounds.bottom <= annotation.flowBounds!!.bottom)
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun autoSizedManualPlacementAppliesMaxLines() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        overlay.armPlacement(
+          1L,
+          TextPlacementOptions(
+            direction = TextDirection.LTR,
+            width = null,
+            height = null,
+            maxLines = 2.0,
+            alignment = TextAlignment.START,
+            verticalAnchor = TextVerticalAnchor.TOP,
+          ),
+        )
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        val tap = presentation.transform.map(PagePoint(40.0, 50.0))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_200L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_210L))
+
+        val editor = editorView(overlay)
+        editor.setText("first\nsecond")
+        editor.setSelection(editor.length())
+        editor.text.insert(editor.selectionEnd, "\nthird")
+        assertEquals("first\nsecond", editor.text.toString())
+        assertEquals(2, editor.layout.lineCount)
+        overlay.finishForLifecycle()
+        val annotation = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        assertTrue(annotation.flowBounds == null)
+        assertEquals(2, annotation.maxLines)
+        assertEquals(2, TextLayoutSpec.createLayout(annotation).lineCount)
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
   fun programmaticTextWrapsAndClipsToPagePointLimits() {
     harness.runOnMain {
       harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
         overlay.addTextAnnotation(
-          PagePoint(50.0, 40.0),
+          TextAnnotationBounds(50.0, 40.0, 42.0, 42.0),
           "one two three four five six seven eight nine ten",
-          TextAnnotationOptions(TextDirection.LTR, 92.0, 82.0, null, null),
+          TextAnnotationOptions(TextDirection.LTR, null, TextAlignment.START, null),
         )
         overlay.addTextAnnotation(
-          PagePoint(250.0, 40.0),
+          TextAnnotationBounds(208.0, 40.0, 42.0, 42.0),
           "RTL text wraps near the left edge",
-          TextAnnotationOptions(TextDirection.RTL, 208.0, 82.0, null, null),
+          TextAnnotationOptions(TextDirection.RTL, null, TextAlignment.START, null),
         )
         harness.surface.layoutDirection = View.LAYOUT_DIRECTION_RTL
         overlay.addTextAnnotation(
-          PagePoint(250.0, 100.0),
+          TextAnnotationBounds(208.0, 100.0, 42.0, 50.0),
           "Auto follows app layout",
-          TextAnnotationOptions(TextDirection.AUTO, 208.0, 150.0, null, null),
+          TextAnnotationOptions(TextDirection.AUTO, null, TextAlignment.START, null),
         )
 
         val annotation = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -182,23 +345,21 @@ internal class TextPlacementInstrumentationTest {
       val overlay = harness.createOverlay()
       try {
         overlay.addTextAnnotation(
-          PagePoint(20.0, 260.0),
+          TextAnnotationBounds(20.0, 180.0, 260.0, 80.0),
           "one\ntwo\nthree\nfour",
           TextAnnotationOptions(
             direction = TextDirection.LTR,
-            xLimit = 280.0,
-            yLimit = 180.0,
+            alignment = TextAlignment.START,
             maxLines = 2.0,
             verticalAnchor = TextVerticalAnchor.BOTTOM,
           ),
         )
         overlay.addTextAnnotation(
-          PagePoint(20.0, 260.0),
+          TextAnnotationBounds(20.0, 230.0, 260.0, 30.0),
           "one\ntwo\nthree",
           TextAnnotationOptions(
             direction = TextDirection.LTR,
-            xLimit = 280.0,
-            yLimit = 230.0,
+            alignment = TextAlignment.START,
             maxLines = 3.0,
             verticalAnchor = TextVerticalAnchor.BOTTOM,
           ),
@@ -258,11 +419,12 @@ internal class TextPlacementInstrumentationTest {
       harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
-        val options = TextAnnotationOptions(
+        val options = TextPlacementOptions(
           direction = TextDirection.LTR,
-          xLimit = 150.0,
-          yLimit = 100.0,
+          width = 110.0,
+          height = 80.0,
           maxLines = 2.0,
+          alignment = TextAlignment.START,
           verticalAnchor = TextVerticalAnchor.BOTTOM,
         )
         overlay.armPlacement(1L, options)
@@ -273,7 +435,7 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(overlay.hasPendingPlacement())
         assertEquals(0, editorCount(overlay))
 
-        val tap = presentation.transform.map(PagePoint(40.0, 180.0))
+        val tap = presentation.transform.map(PagePoint(40.0, 100.0))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_320L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_330L))
         assertFalse(overlay.hasPendingPlacement())
@@ -330,16 +492,17 @@ internal class TextPlacementInstrumentationTest {
           TextLayoutSpec.createPaint(defaultTextFontSize).measureText("MMMM").toDouble(),
         )
         val flowBounds = PageRect(20.0, 100.0, 20.0 + fourCharacterWidth, 250.0)
-        val options = TextAnnotationOptions(
+        val options = TextPlacementOptions(
           direction = TextDirection.LTR,
-          xLimit = flowBounds.right,
-          yLimit = flowBounds.top,
+          width = flowBounds.right - flowBounds.left,
+          height = flowBounds.bottom - flowBounds.top,
           maxLines = 2.0,
+          alignment = TextAlignment.START,
           verticalAnchor = TextVerticalAnchor.BOTTOM,
         )
         overlay.armPlacement(1L, options)
         val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
-        val tap = presentation.transform.map(PagePoint(20.0, 250.0))
+        val tap = presentation.transform.map(PagePoint(20.0, 100.0))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_360L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_370L))
 
@@ -439,16 +602,17 @@ internal class TextPlacementInstrumentationTest {
         val flowBounds = PageRect(20.0, 100.0, 20.0 + fourCharacterWidth, 250.0)
         overlay.armPlacement(
           1L,
-          TextAnnotationOptions(
+          TextPlacementOptions(
             direction = TextDirection.LTR,
-            xLimit = flowBounds.right,
-            yLimit = flowBounds.top,
+            width = flowBounds.right - flowBounds.left,
+            height = flowBounds.bottom - flowBounds.top,
             maxLines = 2.0,
+            alignment = TextAlignment.START,
             verticalAnchor = TextVerticalAnchor.BOTTOM,
           ),
         )
         val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
-        val tap = presentation.transform.map(PagePoint(20.0, 250.0))
+        val tap = presentation.transform.map(PagePoint(20.0, 100.0))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_380L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_390L))
 
@@ -1500,9 +1664,9 @@ internal class TextPlacementInstrumentationTest {
       val overlay = harness.createOverlay()
       try {
         overlay.addTextAnnotation(
-          PagePoint(80.0, 70.0),
+          TextAnnotationBounds(80.0, 70.0, 160.0, 90.0),
           "Programmatic flow text",
-          TextAnnotationOptions(TextDirection.LTR, 240.0, 160.0, null, null),
+          TextAnnotationOptions(TextDirection.LTR, null, TextAlignment.START, null),
         )
         val original = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         val initialPresentation = checkNotNull(harness.surface.textPresentationSnapshot())

@@ -48,6 +48,7 @@ internal object PdfiumNativePdfExporter {
     val textRunBaseDirections = IntArray(textRuns.size) {
       if (textRuns[it].baseDirectionRtl) 1 else 0
     }
+    val textRunAlignments = IntArray(textRuns.size) { textRuns[it].textAlignment }
     val textRunFontIndices = IntArray(textRuns.size) { textRuns[it].fontIndex }
     val textRunGeometry = FloatArray(textRuns.size * 5) { index ->
       val run = textRuns[index / 5]
@@ -78,6 +79,7 @@ internal object PdfiumNativePdfExporter {
       textRunBidiLevels,
       textRunVisualOrder,
       textRunBaseDirections,
+      textRunAlignments,
       textRunFontIndices,
       textRunGeometry,
       textRunColors,
@@ -102,6 +104,7 @@ internal object PdfiumNativePdfExporter {
     textRunBidiLevels: IntArray,
     textRunVisualOrder: IntArray,
     textRunBaseDirections: IntArray,
+    textRunAlignments: IntArray,
     textRunFontIndices: IntArray,
     textRunGeometry: FloatArray,
     textRunColors: IntArray,

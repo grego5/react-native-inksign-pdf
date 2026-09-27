@@ -185,7 +185,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun addTextAnnotation(text: String, position: PagePosition, options: TextAnnotationOptions?): Unit
+  abstract fun addTextAnnotation(text: String, bounds: TextAnnotationBounds, options: TextAnnotationOptions?): Unit
   
   @DoNotStrip
   @Keep
@@ -193,7 +193,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun insertAnnotationOn(options: TextAnnotationOptions?): Unit
+  abstract fun insertAnnotationOn(options: TextPlacementOptions?): Unit
   
   @DoNotStrip
   @Keep

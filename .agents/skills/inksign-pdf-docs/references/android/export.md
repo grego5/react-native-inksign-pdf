@@ -15,6 +15,9 @@
 
 - Store the annotation's base direction and logical Unicode text. Export uses that
   direction for shaping and placement; it does not reverse the source string.
+- Resolve logical start/end alignment against direction, then align each PDF
+  line inside the fixed physical flow rectangle. Preview and export retain the
+  same complete lines.
 - Programmatic and option-based manual text use the saved page-point flow region
   for wrapping. Export writes the first complete lines that fit both `maxLines`
   and the region height. A bottom anchor translates that retained block upward

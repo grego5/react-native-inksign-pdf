@@ -31,14 +31,18 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `AddPagesActivePage` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
-// Forward declaration of `PagePosition` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PagePosition; }
+// Forward declaration of `TextAnnotationBounds` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `TextAlignment` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
+// Forward declaration of `TextPlacementOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
 #include "PdfFallbackFont.hpp"
 #include <optional>
@@ -73,14 +77,18 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "JImagePageSize.hpp"
 #include "AddPagesActivePage.hpp"
 #include "JAddPagesActivePage.hpp"
-#include "PagePosition.hpp"
-#include "JPagePosition.hpp"
+#include "TextAnnotationBounds.hpp"
+#include "JTextAnnotationBounds.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "JTextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
 #include "JTextDirection.hpp"
+#include "TextAlignment.hpp"
+#include "JTextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
 #include "JTextVerticalAnchor.hpp"
+#include "TextPlacementOptions.hpp"
+#include "JTextPlacementOptions.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -362,17 +370,17 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clear");
     method(_javaPart);
   }
-  void JHybridInkSignViewSpec::addTextAnnotation(const std::string& text, const PagePosition& position, const std::optional<TextAnnotationOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<JPagePosition> /* position */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("addTextAnnotation");
-    method(_javaPart, jni::make_jstring(text), JPagePosition::fromCpp(position), options.has_value() ? JTextAnnotationOptions::fromCpp(options.value()) : nullptr);
+  void JHybridInkSignViewSpec::addTextAnnotation(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<JTextAnnotationBounds> /* bounds */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("addTextAnnotation");
+    method(_javaPart, jni::make_jstring(text), JTextAnnotationBounds::fromCpp(bounds), options.has_value() ? JTextAnnotationOptions::fromCpp(options.value()) : nullptr);
   }
   void JHybridInkSignViewSpec::setTextDirection(TextDirection direction) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextDirection> /* direction */)>("setTextDirection");
     method(_javaPart, JTextDirection::fromCpp(direction));
   }
-  void JHybridInkSignViewSpec::insertAnnotationOn(const std::optional<TextAnnotationOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextAnnotationOptions> /* options */)>("insertAnnotationOn");
-    method(_javaPart, options.has_value() ? JTextAnnotationOptions::fromCpp(options.value()) : nullptr);
+  void JHybridInkSignViewSpec::insertAnnotationOn(const std::optional<TextPlacementOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextPlacementOptions> /* options */)>("insertAnnotationOn");
+    method(_javaPart, options.has_value() ? JTextPlacementOptions::fromCpp(options.value()) : nullptr);
   }
   void JHybridInkSignViewSpec::insertAnnotationOff() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("insertAnnotationOff");

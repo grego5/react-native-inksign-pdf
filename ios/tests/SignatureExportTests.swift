@@ -45,6 +45,14 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       flowBounds: flowBounds,
       maxLines: 1,
       verticalAnchor: .bottom)
+    let boundedAnnotation = InkSignPdfTextAnnotation(
+      id: "bounded",
+      text: boundedText,
+      bounds: flowBounds,
+      fontSize: 18,
+      flowBounds: flowBounds,
+      maxLines: 1,
+      verticalAnchor: .bottom)
     let boundedLineHeight = InkSignPdfTextStyle.font(size: 18).lineHeight
     XCTAssertFalse(InkSignPdfTextRenderer.fits(boundedText,
                                                 fontSize: 18,
@@ -64,14 +72,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       InkSignPdfTextAnnotation(id: "arabic", text: "العربية",
                                bounds: CGRect(x: 60, y: 150, width: 260, height: 32),
                                fontSize: 18, isRTL: true),
-      InkSignPdfTextAnnotation(
-        id: "bounded",
-        text: boundedText,
-        bounds: boundedVisibleBounds,
-        fontSize: 18,
-        flowBounds: flowBounds,
-        maxLines: 1,
-        verticalAnchor: .bottom),
+      boundedAnnotation.replacingText(boundedText, pageSize: geometry.mediaBox.size),
     ]
     let snapshot = ExportPageSnapshot(pageIndex: 0,
                                       pageID: UUID(),
@@ -124,12 +125,12 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     let boundedExport = try XCTUnwrap(textAnnotations.first { $0.contents == boundedText })
     XCTAssertTrue(boundedExport.hasAppearanceStream)
     XCTAssertEqual(boundedExport.contents, boundedText)
-    let boundedPDFBounds = CGRect(x: committedMediaBox.minX + boundedVisibleBounds.minX,
-                                  y: committedMediaBox.maxY - boundedVisibleBounds.maxY,
-                                  width: boundedVisibleBounds.width,
-                                  height: boundedVisibleBounds.height)
+    let boundedPDFBounds = CGRect(x: committedMediaBox.minX + flowBounds.minX,
+                                  y: committedMediaBox.maxY - flowBounds.maxY,
+                                  width: flowBounds.width,
+                                  height: flowBounds.height)
     assertBounds(boundedExport.bounds, equals: boundedPDFBounds)
-    XCTAssertLessThanOrEqual(boundedExport.bounds.height, boundedLineHeight + 0.01)
+    XCTAssertEqual(boundedExport.bounds.height, flowBounds.height, accuracy: 0.01)
 
     let signatureAnnotations = page.annotations.filter {
       $0.type?.caseInsensitiveCompare("Stamp") == .orderedSame
