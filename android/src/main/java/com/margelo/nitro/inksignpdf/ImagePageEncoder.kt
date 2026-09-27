@@ -10,6 +10,7 @@ import androidx.exifinterface.media.ExifInterface
 import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.ceil
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
@@ -18,7 +19,7 @@ internal object ImagePageEncoder {
   private const val DPI = 200.0
   private const val POINTS_PER_INCH = 72.0
   private const val JPEG_QUALITY = 72
-  private const val MAX_PAGE_DIMENSION_PX = 8192.0
+  private const val MAX_PAGE_EDGE_PX = 8192.0
 
   fun encode(
     source: File,
@@ -59,15 +60,28 @@ internal object ImagePageEncoder {
     val rasterDpi = targetDpi?.let { requestedDpi ->
       min(requestedDpi, POINTS_PER_INCH / pointsPerSourcePixel)
     } ?: DPI
-    val targetWidth = pagePixels(page.width, rasterDpi)
-    val targetHeight = pagePixels(page.height, rasterDpi)
+    val requestedPixelsPerPoint = rasterDpi / POINTS_PER_INCH
+    val longestPageEdge = max(page.width, page.height)
+    val maxPixelsPerPoint = MAX_PAGE_EDGE_PX / longestPageEdge
+    val rasterLimitReached = requestedPixelsPerPoint >= maxPixelsPerPoint
+    val pixelsPerPoint = min(requestedPixelsPerPoint, maxPixelsPerPoint)
+    val targetWidth = if (rasterLimitReached && page.width >= page.height) {
+      MAX_PAGE_EDGE_PX.toInt()
+    } else {
+      pagePixels(page.width, pixelsPerPoint)
+    }
+    val targetHeight = if (rasterLimitReached && page.height >= page.width) {
+      MAX_PAGE_EDGE_PX.toInt()
+    } else {
+      pagePixels(page.height, pixelsPerPoint)
+    }
     val imageTargetWidth = pagePixels(
       orientedWidth * pointsPerSourcePixel,
-      rasterDpi,
+      pixelsPerPoint,
     )
     val imageTargetHeight = pagePixels(
       orientedHeight * pointsPerSourcePixel,
-      rasterDpi,
+      pixelsPerPoint,
     )
     val sample = calculateSample(
       orientedWidth,
@@ -161,10 +175,8 @@ internal object ImagePageEncoder {
     }
   }
 
-  private fun pagePixels(points: Double, dpi: Double): Int =
-    ceil(points * dpi / POINTS_PER_INCH)
-      .coerceIn(1.0, MAX_PAGE_DIMENSION_PX)
-      .toInt()
+  private fun pagePixels(points: Double, pixelsPerPoint: Double): Int =
+    ceil(points * pixelsPerPoint).toInt()
 
   private fun calculateSample(
     width: Int,
