@@ -122,8 +122,8 @@ internal class PdfSession private constructor(
       requests.forEach { request ->
         beforeEach()
         val bitmap = Bitmap.createBitmap(
-          request.widthPx,
-          request.heightPx,
+          request.rasterWidthPx,
+          request.rasterHeightPx,
           Bitmap.Config.ARGB_8888,
         )
         try {
@@ -160,14 +160,19 @@ internal class PdfSession private constructor(
       b = 0.0,
       c = 0.0,
       d = scale,
-      e = -request.leftPx.toDouble(),
-      f = -request.topPx.toDouble(),
+      e = -request.rasterLeftPx.toDouble(),
+      f = -request.rasterTopPx.toDouble(),
     )
     return pdfiumSession.renderPageIntoBitmap(
       pageIndex = request.key.pageIndex,
       bitmap = bitmap,
       pageToDevice = matrix,
-      clip = PdfiumRect(0.0, 0.0, request.widthPx.toDouble(), request.heightPx.toDouble()),
+      clip = PdfiumRect(
+        0.0,
+        0.0,
+        request.rasterWidthPx.toDouble(),
+        request.rasterHeightPx.toDouble(),
+      ),
       background = 0xFFFFFFFF.toInt(),
       flags = pdfiumAndroidDisplayFlags,
     )

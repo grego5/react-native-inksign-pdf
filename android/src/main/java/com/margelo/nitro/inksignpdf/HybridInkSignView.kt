@@ -263,7 +263,12 @@ class HybridInkSignView internal constructor(
           staged.map { input ->
             when (input.type) {
               PageType.PDF -> PdfiumAppendRequest(PageType.PDF, sourcePath = input.file.path)
-              PageType.IMAGE -> ImagePageEncoder.encode(input.file, imageSize)
+              PageType.IMAGE -> ImagePageEncoder.encode(
+                source = input.file,
+                page = imageSize,
+                targetDpi = options?.targetDpi,
+                jpegQuality = options?.jpegQuality,
+              )
             }
           }
         }

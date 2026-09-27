@@ -12,6 +12,8 @@ extension InkSignPdfDocumentCoordinator {
     let activePageID: UUID
     let activePageIndex: Int
     let imageGeometry: PageGeometry
+    let imageTargetDpi: Double?
+    let imageJpegQuality: Double?
   }
 
   func assembleCandidate(_ input: StructuralInput,
@@ -54,7 +56,10 @@ extension InkSignPdfDocumentCoordinator {
             }
           } else {
             let page = try InkSignPdfMutablePageImageEncoder.encode(
-              stagedPage.url, geometry: input.imageGeometry)
+              stagedPage.url,
+              geometry: input.imageGeometry,
+              targetDpi: input.imageTargetDpi,
+              jpegQuality: input.imageJpegQuality)
             candidate.insert(page, at: candidate.pageCount)
           }
         }

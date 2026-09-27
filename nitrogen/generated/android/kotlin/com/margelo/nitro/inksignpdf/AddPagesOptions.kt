@@ -26,7 +26,13 @@ data class AddPagesOptions(
   val sources: Array<String>?,
   @DoNotStrip
   @Keep
-  val imagePageSize: ImagePageSize?
+  val imagePageSize: ImagePageSize?,
+  @DoNotStrip
+  @Keep
+  val targetDpi: Double?,
+  @DoNotStrip
+  @Keep
+  val jpegQuality: Double?
 ) {
   /* primary constructor */
 
@@ -36,13 +42,17 @@ data class AddPagesOptions(
     return Objects.deepEquals(this.type, other.type)
       && Objects.deepEquals(this.sources, other.sources)
       && Objects.deepEquals(this.imagePageSize, other.imagePageSize)
+      && Objects.deepEquals(this.targetDpi, other.targetDpi)
+      && Objects.deepEquals(this.jpegQuality, other.jpegQuality)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
       type,
       sources,
-      imagePageSize
+      imagePageSize,
+      targetDpi,
+      jpegQuality
     ).contentDeepHashCode()
   }
 
@@ -54,8 +64,8 @@ data class AddPagesOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(type: PageType?, sources: Array<String>?, imagePageSize: ImagePageSize?): AddPagesOptions {
-      return AddPagesOptions(type, sources, imagePageSize)
+    private fun fromCpp(type: PageType?, sources: Array<String>?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?): AddPagesOptions {
+      return AddPagesOptions(type, sources, imagePageSize, targetDpi, jpegQuality)
     }
   }
 }

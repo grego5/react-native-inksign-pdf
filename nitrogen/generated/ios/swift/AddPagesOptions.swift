@@ -18,7 +18,7 @@ public extension AddPagesOptions {
   /**
    * Create a new instance of `AddPagesOptions`.
    */
-  init(type: PageType?, sources: [String]?, imagePageSize: ImagePageSize?) {
+  init(type: PageType?, sources: [String]?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?) {
     self.init({ () -> bridge.std__optional_PageType_ in
       if let __unwrappedValue = type {
         return bridge.create_std__optional_PageType_(__unwrappedValue)
@@ -40,6 +40,18 @@ public extension AddPagesOptions {
     }(), { () -> bridge.std__optional_ImagePageSize_ in
       if let __unwrappedValue = imagePageSize {
         return bridge.create_std__optional_ImagePageSize_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_double_ in
+      if let __unwrappedValue = targetDpi {
+        return bridge.create_std__optional_double_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_double_ in
+      if let __unwrappedValue = jpegQuality {
+        return bridge.create_std__optional_double_(__unwrappedValue)
       } else {
         return .init()
       }
@@ -66,5 +78,29 @@ public extension AddPagesOptions {
   @inline(__always)
   var imagePageSize: ImagePageSize? {
     return self.__imagePageSize.value
+  }
+  
+  @inline(__always)
+  var targetDpi: Double? {
+    return { () -> Double? in
+      if bridge.has_value_std__optional_double_(self.__targetDpi) {
+        let __unwrapped = bridge.get_std__optional_double_(self.__targetDpi)
+        return __unwrapped
+      } else {
+        return nil
+      }
+    }()
+  }
+  
+  @inline(__always)
+  var jpegQuality: Double? {
+    return { () -> Double? in
+      if bridge.has_value_std__optional_double_(self.__jpegQuality) {
+        let __unwrapped = bridge.get_std__optional_double_(self.__jpegQuality)
+        return __unwrapped
+      } else {
+        return nil
+      }
+    }()
   }
 }

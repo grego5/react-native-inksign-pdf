@@ -221,6 +221,59 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(view.documentCoordinator.generation, generation)
   }
 
+  func testMixedAddPagesAppliesEncodingOptionsOnlyToImageInputs() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+
+    let pdfURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignPdfMixed-\(UUID().uuidString).pdf")
+    let imageURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignImageMixed-\(UUID().uuidString).jpg")
+    defer {
+      try? FileManager.default.removeItem(at: pdfURL)
+      try? FileManager.default.removeItem(at: imageURL)
+    }
+
+    let importedPdf = PDFDocument()
+    let pdfImage = UIGraphicsImageRenderer(size: CGSize(width: 90, height: 45)).image { context in
+      UIColor.blue.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 90, height: 45))
+    }
+    let pdfPage = try XCTUnwrap(PDFPage(image: pdfImage))
+    pdfPage.setBounds(CGRect(x: 0, y: 0, width: 90, height: 45), for: .mediaBox)
+    importedPdf.insert(pdfPage, at: 0)
+    XCTAssertTrue(importedPdf.write(to: pdfURL))
+
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 400)).image { context in
+      UIColor.red.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 800, height: 400))
+    }
+    try XCTUnwrap(image.jpegData(compressionQuality: 1)).write(to: imageURL)
+
+    let options = AddPagesOptions(
+      type: nil,
+      sources: [pdfURL.path, imageURL.path],
+      imagePageSize: ImagePageSize(width: 144, height: 72),
+      targetDpi: 72,
+      jpegQuality: 0.1)
+    let completed = expectation(description: "mixed addPages")
+    var result: AddPagesResult?
+    var failure: Error?
+    let promise = try fixture.view.addPages(options: options)
+    promise.then { result = $0; completed.fulfill() }
+    promise.catch { failure = $0; completed.fulfill() }
+    wait(for: [completed], timeout: 30)
+
+    if let failure { XCTFail("mixed addPages failed: \(failure)") }
+    XCTAssertEqual(result?.addedPageCount, 2.0)
+    let pages = try XCTUnwrap(fixture.view.documentCoordinator.document?.pages)
+    XCTAssertEqual(pages.count, 3)
+    XCTAssertEqual(pages[1].geometry.mediaBox.width, 90, accuracy: 0.01)
+    XCTAssertEqual(pages[1].geometry.mediaBox.height, 45, accuracy: 0.01)
+    XCTAssertEqual(pages[2].geometry.mediaBox.width, 144, accuracy: 0.01)
+    XCTAssertEqual(pages[2].geometry.mediaBox.height, 72, accuracy: 0.01)
+  }
+
   func testMoveAndRemoveCommandsPublishFinalPageOrder() throws {
     let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }

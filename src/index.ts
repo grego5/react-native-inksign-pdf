@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { callback, getHostComponent } from 'react-native-nitro-modules';
 import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConfig.json';
+import { argumentError, isRecord, validateAddPagesOptions } from './publicArguments';
 
 import type {
   PageInfo,
@@ -59,14 +60,6 @@ type InkSignViewComponentProps = Omit<NativeInkSignViewProps, 'hybridRef' | 'onS
   onPageChange?: InkSignViewProps['onPageChange'];
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function argumentError(code: string, message: string): Error {
-  return new Error(`${code}: ${message}`);
-}
-
 function validateViewportOptions(value: unknown): void {
   if (value === undefined) return;
   if (!isRecord(value)) {
@@ -120,27 +113,7 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
       }, () => native.open(path, viewport));
     },
     addPages(options) {
-      return callAsync(() => {
-        if (options === undefined) return;
-        if (!isRecord(options)) {
-          throw argumentError('invalid_page_options', 'Page options must be an object');
-        }
-        if (options.type !== undefined && options.type !== 'pdf' && options.type !== 'image') {
-          throw argumentError('invalid_page_type', 'Page type must be pdf or image');
-        }
-        const sources = options.sources;
-        if (sources !== undefined && (!Array.isArray(sources) ||
-          !sources.every((source) => typeof source === 'string' && source.trim() !== ''))) {
-          throw argumentError('invalid_page_sources', 'Page sources must be non-empty paths');
-        }
-        const imageSize = options.imagePageSize;
-        if (imageSize !== undefined &&
-          (!isRecord(imageSize) ||
-            typeof imageSize.width !== 'number' || !Number.isFinite(imageSize.width) || imageSize.width <= 0 ||
-            typeof imageSize.height !== 'number' || !Number.isFinite(imageSize.height) || imageSize.height <= 0)) {
-          throw argumentError('invalid_image_page_size', 'Image page dimensions must be finite positive PDF points');
-        }
-      }, () => native.addPages(options));
+      return callAsync(() => validateAddPagesOptions(options), () => native.addPages(options));
     },
     removePage: () => callAsync(() => {}, () => native.removePage()),
     movePage(pageIndex) {

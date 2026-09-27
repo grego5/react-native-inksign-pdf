@@ -55,7 +55,7 @@
 - VMware exposes `C:\dev` at `~/Network/dev/`. At the Mac prompt, enter the shared checkout or worktree you want to test and run. Replace the example path below when testing another worktree:
 
   ```sh
-  cd "/Network/dev/react-native-inksign-pdf"
+  cd "~/Network/dev/react-native-inksign-pdf"
   ./tools/test-ios-mac-vm.sh
   ```
 
@@ -107,6 +107,7 @@ For broader repository validation when applicable:
 
 ```text
 npm run nitrogen
+npm run test:public-api
 npx tsc --noEmit --pretty false
 npm run build
 ctest --test-dir build --output-on-failure
@@ -129,4 +130,3 @@ When a tool returns a live process/session:
 
 Use the runner's final `PASS` or `FAIL` line as the result. The heartbeat is
 the liveness signal; intermediate polling is not validation.
-

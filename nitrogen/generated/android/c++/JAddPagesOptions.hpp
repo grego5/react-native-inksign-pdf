@@ -43,6 +43,10 @@ namespace margelo::nitro::inksignpdf {
       jni::local_ref<jni::JArrayClass<jni::JString>> sources = this->getFieldValue(fieldSources);
       static const auto fieldImagePageSize = clazz->getField<JImagePageSize>("imagePageSize");
       jni::local_ref<JImagePageSize> imagePageSize = this->getFieldValue(fieldImagePageSize);
+      static const auto fieldTargetDpi = clazz->getField<jni::JDouble>("targetDpi");
+      jni::local_ref<jni::JDouble> targetDpi = this->getFieldValue(fieldTargetDpi);
+      static const auto fieldJpegQuality = clazz->getField<jni::JDouble>("jpegQuality");
+      jni::local_ref<jni::JDouble> jpegQuality = this->getFieldValue(fieldJpegQuality);
       return AddPagesOptions(
         type != nullptr ? std::make_optional(type->toCpp()) : std::nullopt,
         sources != nullptr ? std::make_optional([&](auto&& __input) {
@@ -55,7 +59,9 @@ namespace margelo::nitro::inksignpdf {
           }
           return __vector;
         }(sources)) : std::nullopt,
-        imagePageSize != nullptr ? std::make_optional(imagePageSize->toCpp()) : std::nullopt
+        imagePageSize != nullptr ? std::make_optional(imagePageSize->toCpp()) : std::nullopt,
+        targetDpi != nullptr ? std::make_optional(targetDpi->value()) : std::nullopt,
+        jpegQuality != nullptr ? std::make_optional(jpegQuality->value()) : std::nullopt
       );
     }
 
@@ -65,7 +71,7 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JAddPagesOptions::javaobject> fromCpp(const AddPagesOptions& value) {
-      using JSignature = JAddPagesOptions(jni::alias_ref<JPageType>, jni::alias_ref<jni::JArrayClass<jni::JString>>, jni::alias_ref<JImagePageSize>);
+      using JSignature = JAddPagesOptions(jni::alias_ref<JPageType>, jni::alias_ref<jni::JArrayClass<jni::JString>>, jni::alias_ref<JImagePageSize>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -81,7 +87,9 @@ namespace margelo::nitro::inksignpdf {
           }
           return __array;
         }(value.sources.value()) : nullptr,
-        value.imagePageSize.has_value() ? JImagePageSize::fromCpp(value.imagePageSize.value()) : nullptr
+        value.imagePageSize.has_value() ? JImagePageSize::fromCpp(value.imagePageSize.value()) : nullptr,
+        value.targetDpi.has_value() ? jni::JDouble::valueOf(value.targetDpi.value()) : nullptr,
+        value.jpegQuality.has_value() ? jni::JDouble::valueOf(value.jpegQuality.value()) : nullptr
       );
     }
   };

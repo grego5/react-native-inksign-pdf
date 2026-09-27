@@ -66,6 +66,7 @@ internal class InkDocumentController(
   }
   private val pageRect = RectF()
   private val tileRect = RectF()
+  private val tileCoreRect = RectF()
   private val cache = PdfTileCache(tileCacheLimitBytes(context))
   private val scroller = OverScroller(context)
   private val gestureDetector = GestureDetector(context, GestureListener())
@@ -381,13 +382,16 @@ internal class InkDocumentController(
       val tileToViewScale = viewScale / displayedRequests[0].scale
       displayedRequests.forEach { request ->
         val tile = cache[request.key] ?: return@forEach
-        tileRect.set(
-          (viewOffsetX + request.leftPx * tileToViewScale).toFloat(),
-          (viewOffsetY + request.topPx * tileToViewScale).toFloat(),
-          (viewOffsetX + (request.leftPx + request.widthPx) * tileToViewScale).toFloat(),
-          (viewOffsetY + (request.topPx + request.heightPx) * tileToViewScale).toFloat(),
+        drawPdfTile(
+          canvas = canvas,
+          tile = tile,
+          pageToViewX = viewOffsetX,
+          pageToViewY = viewOffsetY,
+          tileToViewScale = tileToViewScale,
+          rasterRect = tileRect,
+          coreRect = tileCoreRect,
+          paint = tilePaint,
         )
-        canvas.drawBitmap(tile.bitmap, null, tileRect, tilePaint)
       }
     }
     canvas.restore()

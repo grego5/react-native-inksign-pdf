@@ -24,6 +24,10 @@ and export.
   resolved app layout direction. Omitted direction uses the last
   `setTextDirection()` choice, or app direction when unset/`auto`. Save the
   selected direction with the annotation.
+- `addPages()` image inputs use per-call `targetDpi` and `jpegQuality` when set.
+  Omitted values preserve 200 DPI and 0.72 JPEG quality; explicit DPI is capped
+  by the source image's effective resolution at contain fit and by 8192 pixels
+  per edge. PDF inputs retain their original pages.
 - Each platform coordinator owns one published document with an ordered stable
   page list, one active page, and page-local committed history. Android uses
   PDFium for document I/O; iOS uses PDFKit with Quartz and CoreText. The UI

@@ -50,6 +50,10 @@ export interface AddPagesOptions {
   sources?: string[]
   /** Dimensions used for every imported image. Defaults to the active page size or portrait A4. */
   imagePageSize?: ImagePageSize
+  /** Omit for legacy 200 DPI output; explicit values cap at effective source DPI. */
+  targetDpi?: number
+  /** JPEG quality for imported image pages, from 0 to 1. Defaults to 0.72. */
+  jpegQuality?: number
 }
 
 export interface AddPagesResult {
