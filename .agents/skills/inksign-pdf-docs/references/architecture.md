@@ -16,30 +16,22 @@ and export.
   command's upper page bound depends on live document state, so each platform
   checks it when admitting the command. PDF, image, and OS data are checked at
   their respective ingress boundaries.
-- On Android, `addTextAnnotation(text, position, options?)` commits text in
-  canonical top-left page points without opening the native editor. It wraps at
-  the direction-aware `xLimit` or page edge and retains complete lines within
-  the `yLimit` or page edge. `maxLines` further limits the first complete lines;
-  `verticalAnchor` fixes the top or bottom edge and moves the visible block
-  within its flow region. `insertAnnotationOn(options?)` uses the same flow
-  options at the tap point; a bounded editor accepts typing, paste, or
-  replacement only when the complete result fits, while deletion remains
-  available. At a collapsed caret, rejected input leaves text and caret in
-  place. An over-limit replacement preserves an active composing range;
-  ordinary selected text can be removed while rejecting inserted text.
-  Direction and font-size reflow preserve entered text, and the vertical anchor
-  does not change edit fit. Direct `addTextAnnotation()` keeps its clipping
-  behavior. Omitting options preserves tap-centered placement.
-  Default text style applies when options omit it. Explicit LTR/RTL overrides app
-  policy; `auto` uses the resolved app layout direction. Omitted direction uses
-  the last `setTextDirection()` choice, or app direction when unset/`auto`.
-  Save the selected direction and flow options with the annotation. iOS keeps its
-  existing text behavior until native parity is implemented.
-- Android `addPages()` accepts `activePage` to choose `current`, `firstAdded`,
-  or `lastAdded` within the detached structural candidate. Omission and
-  `current` preserve the active page for an existing document; when creating a
-  document, `current` selects its first added page. Empty and cancelled imports
-  leave page count and active page unchanged. iOS selection behavior is pending.
+- Both platforms implement `addTextAnnotation(text, position, options?)` in
+  canonical top-left page points without opening the editor. Direction-aware
+  wrapping uses `xLimit` or the page edge. `yLimit` and `maxLines` retain only
+  complete lines; `verticalAnchor` fixes the top or bottom edge of the visible
+  block. `insertAnnotationOn(options?)` applies the same flow options from its
+  tap point. A bounded editor admits edits that fit its region and line limit,
+  while deletion stays available. Reflow from direction or font-size changes
+  preserves entered text. Direct insertion clips to the flow region. Omitting
+  placement options retains tap-centered, rule-aware placement. Save resolved
+  direction and flow metadata with committed text; manual placement resolves
+  direction when armed.
+- Both platforms accept `activePage` in `addPages()` to choose `current`,
+  `firstAdded`, or `lastAdded` within the detached structural candidate.
+  Omission and `current` preserve the active page for an existing document;
+  creating a document selects its first added page. Empty and cancelled imports
+  leave page count and active page unchanged.
 - `addPages()` image inputs use per-call `targetDpi` and `jpegQuality` when set.
   `targetDpi` defaults to 200 DPI and `jpegQuality` to 0.72. Raster size is
   limited to 8192 pixels on its longest edge; supplied DPI is also capped by

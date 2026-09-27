@@ -166,6 +166,16 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
 
   func reset() {
     owner?.overlayProviderWillReset()
+    releaseOverlays()
+  }
+
+  func dispose() {
+    releaseOverlays()
+    fallbackOverlay.removeFromSuperview()
+    owner = nil
+  }
+
+  private func releaseOverlays() {
     for overlay in overlays.values {
       overlay.owner = nil
       overlay.canvasView.owner = nil
@@ -176,12 +186,6 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
     displayedPages.removeAll()
     documentIdentity = nil
     generation = nil
-  }
-
-  func dispose() {
-    reset()
-    fallbackOverlay.removeFromSuperview()
-    owner = nil
   }
 
   func canvasView(for pageID: UUID) -> InkCanvasView? {

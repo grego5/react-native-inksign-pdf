@@ -36,6 +36,24 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertGreaterThan(signature.path.boundingBoxOfPath.height, 8)
     let geometry = PageGeometry(mediaBox: committedMediaBox,
                                 rotation: committedPage.rotation)
+    let flowBounds = CGRect(x: 60, y: 190, width: 260, height: 72)
+    let boundedText = "Flow first line\nFlow second line"
+    let boundedVisibleBounds = InkSignPdfTextRenderer.visibleBounds(
+      for: boundedText,
+      fontSize: 18,
+      isRTL: false,
+      flowBounds: flowBounds,
+      maxLines: 1,
+      verticalAnchor: .bottom)
+    let boundedLineHeight = InkSignPdfTextStyle.font(size: 18).lineHeight
+    XCTAssertFalse(InkSignPdfTextRenderer.fits(boundedText,
+                                                fontSize: 18,
+                                                isRTL: false,
+                                                flowBounds: flowBounds,
+                                                maxLines: 1))
+    XCTAssertGreaterThan(boundedVisibleBounds.height, 0)
+    XCTAssertLessThanOrEqual(boundedVisibleBounds.height, boundedLineHeight + 0.01)
+    XCTAssertEqual(boundedVisibleBounds.maxY, flowBounds.maxY, accuracy: 0.01)
     let text = [
       InkSignPdfTextAnnotation(id: "latin", text: "CoreText Latin",
                                bounds: CGRect(x: 60, y: 70, width: 260, height: 32),
@@ -46,6 +64,14 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       InkSignPdfTextAnnotation(id: "arabic", text: "العربية",
                                bounds: CGRect(x: 60, y: 150, width: 260, height: 32),
                                fontSize: 18, isRTL: true),
+      InkSignPdfTextAnnotation(
+        id: "bounded",
+        text: boundedText,
+        bounds: boundedVisibleBounds,
+        fontSize: 18,
+        flowBounds: flowBounds,
+        maxLines: 1,
+        verticalAnchor: .bottom),
     ]
     let snapshot = ExportPageSnapshot(pageIndex: 0,
                                       pageID: UUID(),
@@ -95,6 +121,15 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       XCTAssertEqual(flags & InkSignPdfVectorAnnotation.readOnlyFlag, 0)
     }
     XCTAssertTrue(unmatchedTextAnnotations.isEmpty)
+    let boundedExport = try XCTUnwrap(textAnnotations.first { $0.contents == boundedText })
+    XCTAssertTrue(boundedExport.hasAppearanceStream)
+    XCTAssertEqual(boundedExport.contents, boundedText)
+    let boundedPDFBounds = CGRect(x: committedMediaBox.minX + boundedVisibleBounds.minX,
+                                  y: committedMediaBox.maxY - boundedVisibleBounds.maxY,
+                                  width: boundedVisibleBounds.width,
+                                  height: boundedVisibleBounds.height)
+    assertBounds(boundedExport.bounds, equals: boundedPDFBounds)
+    XCTAssertLessThanOrEqual(boundedExport.bounds.height, boundedLineHeight + 0.01)
 
     let signatureAnnotations = page.annotations.filter {
       $0.type?.caseInsensitiveCompare("Stamp") == .orderedSame
@@ -121,11 +156,11 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertFalse(String(decoding: pdfBytes, as: UTF8.self).contains("/Subtype /Image"),
                     "This vector source and its module annotations contain no raster fallback.")
     let pdfAttachment = XCTAttachment(data: pdfBytes, uniformTypeIdentifier: "com.adobe.pdf")
-    pdfAttachment.name = "native-ios-annotation-export.pdf"
+    pdfAttachment.name = "bounded-text-native-ios-export.pdf"
     pdfAttachment.lifetime = .keepAlways
     add(pdfAttachment)
     attach(page.thumbnail(of: CGSize(width: 792, height: 612), for: .mediaBox),
-           named: "native-ios-annotation-export.png")
+           named: "bounded-text-native-ios-export.png")
     attach(drawing.image(from: CGRect(origin: .zero, size: mediaBox.size), scale: 1),
            named: "pencilkit-signature-reference.png")
   }

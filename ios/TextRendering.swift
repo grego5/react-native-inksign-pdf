@@ -120,10 +120,15 @@ enum InkSignPdfTextRenderer {
                                     color: color,
                                     isRTL: annotation.isRTL,
                                     contentWidth: contentWidth)
-        .filter { fragment in
-          guard let flowBounds = annotation.flowBounds else { return true }
-          return fragment.lineBounds.maxY <= flowBounds.height
-        }
+      let visibleLines: [LineFragment]
+      if let flowBounds = annotation.flowBounds {
+        visibleLines = selectedLineFragments(lines,
+                                             flowBounds: flowBounds,
+                                             maxLines: annotation.maxLines,
+                                             verticalAnchor: annotation.verticalAnchor)
+      } else {
+        visibleLines = lines
+      }
       let attributes = InkSignPdfTextStyle.attributes(fontSize: annotation.fontSize,
                                                        color: color,
                                                        isRTL: annotation.isRTL)
@@ -137,7 +142,7 @@ enum InkSignPdfTextRenderer {
                          y: annotation.position.y + insets.top)
       }
       context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-      for fragment in lines {
+      for fragment in visibleLines {
         let value = fragment.text
         let attributed = NSAttributedString(string: value, attributes: attributes)
         let line = CTLineCreateWithAttributedString(attributed)
@@ -176,18 +181,29 @@ enum InkSignPdfTextRenderer {
       CGRect(x: rect.minX, y: lineBounds.minY,
              width: rect.width, height: lineBounds.height)
     }
+
+    func offsetVertically(by offset: CGFloat) -> LineFragment {
+      LineFragment(text: text,
+                   rect: rect.offsetBy(dx: 0, dy: offset),
+                   lineBounds: lineBounds.offsetBy(dx: 0, dy: offset))
+    }
   }
 
   static func visibleBounds(for text: String,
                             fontSize: CGFloat,
                             isRTL: Bool,
-                            flowBounds: CGRect) -> CGRect {
-    let fragments = makeLineFragments(text,
-                                      fontSize: fontSize,
-                                      color: .black,
-                                      isRTL: isRTL,
-                                      contentWidth: flowBounds.width)
-      .filter { $0.lineBounds.maxY <= flowBounds.height }
+                            flowBounds: CGRect,
+                            maxLines: Int = 0,
+                            verticalAnchor: InkSignPdfTextVerticalAnchor = .top) -> CGRect {
+    let fragments = selectedLineFragments(
+      makeLineFragments(text,
+                        fontSize: fontSize,
+                        color: .black,
+                        isRTL: isRTL,
+                        contentWidth: flowBounds.width),
+      flowBounds: flowBounds,
+      maxLines: maxLines,
+      verticalAnchor: verticalAnchor)
     guard let first = fragments.first else {
       return CGRect(origin: flowBounds.origin, size: .zero)
     }
@@ -201,6 +217,35 @@ enum InkSignPdfTextRenderer {
                   y: top,
                   width: max(0, min(pageSpace.maxX, flowBounds.maxX) - left),
                   height: max(0, min(pageSpace.maxY, flowBounds.maxY) - top))
+  }
+
+  static func fits(_ text: String,
+                   fontSize: CGFloat,
+                   isRTL: Bool,
+                   flowBounds: CGRect,
+                   maxLines: Int) -> Bool {
+    let fragments = makeLineFragments(text,
+                                      fontSize: fontSize,
+                                      color: .black,
+                                      isRTL: isRTL,
+                                      contentWidth: flowBounds.width)
+    return selectedLineFragments(fragments,
+                                 flowBounds: flowBounds,
+                                 maxLines: maxLines,
+                                 verticalAnchor: .top).count == fragments.count
+  }
+
+  private static func selectedLineFragments(
+    _ fragments: [LineFragment],
+    flowBounds: CGRect,
+    maxLines: Int,
+    verticalAnchor: InkSignPdfTextVerticalAnchor
+  ) -> [LineFragment] {
+    var visible = Array(fragments.prefix(while: { $0.lineBounds.maxY <= flowBounds.height }))
+    if maxLines > 0 { visible = Array(visible.prefix(maxLines)) }
+    guard verticalAnchor == .bottom, let last = visible.last else { return visible }
+    let offset = flowBounds.height - last.lineBounds.maxY
+    return visible.map { $0.offsetVertically(by: offset) }
   }
 
   private static func makeLineFragments(_ text: String,

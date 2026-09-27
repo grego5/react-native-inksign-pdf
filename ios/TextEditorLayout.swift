@@ -5,7 +5,8 @@ enum InkSignPdfTextEditorLayout {
   static func measure(_ editor: UITextView,
                       maximumWidth: CGFloat,
                       insets: UIEdgeInsets,
-                      fallbackFontSize: CGFloat) -> CGSize {
+                      fallbackFontSize: CGFloat,
+                      fixedContentWidth: CGFloat? = nil) -> CGSize {
     let availableWidth = max(1, maximumWidth - insets.left - insets.right)
     let font = editor.font ?? InkSignPdfTextStyle.font(size: fallbackFontSize)
 
@@ -18,6 +19,19 @@ enum InkSignPdfTextEditorLayout {
       editor.layoutManager.ensureLayout(for: editor.textContainer)
       editor.layoutIfNeeded()
       return extent(of: editor, insets: insets)
+    }
+
+    if let fixedContentWidth {
+      let fixedWidth = min(availableWidth, max(1, fixedContentWidth))
+      let finalLayout = layout(at: fixedWidth)
+      let size = CGSize(width: fixedWidth + insets.left + insets.right,
+                        height: max(finalLayout.height, font.lineHeight) +
+                          insets.top + insets.bottom)
+      editor.bounds.size = size
+      editor.setContentOffset(.zero, animated: false)
+      editor.layoutManager.ensureLayout(for: editor.textContainer)
+      editor.layoutIfNeeded()
+      return size
     }
 
     let availableLayout = layout(at: availableWidth)
