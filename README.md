@@ -335,6 +335,9 @@ argument preserves the current viewport where applicable.
 - Tap existing text to select or edit it. Editing keeps the current zoom and moves the view as needed to keep the text and caret visible.
 - The native view manages ink, text, undo, redo, and clear. `onStateChange` reports editing mode, undo/redo availability, and whether the document changed.
 - The application owns its toolbar and any saved viewport bookmarks.
+- For bounded Android editors, after reflow, a shorter replacement of the
+  active composing range is accepted even when more deletion is needed to fit.
+  An extension that overflows preserves the existing composition.
 
 ## Export
 
