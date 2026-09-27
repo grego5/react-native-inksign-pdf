@@ -253,12 +253,21 @@ finalize()
 
 `addPages()` opens the native picker; pass `sources` to import local files
 directly. PDFs add all their pages, and each image adds one page. Use `type` to
-filter the picker and `imagePageSize` to set image-page dimensions.
+filter the picker and `imagePageSize` to set image-page dimensions. When
+`targetDpi` is omitted, image pages use the legacy 200 DPI raster. Supplying
+`targetDpi` sets a maximum raster resolution, capped at the image's effective
+resolution when contained on the page and at 8192 pixels per edge. Thus,
+explicit `targetDpi: 200` can produce a smaller raster than omission for a
+lower-resolution image. JPEG quality defaults to `0.72`; `jpegQuality` accepts
+values from `0` to `1`. These encoding options apply to image inputs; PDF pages
+are copied without re-encoding.
 
 ```ts
 const result = await pdf.current?.addPages({
   type: 'image',
   imagePageSize: { width: 420, height: 594 },
+  targetDpi: 150,
+  jpegQuality: 0.85,
 });
 // { addedPageCount: number, pageInfo?: PageInfo }
 ```
@@ -341,4 +350,3 @@ application's durable destination when it must outlive the signing view.
 - [Architecture and invariants](./.agents/skills/inksign-pdf-docs/references/architecture.md)
 - [Android input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/android/viewport-input.md)
 - [iOS input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md)
-

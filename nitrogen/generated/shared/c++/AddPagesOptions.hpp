@@ -49,10 +49,12 @@ namespace margelo::nitro::inksignpdf {
     std::optional<PageType> type     SWIFT_PRIVATE;
     std::optional<std::vector<std::string>> sources     SWIFT_PRIVATE;
     std::optional<ImagePageSize> imagePageSize     SWIFT_PRIVATE;
+    std::optional<double> targetDpi     SWIFT_PRIVATE;
+    std::optional<double> jpegQuality     SWIFT_PRIVATE;
 
   public:
     AddPagesOptions() = default;
-    explicit AddPagesOptions(std::optional<PageType> type, std::optional<std::vector<std::string>> sources, std::optional<ImagePageSize> imagePageSize): type(type), sources(sources), imagePageSize(imagePageSize) {}
+    explicit AddPagesOptions(std::optional<PageType> type, std::optional<std::vector<std::string>> sources, std::optional<ImagePageSize> imagePageSize, std::optional<double> targetDpi, std::optional<double> jpegQuality): type(type), sources(sources), imagePageSize(imagePageSize), targetDpi(targetDpi), jpegQuality(jpegQuality) {}
 
   public:
     friend bool operator==(const AddPagesOptions& lhs, const AddPagesOptions& rhs) = default;
@@ -70,7 +72,9 @@ namespace margelo::nitro {
       return margelo::nitro::inksignpdf::AddPagesOptions(
         JSIConverter<std::optional<margelo::nitro::inksignpdf::PageType>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "type"))),
         JSIConverter<std::optional<std::vector<std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources"))),
-        JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize")))
+        JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize"))),
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "targetDpi"))),
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "jpegQuality")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::AddPagesOptions& arg) {
@@ -78,6 +82,8 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "type"), JSIConverter<std::optional<margelo::nitro::inksignpdf::PageType>>::toJSI(runtime, arg.type));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "sources"), JSIConverter<std::optional<std::vector<std::string>>>::toJSI(runtime, arg.sources));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize"), JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::toJSI(runtime, arg.imagePageSize));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "targetDpi"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.targetDpi));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "jpegQuality"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.jpegQuality));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -91,6 +97,8 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::PageType>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "type")))) return false;
       if (!JSIConverter<std::optional<std::vector<std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize")))) return false;
+      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "targetDpi")))) return false;
+      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "jpegQuality")))) return false;
       return true;
     }
   };

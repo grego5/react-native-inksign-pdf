@@ -1,6 +1,9 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
 import kotlin.math.ceil
 import kotlin.math.floor
 import kotlin.math.ln
@@ -9,6 +12,7 @@ import kotlin.math.pow
 import kotlin.math.roundToInt
 
 internal const val androidPdfTileSizePx = 512
+internal const val androidPdfTileBleedPx = 2
 internal const val androidPdfTileVisiblePriority = 0
 internal const val androidPdfTilePrefetchPriority = 1
 private const val tileScaleRoot = 1.4142135623730951
@@ -31,6 +35,10 @@ internal data class PdfTileRequest(
   val heightPx: Int,
   val scale: Double,
   val priority: Int = androidPdfTilePrefetchPriority,
+  val rasterLeftPx: Int = leftPx,
+  val rasterTopPx: Int = topPx,
+  val rasterWidthPx: Int = widthPx,
+  val rasterHeightPx: Int = heightPx,
 )
 
 internal data class PdfTile(
@@ -39,6 +47,35 @@ internal data class PdfTile(
 ) {
   val byteCount: Long
     get() = bitmap.allocationByteCount.toLong()
+}
+
+internal fun drawPdfTile(
+  canvas: Canvas,
+  tile: PdfTile,
+  pageToViewX: Double,
+  pageToViewY: Double,
+  tileToViewScale: Double,
+  rasterRect: RectF,
+  coreRect: RectF,
+  paint: Paint,
+) {
+  val request = tile.request
+  rasterRect.set(
+    (pageToViewX + request.rasterLeftPx * tileToViewScale).toFloat(),
+    (pageToViewY + request.rasterTopPx * tileToViewScale).toFloat(),
+    (pageToViewX + (request.rasterLeftPx + request.rasterWidthPx) * tileToViewScale).toFloat(),
+    (pageToViewY + (request.rasterTopPx + request.rasterHeightPx) * tileToViewScale).toFloat(),
+  )
+  coreRect.set(
+    (pageToViewX + request.leftPx * tileToViewScale).toFloat(),
+    (pageToViewY + request.topPx * tileToViewScale).toFloat(),
+    (pageToViewX + (request.leftPx + request.widthPx) * tileToViewScale).toFloat(),
+    (pageToViewY + (request.topPx + request.heightPx) * tileToViewScale).toFloat(),
+  )
+  val saveCount = canvas.save()
+  canvas.clipRect(coreRect)
+  canvas.drawBitmap(tile.bitmap, null, rasterRect, paint)
+  canvas.restoreToCount(saveCount)
 }
 
 /** Quantized viewport tile window; equality lets the UI skip unchanged work. */
@@ -196,6 +233,18 @@ internal object PdfTileGrid {
     fun append(x: Int, y: Int) {
         val leftPx = x * androidPdfTileSizePx
         val topPx = y * androidPdfTileSizePx
+        val widthPx = min(androidPdfTileSizePx, window.pageWidthPx - leftPx)
+        val heightPx = min(androidPdfTileSizePx, window.pageHeightPx - topPx)
+        val rasterLeftPx = (leftPx - androidPdfTileBleedPx).coerceAtLeast(0)
+        val rasterTopPx = (topPx - androidPdfTileBleedPx).coerceAtLeast(0)
+        val rasterRightPx = min(
+          window.pageWidthPx.toLong(),
+          leftPx.toLong() + widthPx + androidPdfTileBleedPx,
+        ).toInt()
+        val rasterBottomPx = min(
+          window.pageHeightPx.toLong(),
+          topPx.toLong() + heightPx + androidPdfTileBleedPx,
+        ).toInt()
         requests += PdfTileRequest(
           key = PdfTileKey(
             generation = window.generation,
@@ -207,13 +256,17 @@ internal object PdfTileGrid {
           ),
           leftPx = leftPx,
           topPx = topPx,
-          widthPx = min(androidPdfTileSizePx, window.pageWidthPx - leftPx),
-          heightPx = min(androidPdfTileSizePx, window.pageHeightPx - topPx),
+          widthPx = widthPx,
+          heightPx = heightPx,
           scale = window.scale,
           priority = if (
             x in window.firstVisibleColumn..window.lastVisibleColumn &&
             y in window.firstVisibleRow..window.lastVisibleRow
           ) androidPdfTileVisiblePriority else androidPdfTilePrefetchPriority,
+          rasterLeftPx = rasterLeftPx,
+          rasterTopPx = rasterTopPx,
+          rasterWidthPx = rasterRightPx - rasterLeftPx,
+          rasterHeightPx = rasterBottomPx - rasterTopPx,
         )
     }
     for (y in window.firstVisibleRow..window.lastVisibleRow) {

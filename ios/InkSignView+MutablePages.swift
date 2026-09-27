@@ -72,6 +72,8 @@ extension InkSignView {
                                            imageGeometry: requestedImageSize.map {
                                              PageGeometry(mediaBox: CGRect(origin: .zero, size: $0), rotation: 0)
                                            },
+                                           imageTargetDpi: options?.targetDpi,
+                                           imageJpegQuality: options?.jpegQuality,
                                            promise: promise) { pageInfo, count in
             promise.resolve(withResult: AddPagesResult(pageInfo: pageInfo,
                                                        addedPageCount: Double(count)))
@@ -236,6 +238,8 @@ extension InkSignView {
     staged: [InkSignPdfStagedPageInput],
     command: StructuralCommand,
     imageGeometry: PageGeometry? = nil,
+    imageTargetDpi: Double? = nil,
+    imageJpegQuality: Double? = nil,
     promise: Promise<T>,
     resolve: @escaping (PageInfo, Int) -> Void
   ) {
@@ -246,7 +250,9 @@ extension InkSignView {
       pages: context.pages,
       activePageID: context.activePageID,
       activePageIndex: context.activePageIndex,
-      imageGeometry: imageGeometry ?? context.activeGeometry)
+      imageGeometry: imageGeometry ?? context.activeGeometry,
+      imageTargetDpi: imageTargetDpi,
+      imageJpegQuality: imageJpegQuality)
     coordinator.pdfQueue.async { [weak self] in
       defer { coordinator.releaseStagedInputs(staged) }
       do {

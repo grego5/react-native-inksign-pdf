@@ -93,4 +93,83 @@ class ImagePagePipelineInstrumentationTest {
     }
   }
 
+  @Test
+  fun imageEncoderKeepsDefaultsAndAppliesPerCallResolutionAndQuality() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val detailed = File(context.cacheDir, "image-options-${UUID.randomUUID()}.jpg")
+    val small = File(context.cacheDir, "image-small-${UUID.randomUUID()}.jpg")
+    writePatternJpeg(detailed, 720, 360)
+    writePatternJpeg(small, 20, 10)
+
+    try {
+      val page = PdfPageDimensions(144.0, 72.0)
+      val defaultBytes = ImagePageEncoder.encode(detailed, page).imageBytes!!
+      val defaultBitmap = decode(defaultBytes)
+      try {
+        assertEquals(400, defaultBitmap.width)
+        assertEquals(200, defaultBitmap.height)
+      } finally {
+        defaultBitmap.recycle()
+      }
+
+      val lowDpiBytes = ImagePageEncoder.encode(detailed, page, targetDpi = 72.0).imageBytes!!
+      val lowDpiBitmap = decode(lowDpiBytes)
+      try {
+        assertEquals(144, lowDpiBitmap.width)
+        assertEquals(72, lowDpiBitmap.height)
+      } finally {
+        lowDpiBitmap.recycle()
+      }
+
+      val smallBytes = ImagePageEncoder.encode(small, page, targetDpi = 300.0).imageBytes!!
+      val smallBitmap = decode(smallBytes)
+      try {
+        assertEquals(20, smallBitmap.width)
+        assertEquals(10, smallBitmap.height)
+      } finally {
+        smallBitmap.recycle()
+      }
+
+      val qualityPage = PdfPageDimensions(184.32, 184.32)
+      val lowQuality = ImagePageEncoder.encode(
+        detailed,
+        qualityPage,
+        targetDpi = 200.0,
+        jpegQuality = 0.0,
+      ).imageBytes!!
+      val highQuality = ImagePageEncoder.encode(
+        detailed,
+        qualityPage,
+        targetDpi = 200.0,
+        jpegQuality = 1.0,
+      ).imageBytes!!
+      assertTrue("Quality 1 should retain more image data", highQuality.size > lowQuality.size)
+    } finally {
+      detailed.delete()
+      small.delete()
+    }
+  }
+
+  private fun decode(bytes: ByteArray): Bitmap =
+    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+      ?: error("Image encoder produced an unreadable JPEG")
+
+  private fun writePatternJpeg(file: File, width: Int, height: Int) {
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    try {
+      val pixels = IntArray(width * height) { index ->
+        val x = index % width
+        val y = index / width
+        val value = (x * 17 + y * 31 + x * y) and 0xff
+        Color.rgb(value, value, value)
+      }
+      bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+      FileOutputStream(file).use { output ->
+        assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 100, output))
+      }
+    } finally {
+      bitmap.recycle()
+    }
+  }
+
 }

@@ -12,7 +12,12 @@ enum InkSignPdfMutablePageImageEncoder {
   private static let pointsPerInch = 72.0
   private static let maximumDimension = 8192.0
 
-  static func encode(_ url: URL, geometry: PageGeometry) throws -> PDFPage {
+  static func encode(
+    _ url: URL,
+    geometry: PageGeometry,
+    targetDpi: Double? = nil,
+    jpegQuality: Double? = nil
+  ) throws -> PDFPage {
     let pageWidth = geometry.mediaBox.width
     let pageHeight = geometry.mediaBox.height
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -20,7 +25,26 @@ enum InkSignPdfMutablePageImageEncoder {
       throw InkSignView.MutablePageError.unsupportedContent
     }
 
-    let pixelsPerPoint = min(dpi / pointsPerInch,
+    guard let sourceProperties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+          let sourceWidth = (sourceProperties[kCGImagePropertyPixelWidth as String] as? NSNumber)?.doubleValue,
+          let sourceHeight = (sourceProperties[kCGImagePropertyPixelHeight as String] as? NSNumber)?.doubleValue else {
+      throw InkSignView.MutablePageError.unsupportedContent
+    }
+    let orientation = (sourceProperties[kCGImagePropertyOrientation as String] as? NSNumber)?.uint32Value ?? 1
+    let swapsDimensions = (5...8).contains(Int(orientation))
+    let orientedWidth = swapsDimensions ? sourceHeight : sourceWidth
+    let orientedHeight = swapsDimensions ? sourceWidth : sourceHeight
+    let rasterDpi: Double
+    if let targetDpi {
+      let pointsPerSourcePixel = min(
+        Double(pageWidth) / orientedWidth,
+        Double(pageHeight) / orientedHeight)
+      rasterDpi = min(targetDpi, pointsPerInch / pointsPerSourcePixel)
+    } else {
+      rasterDpi = dpi
+    }
+
+    let pixelsPerPoint = min(rasterDpi / pointsPerInch,
                              maximumDimension / Double(max(pageWidth, pageHeight)))
     let targetWidth = max(1, Int(ceil(Double(pageWidth) * pixelsPerPoint)))
     let targetHeight = max(1, Int(ceil(Double(pageHeight) * pixelsPerPoint)))
@@ -67,7 +91,7 @@ enum InkSignPdfMutablePageImageEncoder {
       throw InkSignView.MutablePageError.unsupportedContent
     }
     CGImageDestinationAddImage(destination, normalized,
-                              [kCGImageDestinationLossyCompressionQuality: 0.72] as CFDictionary)
+                              [kCGImageDestinationLossyCompressionQuality: jpegQuality ?? 0.72] as CFDictionary)
     guard CGImageDestinationFinalize(destination) else {
       throw InkSignView.MutablePageError.unsupportedContent
     }

@@ -5,6 +5,10 @@
 - The PDF worker uses one worker-owned PDFium session to render page tiles and
   navigation previews into Android `ARGB_8888` bitmaps. No second renderer or
   text overlay repairs the page image.
+- Grid requests keep a 512 px core and render a 2 px bleed around it, clamped to
+  the page. The compositor draws the expanded bitmap through a clip at the
+  core's shared global pixel edges. Preview requests use their full bounds with
+  no bleed, and the cache accounts for each bitmap's allocated size.
 - PDFium handles PDF-to-display Y conversion. Android supplies the positive
   display scale and tile offset. The native bridge handles bitmap byte order.
 - Android owns tile scheduling, cache keys, document generations,

@@ -563,8 +563,8 @@ class InkDocumentControllerTest {
           beforeEach()
           renderedRequestCount += 1
           val bitmap = Bitmap.createBitmap(
-            request.widthPx,
-            request.heightPx,
+            request.rasterWidthPx,
+            request.rasterHeightPx,
             Bitmap.Config.ARGB_8888,
           )
           cachedBitmaps += bitmap

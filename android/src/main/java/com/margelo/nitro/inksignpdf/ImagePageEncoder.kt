@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.ceil
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /** Converts one selected image into the page-sized JPEG consumed by PDFium. */
 internal object ImagePageEncoder {
@@ -19,7 +20,12 @@ internal object ImagePageEncoder {
   private const val JPEG_QUALITY = 72
   private const val MAX_PAGE_DIMENSION_PX = 8192.0
 
-  fun encode(source: File, page: PdfPageDimensions): PdfiumAppendRequest {
+  fun encode(
+    source: File,
+    page: PdfPageDimensions,
+    targetDpi: Double? = null,
+    jpegQuality: Double? = null,
+  ): PdfiumAppendRequest {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeFile(source.absolutePath, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
@@ -46,9 +52,29 @@ internal object ImagePageEncoder {
       orientation == ExifInterface.ORIENTATION_TRANSVERSE
     val orientedWidth = if (rotatedDimensions) bounds.outHeight else bounds.outWidth
     val orientedHeight = if (rotatedDimensions) bounds.outWidth else bounds.outHeight
-    val targetWidth = pagePixels(page.width)
-    val targetHeight = pagePixels(page.height)
-    val sample = calculateSample(orientedWidth, orientedHeight, targetWidth, targetHeight)
+    val pointsPerSourcePixel = min(
+      page.width / orientedWidth,
+      page.height / orientedHeight,
+    )
+    val rasterDpi = targetDpi?.let { requestedDpi ->
+      min(requestedDpi, POINTS_PER_INCH / pointsPerSourcePixel)
+    } ?: DPI
+    val targetWidth = pagePixels(page.width, rasterDpi)
+    val targetHeight = pagePixels(page.height, rasterDpi)
+    val imageTargetWidth = pagePixels(
+      orientedWidth * pointsPerSourcePixel,
+      rasterDpi,
+    )
+    val imageTargetHeight = pagePixels(
+      orientedHeight * pointsPerSourcePixel,
+      rasterDpi,
+    )
+    val sample = calculateSample(
+      orientedWidth,
+      orientedHeight,
+      imageTargetWidth,
+      imageTargetHeight,
+    )
     val decoded = BitmapFactory.decodeFile(
       source.absolutePath,
       BitmapFactory.Options().apply {
@@ -114,7 +140,8 @@ internal object ImagePageEncoder {
         )
       }
       val output = ByteArrayOutputStream()
-      check(pageBitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)) {
+      val quality = jpegQuality?.times(100.0)?.roundToInt() ?: JPEG_QUALITY
+      check(pageBitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)) {
         "Unable to encode selected image"
       }
       return PdfiumAppendRequest(
@@ -134,8 +161,8 @@ internal object ImagePageEncoder {
     }
   }
 
-  private fun pagePixels(points: Double): Int =
-    ceil(points * DPI / POINTS_PER_INCH)
+  private fun pagePixels(points: Double, dpi: Double): Int =
+    ceil(points * dpi / POINTS_PER_INCH)
       .coerceIn(1.0, MAX_PAGE_DIMENSION_PX)
       .toInt()
 

@@ -1199,7 +1199,11 @@ class SurfaceViewTest {
             beforeEach()
             PdfTile(
               request,
-              Bitmap.createBitmap(request.widthPx, request.heightPx, Bitmap.Config.ARGB_8888),
+              Bitmap.createBitmap(
+                request.rasterWidthPx,
+                request.rasterHeightPx,
+                Bitmap.Config.ARGB_8888,
+              ),
             )
           }
         }
