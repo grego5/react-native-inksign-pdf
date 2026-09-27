@@ -253,10 +253,12 @@ finalize()
 
 `addPages()` opens the native picker; pass `sources` to import local files
 directly. PDFs add all their pages, and each image adds one page. Use `type` to
-filter the picker and `imagePageSize` to set image-page dimensions. When
-`targetDpi` is omitted, image pages use the legacy 200 DPI raster. Supplying
-`targetDpi` sets a maximum raster resolution, capped at the image's effective
-resolution when contained on the page and at 8192 pixels per edge. Thus,
+filter the picker and `imagePageSize` to set image-page dimensions. Omitting
+`targetDpi` keeps the legacy 200 DPI raster, subject to an 8192-pixel limit on
+the longest raster edge. A supplied value sets the maximum raster resolution,
+limited by the source image's resolution when fitted to the page and by the
+same edge limit. Raster dimensions scale together, preserving the page's aspect
+ratio. Thus,
 explicit `targetDpi: 200` can produce a smaller raster than omission for a
 lower-resolution image. JPEG quality defaults to `0.72`; `jpegQuality` accepts
 values from `0` to `1`. These encoding options apply to image inputs; PDF pages

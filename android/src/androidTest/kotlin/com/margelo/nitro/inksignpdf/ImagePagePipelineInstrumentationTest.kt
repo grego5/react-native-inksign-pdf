@@ -1,7 +1,9 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
@@ -12,6 +14,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.math.abs
 
 @RunWith(AndroidJUnit4::class)
 class ImagePagePipelineInstrumentationTest {
@@ -88,6 +91,115 @@ class ImagePagePipelineInstrumentationTest {
       }
     } finally {
       bitmap.recycle()
+      image.delete()
+      candidate.delete()
+    }
+  }
+
+  @Test
+  fun highDpiA4RasterPreservesPageAspectAndContainsTheWholeImage() {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val image = File(context.cacheDir, "image-a4-limit-${UUID.randomUUID()}.jpg")
+    val candidate = File(context.cacheDir, "image-a4-limit-${UUID.randomUUID()}.pdf")
+    val page = PdfPageDimensions(width = 595.2756, height = 841.8898)
+
+    try {
+      writeA4LimitPatternJpeg(image)
+      val imageInput = ImagePageEncoder.encode(image, page, targetDpi = 2400.0)
+      val encoded = decode(imageInput.imageBytes!!)
+      try {
+        assertEquals(8192, encoded.height)
+        val expectedWidth = encoded.height * page.width / page.height
+        assertTrue(
+          "Raster dimensions should retain the A4 aspect ratio within one pixel; " +
+            "encoded=${encoded.width}x${encoded.height}, expected width=$expectedWidth",
+          abs(encoded.width - expectedWidth) <= 1.0,
+        )
+      } finally {
+        encoded.recycle()
+      }
+
+      val pages = PdfiumPageAssembler.assemble(
+        input = null,
+        request = PdfiumAssemblyRequest(
+          operation = PdfiumAssemblyOperation.CREATE,
+          appendInputs = listOf(imageInput),
+        ),
+        scratch = candidate,
+      )
+      assertEquals(1, pages.size)
+      assertEquals(page.width, pages.single().width, 0.001)
+      assertEquals(page.height, pages.single().height, 0.001)
+
+      val session = PdfiumRenderSession.open(candidate.readBytes())
+      try {
+        val rendered = Bitmap.createBitmap(596, 842, Bitmap.Config.ARGB_8888)
+        try {
+          val scale = rendered.height / page.height
+          assertTrue(
+            session.renderPageIntoBitmap(
+              pageIndex = 0,
+              bitmap = rendered,
+              pageToDevice = PdfiumAffineMatrix(scale, 0.0, 0.0, scale, 0.0, 0.0),
+              clip = PdfiumRect(0.0, 0.0, page.width, page.height),
+              flags = pdfiumAndroidDisplayFlags,
+            ),
+          )
+
+          val pixels = IntArray(rendered.width * rendered.height)
+          rendered.getPixels(pixels, 0, rendered.width, 0, 0, rendered.width, rendered.height)
+          val centerY = rendered.height / 2
+          assertTrue(
+            "The left edge of the source image should remain visible",
+            isRed(pixels[centerY * rendered.width + 20]),
+          )
+          assertTrue(
+            "The right edge of the source image should remain visible",
+            isBlue(pixels[centerY * rendered.width + 575]),
+          )
+          assertTrue(
+            "The image should remain letterboxed on the page",
+            isWhite(pixels[100 * rendered.width + 100]),
+          )
+          assertTrue(
+            "The image should remain letterboxed on the page",
+            isWhite(pixels[740 * rendered.width + 100]),
+          )
+
+          var minGreenX = rendered.width
+          var minGreenY = rendered.height
+          var maxGreenX = -1
+          var maxGreenY = -1
+          var hasYellowTopEdge = false
+          var hasCyanBottomEdge = false
+          pixels.forEachIndexed { index, pixel ->
+            hasYellowTopEdge = hasYellowTopEdge || isYellow(pixel)
+            hasCyanBottomEdge = hasCyanBottomEdge || isCyan(pixel)
+            if (isGreen(pixel)) {
+              val x = index % rendered.width
+              val y = index / rendered.width
+              minGreenX = minOf(minGreenX, x)
+              minGreenY = minOf(minGreenY, y)
+              maxGreenX = maxOf(maxGreenX, x)
+              maxGreenY = maxOf(maxGreenY, y)
+            }
+          }
+          assertTrue("The top edge of the source image should remain visible", hasYellowTopEdge)
+          assertTrue("The bottom edge of the source image should remain visible", hasCyanBottomEdge)
+          assertTrue("The square source marker should render", maxGreenX >= minGreenX)
+          val markerWidth = maxGreenX - minGreenX + 1
+          val markerHeight = maxGreenY - minGreenY + 1
+          assertTrue(
+            "The source square should not be stretched; rendered marker=${markerWidth}x$markerHeight",
+            abs(markerWidth - markerHeight) <= 2,
+          )
+        } finally {
+          rendered.recycle()
+        }
+      } finally {
+        session.close()
+      }
+    } finally {
       image.delete()
       candidate.delete()
     }
@@ -171,5 +283,49 @@ class ImagePagePipelineInstrumentationTest {
       bitmap.recycle()
     }
   }
+
+  private fun writeA4LimitPatternJpeg(file: File) {
+    val bitmap = Bitmap.createBitmap(8000, 300, Bitmap.Config.ARGB_8888)
+    try {
+      bitmap.eraseColor(Color.DKGRAY)
+      val canvas = Canvas(bitmap)
+      val paint = Paint()
+      paint.color = Color.RED
+      canvas.drawRect(0f, 0f, 800f, 300f, paint)
+      paint.color = Color.BLUE
+      canvas.drawRect(7200f, 0f, 8000f, 300f, paint)
+      paint.color = Color.YELLOW
+      canvas.drawRect(0f, 0f, 8000f, 60f, paint)
+      paint.color = Color.CYAN
+      canvas.drawRect(0f, 240f, 8000f, 300f, paint)
+      paint.color = Color.GREEN
+      canvas.drawRect(3910f, 60f, 4090f, 240f, paint)
+      FileOutputStream(file).use { output ->
+        assertTrue(bitmap.compress(Bitmap.CompressFormat.JPEG, 100, output))
+      }
+    } finally {
+      bitmap.recycle()
+    }
+  }
+
+  private fun isRed(color: Int): Boolean =
+    Color.red(color) > 140 && Color.green(color) < 100 && Color.blue(color) < 100
+
+  private fun isBlue(color: Int): Boolean =
+    Color.blue(color) > 140 && Color.red(color) < 100 && Color.green(color) < 100
+
+  private fun isYellow(color: Int): Boolean =
+    Color.red(color) > 140 && Color.green(color) > 140 && Color.blue(color) < 100
+
+  private fun isCyan(color: Int): Boolean =
+    Color.green(color) > 140 && Color.blue(color) > 140 && Color.red(color) < 100
+
+  private fun isGreen(color: Int): Boolean =
+    Color.green(color) > 120 &&
+      Color.green(color).toDouble() > Color.red(color) * 1.4 &&
+      Color.green(color).toDouble() > Color.blue(color) * 1.4
+
+  private fun isWhite(color: Int): Boolean =
+    Color.red(color) > 230 && Color.green(color) > 230 && Color.blue(color) > 230
 
 }

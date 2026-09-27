@@ -25,9 +25,11 @@ and export.
   `setTextDirection()` choice, or app direction when unset/`auto`. Save the
   selected direction with the annotation.
 - `addPages()` image inputs use per-call `targetDpi` and `jpegQuality` when set.
-  Omitted values preserve 200 DPI and 0.72 JPEG quality; explicit DPI is capped
-  by the source image's effective resolution at contain fit and by 8192 pixels
-  per edge. PDF inputs retain their original pages.
+  `targetDpi` defaults to 200 DPI and `jpegQuality` to 0.72. Raster size is
+  limited to 8192 pixels on its longest edge; supplied DPI is also capped by
+  the source image's resolution at contain fit. Raster dimensions scale
+  together to preserve the page aspect ratio. PDF inputs retain their original
+  pages.
 - Each platform coordinator owns one published document with an ordered stable
   page list, one active page, and page-local committed history. Android uses
   PDFium for document I/O; iOS uses PDFKit with Quartz and CoreText. The UI
