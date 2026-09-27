@@ -193,7 +193,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun insertAnnotationOn(): Unit
+  abstract fun insertAnnotationOn(options: TextAnnotationOptions?): Unit
   
   @DoNotStrip
   @Keep

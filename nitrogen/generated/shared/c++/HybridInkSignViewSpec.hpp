@@ -126,7 +126,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void clear() = 0;
       virtual void addTextAnnotation(const std::string& text, const PagePosition& position, const std::optional<TextAnnotationOptions>& options) = 0;
       virtual void setTextDirection(TextDirection direction) = 0;
-      virtual void insertAnnotationOn() = 0;
+      virtual void insertAnnotationOn(const std::optional<TextAnnotationOptions>& options) = 0;
       virtual void insertAnnotationOff() = 0;
       virtual double increaseTextSize() = 0;
       virtual double decreaseTextSize() = 0;

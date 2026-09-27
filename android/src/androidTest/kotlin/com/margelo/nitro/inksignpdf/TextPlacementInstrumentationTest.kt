@@ -1,8 +1,15 @@
 package com.margelo.nitro.inksignpdf
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.graphics.Bitmap
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.UnderlineSpan
 import android.view.MotionEvent
 import android.view.View
+import android.view.inputmethod.BaseInputConnection
+import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -97,18 +104,18 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           PagePoint(50.0, 40.0),
           "one two three four five six seven eight nine ten",
-          TextAnnotationOptions(TextDirection.LTR, 92.0, 82.0),
+          TextAnnotationOptions(TextDirection.LTR, 92.0, 82.0, null, null),
         )
         overlay.addTextAnnotation(
           PagePoint(250.0, 40.0),
           "RTL text wraps near the left edge",
-          TextAnnotationOptions(TextDirection.RTL, 208.0, 82.0),
+          TextAnnotationOptions(TextDirection.RTL, 208.0, 82.0, null, null),
         )
         harness.surface.layoutDirection = View.LAYOUT_DIRECTION_RTL
         overlay.addTextAnnotation(
           PagePoint(250.0, 100.0),
           "Auto follows app layout",
-          TextAnnotationOptions(TextDirection.AUTO, 208.0, 150.0),
+          TextAnnotationOptions(TextDirection.AUTO, 208.0, 150.0, null, null),
         )
 
         val annotation = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -162,6 +169,350 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(
           exported.runs.map { it.lineId }.distinct().size < layout.lineCount + rtlLayout.lineCount,
         )
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun programmaticBottomAnchorKeepsFirstLinesAndExportsAtTheFixedBottom() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        overlay.addTextAnnotation(
+          PagePoint(20.0, 260.0),
+          "one\ntwo\nthree\nfour",
+          TextAnnotationOptions(
+            direction = TextDirection.LTR,
+            xLimit = 280.0,
+            yLimit = 180.0,
+            maxLines = 2.0,
+            verticalAnchor = TextVerticalAnchor.BOTTOM,
+          ),
+        )
+        overlay.addTextAnnotation(
+          PagePoint(20.0, 260.0),
+          "one\ntwo\nthree",
+          TextAnnotationOptions(
+            direction = TextDirection.LTR,
+            xLimit = 280.0,
+            yLimit = 230.0,
+            maxLines = 3.0,
+            verticalAnchor = TextVerticalAnchor.BOTTOM,
+          ),
+        )
+
+        val annotations = checkNotNull(harness.surface.textPresentationSnapshot()).annotations
+        val lineLimited = annotations[0]
+        val regionLimited = annotations[1]
+        val lineLimitedBounds = checkNotNull(lineLimited.flowBounds)
+        val regionLimitedBounds = checkNotNull(regionLimited.flowBounds)
+        val lineLimitedSelection = TextLayoutSpec.selectVisibleLines(
+          TextLayoutSpec.createLayout(lineLimited),
+          lineLimitedBounds,
+          lineLimited.maxLines,
+          lineLimited.verticalAnchor,
+        )
+        val regionLimitedSelection = TextLayoutSpec.selectVisibleLines(
+          TextLayoutSpec.createLayout(regionLimited),
+          regionLimitedBounds,
+          regionLimited.maxLines,
+          regionLimited.verticalAnchor,
+        )
+        assertEquals(2, lineLimitedSelection.lineCount)
+        assertEquals(1, regionLimitedSelection.lineCount)
+        assertTrue(lineLimited.bounds.top > lineLimitedBounds.top)
+        assertEquals(lineLimitedBounds.bottom, lineLimited.bounds.bottom, 0.0)
+        assertTrue(regionLimited.bounds.top >= regionLimitedBounds.top)
+        assertEquals(regionLimitedBounds.bottom, regionLimited.bounds.bottom, 0.0)
+
+        val exported = PdfExportTextResolver.resolve(
+          PdfExportSnapshot(
+            sourcePath = "unused-source.pdf",
+            outputPath = "unused-output.pdf",
+            pages = listOf(
+              PdfPageExportSnapshot(
+                pageIndex = 0,
+                dimensions = PdfPageDimensions(300.0, 300.0),
+                strokes = emptyList(),
+                textAnnotations = annotations,
+              ),
+            ),
+            generation = 1L,
+            color = android.graphics.Color.BLACK,
+          ),
+        )
+        assertEquals(listOf("one", "two", "one"), exported.runs.map { it.text })
+        assertTrue(exported.runs.all { it.baselineFromTop in 180.0f..260.0f })
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun manualFlowOptionsConstrainLiveEditorAndSurviveCommitAndReopen() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        val options = TextAnnotationOptions(
+          direction = TextDirection.LTR,
+          xLimit = 150.0,
+          yLimit = 100.0,
+          maxLines = 2.0,
+          verticalAnchor = TextVerticalAnchor.BOTTOM,
+        )
+        overlay.armPlacement(1L, options)
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        val invalidTap = presentation.transform.map(PagePoint(200.0, 180.0))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, invalidTap.x.toFloat(), invalidTap.y.toFloat(), 1_300L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, invalidTap.x.toFloat(), invalidTap.y.toFloat(), 1_310L))
+        assertTrue(overlay.hasPendingPlacement())
+        assertEquals(0, editorCount(overlay))
+
+        val tap = presentation.transform.map(PagePoint(40.0, 180.0))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_320L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_330L))
+        assertFalse(overlay.hasPendingPlacement())
+        val editor = editorView(overlay)
+        editor.setText("one\ntwo")
+        val liveBounds = editorPageBounds(editor)
+        assertEquals(40.0, liveBounds.left, 1.0)
+        assertEquals(150.0, liveBounds.right, 1.0)
+        assertTrue(liveBounds.top > 100.0)
+        assertEquals(180.0, liveBounds.bottom, 1.0)
+
+        overlay.setTextDirection(TextDirection.RTL)
+        assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
+        assertEquals(liveBounds, editorPageBounds(editor))
+        overlay.finishForLifecycle()
+
+        val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        assertEquals(PageRect(40.0, 100.0, 150.0, 180.0), saved.flowBounds)
+        assertEquals(2, saved.maxLines)
+        assertEquals(TextVerticalAnchor.BOTTOM, saved.verticalAnchor)
+        assertEquals(180.0, saved.bounds.bottom, 0.0)
+
+        val savedPresentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        val reopenPoint = savedPresentation.transform.map(
+          PagePoint(
+            (saved.bounds.left + saved.bounds.right) / 2.0,
+            (saved.bounds.top + saved.bounds.bottom) / 2.0,
+          ),
+        )
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, reopenPoint.x.toFloat(), reopenPoint.y.toFloat(), 1_340L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, reopenPoint.x.toFloat(), reopenPoint.y.toFloat(), 1_350L))
+        assertEquals("one\ntwo", editorView(overlay).text.toString())
+        overlay.increaseTextSize()
+        overlay.finishForLifecycle()
+
+        val reopened = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        assertEquals(2, reopened.maxLines)
+        assertEquals(TextVerticalAnchor.BOTTOM, reopened.verticalAnchor)
+        assertEquals(saved.flowBounds, reopened.flowBounds)
+        assertEquals(180.0, reopened.bounds.bottom, 0.0)
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun constrainedEditorRejectsOverflowAndRestoresTextAndCaret() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        val fourCharacterWidth = kotlin.math.ceil(
+          TextLayoutSpec.createPaint(defaultTextFontSize).measureText("MMMM").toDouble(),
+        )
+        val flowBounds = PageRect(20.0, 100.0, 20.0 + fourCharacterWidth, 250.0)
+        val options = TextAnnotationOptions(
+          direction = TextDirection.LTR,
+          xLimit = flowBounds.right,
+          yLimit = flowBounds.top,
+          maxLines = 2.0,
+          verticalAnchor = TextVerticalAnchor.BOTTOM,
+        )
+        overlay.armPlacement(1L, options)
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        val tap = presentation.transform.map(PagePoint(20.0, 250.0))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_360L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_370L))
+
+        val editor = editorView(overlay)
+        val fullText = "MMMM\nMMMM"
+        assertTrue(
+          TextLayoutSpec.fitsFlow(
+            text = fullText,
+            fontSize = defaultTextFontSize,
+            textColor = android.graphics.Color.BLACK,
+            flowBounds = flowBounds,
+            maxLines = 2,
+            baseDirectionRtl = false,
+          ),
+        )
+        editor.setText(fullText)
+        editor.setSelection(fullText.length)
+
+        editor.text.insert(editor.selectionEnd, "M")
+        assertEquals(fullText, editor.text.toString())
+        assertEquals(fullText.length, editor.selectionStart)
+        assertEquals(fullText.length, editor.selectionEnd)
+
+        editor.text.insert(editor.selectionEnd, "\n")
+        assertEquals(fullText, editor.text.toString())
+        assertEquals(fullText.length, editor.selectionStart)
+        assertEquals(fullText.length, editor.selectionEnd)
+
+        val clipboard = checkNotNull(
+          InstrumentationRegistry.getInstrumentation().targetContext
+            .getSystemService(ClipboardManager::class.java),
+        )
+        clipboard.setPrimaryClip(ClipData.newPlainText("overflow", "M"))
+        assertTrue(editor.onTextContextMenuItem(android.R.id.paste))
+        assertEquals(fullText, editor.text.toString())
+        assertEquals(fullText.length, editor.selectionStart)
+        assertEquals(fullText.length, editor.selectionEnd)
+
+        editor.setSelection(5, fullText.length)
+        editor.text.replace(5, fullText.length, "MMMMM")
+        assertEquals("MMMM\n", editor.text.toString())
+        assertEquals(5, editor.selectionStart)
+        assertEquals(5, editor.selectionEnd)
+        editor.text.insert(editor.selectionEnd, "MMMM")
+        assertEquals(fullText, editor.text.toString())
+
+        editor.setSelection(fullText.length)
+        editor.text.delete(fullText.length - 1, fullText.length)
+        assertEquals("MMMM\nMMM", editor.text.toString())
+        assertEquals(fullText.length - 1, editor.selectionEnd)
+        editor.text.insert(editor.selectionEnd, "M")
+        assertEquals(fullText, editor.text.toString())
+        assertEquals(fullText.length, editor.selectionEnd)
+
+        val inputConnection = checkNotNull(editor.onCreateInputConnection(EditorInfo()))
+        val composingM = SpannableString("M").apply {
+          setSpan(UnderlineSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        val composingMM = SpannableString("MM").apply {
+          setSpan(UnderlineSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+
+        editor.text.delete(fullText.length - 1, fullText.length)
+        assertEquals("MMMM\nMMM", editor.text.toString())
+        editor.setSelection(editor.text.length)
+        assertTrue(inputConnection.setComposingText(composingM, 1))
+        assertEquals(fullText, editor.text.toString())
+        assertEquals(fullText.length, editor.selectionStart)
+        assertEquals(fullText.length, editor.selectionEnd)
+
+        // Extending the active composition now overflows. Preserve its old range.
+        assertTrue(inputConnection.setComposingText(composingMM, 1))
+        assertEquals(fullText, editor.text.toString())
+        assertEquals(fullText.length, editor.selectionStart)
+        assertEquals(fullText.length, editor.selectionEnd)
+        assertEquals(fullText.length - 1, BaseInputConnection.getComposingSpanStart(editor.text))
+        assertEquals(fullText.length, BaseInputConnection.getComposingSpanEnd(editor.text))
+        val underline = editor.text.getSpans(0, editor.text.length, UnderlineSpan::class.java)
+        assertEquals(1, underline.size)
+        assertEquals(fullText.length - 1, editor.text.getSpanStart(underline.single()))
+        assertEquals(fullText.length, editor.text.getSpanEnd(underline.single()))
+      } finally {
+        overlay.dispose()
+      }
+    }
+  }
+
+  @Test
+  fun constrainedEditorKeepsTextAcrossReflowAndAllowsEditingBackIntoSpace() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        val fourCharacterWidth = kotlin.math.ceil(
+          TextLayoutSpec.createPaint(defaultTextFontSize).measureText("MMMM").toDouble(),
+        )
+        val flowBounds = PageRect(20.0, 100.0, 20.0 + fourCharacterWidth, 250.0)
+        overlay.armPlacement(
+          1L,
+          TextAnnotationOptions(
+            direction = TextDirection.LTR,
+            xLimit = flowBounds.right,
+            yLimit = flowBounds.top,
+            maxLines = 2.0,
+            verticalAnchor = TextVerticalAnchor.BOTTOM,
+          ),
+        )
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        val tap = presentation.transform.map(PagePoint(20.0, 250.0))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_380L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_390L))
+
+        val editor = editorView(overlay)
+        val fullText = "MMMM\nMMMM"
+        editor.setText(fullText)
+        val inputConnection = checkNotNull(editor.onCreateInputConnection(EditorInfo()))
+        editor.setSelection(5, fullText.length)
+        val originalComposingText = SpannableString("MMMM").apply {
+          setSpan(UnderlineSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        assertTrue(inputConnection.setComposingText(originalComposingText, 1))
+        overlay.setTextDirection(TextDirection.RTL)
+        overlay.increaseTextSize()
+        assertEquals(fullText, editor.text.toString())
+        assertFalse(
+          TextLayoutSpec.fitsFlow(
+            text = fullText,
+            fontSize = defaultTextFontSize + 1.0,
+            textColor = android.graphics.Color.BLACK,
+            flowBounds = flowBounds,
+            maxLines = 2,
+            baseDirectionRtl = true,
+          ),
+        )
+
+        val shorterComposingText = SpannableString("MMM").apply {
+          setSpan(UnderlineSpan(), 0, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        assertTrue(inputConnection.setComposingText(shorterComposingText, 1))
+        assertEquals("MMMM\nMMM", editor.text.toString())
+        assertFalse(
+          TextLayoutSpec.fitsFlow(
+            text = editor.text.toString(),
+            fontSize = defaultTextFontSize + 1.0,
+            textColor = android.graphics.Color.BLACK,
+            flowBounds = flowBounds,
+            maxLines = 2,
+            baseDirectionRtl = true,
+          ),
+        )
+        assertEquals(5, BaseInputConnection.getComposingSpanStart(editor.text))
+        assertEquals(editor.text.length, BaseInputConnection.getComposingSpanEnd(editor.text))
+        assertTrue(inputConnection.finishComposingText())
+
+        editor.text.delete(3, 4)
+        assertEquals("MMM\nMMM", editor.text.toString())
+        editor.text.delete(editor.text.length - 1, editor.text.length)
+        assertEquals("MMM\nMM", editor.text.toString())
+        assertTrue(
+          TextLayoutSpec.fitsFlow(
+            text = editor.text.toString(),
+            fontSize = defaultTextFontSize + 1.0,
+            textColor = android.graphics.Color.BLACK,
+            flowBounds = flowBounds,
+            maxLines = 2,
+            baseDirectionRtl = true,
+          ),
+        )
+
+        overlay.decreaseTextSize()
+        editor.setSelection(editor.text.length)
+        editor.text.insert(editor.selectionEnd, "MM")
+        assertEquals("MMM\nMMMM", editor.text.toString())
       } finally {
         overlay.dispose()
       }
@@ -1151,7 +1502,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           PagePoint(80.0, 70.0),
           "Programmatic flow text",
-          TextAnnotationOptions(TextDirection.LTR, 240.0, 160.0),
+          TextAnnotationOptions(TextDirection.LTR, 240.0, 160.0, null, null),
         )
         val original = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         val initialPresentation = checkNotNull(harness.surface.textPresentationSnapshot())

@@ -24,18 +24,24 @@ export interface PagePosition {
   y: number
 }
 
-/** Optional flow limits in canonical PDF page points. Limits are absolute page coordinates. */
+/** Text flow and placement options in canonical page points. Limits are absolute page coordinates. */
 export interface TextAnnotationOptions {
   /** Base writing direction. `auto` follows the app's resolved layout direction. */
   direction?: TextDirection
   /** Opposite horizontal edge: rightward for LTR, leftward for RTL. Defaults to the page edge. */
   xLimit?: number
-  /** Bottom edge for wrapped lines. Defaults to the page bottom. */
+  /** Opposite vertical edge from `position.y`. Defaults to the page edge selected by the anchor. */
   yLimit?: number
+  /** Retains at most this many complete lines; zero or omission keeps the full flow region. */
+  maxLines?: number
+  /** Vertical edge selected by `position.y`. Defaults to the top edge. */
+  verticalAnchor?: TextVerticalAnchor
 }
 
 export type PageType = 'pdf' | 'image'
 export type TextDirection = 'ltr' | 'rtl' | 'auto'
+export type TextVerticalAnchor = 'top' | 'bottom'
+export type AddPagesActivePage = 'current' | 'firstAdded' | 'lastAdded'
 
 /** Image page dimensions in PDF points. */
 export interface ImagePageSize {
@@ -54,6 +60,8 @@ export interface AddPagesOptions {
   targetDpi?: number
   /** JPEG quality for imported image pages, from 0 to 1. Defaults to 0.72. */
   jpegQuality?: number
+  /** Page selected after import. Defaults to `current`, or the first added page when creating a document. */
+  activePage?: AddPagesActivePage
 }
 
 export interface AddPagesResult {
@@ -144,8 +152,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   addTextAnnotation(text: string, position: PagePosition, options?: TextAnnotationOptions): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
-  /** Arms one-shot native text placement at the next valid page tap. */
-  insertAnnotationOn(): void
+  /** Arms one-shot text placement; supplied options constrain the live editor and saved annotation. */
+  insertAnnotationOn(options?: TextAnnotationOptions): void
   /** Cancels a pending one-shot text placement, if any. */
   insertAnnotationOff(): void
   increaseTextSize(): number

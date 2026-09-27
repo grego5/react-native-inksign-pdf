@@ -97,7 +97,7 @@ namespace margelo::nitro::inksignpdf {
     void clear() override;
     void addTextAnnotation(const std::string& text, const PagePosition& position, const std::optional<TextAnnotationOptions>& options) override;
     void setTextDirection(TextDirection direction) override;
-    void insertAnnotationOn() override;
+    void insertAnnotationOn(const std::optional<TextAnnotationOptions>& options) override;
     void insertAnnotationOff() override;
     double increaseTextSize() override;
     double decreaseTextSize() override;

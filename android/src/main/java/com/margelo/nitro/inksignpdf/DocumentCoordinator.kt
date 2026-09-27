@@ -100,10 +100,19 @@ internal class MutableDocumentCoordinator(
     val activePageId: String,
   )
 
-  fun appendCandidate(dimensions: List<PdfPageDimensions>): StructuralCandidate {
+  fun appendCandidate(
+    dimensions: List<PdfPageDimensions>,
+    selection: AddPagesActivePage,
+  ): StructuralCandidate {
     require(dimensions.isNotEmpty())
     val appended = dimensions.map { InkPageState(PageRecord.newId(), it) }
-    return StructuralCandidate(mutablePages.toList() + appended, appended.first().id)
+    val candidatePages = mutablePages.toList() + appended
+    val candidateActivePageId = when (selection) {
+      AddPagesActivePage.CURRENT -> activePageId ?: appended.first().id
+      AddPagesActivePage.FIRSTADDED -> appended.first().id
+      AddPagesActivePage.LASTADDED -> appended.last().id
+    }
+    return StructuralCandidate(candidatePages, candidateActivePageId)
   }
 
   fun removeActiveCandidate(): StructuralCandidate {

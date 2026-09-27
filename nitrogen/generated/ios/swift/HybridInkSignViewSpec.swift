@@ -41,7 +41,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func clear() throws -> Void
   func addTextAnnotation(text: String, position: PagePosition, options: TextAnnotationOptions?) throws -> Void
   func setTextDirection(direction: TextDirection) throws -> Void
-  func insertAnnotationOn() throws -> Void
+  func insertAnnotationOn(options: TextAnnotationOptions?) throws -> Void
   func insertAnnotationOff() throws -> Void
   func increaseTextSize() throws -> Double
   func decreaseTextSize() throws -> Double

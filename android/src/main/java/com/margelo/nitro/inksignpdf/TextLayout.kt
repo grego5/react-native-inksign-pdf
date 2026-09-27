@@ -22,6 +22,12 @@ internal data class TextIntrinsicSize(
   val height: Double,
 )
 
+internal data class VisibleTextLineSelection(
+  val lineCount: Int,
+  val height: Double,
+  val topOffset: Double,
+)
+
 /**
  * Materializes only native soft-wrap boundaries as explicit newlines.
  * Existing newline boundaries are left untouched, so applying this twice is
@@ -122,56 +128,114 @@ internal object TextLayoutSpec {
   }
 
   fun createLayout(annotation: TextAnnotation): StaticLayout {
-    val paint = createPaint(annotation.fontSize, annotation.textColor)
     val measuredWidth = measure(annotation.text, annotation.fontSize).width
     val layoutWidth = annotation.flowBounds?.let { it.right - it.left }
       ?: max(annotation.intrinsicWidth, measuredWidth)
+    return createLayout(
+      text = annotation.text,
+      fontSize = annotation.fontSize,
+      textColor = annotation.textColor,
+      layoutWidth = layoutWidth,
+      baseDirectionRtl = annotation.directionRtl,
+    )
+  }
+
+  fun createLayout(
+    text: String,
+    fontSize: Double,
+    textColor: Int,
+    layoutWidth: Double,
+    baseDirectionRtl: Boolean,
+  ): StaticLayout {
+    val paint = createPaint(fontSize, textColor)
     val width = max(1, ceil(layoutWidth).toInt())
     return StaticLayout.Builder.obtain(
-      annotation.text,
+      text,
       0,
-      annotation.text.length,
+      text.length,
       paint,
       width,
     )
       .setIncludePad(includeFontPadding)
       .setBreakStrategy(breakStrategy)
       .setHyphenationFrequency(hyphenationFrequency)
-      .setTextDirection(directionHeuristic(annotation.directionRtl))
+      .setTextDirection(directionHeuristic(baseDirectionRtl))
       .build()
+  }
+
+  /** Whether an editor value can be shown completely inside its configured flow region. */
+  fun fitsFlow(
+    text: String,
+    fontSize: Double,
+    textColor: Int,
+    flowBounds: PageRect,
+    maxLines: Int,
+    baseDirectionRtl: Boolean,
+  ): Boolean {
+    if (text.isEmpty()) return true
+    val layout = createLayout(
+      text = text,
+      fontSize = fontSize,
+      textColor = textColor,
+      layoutWidth = flowBounds.right - flowBounds.left,
+      baseDirectionRtl = baseDirectionRtl,
+    )
+    val selection = selectVisibleLines(
+      layout = layout,
+      flowBounds = flowBounds,
+      maxLines = maxLines,
+      // The anchor shifts a clipped block vertically; it never changes the fit test.
+      verticalAnchor = TextVerticalAnchor.TOP,
+    )
+    return selection.lineCount == layout.lineCount
+  }
+
+  fun selectVisibleLines(
+    layout: StaticLayout,
+    flowBounds: PageRect,
+    maxLines: Int,
+    verticalAnchor: TextVerticalAnchor,
+  ): VisibleTextLineSelection {
+    val flowHeight = flowBounds.bottom - flowBounds.top
+    var lineCount = 0
+    var visibleHeight = 0.0
+    for (lineIndex in 0 until layout.lineCount) {
+      if ((maxLines > 0 && lineCount >= maxLines) ||
+        layout.getLineBottom(lineIndex).toDouble() > flowHeight
+      ) break
+      lineCount += 1
+      visibleHeight = layout.getLineBottom(lineIndex).toDouble()
+    }
+    return VisibleTextLineSelection(
+      lineCount = lineCount,
+      height = visibleHeight,
+      topOffset = if (verticalAnchor == TextVerticalAnchor.BOTTOM) flowHeight - visibleHeight else 0.0,
+    )
   }
 
   fun visibleBounds(annotation: TextAnnotation, flowBounds: PageRect): PageRect {
     val layout = createLayout(annotation)
     val flowWidth = flowBounds.right - flowBounds.left
-    val flowHeight = flowBounds.bottom - flowBounds.top
-    val visibleHeight = completeLineHeight(layout, flowHeight)
+    val selection = selectVisibleLines(
+      layout,
+      flowBounds,
+      annotation.maxLines,
+      annotation.verticalAnchor,
+    )
     var left = flowWidth
     var right = 0.0
-    var bottom = 0.0
-    for (lineIndex in 0 until layout.lineCount) {
-      if (layout.getLineBottom(lineIndex).toDouble() > visibleHeight) break
+    for (lineIndex in 0 until selection.lineCount) {
       left = min(left, layout.getLineLeft(lineIndex).toDouble().coerceIn(0.0, flowWidth))
       right = max(right, layout.getLineRight(lineIndex).toDouble().coerceIn(0.0, flowWidth))
-      bottom = max(bottom, min(flowHeight, layout.getLineBottom(lineIndex).toDouble()))
     }
     if (left > right) left = right
+    val top = flowBounds.top + selection.topOffset
     return PageRect(
       flowBounds.left + left,
-      flowBounds.top,
+      top,
       flowBounds.left + right,
-      flowBounds.top + bottom,
+      top + selection.height,
     )
-  }
-
-  fun completeLineHeight(layout: StaticLayout, flowHeight: Double): Double {
-    var visibleHeight = 0.0
-    for (lineIndex in 0 until layout.lineCount) {
-      val lineBottom = layout.getLineBottom(lineIndex).toDouble()
-      if (lineBottom > flowHeight) break
-      visibleHeight = lineBottom
-    }
-    return visibleHeight
   }
 
   fun configureEditor(
@@ -220,24 +284,29 @@ internal class TextRenderLayer private constructor(
   private data class Entry(
     val annotation: TextAnnotation,
     val layout: StaticLayout,
-    val clipBounds: PageRect?,
+    val flowBounds: PageRect?,
+    val selection: VisibleTextLineSelection?,
   )
 
   fun draw(canvas: android.graphics.Canvas, excludedAnnotationId: String? = null) {
     entries.forEach { entry ->
       if (entry.annotation.id == excludedAnnotationId) return@forEach
+      val flowBounds = entry.flowBounds
+      val selection = entry.selection
+      if (flowBounds != null && selection != null && selection.lineCount == 0) return@forEach
       canvas.save()
-      canvas.translate(
-        (entry.clipBounds?.left ?: entry.annotation.position.x).toFloat(),
-        (entry.clipBounds?.top ?: entry.annotation.position.y).toFloat(),
-      )
-      entry.clipBounds?.let { bounds ->
+      if (flowBounds == null) {
+        canvas.translate(entry.annotation.bounds.left.toFloat(), entry.annotation.bounds.top.toFloat())
+      } else {
+        val visible = checkNotNull(selection)
+        canvas.translate(flowBounds.left.toFloat(), flowBounds.top.toFloat())
         canvas.clipRect(
           0f,
-          0f,
-          (bounds.right - bounds.left).toFloat(),
-          (bounds.bottom - bounds.top).toFloat(),
+          visible.topOffset.toFloat(),
+          (flowBounds.right - flowBounds.left).toFloat(),
+          (visible.topOffset + visible.height).toFloat(),
         )
+        canvas.translate(0f, visible.topOffset.toFloat())
       }
       entry.layout.draw(canvas)
       canvas.restore()
@@ -251,14 +320,15 @@ internal class TextRenderLayer private constructor(
       return TextRenderLayer(
         annotations.map { annotation ->
           val layout = TextLayoutSpec.createLayout(annotation)
-          val clipBounds = annotation.flowBounds?.let { bounds ->
-            val visibleHeight = TextLayoutSpec.completeLineHeight(
+          val selection = annotation.flowBounds?.let { bounds ->
+            TextLayoutSpec.selectVisibleLines(
               layout,
-              bounds.bottom - bounds.top,
+              bounds,
+              annotation.maxLines,
+              annotation.verticalAnchor,
             )
-            PageRect(bounds.left, bounds.top, bounds.right, bounds.top + visibleHeight)
           }
-          Entry(annotation, layout, clipBounds)
+          Entry(annotation, layout, annotation.flowBounds, selection)
         },
       )
     }

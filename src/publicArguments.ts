@@ -14,6 +14,10 @@ export function validateAddPagesOptions(value: unknown): void {
   if (value.type !== undefined && value.type !== 'pdf' && value.type !== 'image') {
     throw argumentError('invalid_page_type', 'Page type must be pdf or image');
   }
+  if (value.activePage !== undefined && value.activePage !== 'current' &&
+    value.activePage !== 'firstAdded' && value.activePage !== 'lastAdded') {
+    throw argumentError('invalid_active_page', 'Active page must be current, firstAdded, or lastAdded');
+  }
   const sources = value.sources;
   if (sources !== undefined && (!Array.isArray(sources) ||
     !sources.every((source) => typeof source === 'string' && source.trim() !== ''))) {
@@ -35,5 +39,22 @@ export function validateAddPagesOptions(value: unknown): void {
   if (jpegQuality !== undefined &&
     (typeof jpegQuality !== 'number' || !Number.isFinite(jpegQuality) || jpegQuality < 0 || jpegQuality > 1)) {
     throw argumentError('invalid_image_jpeg_quality', 'Image JPEG quality must be between 0 and 1');
+  }
+}
+
+export function validateTextAnnotationOptions(value: unknown): void {
+  if (value === undefined) return;
+  if (!isRecord(value) ||
+    (value.direction !== undefined && value.direction !== 'ltr' &&
+      value.direction !== 'rtl' && value.direction !== 'auto') ||
+    (value.xLimit !== undefined &&
+      (typeof value.xLimit !== 'number' || !Number.isFinite(value.xLimit))) ||
+    (value.yLimit !== undefined &&
+      (typeof value.yLimit !== 'number' || !Number.isFinite(value.yLimit))) ||
+    (value.maxLines !== undefined &&
+      (typeof value.maxLines !== 'number' || !Number.isInteger(value.maxLines) || value.maxLines < 0)) ||
+    (value.verticalAnchor !== undefined && value.verticalAnchor !== 'top' &&
+      value.verticalAnchor !== 'bottom')) {
+    throw argumentError('invalid_text_options', 'Text options must contain valid direction, flow limits, line count, and vertical anchor');
   }
 }

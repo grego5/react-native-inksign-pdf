@@ -18,7 +18,7 @@ public extension TextAnnotationOptions {
   /**
    * Create a new instance of `TextAnnotationOptions`.
    */
-  init(direction: TextDirection?, xLimit: Double?, yLimit: Double?) {
+  init(direction: TextDirection?, xLimit: Double?, yLimit: Double?, maxLines: Double?, verticalAnchor: TextVerticalAnchor?) {
     self.init({ () -> bridge.std__optional_TextDirection_ in
       if let __unwrappedValue = direction {
         return bridge.create_std__optional_TextDirection_(__unwrappedValue)
@@ -34,6 +34,18 @@ public extension TextAnnotationOptions {
     }(), { () -> bridge.std__optional_double_ in
       if let __unwrappedValue = yLimit {
         return bridge.create_std__optional_double_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_double_ in
+      if let __unwrappedValue = maxLines {
+        return bridge.create_std__optional_double_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_TextVerticalAnchor_ in
+      if let __unwrappedValue = verticalAnchor {
+        return bridge.create_std__optional_TextVerticalAnchor_(__unwrappedValue)
       } else {
         return .init()
       }
@@ -67,5 +79,22 @@ public extension TextAnnotationOptions {
         return nil
       }
     }()
+  }
+  
+  @inline(__always)
+  var maxLines: Double? {
+    return { () -> Double? in
+      if bridge.has_value_std__optional_double_(self.__maxLines) {
+        let __unwrapped = bridge.get_std__optional_double_(self.__maxLines)
+        return __unwrapped
+      } else {
+        return nil
+      }
+    }()
+  }
+  
+  @inline(__always)
+  var verticalAnchor: TextVerticalAnchor? {
+    return self.__verticalAnchor.value
   }
 }
