@@ -5,15 +5,19 @@ import {
   argumentError,
   isRecord,
   validateAddPagesOptions,
+  validateTextAnnotationBounds,
   validateTextAnnotationOptions,
+  validateTextPlacementOptions,
 } from './publicArguments';
 
 import type {
   PageInfo,
-  PagePosition,
+  TextAnnotationBounds,
   TextAnnotationOptions,
+  TextPlacementOptions,
   PageType,
   TextDirection,
+  TextAlignment,
   TextVerticalAnchor,
   AddPagesActivePage,
   AddPagesOptions,
@@ -34,10 +38,12 @@ import type {
 
 export type {
   PageInfo,
-  PagePosition,
+  TextAnnotationBounds,
   TextAnnotationOptions,
+  TextPlacementOptions,
   PageType,
   TextDirection,
+  TextAlignment,
   TextVerticalAnchor,
   AddPagesActivePage,
   AddPagesOptions,
@@ -146,17 +152,13 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
     undo: () => native.undo(),
     redo: () => native.redo(),
     clear: () => native.clear(),
-    addTextAnnotation(text, position, options) {
+    addTextAnnotation(text, bounds, options) {
       if (typeof text !== 'string' || text.trim() === '') {
         throw argumentError('invalid_text', 'Text must not be empty');
       }
-      if (!isRecord(position) ||
-        typeof position.x !== 'number' || !Number.isFinite(position.x) ||
-        typeof position.y !== 'number' || !Number.isFinite(position.y)) {
-        throw argumentError('invalid_text_position', 'Text position must contain finite page x and y coordinates');
-      }
+      validateTextAnnotationBounds(bounds);
       validateTextAnnotationOptions(options);
-      native.addTextAnnotation(text, position, options);
+      native.addTextAnnotation(text, bounds, options);
     },
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
@@ -165,7 +167,7 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
       native.setTextDirection(direction);
     },
     insertAnnotationOn(options) {
-      validateTextAnnotationOptions(options);
+      validateTextPlacementOptions(options);
       native.insertAnnotationOn(options);
     },
     insertAnnotationOff: () => native.insertAnnotationOff(),

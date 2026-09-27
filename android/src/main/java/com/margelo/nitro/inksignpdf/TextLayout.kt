@@ -137,6 +137,7 @@ internal object TextLayoutSpec {
       textColor = annotation.textColor,
       layoutWidth = layoutWidth,
       baseDirectionRtl = annotation.directionRtl,
+      alignment = annotation.alignment,
     )
   }
 
@@ -146,6 +147,7 @@ internal object TextLayoutSpec {
     textColor: Int,
     layoutWidth: Double,
     baseDirectionRtl: Boolean,
+    alignment: TextAlignment = TextAlignment.START,
   ): StaticLayout {
     val paint = createPaint(fontSize, textColor)
     val width = max(1, ceil(layoutWidth).toInt())
@@ -160,6 +162,11 @@ internal object TextLayoutSpec {
       .setBreakStrategy(breakStrategy)
       .setHyphenationFrequency(hyphenationFrequency)
       .setTextDirection(directionHeuristic(baseDirectionRtl))
+      .setAlignment(when (alignment) {
+        TextAlignment.CENTER -> android.text.Layout.Alignment.ALIGN_CENTER
+        TextAlignment.START -> android.text.Layout.Alignment.ALIGN_NORMAL
+        TextAlignment.END -> android.text.Layout.Alignment.ALIGN_OPPOSITE
+      })
       .build()
   }
 
@@ -171,6 +178,7 @@ internal object TextLayoutSpec {
     flowBounds: PageRect,
     maxLines: Int,
     baseDirectionRtl: Boolean,
+    alignment: TextAlignment = TextAlignment.START,
   ): Boolean {
     if (text.isEmpty()) return true
     val layout = createLayout(
@@ -179,6 +187,7 @@ internal object TextLayoutSpec {
       textColor = textColor,
       layoutWidth = flowBounds.right - flowBounds.left,
       baseDirectionRtl = baseDirectionRtl,
+      alignment = alignment,
     )
     val selection = selectVisibleLines(
       layout = layout,
@@ -188,6 +197,27 @@ internal object TextLayoutSpec {
       verticalAnchor = TextVerticalAnchor.TOP,
     )
     return selection.lineCount == layout.lineCount
+  }
+
+  /** Applies an explicit line cap while preserving intrinsic-width auto-sizing. */
+  fun fitsMaxLines(
+    text: String,
+    fontSize: Double,
+    textColor: Int,
+    maxLines: Int,
+    baseDirectionRtl: Boolean,
+    alignment: TextAlignment,
+  ): Boolean {
+    if (text.isEmpty() || maxLines <= 0) return true
+    val intrinsicWidth = measure(text, fontSize).width
+    return createLayout(
+      text = text,
+      fontSize = fontSize,
+      textColor = textColor,
+      layoutWidth = intrinsicWidth,
+      baseDirectionRtl = baseDirectionRtl,
+      alignment = alignment,
+    ).lineCount <= maxLines
   }
 
   fun selectVisibleLines(
@@ -245,6 +275,7 @@ internal object TextLayoutSpec {
     horizontalPaddingPx: Int = 0,
     verticalPaddingPx: Int = 0,
     textColor: Int = Color.BLACK,
+    alignment: TextAlignment = TextAlignment.START,
   ) {
     editor.typeface = typeface
     editor.setTextColor(textColor)
@@ -253,7 +284,7 @@ internal object TextLayoutSpec {
     editor.setLineSpacing(lineSpacingExtra, lineSpacingMultiplier)
     editor.breakStrategy = breakStrategy
     editor.hyphenationFrequency = hyphenationFrequency
-    configureEditorDirection(editor, baseDirectionRtl)
+    configureEditorDirection(editor, baseDirectionRtl, alignment)
     editor.setPadding(
       horizontalPaddingPx,
       verticalPaddingPx,
@@ -265,14 +296,16 @@ internal object TextLayoutSpec {
   fun configureEditorDirection(
     editor: TextView,
     baseDirectionRtl: Boolean,
+    alignment: TextAlignment = TextAlignment.START,
   ) {
     val direction = if (baseDirectionRtl) TextView.TEXT_DIRECTION_RTL else TextView.TEXT_DIRECTION_LTR
     if (editor.textDirection != direction) editor.textDirection = direction
-    val gravity = android.view.Gravity.TOP or if (baseDirectionRtl) {
-      android.view.Gravity.RIGHT
-    } else {
-      android.view.Gravity.LEFT
+    val resolvedAlignment = when (alignment) {
+      TextAlignment.CENTER -> android.view.Gravity.CENTER_HORIZONTAL
+      TextAlignment.START -> if (baseDirectionRtl) android.view.Gravity.RIGHT else android.view.Gravity.LEFT
+      TextAlignment.END -> if (baseDirectionRtl) android.view.Gravity.LEFT else android.view.Gravity.RIGHT
     }
+    val gravity = android.view.Gravity.TOP or resolvedAlignment
     if (editor.gravity != gravity) editor.gravity = gravity
   }
 }
@@ -297,6 +330,15 @@ internal class TextRenderLayer private constructor(
       canvas.save()
       if (flowBounds == null) {
         canvas.translate(entry.annotation.bounds.left.toFloat(), entry.annotation.bounds.top.toFloat())
+        val maxLines = entry.annotation.maxLines
+        if (maxLines > 0 && entry.layout.lineCount > maxLines) {
+          canvas.clipRect(
+            0f,
+            0f,
+            entry.layout.width.toFloat(),
+            entry.layout.getLineBottom(maxLines - 1).toFloat(),
+          )
+        }
       } else {
         val visible = checkNotNull(selection)
         canvas.translate(flowBounds.left.toFloat(), flowBounds.top.toFloat())

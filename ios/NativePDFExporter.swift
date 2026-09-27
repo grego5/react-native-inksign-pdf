@@ -65,7 +65,7 @@ enum InkSignPdfNativeExporter {
         page.addAnnotation(InkSignPdfVectorAnnotation(
           text: text,
           mediaBox: snapshot.geometry.mediaBox,
-          pdfBounds: pdfBounds(for: text.bounds, in: snapshot.geometry.mediaBox),
+          pdfBounds: pdfBounds(for: text, in: snapshot.geometry.mediaBox),
           color: color))
       }
 
@@ -125,14 +125,14 @@ enum InkSignPdfNativeExporter {
       let exportedAnnotations = outputPage.annotations
 
       for (index, text) in expected.text.enumerated() {
-        let bounds = pdfBounds(for: text.bounds, in: snapshot.geometry.mediaBox)
+        let bounds = pdfBounds(for: text, in: snapshot.geometry.mediaBox)
         let matches: (PDFAnnotation) -> Bool = {
           $0.type?.caseInsensitiveCompare("FreeText") == .orderedSame &&
             $0.contents == text.text && sameRect($0.bounds, bounds)
         }
         let duplicateCount = expected.text[..<index].filter {
           $0.text == text.text && sameRect(
-            pdfBounds(for: $0.bounds, in: snapshot.geometry.mediaBox), bounds)
+            pdfBounds(for: $0, in: snapshot.geometry.mediaBox), bounds)
         }.count
         let sourceCount = beforeExport.filter {
           matches($0) && hasPersistedAppearance($0, flags: InkSignPdfVectorAnnotation.textFlags)
@@ -209,6 +209,11 @@ enum InkSignPdfNativeExporter {
            y: mediaBox.maxY - canonicalBounds.maxY,
            width: canonicalBounds.width,
            height: canonicalBounds.height)
+  }
+
+  private static func pdfBounds(for text: InkSignPdfTextAnnotation,
+                                in mediaBox: CGRect) -> CGRect {
+    pdfBounds(for: text.flowBounds ?? text.bounds, in: mediaBox)
   }
 
   private static func sameGeometry(_ expected: PageGeometry,

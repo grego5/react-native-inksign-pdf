@@ -10,34 +10,21 @@ and export.
 - The public contract lives in
   [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts). JavaScript
   receives coarse state and page events, not PDF data or per-frame geometry.
-- Public method arguments are validated once by the host component in
-  [`src/index.ts`](../../../../src/index.ts) before native dispatch. Native
-  method implementations consume those validated arguments directly. A move
-  command's upper page bound depends on live document state, so each platform
-  checks it when admitting the command. PDF, image, and OS data are checked at
-  their respective ingress boundaries.
-- Both platforms implement `addTextAnnotation(text, position, options?)` in
-  canonical top-left page points without opening the editor. Direction-aware
-  wrapping uses `xLimit` or the page edge. `yLimit` and `maxLines` retain only
-  complete lines; `verticalAnchor` fixes the top or bottom edge of the visible
-  block. `insertAnnotationOn(options?)` applies the same flow options from its
-  tap point. A bounded editor admits edits that fit its region and line limit,
-  while deletion stays available. Reflow from direction or font-size changes
-  preserves entered text. Direct insertion clips to the flow region. Omitting
-  placement options retains tap-centered, rule-aware placement. Save resolved
-  direction and flow metadata with committed text; manual placement resolves
-  direction when armed.
-- Both platforms accept `activePage` in `addPages()` to choose `current`,
-  `firstAdded`, or `lastAdded` within the detached structural candidate.
-  Omission and `current` preserve the active page for an existing document;
-  creating a document selects its first added page. Empty and cancelled imports
-  leave page count and active page unchanged.
-- `addPages()` image inputs use per-call `targetDpi` and `jpegQuality` when set.
-  `targetDpi` defaults to 200 DPI and `jpegQuality` to 0.72. Raster size is
-  limited to 8192 pixels on its longest edge; supplied DPI is also capped by
-  the source image's resolution at contain fit. Raster dimensions scale
-  together to preserve the page aspect ratio. PDF inputs retain their original
-  pages.
+- [`src/index.ts`](../../../../src/index.ts) validates public arguments before
+  native dispatch. Platforms check document-dependent bounds when admitting a
+  command; loaders validate PDF, image, and OS data at ingress.
+- Text uses canonical top-left page points. Direct insertion clips complete
+  lines to its flow bounds; manual placement applies the same options to its
+  editor and committed text. The editor admits fitting input, allows deletion,
+  and retains text through reflow. Committed text stores its resolved direction
+  and flow options. See the platform input and export references for layout rules.
+- `addPages()` selects the current, first added, or last added page through
+  `activePage`; the default keeps the current page, or selects the first page
+  when creating a document. Empty and cancelled imports leave document state
+  unchanged.
+- Image imports use configurable DPI and JPEG quality, with defaults of 200 DPI
+  and 0.72. Rasterization preserves page aspect ratio; explicit DPI is capped
+  by source resolution. PDF inputs retain their original pages.
 - Each platform coordinator owns one published document with an ordered stable
   page list, one active page, and page-local committed history. Android uses
   PDFium for document I/O; iOS uses PDFKit with Quartz and CoreText. The UI
@@ -58,12 +45,10 @@ and export.
   selection are temporary presentation state.
 - Stored geometry uses canonical page coordinates: media-box-relative with a
   top-left origin. Viewport transforms are presentation-only.
-- Opening prepares a module-owned candidate while the current presentation
-  remains usable. A current open failure clears the published document before
-  rejection; a superseded attempt cannot change a newer open. Page mutations
-  prepare and validate a detached candidate, and failed, cancelled, or stale
-  mutations leave the published document in place. The caller's source is
-  never overwritten.
+- Opens and page mutations prepare detached candidates. A current open failure
+  clears the document; failed, cancelled, or stale page mutations leave it in
+  place. Superseded work cannot replace newer state, and source files are never
+  overwritten.
 - Finalize exports an immutable snapshot of committed content from the current
   working document to a separate output. It does not consume or replace the
   working document.

@@ -44,6 +44,8 @@ internal data class TextAnnotation(
   val maxLines: Int = 0,
   /** Vertical edge fixed by programmatic or option-based placement. */
   val verticalAnchor: TextVerticalAnchor = TextVerticalAnchor.TOP,
+  /** Logical paragraph alignment within the fixed flow region. */
+  val alignment: TextAlignment = TextAlignment.START,
 ) {
   init {
     require(id.isNotBlank()) { "Text annotation ID must not be blank" }

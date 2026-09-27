@@ -18,28 +18,39 @@ export interface PageInfo {
   height: number
 }
 
-/** Canonical PDF page position in points, measured from the top-left corner. */
-export interface PagePosition {
+/** Fixed text-flow rectangle in canonical PDF page points. x/y are physical top-left coordinates. */
+export interface TextAnnotationBounds {
   x: number
   y: number
+  width: number
+  height: number
 }
 
-/** Text flow and placement options in canonical page points. Limits are absolute page coordinates. */
+/** Text presentation options used by direct insertion and dimensioned placement. */
 export interface TextAnnotationOptions {
   /** Base writing direction. `auto` follows the app's resolved layout direction. */
   direction?: TextDirection
-  /** Opposite horizontal edge: rightward for LTR, leftward for RTL. Defaults to the page edge. */
-  xLimit?: number
-  /** Opposite vertical edge from `position.y`. Defaults to the page edge selected by the anchor. */
-  yLimit?: number
   /** Retains at most this many complete lines; zero or omission keeps the full flow region. */
   maxLines?: number
-  /** Vertical edge selected by `position.y`. Defaults to the top edge. */
+  /** Positions text inside its flow rectangle; start/end follow the resolved direction. */
+  alignment?: TextAlignment
+  /** Selects which edge fixes the visible block within its flow rectangle. */
+  verticalAnchor?: TextVerticalAnchor
+}
+
+/** Optional manual-placement box dimensions, with the tap as the rectangle's top-left corner. */
+export interface TextPlacementOptions {
+  direction?: TextDirection
+  width?: number
+  height?: number
+  maxLines?: number
+  alignment?: TextAlignment
   verticalAnchor?: TextVerticalAnchor
 }
 
 export type PageType = 'pdf' | 'image'
 export type TextDirection = 'ltr' | 'rtl' | 'auto'
+export type TextAlignment = 'start' | 'end' | 'center'
 export type TextVerticalAnchor = 'top' | 'bottom'
 export type AddPagesActivePage = 'current' | 'firstAdded' | 'lastAdded'
 
@@ -148,12 +159,12 @@ export interface InkSignViewMethods extends HybridViewMethods {
   undo(): void
   redo(): void
   clear(): void
-  /** Commits text at an active-page position with optional canonical page-point flow limits. */
-  addTextAnnotation(text: string, position: PagePosition, options?: TextAnnotationOptions): void
+  /** Commits text inside a fixed physical page rectangle, clipping to complete visible lines. */
+  addTextAnnotation(text: string, bounds: TextAnnotationBounds, options?: TextAnnotationOptions): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
-  /** Arms one-shot text placement; supplied options constrain the live editor and saved annotation. */
-  insertAnnotationOn(options?: TextAnnotationOptions): void
+  /** Arms one-shot text placement; optional width and height bound the box from the tap's top-left. */
+  insertAnnotationOn(options?: TextPlacementOptions): void
   /** Cancels a pending one-shot text placement, if any. */
   insertAnnotationOff(): void
   increaseTextSize(): number

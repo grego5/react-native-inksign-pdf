@@ -241,7 +241,7 @@ enterViewMode(viewport?)
 undo()
 redo()
 clear()
-addTextAnnotation(text, position, options?)
+addTextAnnotation(text, bounds, options?)
 setTextDirection(direction)
 insertAnnotationOn(options?)
 insertAnnotationOff()
@@ -253,21 +253,15 @@ finalize()
 
 `addPages()` opens the native picker; pass `sources` to import local files
 directly. PDFs add all their pages, and each image adds one page. Use `type` to
-filter the picker and `imagePageSize` to set image-page dimensions. Omitting
-`targetDpi` keeps the legacy 200 DPI raster, subject to an 8192-pixel limit on
-the longest raster edge. A supplied value sets the maximum raster resolution,
-limited by the source image's resolution when fitted to the page and by the
-same edge limit. Raster dimensions scale together, preserving the page's aspect
-ratio. Thus,
-explicit `targetDpi: 200` can produce a smaller raster than omission for a
-lower-resolution image. JPEG quality defaults to `0.72`; `jpegQuality` accepts
-values from `0` to `1`. These encoding options apply to image inputs; PDF pages
-are copied without re-encoding.
+filter the picker and `imagePageSize` to set image-page dimensions. Image
+encoding defaults to 200 DPI and JPEG quality `0.72`. Set `targetDpi` to limit
+resolution to the image's available detail, or `jpegQuality` from `0` to `1` to
+control compression. Omitting `targetDpi` retains the legacy 200 DPI raster;
+PDF pages are copied without re-encoding.
 
-`activePage` controls the page selected after an import. It defaults to
-`current`, which keeps the existing active page or selects the first page when
-creating a document. Use `firstAdded` or `lastAdded` to select an imported page.
-Empty or cancelled imports leave the page selection unchanged.
+`activePage` defaults to `current`, keeping the active page or selecting the
+first page of a new document. Use `firstAdded` or `lastAdded` to select an
+imported page.
 
 ```ts
 const result = await pdf.current?.addPages({
@@ -295,28 +289,24 @@ through `onPageChange`:
 `getViewport()` returns a viewport snapshot synchronously and throws when the
 view is not ready. Synchronous commands throw validation errors directly.
 
-`addTextAnnotation(text, position, options?)` commits text directly on the
-active page without opening the editor. `position`, `xLimit`, and
-`yLimit` use canonical PDF points from the page's top-left, independent of
-viewport zoom. Text wraps at `xLimit` or the page edge and keeps complete lines
-within `yLimit` or the page edge. `maxLines` further limits the first complete
-lines. `verticalAnchor: 'top'` keeps the top edge fixed and grows downward;
-`'bottom'` keeps the bottom edge fixed and grows upward. LTR flows right from
-`position.x`; RTL flows left. Limits default to the corresponding page edges.
-Explicit `ltr` or `rtl` sets the annotation direction; `auto` uses the app's
-resolved layout direction. If omitted, direction follows the last
-`setTextDirection()` choice, or app direction when unset/`auto`. Direction and
-flow options are saved with the annotation, along with the configured default
-text size and color.
+`addTextAnnotation(text, bounds, options?)` commits text directly on the active
+page without opening the editor. `bounds` uses PDF points from the page's
+top-left: `{ x, y, width, height }`. `x` and `y` always identify the physical
+top-left corner; direction and vertical anchor never change the rectangle.
+This fixed rectangle is the flow area, while visible text may use
+less of it; direct insertion clips overflow. `maxLines` can limit complete
+visible lines, and `verticalAnchor`
+keeps the visible block against its top or bottom edge. `alignment` defaults to
+`start`; `start` and `end` resolve against text direction. Direction follows the
+last `setTextDirection()` choice or app direction unless specified in options.
 
 ```ts
 pdf.current?.addTextAnnotation(
   'Approved',
-  { x: 48, y: 72 },
+  { x: 48, y: 72, width: 172, height: 68 },
   {
     direction: 'ltr',
-    xLimit: 220,
-    yLimit: 140,
+    alignment: 'start',
   },
 );
 ```
@@ -339,15 +329,13 @@ argument preserves the current viewport where applicable.
 - View mode supports panning, pinch zoom, and page navigation. Draw mode accepts
   finger or stylus ink.
 - Call `insertAnnotationOn()` and tap the page to place text. Pass
-  `TextAnnotationOptions` to apply direction, flow limits, line count, and
-  vertical anchor to the editor and saved annotation. The tap sets the flow
-  start and selected vertical edge. Without options, placement remains
-  tap-centered and rule-aware. `setTextDirection()` also updates an active
-  editor while keeping its box in place at the switch. Placement captures its
-  resolved direction when armed. In a bounded editor,
-  input is admitted when the complete result fits; deletion remains available.
-  Direction and font-size changes preserve existing text through reflow.
-  Direct `addTextAnnotation()` clips to the configured flow region.
+  `TextPlacementOptions` to set direction, physical box `width` and `height`,
+  alignment, line count, and vertical anchor. A bounded box starts at the tap
+  and extends right and down. Without box dimensions, placement remains
+  tap-centered, auto-sized, and rule-aware.
+  `setTextDirection()` updates an active editor without moving its box.
+  Bounded editors limit new text to the visible region and allow deletion
+  after reflow. Direction and font-size changes retain entered text.
 - Tap existing text to select or edit it. Editing keeps the current zoom and moves the view as needed to keep the text and caret visible.
 - The native view manages ink, text, undo, redo, and clear. `onStateChange` reports editing mode, undo/redo availability, and whether the document changed.
 - The application owns its toolbar and any saved viewport bookmarks.

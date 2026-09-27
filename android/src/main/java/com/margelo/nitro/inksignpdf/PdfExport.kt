@@ -92,6 +92,8 @@ internal data class PdfiumTextRunEntry(
   val bidiLevel: Int,
   val visualOrder: Int,
   val baseDirectionRtl: Boolean,
+  /** Physical horizontal alignment: 0 left, 1 center, 2 right. */
+  val textAlignment: Int,
   /** -1 selects PDFium's best-effort fallback font. */
   val fontIndex: Int,
   val boundsLeft: Float,
@@ -152,7 +154,13 @@ internal object PdfExportTextResolver {
         val firstBaseline = annotation.position.y.toFloat() - metrics.ascent
         val flowBounds = annotation.flowBounds
         val exportLines = if (flowBounds == null) {
-          TextLayoutSpec.explicitLines(annotation.text).mapIndexed { lineIndex, line ->
+          val explicitLines = TextLayoutSpec.explicitLines(annotation.text)
+          val visibleLines = if (annotation.maxLines > 0) {
+            explicitLines.take(annotation.maxLines)
+          } else {
+            explicitLines
+          }
+          visibleLines.mapIndexed { lineIndex, line ->
             line to (firstBaseline + lineIndex * lineHeight)
           }
         } else {
@@ -188,6 +196,7 @@ internal object PdfExportTextResolver {
               boundsLeft = (flowBounds?.left ?: annotation.bounds.left).toFloat(),
               boundsRight = (flowBounds?.right ?: annotation.bounds.right).toFloat(),
               baseDirectionRtl = annotation.directionRtl,
+              textAlignment = resolvedTextAlignment(annotation.alignment, annotation.directionRtl),
               baselineFromTop = baselineFromTop,
               fontSize = annotation.fontSize.toFloat(),
               color = annotation.textColor,
@@ -211,6 +220,7 @@ internal object PdfExportTextResolver {
               ).getLevelAt(0),
               visualOrder = 0,
               baseDirectionRtl = annotation.directionRtl,
+              textAlignment = resolvedTextAlignment(annotation.alignment, annotation.directionRtl),
               fontIndex = -1,
               boundsLeft = (flowBounds?.left ?: annotation.bounds.left).toFloat(),
               boundsRight = (flowBounds?.right ?: annotation.bounds.right).toFloat(),
@@ -239,6 +249,7 @@ internal object PdfExportTextResolver {
       boundsLeft: Float,
       boundsRight: Float,
       baseDirectionRtl: Boolean,
+      textAlignment: Int,
       baselineFromTop: Float,
       fontSize: Float,
       color: Int,
@@ -327,6 +338,7 @@ internal object PdfExportTextResolver {
           visualOrder = visualOrderByStart.getValue(segment.sourceStart),
           fontIndex = segment.fontIndex,
           baseDirectionRtl = baseDirectionRtl,
+          textAlignment = textAlignment,
           boundsLeft = boundsLeft,
           boundsRight = boundsRight,
           baselineFromTop = baselineFromTop,
@@ -453,6 +465,12 @@ internal object PdfExportTextResolver {
         ((bytes[offset + 2].toLong() and 0xFF) shl 8) or
         (bytes[offset + 3].toLong() and 0xFF)
   }
+}
+
+private fun resolvedTextAlignment(alignment: TextAlignment, directionRtl: Boolean): Int = when (alignment) {
+  TextAlignment.CENTER -> 1
+  TextAlignment.START -> if (directionRtl) 2 else 0
+  TextAlignment.END -> if (directionRtl) 0 else 2
 }
 
 private fun ensureExportFresh(isStale: () -> Boolean, generation: Long) {

@@ -440,6 +440,7 @@ std::string exportPdf(
     const std::vector<jint>& textRunBidiLevels,
     const std::vector<jint>& textRunVisualOrder,
     const std::vector<jint>& textRunBaseDirections,
+    const std::vector<jint>& textRunAlignments,
     const std::vector<jint>& textRunFontIndices,
     const std::vector<jfloat>& textRunGeometry,
     const std::vector<jint>& textRunColors,
@@ -457,6 +458,7 @@ std::string exportPdf(
       textRunBidiLevels.size() != textRunTexts.size() ||
       textRunVisualOrder.size() != textRunTexts.size() ||
       textRunBaseDirections.size() != textRunTexts.size() ||
+      textRunAlignments.size() != textRunTexts.size() ||
       textRunFontIndices.size() != textRunTexts.size() ||
       textRunGeometry.size() != textRunTexts.size() * 5 ||
       textRunColors.size() != textRunTexts.size() ||
@@ -511,6 +513,7 @@ std::string exportPdf(
         textRunBidiLevels[run] < 0 || textRunBidiLevels[run] > 125 ||
         textRunVisualOrder[run] < 0 ||
         (textRunBaseDirections[run] != 0 && textRunBaseDirections[run] != 1) ||
+        textRunAlignments[run] < 0 || textRunAlignments[run] > 2 ||
         fontIndex < -1 ||
         (fontIndex >= 0 && static_cast<std::size_t>(fontIndex) >= fontResources.size()) ||
         !std::isfinite(boundsLeft) || !std::isfinite(boundsRight) ||
@@ -537,6 +540,7 @@ std::string exportPdf(
     const auto fontSize = textRunGeometry[firstGeometry + 3];
     const auto lineColor = textRunColors[firstRun];
     const auto baseDirectionRtl = textRunBaseDirections[firstRun] != 0;
+    const auto textAlignment = textRunAlignments[firstRun];
 
     std::vector<std::size_t> logicalRuns = lineRunIndices;
     std::sort(logicalRuns.begin(), logicalRuns.end(), [&](std::size_t left, std::size_t right) {
@@ -548,6 +552,7 @@ std::string exportPdf(
       const auto sourceStart = static_cast<std::size_t>(textRunSourceRanges[run * 2]);
       const auto sourceLength = static_cast<std::size_t>(textRunSourceRanges[run * 2 + 1]);
       if (textRunTexts[run] != lineText || textRunBaseDirections[run] != textRunBaseDirections[firstRun] ||
+          textRunAlignments[run] != textAlignment ||
           textRunColors[run] != lineColor ||
           textRunGeometry[geometry] != boundsLeft ||
           textRunGeometry[geometry + 1] != boundsRight ||
@@ -695,7 +700,9 @@ std::string exportPdf(
     const float horizontalScale = totalAdvance > boundsWidth && totalAdvance > 0
         ? boundsWidth / totalAdvance : 1.0f;
     const float laidOutWidth = totalAdvance * horizontalScale;
-    float cursor = baseDirectionRtl ? boundsRight - laidOutWidth : boundsLeft;
+    const auto alignment = textRunAlignments[firstRun];
+    float cursor = alignment == 1 ? boundsLeft + (boundsWidth - laidOutWidth) / 2.0f
+        : alignment == 2 ? boundsRight - laidOutWidth : boundsLeft;
     for (auto& segment : visualSegments) {
       const float segmentWidth = segment.advance * horizontalScale;
       segment.originX = cursor;
@@ -1127,6 +1134,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
     jintArray textRunBidiLevelsValue,
     jintArray textRunVisualOrderValue,
     jintArray textRunBaseDirectionsValue,
+    jintArray textRunAlignmentsValue,
     jintArray textRunFontIndicesValue,
     jfloatArray textRunGeometryValue,
     jintArray textRunColorsValue,
@@ -1158,6 +1166,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
   std::vector<jint> textRunBidiLevels;
   std::vector<jint> textRunVisualOrder;
   std::vector<jint> textRunBaseDirections;
+  std::vector<jint> textRunAlignments;
   std::vector<jint> textRunFontIndices;
   std::vector<jfloat> textRunGeometry;
   std::vector<jint> textRunColors;
@@ -1215,6 +1224,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
       !copyArray(env, textRunBidiLevelsValue, textRunBidiLevels) ||
       !copyArray(env, textRunVisualOrderValue, textRunVisualOrder) ||
       !copyArray(env, textRunBaseDirectionsValue, textRunBaseDirections) ||
+      !copyArray(env, textRunAlignmentsValue, textRunAlignments) ||
       !copyArray(env, textRunFontIndicesValue, textRunFontIndices) ||
       !copyArray(env, textRunGeometryValue, textRunGeometry) ||
       !copyArray(env, textRunColorsValue, textRunColors) ||
@@ -1235,6 +1245,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
       textRunBidiLevels.size() != textRunTexts.size() ||
       textRunVisualOrder.size() != textRunTexts.size() ||
       textRunBaseDirections.size() != textRunTexts.size() ||
+      textRunAlignments.size() != textRunTexts.size() ||
       textRunFontIndices.size() != textRunTexts.size() ||
       textRunGeometry.size() != textRunTexts.size() * 5 ||
       textRunColors.size() != textRunTexts.size()) {
@@ -1258,7 +1269,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
                       pathPageIndices, pathCommandOffsets, pathCommandTypes,
                       pathCoordinates, textRunPageIndices, textRunLineIds,
                       textRunTexts, textRunSourceRanges, textRunBidiLevels,
-                      textRunVisualOrder, textRunBaseDirections, textRunFontIndices,
+                      textRunVisualOrder, textRunBaseDirections, textRunAlignments, textRunFontIndices,
                       textRunGeometry, textRunColors, fontResources, inkColor,
                       candidateBytes);
   }

@@ -53,6 +53,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     var flowBounds: CGRect?
     var maxLines: Int
     var verticalAnchor: InkSignPdfTextVerticalAnchor
+    var alignment: InkSignPdfTextAlignment
   }
 
   private struct InitialPlacement {
@@ -64,7 +65,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     let generation: UInt64
     let pageIndex: Int
     var isRTL: Bool
-    let options: TextAnnotationOptions?
+    let options: TextPlacementOptions?
   }
 
   private struct DragState {
@@ -308,7 +309,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   func addTextAnnotation(text: String,
-                         position: PagePosition,
+                         bounds: TextAnnotationBounds,
                          options: TextAnnotationOptions?) throws {
     guard let owner, let presentation = presentation() else {
       throw InkSignView.TextError.notReady
@@ -316,23 +317,13 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw InkSignView.TextError.invalidText
     }
-    guard position.x.isFinite, position.y.isFinite else {
-      throw InkSignView.TextError.invalidBounds
-    }
-
     let isRTL = resolvedDirection(options?.direction)
-
     let pageSize = presentation.pageSize
-    let start = CGPoint(x: CGFloat(position.x), y: CGFloat(position.y))
-    let verticalAnchor = InkSignPdfTextVerticalAnchor(options?.verticalAnchor)
-    guard let flowBounds = makeFlowBounds(start: start,
-                                          pageSize: pageSize,
-                                          isRTL: isRTL,
-                                          xLimit: options?.xLimit,
-                                          yLimit: options?.yLimit,
-                                          verticalAnchor: verticalAnchor) else {
+    guard let flowBounds = makeFlowBounds(bounds: bounds, pageSize: pageSize) else {
       throw InkSignView.TextError.invalidBounds
     }
+    let verticalAnchor = InkSignPdfTextVerticalAnchor(options?.verticalAnchor)
+    let alignment = InkSignPdfTextAlignment(options?.alignment)
     let maxLines = lineLimit(options?.maxLines)
     let id = owner.allocateTextAnnotationID()
     let annotation = InkSignPdfTextAnnotation(
@@ -343,13 +334,15 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                                    isRTL: isRTL,
                                                    flowBounds: flowBounds,
                                                    maxLines: maxLines,
-                                                   verticalAnchor: verticalAnchor),
+                                                   verticalAnchor: verticalAnchor,
+                                                   alignment: alignment),
       fontSize: defaultFontSize,
       textColor: defaultTextColor,
       isRTL: isRTL,
       flowBounds: flowBounds,
       maxLines: maxLines,
-      verticalAnchor: verticalAnchor)
+      verticalAnchor: verticalAnchor,
+      alignment: alignment)
     owner.appendTextAnnotation(annotation,
                                generation: presentation.generation,
                                pageIndex: presentation.pageIndex)
@@ -373,41 +366,24 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     return value >= Double(Int.max) ? Int.max : Int(value)
   }
 
-  private func makeFlowBounds(start: CGPoint,
-                              pageSize: CGSize,
-                              isRTL: Bool,
-                              xLimit requestedXLimit: Double?,
-                              yLimit requestedYLimit: Double?,
-                              verticalAnchor: InkSignPdfTextVerticalAnchor) -> CGRect? {
+  private func makeFlowBounds(bounds: TextAnnotationBounds,
+                              pageSize: CGSize) -> CGRect? {
+    let x = CGFloat(bounds.x)
+    let y = CGFloat(bounds.y)
+    let width = CGFloat(bounds.width)
+    let height = CGFloat(bounds.height)
+    let right = x + width
+    let bottom = y + height
     guard pageSize.width.isFinite, pageSize.height.isFinite,
           pageSize.width > 0, pageSize.height > 0,
-          start.x.isFinite, start.y.isFinite,
-          start.x >= 0, start.x < pageSize.width else { return nil }
-    let xLimit = CGFloat(requestedXLimit ?? Double(isRTL ? 0 : pageSize.width))
-    guard xLimit.isFinite, xLimit >= 0, xLimit <= pageSize.width,
-          isRTL ? xLimit < start.x : xLimit > start.x else { return nil }
-    let yLimit = CGFloat(requestedYLimit ?? Double(
-      verticalAnchor == .bottom ? 0 : pageSize.height))
-    let minY: CGFloat
-    let maxY: CGFloat
-    switch verticalAnchor {
-    case .top:
-      guard start.y >= 0, start.y < pageSize.height,
-            yLimit > start.y, yLimit <= pageSize.height else { return nil }
-      minY = start.y
-      maxY = yLimit
-    case .bottom:
-      guard start.y > 0, start.y <= pageSize.height,
-            yLimit >= 0, yLimit < start.y else { return nil }
-      minY = yLimit
-      maxY = start.y
-    }
-    return CGRect(x: min(start.x, xLimit), y: minY,
-                  width: abs(xLimit - start.x), height: maxY - minY)
+          x.isFinite, y.isFinite, width.isFinite, height.isFinite,
+          width > 0, height > 0, right.isFinite, bottom.isFinite,
+          x >= 0, y >= 0, right <= pageSize.width, bottom <= pageSize.height else { return nil }
+    return CGRect(x: x, y: y, width: width, height: height)
   }
 
   internal func armPlacement(generation: UInt64,
-                             options: TextAnnotationOptions? = nil) throws {
+                             options: TextPlacementOptions? = nil) throws {
     if hasPendingPlacement() { return }
     guard let owner, let presentation = presentation() else { throw InkSignView.TextError.notReady }
     guard presentation.generation == generation else { throw InkSignView.TextError.cancelled }
@@ -416,7 +392,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                                pageIndex: presentation.pageIndex,
                                                isRTL: isRTL,
                                                options: options))
-    if options == nil,
+    if options?.width == nil,
        let requestID = beginPlacementRuleScan(generation: presentation.generation,
                                               pageID: presentation.pageID) {
       owner.schedulePlacementRuleScan(generation: presentation.generation,
@@ -571,13 +547,12 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     }
     let verticalAnchor = InkSignPdfTextVerticalAnchor(placement.options?.verticalAnchor)
     let flowBounds: CGRect?
-    if let options = placement.options {
-      guard let resolved = makeFlowBounds(start: pagePoint,
-                                          pageSize: presentation.pageSize,
-                                          isRTL: placement.isRTL,
-                                          xLimit: options.xLimit,
-                                          yLimit: options.yLimit,
-                                          verticalAnchor: verticalAnchor) else {
+    if let options = placement.options, let width = options.width, let height = options.height {
+      let bounds = TextAnnotationBounds(x: Double(pagePoint.x),
+                                        y: Double(pagePoint.y),
+                                        width: width,
+                                        height: height)
+      guard let resolved = makeFlowBounds(bounds: bounds, pageSize: presentation.pageSize) else {
         return false
       }
       flowBounds = resolved
@@ -585,7 +560,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       flowBounds = nil
     }
     cancelPendingPlacement()
-    let rule = placement.options == nil
+    let rule = placement.options?.width == nil
       ? placementRule(at: pagePoint, viewPoint: point, pageID: presentation.pageID)
       : nil
     placeTextAt(pagePoint,
@@ -594,7 +569,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                 presentation: presentation,
                 flowBounds: flowBounds,
                 maxLines: lineLimit(placement.options?.maxLines),
-                verticalAnchor: verticalAnchor)
+                verticalAnchor: verticalAnchor,
+                alignment: InkSignPdfTextAlignment(placement.options?.alignment))
     return true
   }
 
@@ -814,7 +790,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                    annotations: [InkSignPdfTextAnnotation]),
     flowBounds: CGRect? = nil,
     maxLines: Int = 0,
-    verticalAnchor: InkSignPdfTextVerticalAnchor = .top
+    verticalAnchor: InkSignPdfTextVerticalAnchor = .top,
+    alignment: InkSignPdfTextAlignment = .start
   ) {
     let id = owner?.allocateTextAnnotationID() ?? ""
     guard !id.isEmpty else { return }
@@ -829,7 +806,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                               textColor: defaultTextColor,
                                               flowBounds: flowBounds,
                                               maxLines: maxLines,
-                                              verticalAnchor: verticalAnchor))
+                                              verticalAnchor: verticalAnchor,
+                                              alignment: alignment))
     showEditor(text: "",
                initialPlacement: flowBounds == nil
                  ? InitialPlacement(tap: pagePoint, rule: rule) : nil)
@@ -964,16 +942,25 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private func admitsTextChange(in range: NSRange,
                                 replacementText text: String,
                                 in textView: UITextView) -> Bool {
-    guard case .editing(let state) = interactionState,
-          let flowBounds = state.flowBounds else { return true }
+    guard case .editing(let state) = interactionState else { return true }
     let current = (textView.text ?? "") as NSString
     let prospective = current.replacingCharacters(in: range, with: text)
     if text.isEmpty { return true }
-    return InkSignPdfTextRenderer.fits(prospective,
-                                       fontSize: state.fontSize,
-                                       isRTL: state.isRTL,
-                                       flowBounds: flowBounds,
-                                       maxLines: state.maxLines)
+    if let flowBounds = state.flowBounds {
+      return InkSignPdfTextRenderer.fits(prospective,
+                                         fontSize: state.fontSize,
+                                         isRTL: state.isRTL,
+                                         flowBounds: flowBounds,
+                                         maxLines: state.maxLines,
+                                         alignment: state.alignment)
+    }
+    guard let owner else { return true }
+    return InkSignPdfTextRenderer.fitsMaxLines(prospective,
+                                               fontSize: state.fontSize,
+                                               isRTL: state.isRTL,
+                                               maxLines: state.maxLines,
+                                               maximumWidth: owner.activePageSize().width,
+                                               alignment: state.alignment)
   }
 
   func textViewDidChangeSelection(_ textView: UITextView) {
@@ -1001,7 +988,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                               textColor: annotation.textColor,
                                               flowBounds: annotation.flowBounds,
                                               maxLines: annotation.maxLines,
-                                              verticalAnchor: annotation.verticalAnchor))
+                                              verticalAnchor: annotation.verticalAnchor,
+                                              alignment: annotation.alignment))
     showEditor(text: annotation.text)
     syncPresentation()
   }
@@ -1117,7 +1105,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                                         isRTL: state.isRTL,
                                                         flowBounds: flowBounds,
                                                         maxLines: state.maxLines,
-                                                        verticalAnchor: state.verticalAnchor)
+                                                        verticalAnchor: state.verticalAnchor,
+                                                        alignment: state.alignment)
       return InkSignPdfTextAnnotation(id: state.id, text: text,
                                       bounds: bounds,
                                       fontSize: state.fontSize,
@@ -1125,7 +1114,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                       isRTL: state.isRTL,
                                       flowBounds: flowBounds,
                                       maxLines: state.maxLines,
-                                      verticalAnchor: state.verticalAnchor)
+                                      verticalAnchor: state.verticalAnchor,
+                                      alignment: state.alignment)
     }
     let size = lastEditorContentSize
     return InkSignPdfTextAnnotation(id: state.id, text: text,
@@ -1134,7 +1124,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                     textColor: state.textColor,
                                     isRTL: state.isRTL,
                                     maxLines: state.maxLines,
-                                    verticalAnchor: state.verticalAnchor)
+                                    verticalAnchor: state.verticalAnchor,
+                                    alignment: state.alignment)
   }
 
   private func changeSelectedFont(by delta: CGFloat) throws -> Double {
@@ -1272,7 +1263,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     InkSignPdfTextStyle.apply(to: textView,
                               fontSize: state.fontSize,
                               color: parseColor(state.textColor) ?? .black,
-                              isRTL: state.isRTL)
+                              isRTL: state.isRTL,
+                              alignment: state.alignment)
   }
 
   private func followCaretIfNeeded() {

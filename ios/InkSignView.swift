@@ -376,7 +376,7 @@ final class InkSignView: HybridInkSignViewSpec {
       case .invalidText:
         return "invalid_text: Text must not be empty"
       case .invalidBounds:
-        return "invalid_text_bounds: Text start and flow limits must define a non-empty region inside the active page"
+        return "invalid_text_bounds: Text bounds must define an ordered rectangle inside the active page"
       case .cancelled:
         return "operation_cancelled: The text request was disposed or superseded"
       }

@@ -29,12 +29,14 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
-// Forward declaration of `PagePosition` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PagePosition; }
+// Forward declaration of `TextAnnotationBounds` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `TextPlacementOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
 #include "PdfFallbackFont.hpp"
 #include <optional>
@@ -48,9 +50,10 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
 #include "Viewport.hpp"
-#include "PagePosition.hpp"
+#include "TextAnnotationBounds.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
+#include "TextPlacementOptions.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -124,9 +127,9 @@ namespace margelo::nitro::inksignpdf {
       virtual void undo() = 0;
       virtual void redo() = 0;
       virtual void clear() = 0;
-      virtual void addTextAnnotation(const std::string& text, const PagePosition& position, const std::optional<TextAnnotationOptions>& options) = 0;
+      virtual void addTextAnnotation(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) = 0;
       virtual void setTextDirection(TextDirection direction) = 0;
-      virtual void insertAnnotationOn(const std::optional<TextAnnotationOptions>& options) = 0;
+      virtual void insertAnnotationOn(const std::optional<TextPlacementOptions>& options) = 0;
       virtual void insertAnnotationOff() = 0;
       virtual double increaseTextSize() = 0;
       virtual double decreaseTextSize() = 0;

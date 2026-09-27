@@ -30,10 +30,14 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
+// Forward declaration of `TextAlignment` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `TextPlacementOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
@@ -57,8 +61,10 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "PageType.hpp"
 #include "PdfFallbackFont.hpp"
 #include "StateChangeEvent.hpp"
+#include "TextAlignment.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
+#include "TextPlacementOptions.hpp"
 #include "TextVerticalAnchor.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
@@ -92,7 +98,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline double get_std__optional_double_(const std::optional<double>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<PdfFallbackFont>
   /**
    * Specialized version of `std::optional<PdfFallbackFont>`.
@@ -107,7 +113,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline PdfFallbackFont get_std__optional_PdfFallbackFont_(const std::optional<PdfFallbackFont>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<std::string>
   /**
    * Specialized version of `std::optional<std::string>`.
@@ -122,7 +128,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline std::string get_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<bool>
   /**
    * Specialized version of `std::optional<bool>`.
@@ -137,7 +143,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline bool get_std__optional_bool_(const std::optional<bool>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<DoubleTapOptions>
   /**
    * Specialized version of `std::optional<DoubleTapOptions>`.
@@ -152,7 +158,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline DoubleTapOptions get_std__optional_DoubleTapOptions_(const std::optional<DoubleTapOptions>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::function<void(const StateChangeEvent& /* event */)>
   /**
    * Specialized version of `std::function<void(const StateChangeEvent&)>`.
@@ -174,7 +180,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Func_void_StateChangeEvent_Wrapper wrap_Func_void_StateChangeEvent(Func_void_StateChangeEvent value) noexcept {
     return Func_void_StateChangeEvent_Wrapper(std::move(value));
   }
-  
+
   // pragma MARK: std::optional<std::function<void(const StateChangeEvent& /* event */)>>
   /**
    * Specialized version of `std::optional<std::function<void(const StateChangeEvent& / * event * /)>>`.
@@ -189,7 +195,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline std::function<void(const StateChangeEvent& /* event */)> get_std__optional_std__function_void_const_StateChangeEvent_____event______(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::function<void(const PageInfo& /* event */)>
   /**
    * Specialized version of `std::function<void(const PageInfo&)>`.
@@ -211,7 +217,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Func_void_PageInfo_Wrapper wrap_Func_void_PageInfo(Func_void_PageInfo value) noexcept {
     return Func_void_PageInfo_Wrapper(std::move(value));
   }
-  
+
   // pragma MARK: std::optional<std::function<void(const PageInfo& /* event */)>>
   /**
    * Specialized version of `std::optional<std::function<void(const PageInfo& / * event * /)>>`.
@@ -226,7 +232,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline std::function<void(const PageInfo& /* event */)> get_std__optional_std__function_void_const_PageInfo_____event______(const std::optional<std::function<void(const PageInfo& /* event */)>>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::shared_ptr<Promise<PageInfo>>
   /**
    * Specialized version of `std::shared_ptr<Promise<PageInfo>>`.
@@ -238,7 +244,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline PromiseHolder<PageInfo> wrap_std__shared_ptr_Promise_PageInfo__(std::shared_ptr<Promise<PageInfo>> promise) noexcept {
     return PromiseHolder<PageInfo>(std::move(promise));
   }
-  
+
   // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
   /**
    * Specialized version of `std::function<void(const std::exception_ptr&)>`.
@@ -260,7 +266,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
     return Func_void_std__exception_ptr_Wrapper(std::move(value));
   }
-  
+
   // pragma MARK: std::optional<ViewportOptions>
   /**
    * Specialized version of `std::optional<ViewportOptions>`.
@@ -275,7 +281,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline ViewportOptions get_std__optional_ViewportOptions_(const std::optional<ViewportOptions>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<PageInfo>
   /**
    * Specialized version of `std::optional<PageInfo>`.
@@ -290,7 +296,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline PageInfo get_std__optional_PageInfo_(const std::optional<PageInfo>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::shared_ptr<Promise<AddPagesResult>>
   /**
    * Specialized version of `std::shared_ptr<Promise<AddPagesResult>>`.
@@ -302,7 +308,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline PromiseHolder<AddPagesResult> wrap_std__shared_ptr_Promise_AddPagesResult__(std::shared_ptr<Promise<AddPagesResult>> promise) noexcept {
     return PromiseHolder<AddPagesResult>(std::move(promise));
   }
-  
+
   // pragma MARK: std::function<void(const AddPagesResult& /* result */)>
   /**
    * Specialized version of `std::function<void(const AddPagesResult&)>`.
@@ -324,7 +330,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Func_void_AddPagesResult_Wrapper wrap_Func_void_AddPagesResult(Func_void_AddPagesResult value) noexcept {
     return Func_void_AddPagesResult_Wrapper(std::move(value));
   }
-  
+
   // pragma MARK: std::optional<PageType>
   /**
    * Specialized version of `std::optional<PageType>`.
@@ -339,7 +345,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline PageType get_std__optional_PageType_(const std::optional<PageType>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::vector<std::string>
   /**
    * Specialized version of `std::vector<std::string>`.
@@ -350,7 +356,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     vector.reserve(size);
     return vector;
   }
-  
+
   // pragma MARK: std::optional<std::vector<std::string>>
   /**
    * Specialized version of `std::optional<std::vector<std::string>>`.
@@ -365,7 +371,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline std::vector<std::string> get_std__optional_std__vector_std__string__(const std::optional<std::vector<std::string>>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<ImagePageSize>
   /**
    * Specialized version of `std::optional<ImagePageSize>`.
@@ -380,7 +386,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline ImagePageSize get_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<AddPagesActivePage>
   /**
    * Specialized version of `std::optional<AddPagesActivePage>`.
@@ -395,7 +401,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline AddPagesActivePage get_std__optional_AddPagesActivePage_(const std::optional<AddPagesActivePage>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<AddPagesOptions>
   /**
    * Specialized version of `std::optional<AddPagesOptions>`.
@@ -410,7 +416,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline AddPagesOptions get_std__optional_AddPagesOptions_(const std::optional<AddPagesOptions>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<TextDirection>
   /**
    * Specialized version of `std::optional<TextDirection>`.
@@ -425,7 +431,22 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline TextDirection get_std__optional_TextDirection_(const std::optional<TextDirection>& optional) noexcept {
     return optional.value();
   }
-  
+
+  // pragma MARK: std::optional<TextAlignment>
+  /**
+   * Specialized version of `std::optional<TextAlignment>`.
+   */
+  using std__optional_TextAlignment_ = std::optional<TextAlignment>;
+  inline std::optional<TextAlignment> create_std__optional_TextAlignment_(const TextAlignment& value) noexcept {
+    return std::optional<TextAlignment>(value);
+  }
+  inline bool has_value_std__optional_TextAlignment_(const std::optional<TextAlignment>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextAlignment get_std__optional_TextAlignment_(const std::optional<TextAlignment>& optional) noexcept {
+    return optional.value();
+  }
+
   // pragma MARK: std::optional<TextVerticalAnchor>
   /**
    * Specialized version of `std::optional<TextVerticalAnchor>`.
@@ -440,7 +461,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline TextVerticalAnchor get_std__optional_TextVerticalAnchor_(const std::optional<TextVerticalAnchor>& optional) noexcept {
     return optional.value();
   }
-  
+
   // pragma MARK: std::optional<TextAnnotationOptions>
   /**
    * Specialized version of `std::optional<TextAnnotationOptions>`.
@@ -455,7 +476,22 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline TextAnnotationOptions get_std__optional_TextAnnotationOptions_(const std::optional<TextAnnotationOptions>& optional) noexcept {
     return optional.value();
   }
-  
+
+  // pragma MARK: std::optional<TextPlacementOptions>
+  /**
+   * Specialized version of `std::optional<TextPlacementOptions>`.
+   */
+  using std__optional_TextPlacementOptions_ = std::optional<TextPlacementOptions>;
+  inline std::optional<TextPlacementOptions> create_std__optional_TextPlacementOptions_(const TextPlacementOptions& value) noexcept {
+    return std::optional<TextPlacementOptions>(value);
+  }
+  inline bool has_value_std__optional_TextPlacementOptions_(const std::optional<TextPlacementOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextPlacementOptions get_std__optional_TextPlacementOptions_(const std::optional<TextPlacementOptions>& optional) noexcept {
+    return optional.value();
+  }
+
   // pragma MARK: std::shared_ptr<Promise<std::string>>
   /**
    * Specialized version of `std::shared_ptr<Promise<std::string>>`.
@@ -467,7 +503,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline PromiseHolder<std::string> wrap_std__shared_ptr_Promise_std__string__(std::shared_ptr<Promise<std::string>> promise) noexcept {
     return PromiseHolder<std::string>(std::move(promise));
   }
-  
+
   // pragma MARK: std::function<void(const std::string& /* result */)>
   /**
    * Specialized version of `std::function<void(const std::string&)>`.
@@ -489,7 +525,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Func_void_std__string_Wrapper wrap_Func_void_std__string(Func_void_std__string value) noexcept {
     return Func_void_std__string_Wrapper(std::move(value));
   }
-  
+
   // pragma MARK: std::shared_ptr<HybridInkSignViewSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridInkSignViewSpec>`.
@@ -497,11 +533,11 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   using std__shared_ptr_HybridInkSignViewSpec_ = std::shared_ptr<HybridInkSignViewSpec>;
   std::shared_ptr<HybridInkSignViewSpec> create_std__shared_ptr_HybridInkSignViewSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
   void* NON_NULL get_std__shared_ptr_HybridInkSignViewSpec_(std__shared_ptr_HybridInkSignViewSpec_ cppType);
-  
+
   // pragma MARK: std::weak_ptr<HybridInkSignViewSpec>
   using std__weak_ptr_HybridInkSignViewSpec_ = std::weak_ptr<HybridInkSignViewSpec>;
   inline std__weak_ptr_HybridInkSignViewSpec_ weakify_std__shared_ptr_HybridInkSignViewSpec_(const std::shared_ptr<HybridInkSignViewSpec>& strong) noexcept { return strong; }
-  
+
   // pragma MARK: Result<std::shared_ptr<Promise<PageInfo>>>
   using Result_std__shared_ptr_Promise_PageInfo___ = Result<std::shared_ptr<Promise<PageInfo>>>;
   inline Result_std__shared_ptr_Promise_PageInfo___ create_Result_std__shared_ptr_Promise_PageInfo___(const std::shared_ptr<Promise<PageInfo>>& value) noexcept {
@@ -510,7 +546,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Result_std__shared_ptr_Promise_PageInfo___ create_Result_std__shared_ptr_Promise_PageInfo___(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<Promise<PageInfo>>>::withError(error);
   }
-  
+
   // pragma MARK: Result<std::shared_ptr<Promise<AddPagesResult>>>
   using Result_std__shared_ptr_Promise_AddPagesResult___ = Result<std::shared_ptr<Promise<AddPagesResult>>>;
   inline Result_std__shared_ptr_Promise_AddPagesResult___ create_Result_std__shared_ptr_Promise_AddPagesResult___(const std::shared_ptr<Promise<AddPagesResult>>& value) noexcept {
@@ -519,7 +555,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Result_std__shared_ptr_Promise_AddPagesResult___ create_Result_std__shared_ptr_Promise_AddPagesResult___(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<Promise<AddPagesResult>>>::withError(error);
   }
-  
+
   // pragma MARK: Result<void>
   using Result_void_ = Result<void>;
   inline Result_void_ create_Result_void_() noexcept {
@@ -528,7 +564,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Result_void_ create_Result_void_(const std::exception_ptr& error) noexcept {
     return Result<void>::withError(error);
   }
-  
+
   // pragma MARK: Result<Viewport>
   using Result_Viewport_ = Result<Viewport>;
   inline Result_Viewport_ create_Result_Viewport_(const Viewport& value) noexcept {
@@ -537,7 +573,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Result_Viewport_ create_Result_Viewport_(const std::exception_ptr& error) noexcept {
     return Result<Viewport>::withError(error);
   }
-  
+
   // pragma MARK: Result<double>
   using Result_double_ = Result<double>;
   inline Result_double_ create_Result_double_(double value) noexcept {
@@ -546,7 +582,7 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Result_double_ create_Result_double_(const std::exception_ptr& error) noexcept {
     return Result<double>::withError(error);
   }
-  
+
   // pragma MARK: Result<std::shared_ptr<Promise<std::string>>>
   using Result_std__shared_ptr_Promise_std__string___ = Result<std::shared_ptr<Promise<std::string>>>;
   inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::shared_ptr<Promise<std::string>>& value) noexcept {

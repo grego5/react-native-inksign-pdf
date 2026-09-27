@@ -89,11 +89,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     try view.addTextAnnotation(text: "bounded text",
-                               position: PagePosition(x: 150, y: 100),
+                               bounds: TextAnnotationBounds(x: 150, y: 100, width: 130, height: 80),
                                options: TextAnnotationOptions(direction: .ltr,
-                                                              xLimit: 280,
-                                                              yLimit: 180,
                                                               maxLines: nil,
+                                                              alignment: .start,
                                                               verticalAnchor: nil))
     let original = try XCTUnwrap(view.documentCoordinator.document?.activePage.history.content
       .textAnnotations.first)
@@ -134,18 +133,15 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     try view.setTextDirection(direction: .ltr)
 
     try view.addTextAnnotation(text: "left to right",
-                               position: PagePosition(x: 80, y: 50),
+                               bounds: TextAnnotationBounds(x: 80, y: 50, width: 220, height: 350),
                                options: nil)
     try view.addTextAnnotation(text: "right to left",
-                               position: PagePosition(x: 110, y: 80),
-                               options: TextAnnotationOptions(direction: .auto,
-                                                              xLimit: 30,
-                                                              yLimit: 120,
-                                                              maxLines: nil,
-                                                              verticalAnchor: nil))
+                               bounds: TextAnnotationBounds(x: 30, y: 80, width: 80, height: 40),
+                               options: TextAnnotationOptions(direction: .auto, maxLines: nil,
+                                                              alignment: .start, verticalAnchor: nil))
     try view.setTextDirection(direction: .auto)
     try view.addTextAnnotation(text: "resolved app direction",
-                               position: PagePosition(x: 100, y: 140),
+                               bounds: TextAnnotationBounds(x: 0, y: 140, width: 100, height: 260),
                                options: nil)
 
     let annotations = try XCTUnwrap(view.documentCoordinator.document?.activePage.history
@@ -157,6 +153,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                    CGRect(x: 30, y: 80, width: 80, height: 40))
     XCTAssertEqual(annotations[2].flowBounds,
                    CGRect(x: 0, y: 140, width: 100, height: 260))
+    XCTAssertGreaterThanOrEqual(annotations[1].bounds.minX, 30)
+    XCTAssertLessThanOrEqual(annotations[1].bounds.maxX, 110)
+    XCTAssertGreaterThanOrEqual(annotations[1].bounds.minY, 80)
+    XCTAssertLessThanOrEqual(annotations[1].bounds.maxY, 120)
     XCTAssertNil(textEditor(in: view.textInteractionOverlay))
   }
 
@@ -166,11 +166,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
     try fixture.view.addTextAnnotation(
       text: "first line\nsecond line\nthird line",
-      position: PagePosition(x: 80, y: 280),
+      bounds: TextAnnotationBounds(x: 80, y: 180, width: 200, height: 100),
       options: TextAnnotationOptions(direction: .ltr,
-                                     xLimit: 280,
-                                     yLimit: 180,
                                      maxLines: 2,
+                                     alignment: .start,
                                      verticalAnchor: .bottom))
     let annotation = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history
       .content.textAnnotations.first)
@@ -188,16 +187,17 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let lineHeight = InkSignPdfTextStyle.font(size: annotation.fontSize).lineHeight
     try fixture.view.addTextAnnotation(
       text: "only visible line\nhidden second line",
-      position: PagePosition(x: 20, y: 20),
+      bounds: TextAnnotationBounds(x: 20, y: 20, width: 160,
+                                    height: Double(lineHeight + 0.1)),
       options: TextAnnotationOptions(direction: .ltr,
-                                     xLimit: 180,
-                                     yLimit: Double(20 + lineHeight + 0.1),
-                                     maxLines: 0,
+                                     maxLines: 2,
+                                     alignment: .start,
                                      verticalAnchor: .top))
     let heightLimited = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history
       .content.textAnnotations.last)
     XCTAssertLessThanOrEqual(heightLimited.bounds.height, lineHeight + 0.01)
     XCTAssertGreaterThan(heightLimited.bounds.height, 0)
+    XCTAssertEqual(heightLimited.maxLines, 2)
 
     let moved = annotation.moving(to: CGPoint(x: annotation.position.x + 10,
                                               y: annotation.position.y + 10),
@@ -214,16 +214,17 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let overlay = view.textInteractionOverlay
-    let options = TextAnnotationOptions(direction: .ltr,
-                                        xLimit: 170,
-                                        yLimit: 180,
+    let options = TextPlacementOptions(direction: .ltr,
+                                        width: 120,
+                                        height: 120,
                                         maxLines: 2,
+                                        alignment: .start,
                                         verticalAnchor: .bottom)
     try view.insertAnnotationOn(options: options)
     XCTAssertFalse(overlay.routePlacementTap(
-      at: CGPoint(x: 50, y: 150).applying(try XCTUnwrap(view.pageToOverlayTransform))))
+      at: CGPoint(x: 300, y: 300).applying(try XCTUnwrap(view.pageToOverlayTransform))))
     XCTAssertTrue(overlay.hasPendingPlacement())
-    let tap = CGPoint(x: 50, y: 280).applying(try XCTUnwrap(view.pageToOverlayTransform))
+    let tap = CGPoint(x: 50, y: 160).applying(try XCTUnwrap(view.pageToOverlayTransform))
     XCTAssertTrue(overlay.routePlacementTap(at: tap))
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
@@ -286,19 +287,62 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(reopened.verticalAnchor, .bottom)
   }
 
+  func testAutoSizedManualPlacementAppliesMaxLines() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let overlay = view.textInteractionOverlay
+    try view.insertAnnotationOn(options: TextPlacementOptions(
+      direction: .ltr,
+      width: nil,
+      height: nil,
+      maxLines: 2,
+      alignment: .start,
+      verticalAnchor: .top))
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 40, y: 60)))
+
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    editor.insertText("first line\nsecond line")
+    XCTAssertEqual(editor.text, "first line\nsecond line")
+    let acceptedSelection = editor.selectedRange
+    editor.insertText("\nthird line")
+    XCTAssertEqual(editor.text, "first line\nsecond line")
+    XCTAssertEqual(editor.selectedRange, acceptedSelection)
+
+    overlay.finishForLifecycle()
+    let annotation = try XCTUnwrap(view.documentCoordinator.document?.activePage.history.content
+      .textAnnotations.first)
+    XCTAssertNil(annotation.flowBounds)
+    XCTAssertEqual(annotation.maxLines, 2)
+    XCTAssertEqual(annotation.text, "first line\nsecond line")
+    XCTAssertTrue(InkSignPdfTextRenderer.fitsMaxLines(annotation.text,
+                                                      fontSize: CGFloat(annotation.fontSize),
+                                                      isRTL: false,
+                                                      maxLines: 2,
+                                                      maximumWidth: view.activePageSize().width,
+                                                      alignment: .start))
+    XCTAssertFalse(InkSignPdfTextRenderer.fitsMaxLines(annotation.text,
+                                                       fontSize: CGFloat(annotation.fontSize),
+                                                       isRTL: false,
+                                                       maxLines: 1,
+                                                       maximumWidth: view.activePageSize().width,
+                                                       alignment: .start))
+  }
+
   func testOverfullReflowedDraftAllowsSuccessiveBackspaces() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     let flowBounds = CGRect(x: 50, y: 160, width: 160, height: 120)
-    try view.insertAnnotationOn(options: TextAnnotationOptions(
+    try view.insertAnnotationOn(options: TextPlacementOptions(
       direction: .ltr,
-      xLimit: 210,
-      yLimit: 160,
+      width: 160,
+      height: 120,
       maxLines: 2,
+      alignment: .start,
       verticalAnchor: .bottom))
-    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 50, y: 280)))
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 50, y: 160)))
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
     let originalText = "MMMMMMMMM\nWWWWWWWWW"
@@ -354,11 +398,12 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     let flowBounds = CGRect(x: 50, y: 160, width: 80, height: 120)
-    try view.insertAnnotationOn(options: TextAnnotationOptions(
+    try view.insertAnnotationOn(options: TextPlacementOptions(
       direction: .ltr,
-      xLimit: 130,
-      yLimit: 280,
+      width: 80,
+      height: 120,
       maxLines: 1,
+      alignment: .start,
       verticalAnchor: .top))
     XCTAssertTrue(overlay.routePlacementTap(
       at: CGPoint(x: 50, y: 160).applying(try XCTUnwrap(view.pageToOverlayTransform))))
@@ -416,11 +461,12 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     try view.setTextDirection(direction: .ltr)
-    try view.insertAnnotationOn(options: TextAnnotationOptions(
+    try view.insertAnnotationOn(options: TextPlacementOptions(
       direction: nil,
-      xLimit: 250,
-      yLimit: 300,
+      width: nil,
+      height: nil,
       maxLines: 2,
+      alignment: .start,
       verticalAnchor: nil))
     try view.setTextDirection(direction: .rtl)
 

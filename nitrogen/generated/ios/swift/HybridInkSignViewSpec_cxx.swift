@@ -650,9 +650,9 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func addTextAnnotation(text: std.string, position: PagePosition, options: bridge.std__optional_TextAnnotationOptions_) -> bridge.Result_void_ {
+  public final func addTextAnnotation(text: std.string, bounds: TextAnnotationBounds, options: bridge.std__optional_TextAnnotationOptions_) -> bridge.Result_void_ {
     do {
-      try self.__implementation.addTextAnnotation(text: String(text), position: position, options: options.value)
+      try self.__implementation.addTextAnnotation(text: String(text), bounds: bounds, options: options.value)
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
@@ -672,7 +672,7 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func insertAnnotationOn(options: bridge.std__optional_TextAnnotationOptions_) -> bridge.Result_void_ {
+  public final func insertAnnotationOn(options: bridge.std__optional_TextPlacementOptions_) -> bridge.Result_void_ {
     do {
       try self.__implementation.insertAnnotationOn(options: options.value)
       return bridge.create_Result_void_()

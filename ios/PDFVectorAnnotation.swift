@@ -52,7 +52,7 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
     contents = text.text
     font = UIFont.systemFont(ofSize: text.fontSize)
     fontColor = color
-    alignment = text.isRTL ? .right : .left
+    alignment = Self.pdfAlignment(text.alignment, isRTL: text.isRTL)
     configure(flags: Self.textFlags)
   }
 
@@ -90,7 +90,9 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
         maxLines: coder.containsValue(forKey: "inksign.maxLines")
           ? coder.decodeInteger(forKey: "inksign.maxLines") : 0,
         verticalAnchor: coder.decodeInteger(forKey: "inksign.verticalAnchor") == 1
-          ? .bottom : .top)
+          ? .bottom : .top,
+        alignment: coder.containsValue(forKey: "inksign.textAlignment")
+          ? Self.textAlignment(coder.decodeInteger(forKey: "inksign.textAlignment")) : .start)
     }
     super.init(coder: coder)
   }
@@ -116,7 +118,25 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
       coder.encode(textValue.maxLines, forKey: "inksign.maxLines")
       coder.encode(textValue.verticalAnchor == .bottom ? 1 : 0,
                    forKey: "inksign.verticalAnchor")
+      coder.encode(Self.alignmentCode(textValue.alignment), forKey: "inksign.textAlignment")
     }
+  }
+
+  private static func pdfAlignment(_ alignment: InkSignPdfTextAlignment,
+                                   isRTL: Bool) -> NSTextAlignment {
+    switch alignment {
+    case .start: return isRTL ? .right : .left
+    case .end: return isRTL ? .left : .right
+    case .center: return .center
+    }
+  }
+
+  private static func alignmentCode(_ alignment: InkSignPdfTextAlignment) -> Int {
+    switch alignment { case .start: return 0; case .end: return 1; case .center: return 2 }
+  }
+
+  private static func textAlignment(_ code: Int) -> InkSignPdfTextAlignment {
+    switch code { case 1: return .end; case 2: return .center; default: return .start }
   }
 
   override func copy(with zone: NSZone? = nil) -> Any {

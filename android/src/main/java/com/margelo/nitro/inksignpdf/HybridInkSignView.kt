@@ -414,13 +414,13 @@ class HybridInkSignView internal constructor(
 
   override fun addTextAnnotation(
     text: String,
-    position: PagePosition,
+    bounds: TextAnnotationBounds,
     options: TextAnnotationOptions?,
   ) {
     runOnMainSync {
       checkMainThread()
       if (disposed) throw operationCancelled()
-      textOverlay.addTextAnnotation(PagePoint(position.x, position.y), text, options)
+      textOverlay.addTextAnnotation(bounds, text, options)
     }
   }
 
@@ -433,7 +433,7 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  override fun insertAnnotationOn(options: TextAnnotationOptions?) {
+  override fun insertAnnotationOn(options: TextPlacementOptions?) {
     runOnMainSync {
       checkMainThread()
       if (disposed) throw operationCancelled()

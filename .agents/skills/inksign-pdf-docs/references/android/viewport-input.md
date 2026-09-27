@@ -12,35 +12,29 @@
 
 - `TextInteractionOverlay` owns text placement, hit testing, editing, dragging,
   and keyboard avoidance. Text gestures do not enter ink or page navigation.
-- `insertAnnotationOn(options?)` arms placement and reports `textPlacement`. A
-  valid page tap creates one editor on finger-up; an out-of-page tap leaves
-  placement armed. With options, the tap defines the horizontal start and the
-  selected top or bottom vertical edge. `xLimit` and `yLimit` define the opposite
-  hard edges; `maxLines` and the region height select the first complete lines
-  shown in both the live editor and the committed annotation. An invalid tap
-  region leaves placement armed for another tap. Omitting options preserves the
-  tap-centered editor behavior. A later `setTextDirection()` change keeps the
-  current input frame in place while the next layout uses the new direction. A
-  later outside-editor tap finishes editing. Failed commands return their errors
-  to the caller.
-- In a bounded editor, typing, paste, and ordinary replacement are admitted only
-  when the complete result fits in the configured flow width, height, and
-  `maxLines`. After reflow, a shorter replacement of the active composing range
-  is admitted even when more deletion is needed to fit. An overflowing extension
-  preserves the existing composing range. At a collapsed caret, rejected input
-  leaves the text and caret in place. Deletion remains available. Ordinary
-  selected text can be removed while rejecting inserted text. Direction or
-  font-size reflow preserves existing text so it can be edited back into the
-  region. `verticalAnchor` positions the visible block but does not affect edit
-  admission. Direct `addTextAnnotation()` continues to commit and clip supplied
-  text without opening an editor.
-- Without flow options, placement centers the box horizontally and aligns its
+- Direct insertion uses `{ x, y, width, height }`; x/y stay at the physical
+  top-left in either direction, and vertical anchoring moves only visible text.
+- `insertAnnotationOn(options?)` arms placement and reports `textPlacement`.
+  A valid tap opens the editor on finger-up; an invalid tap leaves placement
+  armed. Optional width and height make a physical rectangle from the tap
+  toward the right and down; direction never changes its edges. Alignment, line
+  limit, and vertical anchor affect text inside it. Preview and committed text
+  show the same complete lines. Without dimensions, placement retains its
+  tap-centered auto-sized behavior, with `maxLines` still limiting lines. An outside tap finishes
+  editing.
+- A bounded editor admits text that fits its flow region and line limit.
+  Rejected input at a collapsed caret leaves text and caret in place; deletion
+  remains possible after reflow. A shorter composing replacement can reduce
+  overflow, while an overflowing extension preserves the existing composition.
+  Direction and font-size changes retain entered text. `verticalAnchor` changes
+  placement, not fit. Direct `addTextAnnotation()` clips supplied text.
+- Without box dimensions, placement centers the box horizontally and aligns its
   inner bottom to the tap, subject to page clamping and rule snapping. Snap
   candidates are loaded lazily for the active page and discarded on page or
   document change.
 - `setTextDirection()` updates future placement and an active editor immediately.
-  Switching keeps the current editor frame in place; subsequent text edits
-  expand from the selected side, and caret following uses that direction.
+  Switching keeps the fixed flow rectangle in place; subsequent text edits
+  reflow inside it, and caret following uses that direction.
   Explicit LTR/RTL overrides app policy; `auto` uses the current resolved app
   layout direction. The selected direction is saved when editing commits.
 - Placement zoom uses `doubleTap.zoom` (default 2×) without reducing a higher
