@@ -29,6 +29,9 @@
   following move the viewport only as needed to expose the active text.
 - Editing or dragging an existing annotation does not apply placement snapping.
   Text selection, outlines, and editing share the same page-to-view geometry.
+  - For bounded Android editors, after reflow, a shorter replacement of the
+    active composing range is accepted even when more deletion is needed to fit.
+    An extension that overflows preserves the existing composition.
 
 ## Ink and navigation
 
