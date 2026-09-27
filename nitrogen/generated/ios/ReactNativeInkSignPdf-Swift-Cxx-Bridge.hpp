@@ -8,6 +8,8 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `AddPagesActivePage` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
 // Forward declaration of `AddPagesOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
@@ -32,6 +34,8 @@ namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `TextVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
@@ -42,6 +46,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 
 // Include C++ defined types
+#include "AddPagesActivePage.hpp"
 #include "AddPagesOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "DoubleTapOptions.hpp"
@@ -54,6 +59,7 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "StateChangeEvent.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
+#include "TextVerticalAnchor.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
 #include <NitroModules/Promise.hpp>
@@ -375,6 +381,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::optional<AddPagesActivePage>
+  /**
+   * Specialized version of `std::optional<AddPagesActivePage>`.
+   */
+  using std__optional_AddPagesActivePage_ = std::optional<AddPagesActivePage>;
+  inline std::optional<AddPagesActivePage> create_std__optional_AddPagesActivePage_(const AddPagesActivePage& value) noexcept {
+    return std::optional<AddPagesActivePage>(value);
+  }
+  inline bool has_value_std__optional_AddPagesActivePage_(const std::optional<AddPagesActivePage>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline AddPagesActivePage get_std__optional_AddPagesActivePage_(const std::optional<AddPagesActivePage>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::optional<AddPagesOptions>
   /**
    * Specialized version of `std::optional<AddPagesOptions>`.
@@ -402,6 +423,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline TextDirection get_std__optional_TextDirection_(const std::optional<TextDirection>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextVerticalAnchor>
+  /**
+   * Specialized version of `std::optional<TextVerticalAnchor>`.
+   */
+  using std__optional_TextVerticalAnchor_ = std::optional<TextVerticalAnchor>;
+  inline std::optional<TextVerticalAnchor> create_std__optional_TextVerticalAnchor_(const TextVerticalAnchor& value) noexcept {
+    return std::optional<TextVerticalAnchor>(value);
+  }
+  inline bool has_value_std__optional_TextVerticalAnchor_(const std::optional<TextVerticalAnchor>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextVerticalAnchor get_std__optional_TextVerticalAnchor_(const std::optional<TextVerticalAnchor>& optional) noexcept {
     return optional.value();
   }
   

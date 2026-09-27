@@ -26,7 +26,13 @@ data class TextAnnotationOptions(
   val xLimit: Double?,
   @DoNotStrip
   @Keep
-  val yLimit: Double?
+  val yLimit: Double?,
+  @DoNotStrip
+  @Keep
+  val maxLines: Double?,
+  @DoNotStrip
+  @Keep
+  val verticalAnchor: TextVerticalAnchor?
 ) {
   /* primary constructor */
 
@@ -36,13 +42,17 @@ data class TextAnnotationOptions(
     return Objects.deepEquals(this.direction, other.direction)
       && Objects.deepEquals(this.xLimit, other.xLimit)
       && Objects.deepEquals(this.yLimit, other.yLimit)
+      && Objects.deepEquals(this.maxLines, other.maxLines)
+      && Objects.deepEquals(this.verticalAnchor, other.verticalAnchor)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
       direction,
       xLimit,
-      yLimit
+      yLimit,
+      maxLines,
+      verticalAnchor
     ).contentDeepHashCode()
   }
 
@@ -54,8 +64,8 @@ data class TextAnnotationOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(direction: TextDirection?, xLimit: Double?, yLimit: Double?): TextAnnotationOptions {
-      return TextAnnotationOptions(direction, xLimit, yLimit)
+    private fun fromCpp(direction: TextDirection?, xLimit: Double?, yLimit: Double?, maxLines: Double?, verticalAnchor: TextVerticalAnchor?): TextAnnotationOptions {
+      return TextAnnotationOptions(direction, xLimit, yLimit, maxLines, verticalAnchor)
     }
   }
 }

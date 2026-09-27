@@ -8,6 +8,8 @@
 #pragma once
 
 // Forward declarations of C++ defined types
+// Forward declaration of `AddPagesActivePage` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
 // Forward declaration of `AddPagesOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
@@ -34,12 +36,15 @@ namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `TextVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 
 // Include C++ defined types
+#include "AddPagesActivePage.hpp"
 #include "AddPagesOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "DoubleTapOptions.hpp"
@@ -53,6 +58,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "StateChangeEvent.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
+#include "TextVerticalAnchor.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
 #include <NitroModules/Promise.hpp>

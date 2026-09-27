@@ -157,20 +157,22 @@ internal object PdfExportTextResolver {
           }
         } else {
           val layout = TextLayoutSpec.createLayout(annotation)
-          val visibleLines = mutableListOf<Pair<String, Float>>()
-          val clipHeight = TextLayoutSpec.completeLineHeight(
+          val selection = TextLayoutSpec.selectVisibleLines(
             layout,
-            flowBounds.bottom - flowBounds.top,
-          ).toFloat()
-          for (lineIndex in 0 until layout.lineCount) {
-            if (layout.getLineBottom(lineIndex) > clipHeight) break
+            flowBounds,
+            annotation.maxLines,
+            annotation.verticalAnchor,
+          )
+          val visibleLines = mutableListOf<Pair<String, Float>>()
+          val visibleTop = flowBounds.top.toFloat() + selection.topOffset.toFloat()
+          for (lineIndex in 0 until selection.lineCount) {
             val start = layout.getLineStart(lineIndex)
             val end = layout.getLineEnd(lineIndex)
             val line = annotation.text.substring(start, end)
               .removeSuffix("\n")
               .removeSuffix("\r")
             if (line.isNotEmpty()) {
-              visibleLines += line to (flowBounds.top.toFloat() + layout.getLineBaseline(lineIndex))
+              visibleLines += line to (visibleTop + layout.getLineBaseline(lineIndex))
             }
           }
           visibleLines

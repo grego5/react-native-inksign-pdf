@@ -11,7 +11,9 @@
 #include "TextAnnotationOptions.hpp"
 
 #include "JTextDirection.hpp"
+#include "JTextVerticalAnchor.hpp"
 #include "TextDirection.hpp"
+#include "TextVerticalAnchor.hpp"
 #include <optional>
 
 namespace margelo::nitro::inksignpdf {
@@ -39,10 +41,16 @@ namespace margelo::nitro::inksignpdf {
       jni::local_ref<jni::JDouble> xLimit = this->getFieldValue(fieldXLimit);
       static const auto fieldYLimit = clazz->getField<jni::JDouble>("yLimit");
       jni::local_ref<jni::JDouble> yLimit = this->getFieldValue(fieldYLimit);
+      static const auto fieldMaxLines = clazz->getField<jni::JDouble>("maxLines");
+      jni::local_ref<jni::JDouble> maxLines = this->getFieldValue(fieldMaxLines);
+      static const auto fieldVerticalAnchor = clazz->getField<JTextVerticalAnchor>("verticalAnchor");
+      jni::local_ref<JTextVerticalAnchor> verticalAnchor = this->getFieldValue(fieldVerticalAnchor);
       return TextAnnotationOptions(
         direction != nullptr ? std::make_optional(direction->toCpp()) : std::nullopt,
         xLimit != nullptr ? std::make_optional(xLimit->value()) : std::nullopt,
-        yLimit != nullptr ? std::make_optional(yLimit->value()) : std::nullopt
+        yLimit != nullptr ? std::make_optional(yLimit->value()) : std::nullopt,
+        maxLines != nullptr ? std::make_optional(maxLines->value()) : std::nullopt,
+        verticalAnchor != nullptr ? std::make_optional(verticalAnchor->toCpp()) : std::nullopt
       );
     }
 
@@ -52,14 +60,16 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JTextAnnotationOptions::javaobject> fromCpp(const TextAnnotationOptions& value) {
-      using JSignature = JTextAnnotationOptions(jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>);
+      using JSignature = JTextAnnotationOptions(jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextVerticalAnchor>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
         value.direction.has_value() ? JTextDirection::fromCpp(value.direction.value()) : nullptr,
         value.xLimit.has_value() ? jni::JDouble::valueOf(value.xLimit.value()) : nullptr,
-        value.yLimit.has_value() ? jni::JDouble::valueOf(value.yLimit.value()) : nullptr
+        value.yLimit.has_value() ? jni::JDouble::valueOf(value.yLimit.value()) : nullptr,
+        value.maxLines.has_value() ? jni::JDouble::valueOf(value.maxLines.value()) : nullptr,
+        value.verticalAnchor.has_value() ? JTextVerticalAnchor::fromCpp(value.verticalAnchor.value()) : nullptr
       );
     }
   };

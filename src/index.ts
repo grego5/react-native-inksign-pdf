@@ -1,7 +1,12 @@
 import React, { useCallback, useMemo } from 'react';
 import { callback, getHostComponent } from 'react-native-nitro-modules';
 import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConfig.json';
-import { argumentError, isRecord, validateAddPagesOptions } from './publicArguments';
+import {
+  argumentError,
+  isRecord,
+  validateAddPagesOptions,
+  validateTextAnnotationOptions,
+} from './publicArguments';
 
 import type {
   PageInfo,
@@ -9,6 +14,8 @@ import type {
   TextAnnotationOptions,
   PageType,
   TextDirection,
+  TextVerticalAnchor,
+  AddPagesActivePage,
   AddPagesOptions,
   AddPagesResult,
   ImagePageSize,
@@ -31,6 +38,8 @@ export type {
   TextAnnotationOptions,
   PageType,
   TextDirection,
+  TextVerticalAnchor,
+  AddPagesActivePage,
   AddPagesOptions,
   AddPagesResult,
   ImagePageSize,
@@ -146,17 +155,7 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
         typeof position.y !== 'number' || !Number.isFinite(position.y)) {
         throw argumentError('invalid_text_position', 'Text position must contain finite page x and y coordinates');
       }
-      if (options !== undefined) {
-        if (!isRecord(options) ||
-          (options.direction !== undefined && options.direction !== 'ltr' &&
-            options.direction !== 'rtl' && options.direction !== 'auto') ||
-          (options.xLimit !== undefined &&
-            (typeof options.xLimit !== 'number' || !Number.isFinite(options.xLimit))) ||
-          (options.yLimit !== undefined &&
-            (typeof options.yLimit !== 'number' || !Number.isFinite(options.yLimit)))) {
-          throw argumentError('invalid_text_options', 'Text options must contain a valid direction and finite flow limits');
-        }
-      }
+      validateTextAnnotationOptions(options);
       native.addTextAnnotation(text, position, options);
     },
     setTextDirection(direction) {
@@ -165,7 +164,10 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
       }
       native.setTextDirection(direction);
     },
-    insertAnnotationOn: () => native.insertAnnotationOn(),
+    insertAnnotationOn(options) {
+      validateTextAnnotationOptions(options);
+      native.insertAnnotationOn(options);
+    },
     insertAnnotationOff: () => native.insertAnnotationOff(),
     increaseTextSize: () => native.increaseTextSize(),
     decreaseTextSize: () => native.decreaseTextSize(),

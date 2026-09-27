@@ -35,6 +35,10 @@
 
 - Page identities and histories travel with pages through structural edits. Structural
   dirty state is document-level; undo and redo history is page-local.
+- `addPages()` chooses the active page inside its detached candidate: omission or
+  `current` retains the existing active page, `firstAdded` and `lastAdded` select
+  the corresponding page imported by that call, and `current` selects the first
+  imported page when creating a document. Empty imports do not publish a candidate.
 - Clearing a page is one undoable action. Dirty state reflects remaining ink and
   document structure; clearing the last ink in an otherwise clean document leaves it clean.
 - Disposal rejects pending work, clears presentation and callbacks, and closes PDFium

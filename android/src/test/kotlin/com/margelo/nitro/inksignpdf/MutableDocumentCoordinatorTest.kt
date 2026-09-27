@@ -34,15 +34,24 @@ class MutableDocumentCoordinatorTest {
   }
 
   @Test
-  fun appendCandidateCreatesFreshIdsAndDoesNotPublishState() {
+  fun appendCandidateSelectsStableCurrentAndAddedPageIdentitiesWithoutPublishing() {
     val coordinator = coordinator()
-    val before = coordinator.pages.map { it.id }
-    val candidate = coordinator.appendCandidate(listOf(PdfPageDimensions(400.0, 500.0)))
+    val existingPages = coordinator.pages.toList()
+    val dimensions = listOf(
+      PdfPageDimensions(400.0, 500.0),
+      PdfPageDimensions(600.0, 700.0),
+    )
+    val current = coordinator.appendCandidate(dimensions, AddPagesActivePage.CURRENT)
+    val first = coordinator.appendCandidate(dimensions, AddPagesActivePage.FIRSTADDED)
+    val last = coordinator.appendCandidate(dimensions, AddPagesActivePage.LASTADDED)
 
-    assertEquals(before, coordinator.pages.map { it.id })
-    assertEquals(4, candidate.pages.size)
-    assertNotEquals(before.last(), candidate.pages.last().id)
-    assertEquals(candidate.pages.last().id, candidate.activePageId)
+    assertEquals(existingPages.map { it.id }, coordinator.pages.map { it.id })
+    assertEquals(5, current.pages.size)
+    assertTrue(existingPages.indices.all { current.pages[it] === existingPages[it] })
+    assertEquals(existingPages[1].id, current.activePageId)
+    assertEquals(first.pages[3].id, first.activePageId)
+    assertEquals(last.pages[4].id, last.activePageId)
+    assertNotEquals(existingPages.last().id, first.activePageId)
     assertTrue(!coordinator.structuralDirty)
   }
 

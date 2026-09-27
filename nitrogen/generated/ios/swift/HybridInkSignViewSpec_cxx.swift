@@ -672,9 +672,9 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func insertAnnotationOn() -> bridge.Result_void_ {
+  public final func insertAnnotationOn(options: bridge.std__optional_TextAnnotationOptions_) -> bridge.Result_void_ {
     do {
-      try self.__implementation.insertAnnotationOn()
+      try self.__implementation.insertAnnotationOn(options: options.value)
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()

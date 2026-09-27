@@ -92,7 +92,9 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                                position: PagePosition(x: 150, y: 100),
                                options: TextAnnotationOptions(direction: .ltr,
                                                               xLimit: 280,
-                                                              yLimit: 180))
+                                                              yLimit: 180,
+                                                              maxLines: nil,
+                                                              verticalAnchor: nil))
     let original = try XCTUnwrap(view.documentCoordinator.document?.activePage.history.content
       .textAnnotations.first)
     let tapPoint = CGPoint(x: original.bounds.midX, y: original.bounds.midY)
@@ -138,7 +140,9 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                                position: PagePosition(x: 110, y: 80),
                                options: TextAnnotationOptions(direction: .auto,
                                                               xLimit: 30,
-                                                              yLimit: 120))
+                                                              yLimit: 120,
+                                                              maxLines: nil,
+                                                              verticalAnchor: nil))
     try view.setTextDirection(direction: .auto)
     try view.addTextAnnotation(text: "resolved app direction",
                                position: PagePosition(x: 100, y: 140),
@@ -657,8 +661,8 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
 
-    try fixture.view.insertAnnotationOn()
-    try fixture.view.insertAnnotationOn()
+    try fixture.view.insertAnnotationOn(options: nil)
+    try fixture.view.insertAnnotationOn(options: nil)
     XCTAssertTrue(overlay.hasPendingPlacement())
     XCTAssertNil(textEditor(in: overlay))
 

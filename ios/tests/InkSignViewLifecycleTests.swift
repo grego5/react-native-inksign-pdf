@@ -255,7 +255,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       sources: [pdfURL.path, imageURL.path],
       imagePageSize: ImagePageSize(width: 144, height: 72),
       targetDpi: 72,
-      jpegQuality: 0.1)
+      jpegQuality: 0.1,
+      activePage: nil)
     let completed = expectation(description: "mixed addPages")
     var result: AddPagesResult?
     var failure: Error?

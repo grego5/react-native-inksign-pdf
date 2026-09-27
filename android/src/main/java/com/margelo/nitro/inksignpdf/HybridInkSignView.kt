@@ -286,7 +286,10 @@ class HybridInkSignView internal constructor(
             if (addedDimensions.isEmpty()) {
               throw PdfSessionException("pdf_mutation_failed", "The append candidate contains no added pages")
             }
-            coordinator.appendCandidate(addedDimensions)
+            coordinator.appendCandidate(
+              addedDimensions,
+              options?.activePage ?: AddPagesActivePage.CURRENT,
+            )
           },
           validate = { info, pageCandidate ->
             surface.validateStructuralCandidate(info, pageCandidate.pages, pageCandidate.activePageId)
@@ -430,7 +433,7 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  override fun insertAnnotationOn() {
+  override fun insertAnnotationOn(options: TextAnnotationOptions?) {
     runOnMainSync {
       checkMainThread()
       if (disposed) throw operationCancelled()
@@ -444,7 +447,7 @@ class HybridInkSignView internal constructor(
         textOverlay.finishForLifecycle()
         surface.transitionToMode(enabled = false, viewport = ViewportRequest.Preserve)
         if (disposed || requestID != viewportRequestID) throw operationCancelled()
-        textOverlay.armPlacement(generation)
+        textOverlay.armPlacement(generation, options)
       }
       loadSnapCandidatesForTextPlacement(generation, pageIndex)
     }

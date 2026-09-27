@@ -30,9 +30,12 @@
 
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `TextVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 
 #include "TextDirection.hpp"
 #include <optional>
+#include "TextVerticalAnchor.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -44,10 +47,12 @@ namespace margelo::nitro::inksignpdf {
     std::optional<TextDirection> direction     SWIFT_PRIVATE;
     std::optional<double> xLimit     SWIFT_PRIVATE;
     std::optional<double> yLimit     SWIFT_PRIVATE;
+    std::optional<double> maxLines     SWIFT_PRIVATE;
+    std::optional<TextVerticalAnchor> verticalAnchor     SWIFT_PRIVATE;
 
   public:
     TextAnnotationOptions() = default;
-    explicit TextAnnotationOptions(std::optional<TextDirection> direction, std::optional<double> xLimit, std::optional<double> yLimit): direction(direction), xLimit(xLimit), yLimit(yLimit) {}
+    explicit TextAnnotationOptions(std::optional<TextDirection> direction, std::optional<double> xLimit, std::optional<double> yLimit, std::optional<double> maxLines, std::optional<TextVerticalAnchor> verticalAnchor): direction(direction), xLimit(xLimit), yLimit(yLimit), maxLines(maxLines), verticalAnchor(verticalAnchor) {}
 
   public:
     friend bool operator==(const TextAnnotationOptions& lhs, const TextAnnotationOptions& rhs) = default;
@@ -65,7 +70,9 @@ namespace margelo::nitro {
       return margelo::nitro::inksignpdf::TextAnnotationOptions(
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "xLimit"))),
-        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "yLimit")))
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "yLimit"))),
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "maxLines"))),
+        JSIConverter<std::optional<margelo::nitro::inksignpdf::TextVerticalAnchor>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "verticalAnchor")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::TextAnnotationOptions& arg) {
@@ -73,6 +80,8 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "direction"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::toJSI(runtime, arg.direction));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "xLimit"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.xLimit));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "yLimit"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.yLimit));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "maxLines"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.maxLines));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "verticalAnchor"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextVerticalAnchor>>::toJSI(runtime, arg.verticalAnchor));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -86,6 +95,8 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "xLimit")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "yLimit")))) return false;
+      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "maxLines")))) return false;
+      if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextVerticalAnchor>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "verticalAnchor")))) return false;
       return true;
     }
   };

@@ -49,6 +49,7 @@ class HybridInkSignViewCreatePagesTest {
             imagePageSize = ImagePageSize(width = 144.0, height = 72.0),
             targetDpi = 72.0,
             jpegQuality = 0.1,
+            activePage = null,
           ),
         ),
       )
@@ -80,7 +81,9 @@ class HybridInkSignViewCreatePagesTest {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     val image = File.createTempFile("first-page-", ".jpg", context.cacheDir)
+    val secondImage = File.createTempFile("second-page-", ".jpg", context.cacheDir)
     image.writeBytes(testJpeg())
+    secondImage.writeBytes(testJpeg())
     val viewRef = AtomicReference<HybridInkSignView>()
     val promiseRef = AtomicReference<Promise<AddPagesResult>>()
     instrumentation.runOnMainSync {
@@ -89,10 +92,11 @@ class HybridInkSignViewCreatePagesTest {
         viewRef.get().addPages(
           AddPagesOptions(
             PageType.IMAGE,
-            arrayOf(image.absolutePath),
+            arrayOf(image.absolutePath, secondImage.absolutePath),
             ImagePageSize(width = 595.28, height = 841.89),
             null,
             null,
+            AddPagesActivePage.CURRENT,
           ),
         ),
       )
@@ -110,15 +114,16 @@ class HybridInkSignViewCreatePagesTest {
       failure.get()?.let { throw AssertionError("addPages rejected on an empty view", it) }
       val added = result.get()
       assertNotNull(added)
-      assertEquals(1.0, added.addedPageCount, 0.0)
+      assertEquals(2.0, added.addedPageCount, 0.0)
       assertNotNull(added.pageInfo)
-      assertEquals(1.0, added.pageInfo!!.pageCount, 0.0)
+      assertEquals(2.0, added.pageInfo!!.pageCount, 0.0)
       assertEquals(0.0, added.pageInfo!!.pageIndex, 0.0)
       assertEquals(595.28, added.pageInfo!!.width, 0.0001)
       assertEquals(841.89, added.pageInfo!!.height, 0.0001)
     } finally {
       instrumentation.runOnMainSync { viewRef.get().onDropView() }
       image.delete()
+      secondImage.delete()
     }
   }
 

@@ -7,7 +7,7 @@ extension InkSignView {
     return "text-\(nextTextAnnotationID)"
   }
 
-  func insertAnnotationOn() throws {
+  func insertAnnotationOn(options _: TextAnnotationOptions?) throws {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
       if self.textInteractionOverlay.hasPendingPlacement() { return }
