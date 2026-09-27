@@ -2,6 +2,15 @@ import CoreGraphics
 import PencilKit
 import UIKit
 
+enum InkSignPdfTextVerticalAnchor: Equatable {
+  case top
+  case bottom
+
+  init(_ value: TextVerticalAnchor?) {
+    self = value == .bottom ? .bottom : .top
+  }
+}
+
 enum InkSignPdfTextBoxGeometry {
   enum BottomEdge: Equatable {
     case innerTextArea
@@ -82,10 +91,15 @@ struct InkSignPdfTextAnnotation: Equatable {
   let textColor: String
   /// Optional page-space wrapping and complete-line clipping region.
   let flowBounds: CGRect?
+  /// Maximum number of complete source-order lines, or zero for no line-count limit.
+  let maxLines: Int
+  let verticalAnchor: InkSignPdfTextVerticalAnchor
 
   init(id: String, text: String, bounds: CGRect, fontSize: CGFloat,
        textColor: String = "#000000", isRTL: Bool = false,
-       flowBounds: CGRect? = nil) {
+       flowBounds: CGRect? = nil,
+       maxLines: Int = 0,
+       verticalAnchor: InkSignPdfTextVerticalAnchor = .top) {
     precondition(!id.isEmpty, "Text annotation ID must not be empty")
     precondition(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                  "Committed text annotation must not be blank")
@@ -102,6 +116,8 @@ struct InkSignPdfTextAnnotation: Equatable {
     self.isRTL = isRTL
     self.textColor = textColor
     self.flowBounds = flowBounds
+    self.maxLines = maxLines
+    self.verticalAnchor = verticalAnchor
   }
 
   var position: CGPoint { bounds.origin }
@@ -112,10 +128,13 @@ struct InkSignPdfTextAnnotation: Equatable {
       let bounds = InkSignPdfTextRenderer.visibleBounds(for: text,
                                                         fontSize: fontSize,
                                                         isRTL: isRTL,
-                                                        flowBounds: flowBounds)
+                                                        flowBounds: flowBounds,
+                                                        maxLines: maxLines,
+                                                        verticalAnchor: verticalAnchor)
       return InkSignPdfTextAnnotation(id: id, text: text, bounds: bounds,
                                       fontSize: fontSize, textColor: textColor,
-                                      isRTL: isRTL, flowBounds: flowBounds)
+                                      isRTL: isRTL, flowBounds: flowBounds,
+                                      maxLines: maxLines, verticalAnchor: verticalAnchor)
     }
     let size = Self.intrinsicSize(of: text, fontSize: fontSize,
                                   isRTL: isRTL, maximumWidth: pageSize.width)
@@ -141,14 +160,18 @@ struct InkSignPdfTextAnnotation: Equatable {
     let movedFlowBounds = flowBounds.map { $0.offsetBy(dx: offset.x, dy: offset.y) }
     let movedBounds = movedFlowBounds.map {
       InkSignPdfTextRenderer.visibleBounds(for: text, fontSize: fontSize,
-                                           isRTL: isRTL, flowBounds: $0)
+                                           isRTL: isRTL, flowBounds: $0,
+                                           maxLines: maxLines,
+                                           verticalAnchor: verticalAnchor)
     } ?? bounds.offsetBy(dx: offset.x, dy: offset.y)
     return InkSignPdfTextAnnotation(id: id, text: text,
                                     bounds: movedBounds,
                                     fontSize: fontSize,
                                     textColor: textColor,
                                     isRTL: isRTL,
-                                    flowBounds: movedFlowBounds)
+                                    flowBounds: movedFlowBounds,
+                                    maxLines: maxLines,
+                                    verticalAnchor: verticalAnchor)
   }
 
   func changingFontSize(to fontSize: CGFloat, pageSize: CGSize) -> InkSignPdfTextAnnotation {
@@ -156,10 +179,13 @@ struct InkSignPdfTextAnnotation: Equatable {
       let bounds = InkSignPdfTextRenderer.visibleBounds(for: text,
                                                         fontSize: fontSize,
                                                         isRTL: isRTL,
-                                                        flowBounds: flowBounds)
+                                                        flowBounds: flowBounds,
+                                                        maxLines: maxLines,
+                                                        verticalAnchor: verticalAnchor)
       return InkSignPdfTextAnnotation(id: id, text: text, bounds: bounds,
                                       fontSize: fontSize, textColor: textColor,
-                                      isRTL: isRTL, flowBounds: flowBounds)
+                                      isRTL: isRTL, flowBounds: flowBounds,
+                                      maxLines: maxLines, verticalAnchor: verticalAnchor)
     }
     let size = Self.intrinsicSize(of: text, fontSize: fontSize,
                                   isRTL: isRTL, maximumWidth: pageSize.width)

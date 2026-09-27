@@ -8,6 +8,8 @@
 
 - PDFKit carries source pages into the output; Quartz draws annotations and
   CoreText shapes committed text.
+- Text flow regions, line limits, and vertical anchors determine the same
+  complete lines shown in the committed preview.
 - Text annotations are locked and remain selectable and copyable.
 - Signatures are locked, read-only PDF stamp annotations with vector appearances
   approximating the app's opaque circular pen and recorded variable diameter.

@@ -163,10 +163,18 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(removedMiddle.activePageID, ids[2])
 
     let appendedOrder = try InkSignPdfDocumentCoordinator.pageOrder(
-      current: state.pages, activePageID: ids[1], mutation: .append([appended]))
+      current: state.pages,
+      activePageID: ids[1],
+      mutation: .append([appended], activePageID: appended.id))
     XCTAssertEqual(appendedOrder.pages.map(\.id), ids + [appended.id])
     XCTAssertEqual(appendedOrder.activePageID, appended.id)
     XCTAssertEqual(appendedOrder.addedPageCount, 1)
+
+    let keepCurrent = try InkSignPdfDocumentCoordinator.pageOrder(
+      current: state.pages,
+      activePageID: ids[1],
+      mutation: .append([appended], activePageID: ids[1]))
+    XCTAssertEqual(keepCurrent.activePageID, ids[1])
 
     XCTAssertThrowsError(try InkSignPdfDocumentCoordinator.pageOrder(
       current: [state.pages[0]], activePageID: ids[0], mutation: .removeActive)) { error in
@@ -273,6 +281,133 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(pages[1].geometry.mediaBox.height, 45, accuracy: 0.01)
     XCTAssertEqual(pages[2].geometry.mediaBox.width, 144, accuracy: 0.01)
     XCTAssertEqual(pages[2].geometry.mediaBox.height, 72, accuracy: 0.01)
+  }
+
+  func testAddPagesSelectsRequestedImportedPageAndReturnsIt() throws {
+    let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+
+    let sourceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignPdfActivePage-\(UUID().uuidString).pdf")
+    defer { try? FileManager.default.removeItem(at: sourceURL) }
+    let source = PDFDocument()
+    for (index, width) in [111, 222].enumerated() {
+      let size = CGSize(width: width, height: width + 20)
+      let image = UIGraphicsImageRenderer(size: size).image { context in
+        UIColor.white.setFill()
+        context.fill(CGRect(origin: .zero, size: size))
+      }
+      let page = try XCTUnwrap(PDFPage(image: image))
+      page.setBounds(CGRect(origin: .zero, size: size), for: .mediaBox)
+      source.insert(page, at: index)
+    }
+    XCTAssertTrue(source.write(to: sourceURL))
+
+    func append(_ activePage: AddPagesActivePage?) throws -> AddPagesResult {
+      let selection = activePage?.stringValue ?? "omitted"
+      let completed = expectation(description: "append pages selecting \(selection)")
+      var result: AddPagesResult?
+      var failure: Error?
+      let promise = try fixture.view.addPages(options: AddPagesOptions(
+        type: .pdf,
+        sources: [sourceURL.path],
+        imagePageSize: nil,
+        targetDpi: nil,
+        jpegQuality: nil,
+        activePage: activePage))
+      promise.then { result = $0; completed.fulfill() }
+      promise.catch { failure = $0; completed.fulfill() }
+      wait(for: [completed], timeout: 30)
+      if let failure { throw failure }
+      return try XCTUnwrap(result)
+    }
+
+    let originalActiveID = try XCTUnwrap(fixture.view.documentCoordinator.document).activePageID
+    let omittedResult = try append(nil)
+    let afterCurrent = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    XCTAssertEqual(afterCurrent.activePageID, originalActiveID)
+    XCTAssertEqual(afterCurrent.activePageIndex, 1)
+    XCTAssertEqual(omittedResult.pageInfo?.pageIndex, 1)
+    XCTAssertEqual(omittedResult.pageInfo?.pageCount, 5)
+
+    let currentResult = try append(.current)
+    XCTAssertEqual(fixture.view.documentCoordinator.document?.activePageID, originalActiveID)
+    XCTAssertEqual(currentResult.pageInfo?.pageIndex, 1)
+    XCTAssertEqual(currentResult.pageInfo?.pageCount, 7)
+
+    let firstResult = try append(.firstadded)
+    let afterFirst = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    let firstInfo = try XCTUnwrap(firstResult.pageInfo)
+    XCTAssertEqual(afterFirst.activePageIndex, 7)
+    XCTAssertEqual(firstInfo.pageIndex, 7)
+    XCTAssertEqual(firstInfo.width, 111, accuracy: 0.01)
+
+    let lastResult = try append(.lastadded)
+    let afterLast = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    let lastInfo = try XCTUnwrap(lastResult.pageInfo)
+    XCTAssertEqual(afterLast.activePageIndex, 10)
+    XCTAssertEqual(lastInfo.pageIndex, 10)
+    XCTAssertEqual(lastInfo.width, 222, accuracy: 0.01)
+    XCTAssertEqual(lastInfo.pageCount, 11)
+    XCTAssertTrue(fixture.view.documentView.currentPage === afterLast.activePage.page)
+
+    let creationView = InkSignView()
+    let controller = UIViewController()
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
+    window.rootViewController = controller
+    controller.view.addSubview(creationView.view)
+    creationView.view.frame = controller.view.bounds
+    window.makeKeyAndVisible()
+    controller.view.layoutIfNeeded()
+    defer { creationView.dispose(); window.isHidden = true }
+    let created = expectation(description: "create document with current selection")
+    var createdResult: AddPagesResult?
+    var creationFailure: Error?
+    let createPromise = try creationView.addPages(options: AddPagesOptions(
+      type: .pdf,
+      sources: [sourceURL.path],
+      imagePageSize: nil,
+      targetDpi: nil,
+      jpegQuality: nil,
+      activePage: .current))
+    createPromise.then { createdResult = $0; created.fulfill() }
+    createPromise.catch { creationFailure = $0; created.fulfill() }
+    wait(for: [created], timeout: 30)
+    if let creationFailure { throw creationFailure }
+    let createdDocument = try XCTUnwrap(creationView.documentCoordinator.document)
+    XCTAssertEqual(createdDocument.activePageIndex, 0)
+    XCTAssertEqual(createdResult?.pageInfo?.pageIndex, 0)
+    XCTAssertTrue(creationView.documentView.currentPage === createdDocument.activePage.page)
+
+    let lastCreationView = InkSignView()
+    let lastCreationController = UIViewController()
+    let lastCreationWindow = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
+    lastCreationWindow.rootViewController = lastCreationController
+    lastCreationController.view.addSubview(lastCreationView.view)
+    lastCreationView.view.frame = lastCreationController.view.bounds
+    lastCreationWindow.makeKeyAndVisible()
+    lastCreationController.view.layoutIfNeeded()
+    defer { lastCreationView.dispose(); lastCreationWindow.isHidden = true }
+    let lastCreated = expectation(description: "create document selecting last added page")
+    var lastCreatedResult: AddPagesResult?
+    var lastCreationFailure: Error?
+    let lastCreatePromise = try lastCreationView.addPages(options: AddPagesOptions(
+      type: .pdf,
+      sources: [sourceURL.path],
+      imagePageSize: nil,
+      targetDpi: nil,
+      jpegQuality: nil,
+      activePage: .lastadded))
+    lastCreatePromise.then { lastCreatedResult = $0; lastCreated.fulfill() }
+    lastCreatePromise.catch { lastCreationFailure = $0; lastCreated.fulfill() }
+    wait(for: [lastCreated], timeout: 30)
+    if let lastCreationFailure { throw lastCreationFailure }
+    let lastCreatedDocument = try XCTUnwrap(lastCreationView.documentCoordinator.document)
+    let lastCreationInfo = try XCTUnwrap(lastCreatedResult?.pageInfo)
+    XCTAssertEqual(lastCreatedDocument.activePageIndex, 1)
+    XCTAssertEqual(lastCreationInfo.pageIndex, 1)
+    XCTAssertEqual(lastCreationInfo.width, 222, accuracy: 0.01)
+    XCTAssertTrue(lastCreationView.documentView.currentPage === lastCreatedDocument.activePage.page)
   }
 
   func testMoveAndRemoveCommandsPublishFinalPageOrder() throws {

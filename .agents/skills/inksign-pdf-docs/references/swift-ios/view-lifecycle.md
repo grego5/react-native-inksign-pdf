@@ -12,11 +12,15 @@
 ## Publication
 
 - Opening copies the caller's PDF into a module-owned working document.
-- Replacement and page mutations prepare and validate a detached candidate.
-- The current document remains published until validation succeeds. Failed,
-  cancelled, or stale operations leave it intact.
+- Opening prepares a detached candidate while the current presentation remains
+  usable. A current open failure clears the published document before rejection;
+  a stale attempt cannot alter a newer open.
+- Page mutations prepare and validate a detached candidate. Failed, cancelled,
+  or stale mutations leave the published document intact.
 - Publication updates the document, page order, active page, and structural
   dirty state together.
+- `addPages()` selects the current, first added, or last added page in the
+  candidate; its result describes the page published as active.
 - Stable page identity and page-local history follow pages through append,
   removal, and movement.
 - Structural changes and page-content history are tracked separately.

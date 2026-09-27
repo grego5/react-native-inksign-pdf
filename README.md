@@ -264,11 +264,10 @@ lower-resolution image. JPEG quality defaults to `0.72`; `jpegQuality` accepts
 values from `0` to `1`. These encoding options apply to image inputs; PDF pages
 are copied without re-encoding.
 
-On Android, `activePage` controls the page selected after an import. It defaults
-to `current`, which keeps the existing active page or selects the first page
-when creating a document. Use `firstAdded` or `lastAdded` to select an imported
-page. Empty or cancelled imports leave the page selection unchanged. Native iOS
-selection parity is pending.
+`activePage` controls the page selected after an import. It defaults to
+`current`, which keeps the existing active page or selects the first page when
+creating a document. Use `firstAdded` or `lastAdded` to select an imported page.
+Empty or cancelled imports leave the page selection unchanged.
 
 ```ts
 const result = await pdf.current?.addPages({
@@ -296,8 +295,8 @@ through `onPageChange`:
 `getViewport()` returns a viewport snapshot synchronously and throws when the
 view is not ready. Synchronous commands throw validation errors directly.
 
-On Android, `addTextAnnotation(text, position, options?)` commits text directly
-on the active page without opening the editor. `position`, `xLimit`, and
+`addTextAnnotation(text, position, options?)` commits text directly on the
+active page without opening the editor. `position`, `xLimit`, and
 `yLimit` use canonical PDF points from the page's top-left, independent of
 viewport zoom. Text wraps at `xLimit` or the page edge and keeps complete lines
 within `yLimit` or the page edge. `maxLines` further limits the first complete
@@ -308,8 +307,7 @@ Explicit `ltr` or `rtl` sets the annotation direction; `auto` uses the app's
 resolved layout direction. If omitted, direction follows the last
 `setTextDirection()` choice, or app direction when unset/`auto`. Direction and
 flow options are saved with the annotation, along with the configured default
-text size and color. iOS retains its existing text behavior until native parity
-is implemented.
+text size and color.
 
 ```ts
 pdf.current?.addTextAnnotation(
@@ -340,25 +338,16 @@ argument preserves the current viewport where applicable.
 
 - View mode supports panning, pinch zoom, and page navigation. Draw mode accepts
   finger or stylus ink.
-- Call `insertAnnotationOn()` and tap the page to place text. On Android, pass
-  `TextAnnotationOptions` to apply direction, `xLimit`, `yLimit`, `maxLines`, and
-  `verticalAnchor` to both the live editor and saved annotation. With options,
-  the tap sets the horizontal start and selected vertical edge. Omitting options
-  keeps the existing tap-centered placement. Use `setTextDirection('ltr' | 'rtl'
-  | 'auto')` to choose the direction for new text or update an active editor.
-  `auto` uses the app's current resolved layout direction. Switching keeps the
-  current input box in place while later text edits use the new direction. In a
-  bounded editor, typing, paste, and ordinary replacement are accepted only
-  when the complete result fits the flow width, height, and `maxLines`. After
-  reflow, a shorter replacement of the active composing range is accepted even
-  when more deletion is needed to fit. An overflowing extension preserves the
-  existing composing range. A rejected edit at a collapsed caret leaves the text
-  and caret unchanged. Deletion remains available. Ordinary selected text can
-  be removed while rejecting inserted text. Direction and font-size changes
-  preserve existing text so it can be edited back into the region.
-  `verticalAnchor` positions the visible
-  block without changing which edits fit. Direct `addTextAnnotation()` keeps
-  its clipping behavior.
+- Call `insertAnnotationOn()` and tap the page to place text. Pass
+  `TextAnnotationOptions` to apply direction, flow limits, line count, and
+  vertical anchor to the editor and saved annotation. The tap sets the flow
+  start and selected vertical edge. Without options, placement remains
+  tap-centered and rule-aware. `setTextDirection()` also updates an active
+  editor while keeping its box in place at the switch. Placement captures its
+  resolved direction when armed. In a bounded editor,
+  input is admitted when the complete result fits; deletion remains available.
+  Direction and font-size changes preserve existing text through reflow.
+  Direct `addTextAnnotation()` clips to the configured flow region.
 - Tap existing text to select or edit it. Editing keeps the current zoom and moves the view as needed to keep the text and caret visible.
 - The native view manages ink, text, undo, redo, and clear. `onStateChange` reports editing mode, undo/redo availability, and whether the document changed.
 - The application owns its toolbar and any saved viewport bookmarks.

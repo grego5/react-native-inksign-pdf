@@ -86,7 +86,11 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
         textColor: textColor,
         isRTL: coder.decodeBool(forKey: "inksign.isRTL"),
         flowBounds: coder.containsValue(forKey: "inksign.flowBounds")
-          ? coder.decodeCGRect(forKey: "inksign.flowBounds") : nil)
+          ? coder.decodeCGRect(forKey: "inksign.flowBounds") : nil,
+        maxLines: coder.containsValue(forKey: "inksign.maxLines")
+          ? coder.decodeInteger(forKey: "inksign.maxLines") : 0,
+        verticalAnchor: coder.decodeInteger(forKey: "inksign.verticalAnchor") == 1
+          ? .bottom : .top)
     }
     super.init(coder: coder)
   }
@@ -109,6 +113,9 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
       if let flowBounds = textValue.flowBounds {
         coder.encode(flowBounds, forKey: "inksign.flowBounds")
       }
+      coder.encode(textValue.maxLines, forKey: "inksign.maxLines")
+      coder.encode(textValue.verticalAnchor == .bottom ? 1 : 0,
+                   forKey: "inksign.verticalAnchor")
     }
   }
 

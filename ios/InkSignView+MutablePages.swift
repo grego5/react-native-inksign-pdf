@@ -68,7 +68,7 @@ extension InkSignView {
           }
           self.assembleStructuralCandidate(context,
                                            staged: staged,
-                                           command: .append,
+                                           command: .append(activePage: options?.activePage ?? .current),
                                            imageGeometry: requestedImageSize.map {
                                              PageGeometry(mediaBox: CGRect(origin: .zero, size: $0), rotation: 0)
                                            },

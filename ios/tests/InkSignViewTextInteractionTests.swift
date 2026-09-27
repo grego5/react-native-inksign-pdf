@@ -160,6 +160,282 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertNil(textEditor(in: view.textInteractionOverlay))
   }
 
+  func testProgrammaticTextKeepsCompleteLinesAndVerticalAnchorMetadata() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+
+    try fixture.view.addTextAnnotation(
+      text: "first line\nsecond line\nthird line",
+      position: PagePosition(x: 80, y: 280),
+      options: TextAnnotationOptions(direction: .ltr,
+                                     xLimit: 280,
+                                     yLimit: 180,
+                                     maxLines: 2,
+                                     verticalAnchor: .bottom))
+    let annotation = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history
+      .content.textAnnotations.first)
+    let flowBounds = try XCTUnwrap(annotation.flowBounds)
+    XCTAssertEqual(flowBounds.minX, 80, accuracy: 0.01)
+    XCTAssertEqual(flowBounds.maxX, 280, accuracy: 0.01)
+    XCTAssertEqual(flowBounds.minY, 180, accuracy: 0.01)
+    XCTAssertEqual(flowBounds.maxY, 280, accuracy: 0.01)
+    XCTAssertEqual(annotation.maxLines, 2)
+    XCTAssertEqual(annotation.verticalAnchor, .bottom)
+    XCTAssertEqual(annotation.bounds.maxY, flowBounds.maxY, accuracy: 0.01)
+    XCTAssertLessThanOrEqual(annotation.bounds.height,
+                             2 * InkSignPdfTextStyle.font(size: annotation.fontSize).lineHeight + 0.01)
+
+    let lineHeight = InkSignPdfTextStyle.font(size: annotation.fontSize).lineHeight
+    try fixture.view.addTextAnnotation(
+      text: "only visible line\nhidden second line",
+      position: PagePosition(x: 20, y: 20),
+      options: TextAnnotationOptions(direction: .ltr,
+                                     xLimit: 180,
+                                     yLimit: Double(20 + lineHeight + 0.1),
+                                     maxLines: 0,
+                                     verticalAnchor: .top))
+    let heightLimited = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history
+      .content.textAnnotations.last)
+    XCTAssertLessThanOrEqual(heightLimited.bounds.height, lineHeight + 0.01)
+    XCTAssertGreaterThan(heightLimited.bounds.height, 0)
+
+    let moved = annotation.moving(to: CGPoint(x: annotation.position.x + 10,
+                                              y: annotation.position.y + 10),
+                                 pageSize: CGSize(width: 400, height: 400))
+    let resized = moved.changingFontSize(to: annotation.fontSize + 1,
+                                         pageSize: CGSize(width: 400, height: 400))
+    XCTAssertEqual(resized.maxLines, 2)
+    XCTAssertEqual(resized.verticalAnchor, .bottom)
+    XCTAssertEqual(resized.flowBounds?.maxY, moved.flowBounds?.maxY)
+  }
+
+  func testManualPlacementOptionsConstrainTypingAndKeepBottomEdge() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let overlay = view.textInteractionOverlay
+    let options = TextAnnotationOptions(direction: .ltr,
+                                        xLimit: 170,
+                                        yLimit: 180,
+                                        maxLines: 2,
+                                        verticalAnchor: .bottom)
+    try view.insertAnnotationOn(options: options)
+    XCTAssertFalse(overlay.routePlacementTap(
+      at: CGPoint(x: 50, y: 150).applying(try XCTUnwrap(view.pageToOverlayTransform))))
+    XCTAssertTrue(overlay.hasPendingPlacement())
+    let tap = CGPoint(x: 50, y: 280).applying(try XCTUnwrap(view.pageToOverlayTransform))
+    XCTAssertTrue(overlay.routePlacementTap(at: tap))
+
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    XCTAssertEqual(editor.textContainer.size.width, 120, accuracy: 0.01)
+    let anchoredBottom = editor.frame.maxY
+    editor.insertText("First line\nSecond line")
+    XCTAssertEqual(editor.text, "First line\nSecond line")
+    XCTAssertEqual(editor.frame.maxY, anchoredBottom, accuracy: 0.01)
+
+    let insertionCaret = editor.selectedRange
+    editor.insertText("\nThird line")
+    XCTAssertEqual(editor.text, "First line\nSecond line")
+    XCTAssertEqual(editor.selectedRange, insertionCaret)
+
+    editor.selectedRange = NSRange(location: 0, length: 5)
+    let replacementSelection = editor.selectedRange
+    editor.insertText("A replacement that cannot fit in the bounded editor")
+    XCTAssertEqual(editor.text, "First line\nSecond line")
+    XCTAssertEqual(editor.selectedRange, replacementSelection)
+
+    editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
+    editor.setMarkedText("x", selectedRange: NSRange(location: 1, length: 0))
+    let markedText = editor.text ?? ""
+    let markedSelection = editor.selectedRange
+    editor.setMarkedText("x\nThird line", selectedRange: NSRange(location: 1, length: 0))
+    XCTAssertEqual(editor.text, markedText)
+    XCTAssertEqual(editor.selectedRange, markedSelection)
+    editor.unmarkText()
+
+    let acceptedText = editor.text ?? ""
+    editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
+    editor.deleteBackward()
+    XCTAssertEqual(editor.text, String(acceptedText.dropLast()))
+    XCTAssertEqual(editor.frame.maxY, anchoredBottom, accuracy: 0.01)
+
+    overlay.finishForLifecycle()
+    let annotation = try XCTUnwrap(view.documentCoordinator.document?.activePage.history.content
+      .textAnnotations.first)
+    XCTAssertEqual(annotation.text, String(acceptedText.dropLast()))
+    XCTAssertEqual(annotation.maxLines, 2)
+    XCTAssertEqual(annotation.verticalAnchor, .bottom)
+    XCTAssertEqual(annotation.flowBounds?.minX, 50)
+    XCTAssertEqual(annotation.flowBounds?.maxX, 170)
+    XCTAssertEqual(annotation.flowBounds?.minY, 180)
+    XCTAssertEqual(annotation.flowBounds?.maxY, 280)
+    XCTAssertEqual(annotation.bounds.maxY, 280, accuracy: 0.01)
+
+    let annotationTap = CGPoint(x: annotation.bounds.midX, y: annotation.bounds.midY)
+      .applying(try XCTUnwrap(view.pageToOverlayTransform))
+    XCTAssertTrue(overlay.routeTap(at: annotationTap))
+    let reopenedEditor = try XCTUnwrap(textEditor(in: overlay))
+    XCTAssertEqual(reopenedEditor.textContainer.size.width, 120, accuracy: 0.01)
+    let reopenedText = reopenedEditor.text ?? ""
+    reopenedEditor.insertText("\nThird line")
+    XCTAssertEqual(reopenedEditor.text, reopenedText)
+    overlay.finishForLifecycle()
+    let reopened = try XCTUnwrap(view.documentCoordinator.document?.activePage.history.content
+      .textAnnotations.first)
+    XCTAssertEqual(reopened.maxLines, 2)
+    XCTAssertEqual(reopened.verticalAnchor, .bottom)
+  }
+
+  func testOverfullReflowedDraftAllowsSuccessiveBackspaces() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let overlay = view.textInteractionOverlay
+    let flowBounds = CGRect(x: 50, y: 160, width: 160, height: 120)
+    try view.insertAnnotationOn(options: TextAnnotationOptions(
+      direction: .ltr,
+      xLimit: 210,
+      yLimit: 160,
+      maxLines: 2,
+      verticalAnchor: .bottom))
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 50, y: 280)))
+
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    let originalText = "MMMMMMMMM\nWWWWWWWWW"
+    editor.insertText(originalText)
+    XCTAssertEqual(editor.text, originalText)
+
+    try view.setTextDirection(direction: .rtl)
+    var fontSize = 16.0
+    let afterTwoBackspaces = String(originalText.dropLast(2))
+    for _ in 0..<56 {
+      let currentFits = InkSignPdfTextRenderer.fits(
+        originalText,
+        fontSize: CGFloat(fontSize),
+        isRTL: true,
+        flowBounds: flowBounds,
+        maxLines: 2)
+      let shortenedFits = InkSignPdfTextRenderer.fits(
+        afterTwoBackspaces,
+        fontSize: CGFloat(fontSize),
+        isRTL: true,
+        flowBounds: flowBounds,
+        maxLines: 2)
+      if !currentFits && !shortenedFits { break }
+      fontSize = try view.increaseTextSize()
+    }
+    XCTAssertFalse(InkSignPdfTextRenderer.fits(originalText,
+                                                fontSize: CGFloat(fontSize),
+                                                isRTL: true,
+                                                flowBounds: flowBounds,
+                                                maxLines: 2))
+    XCTAssertFalse(InkSignPdfTextRenderer.fits(afterTwoBackspaces,
+                                                fontSize: CGFloat(fontSize),
+                                                isRTL: true,
+                                                flowBounds: flowBounds,
+                                                maxLines: 2))
+    XCTAssertEqual(editor.text, originalText)
+    XCTAssertEqual(editor.selectedRange.location, (originalText as NSString).length)
+
+    for expectedText in [String(originalText.dropLast()), afterTwoBackspaces] {
+      editor.deleteBackward()
+      XCTAssertEqual(editor.text, expectedText)
+      XCTAssertFalse(InkSignPdfTextRenderer.fits(expectedText,
+                                                  fontSize: CGFloat(fontSize),
+                                                  isRTL: true,
+                                                  flowBounds: flowBounds,
+                                                  maxLines: 2))
+    }
+  }
+
+  func testInsertTextUsesCaretInsideMarkedRangeAndRejectsOverflow() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let overlay = view.textInteractionOverlay
+    let flowBounds = CGRect(x: 50, y: 160, width: 80, height: 120)
+    try view.insertAnnotationOn(options: TextAnnotationOptions(
+      direction: .ltr,
+      xLimit: 130,
+      yLimit: 280,
+      maxLines: 1,
+      verticalAnchor: .top))
+    XCTAssertTrue(overlay.routePlacementTap(
+      at: CGPoint(x: 50, y: 160).applying(try XCTUnwrap(view.pageToOverlayTransform))))
+
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    let fontSize = editor.font?.pointSize ?? 16
+    var markedText = "W"
+    for _ in 0..<64 {
+      guard InkSignPdfTextRenderer.fits(markedText + "W",
+                                        fontSize: fontSize,
+                                        isRTL: false,
+                                        flowBounds: flowBounds,
+                                        maxLines: 1) else { break }
+      markedText += "W"
+    }
+    XCTAssertGreaterThan(markedText.utf16.count, 1)
+    XCTAssertTrue(InkSignPdfTextRenderer.fits(markedText,
+                                               fontSize: fontSize,
+                                               isRTL: false,
+                                               flowBounds: flowBounds,
+                                               maxLines: 1))
+    let overflow = markedText + "W"
+    XCTAssertFalse(InkSignPdfTextRenderer.fits(overflow,
+                                                fontSize: fontSize,
+                                                isRTL: false,
+                                                flowBounds: flowBounds,
+                                                maxLines: 1))
+
+    let fittingPrefix = String(markedText.dropLast())
+    editor.setMarkedText(fittingPrefix, selectedRange: NSRange(location: 1, length: 0))
+    editor.insertText("W")
+    XCTAssertEqual(editor.text, markedText)
+
+    editor.selectedRange = NSRange(location: 0, length: (markedText as NSString).length)
+    editor.setMarkedText(markedText, selectedRange: NSRange(location: 1, length: 0))
+    let selectionInsideMark = editor.selectedRange
+    XCTAssertEqual(selectionInsideMark.location, 1)
+
+    // Exercise the editor's UIKeyInput preflight without the delegate's second admission
+    // check masking an incorrect range in the subclass.
+    editor.delegate = nil
+    editor.insertText("W")
+    XCTAssertEqual(editor.text, markedText)
+    XCTAssertEqual(editor.selectedRange, selectionInsideMark)
+
+    editor.setMarkedText(overflow, selectedRange: NSRange(location: 1, length: 0))
+    XCTAssertEqual(editor.text, markedText)
+    XCTAssertEqual(editor.selectedRange, selectionInsideMark)
+    editor.delegate = overlay
+  }
+
+  func testManualPlacementSnapshotsDirectionWhenArmed() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let overlay = view.textInteractionOverlay
+    try view.setTextDirection(direction: .ltr)
+    try view.insertAnnotationOn(options: TextAnnotationOptions(
+      direction: nil,
+      xLimit: 250,
+      yLimit: 300,
+      maxLines: 2,
+      verticalAnchor: nil))
+    try view.setTextDirection(direction: .rtl)
+
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 180, y: 100)))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    editor.insertText("direction snapshot")
+    overlay.finishForLifecycle()
+
+    let annotation = try XCTUnwrap(view.documentCoordinator.document?.activePage.history.content
+      .textAnnotations.first)
+    XCTAssertFalse(annotation.isRTL)
+    XCTAssertEqual(annotation.flowBounds?.minX, 180)
+    XCTAssertEqual(annotation.flowBounds?.maxX, 250)
+  }
+
   func testReopeningCommittedAnnotationUsesItsSavedDirection() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
@@ -668,8 +944,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
     try fixture.view.insertAnnotationOff()
     try fixture.view.insertAnnotationOff()
-    XCTAssertTrue(overlay.hasPendingPlacement(),
-                  "A replacement that has not published a document keeps placement active")
+    XCTAssertFalse(overlay.hasPendingPlacement())
     XCTAssertNil(textEditor(in: overlay))
   }
 
@@ -789,6 +1064,8 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
         fixture.view.documentView.document == nil
       rejected.fulfill()
     }
+    let pdfQueue = fixture.view.documentCoordinator.pdfQueue
+    pdfQueue.suspend()
     fixture.view.beginLoad("",
                           zoom: nil,
                           focus: nil,
@@ -796,6 +1073,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                           promise: promise)
     XCTAssertTrue(overlay.hasPendingPlacement(),
                   "A replacement that has not published a document keeps placement active")
+    pdfQueue.resume()
     wait(for: [rejected], timeout: 5)
     XCTAssertTrue(stateWasClearedAtRejection)
     XCTAssertFalse(overlay.hasPendingPlacement())

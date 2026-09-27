@@ -5,7 +5,7 @@ import PDFKit
 final class InkSignPdfDocumentCoordinator {
   enum OperationType: Equatable { case open, finalize, structural }
   enum PageMutation {
-    case append([InkSignPdfPageState])
+    case append([InkSignPdfPageState], activePageID: UUID)
     case removeActive
     case moveActive(to: Int)
   }
@@ -64,12 +64,12 @@ final class InkSignPdfDocumentCoordinator {
       throw PageMutationError.activePageMissing
     }
     switch mutation {
-    case .append(let appended):
+    case .append(let appended, let selectedPageID):
       guard !appended.isEmpty else {
         return PageOrder(pages: current, activePageID: activePageID,
                          addedPageCount: 0, changed: false)
       }
-      return PageOrder(pages: current + appended, activePageID: appended[0].id,
+      return PageOrder(pages: current + appended, activePageID: selectedPageID,
                        addedPageCount: appended.count, changed: true)
     case .removeActive:
       guard current.count > 1 else { throw PageMutationError.lastPageRequired }

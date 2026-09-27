@@ -3,7 +3,7 @@ import NitroModules
 import PDFKit
 
 extension InkSignPdfDocumentCoordinator {
-  enum StructuralCommand { case append, remove, move(to: Int) }
+  enum StructuralCommand { case append(activePage: AddPagesActivePage), remove, move(to: Int) }
 
   struct StructuralInput {
     let operation: OperationToken
@@ -40,7 +40,7 @@ extension InkSignPdfDocumentCoordinator {
 
       let order: PageOrder
       switch command {
-      case .append:
+      case .append(let activePage):
         var appendedRecords: [InkSignPdfPageState] = []
         for stagedPage in staged {
           if stagedPage.type == .pdf {
@@ -71,15 +71,38 @@ extension InkSignPdfDocumentCoordinator {
           try Self.pageRecord(in: candidate, at: index)
         }
         if input.pages.isEmpty {
-          guard let first = appended.first else { throw InkSignView.MutablePageError.assemblyFailed }
+          let selectedPage: InkSignPdfPageState
+          switch activePage {
+          case .current, .firstadded:
+            guard let first = appended.first else {
+              throw InkSignView.MutablePageError.assemblyFailed
+            }
+            selectedPage = first
+          case .lastadded:
+            guard let last = appended.last else {
+              throw InkSignView.MutablePageError.assemblyFailed
+            }
+            selectedPage = last
+          }
           order = PageOrder(pages: appended,
-                            activePageID: first.id,
+                            activePageID: selectedPage.id,
                             addedPageCount: appended.count,
                             changed: true)
         } else {
+          let selectedPageID: UUID
+          switch activePage {
+          case .current:
+            selectedPageID = input.activePageID
+          case .firstadded:
+            guard let first = appended.first else { throw InkSignView.MutablePageError.assemblyFailed }
+            selectedPageID = first.id
+          case .lastadded:
+            guard let last = appended.last else { throw InkSignView.MutablePageError.assemblyFailed }
+            selectedPageID = last.id
+          }
           order = try Self.pageOrder(current: input.pages,
                                      activePageID: input.activePageID,
-                                     mutation: .append(appended))
+                                     mutation: .append(appended, activePageID: selectedPageID))
         }
       case .remove:
         candidate.removePage(at: input.activePageIndex)
