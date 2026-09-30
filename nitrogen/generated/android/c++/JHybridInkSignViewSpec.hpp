@@ -96,6 +96,7 @@ namespace margelo::nitro::inksignpdf {
     void redo() override;
     void clear() override;
     void addTextAnnotation(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) override;
+    std::shared_ptr<Promise<void>> insertTextByKey(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) override;
     void setTextDirection(TextDirection direction) override;
     void insertAnnotationOn(const std::optional<TextPlacementOptions>& options) override;
     void insertAnnotationOff() override;

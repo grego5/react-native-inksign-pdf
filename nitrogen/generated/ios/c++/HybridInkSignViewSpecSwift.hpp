@@ -46,6 +46,10 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
+// Forward declaration of `TextInsertionByKeyOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
+// Forward declaration of `TextKeyOccurrence` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `TextPlacementOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
@@ -71,6 +75,8 @@ namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 #include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
+#include "TextInsertionByKeyOptions.hpp"
+#include "TextKeyOccurrence.hpp"
 #include "TextPlacementOptions.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
@@ -314,6 +320,14 @@ namespace margelo::nitro::inksignpdf {
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+    }
+    inline std::shared_ptr<Promise<void>> insertTextByKey(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) override {
+      auto __result = _swiftPart.insertTextByKey(text, key, options);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
     }
     inline void setTextDirection(TextDirection direction) override {
       auto __result = _swiftPart.setTextDirection(static_cast<int>(direction));

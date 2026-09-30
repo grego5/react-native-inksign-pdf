@@ -28,14 +28,19 @@
   `ToUnicode` maps glyphs to characters; line-level `/ActualText` preserves logical
   extraction order for mixed RTL and LTR text. Embed a selected font only when its
   embedding rights allow it.
+- Export embeds selected fonts when permitted and preserves glyph rendering and
+  text extraction when subsetting is used. It saves full font programs when font
+  rights or glyph mappings require them, and retries with full fonts if subset
+  serialization fails. Font collections currently use the first face.
 - On API 24–30, selected Android font bytes are unavailable; use PDFium's standard-font
   fallback as a best-effort path. Missing glyph coverage or embedding rights alone do
   not reject finalize; affected glyphs may be blank or partial.
 
 ## Verification
 
-- Android instrumentation checks PDFium rendering and metadata plus independent logical-text
-  extraction with PDFBox.
+- Android instrumentation checks PDFium rendering and metadata plus independent
+  logical-text extraction with PDFBox. Font tests compare subset and full-font
+  exports for text extraction, rendered glyph positions, and font-resource reuse.
 
 Direction selection and editing behavior are described in
 [viewport-input.md](viewport-input.md).

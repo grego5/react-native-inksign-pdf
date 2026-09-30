@@ -5,6 +5,10 @@
 - `InkSignView` adapts Nitro commands and coordinates document operations.
 - The document coordinator owns the published PDF, ordered page records, active
   page ID, page histories, generation, and module-created artifacts.
+- The serial PDF queue caches source text geometry and writing rules for both
+  placement paths. The least-recently-used cache is bounded to eight pages and
+  8 MiB estimated storage. Page navigation does not invalidate entries; a new
+  generation or disposal clears them.
 - `PDFView` owns page presentation and viewport gestures.
 - The page overlay provider supplies page-scoped ink canvases. The text overlay
   owns temporary editing state.

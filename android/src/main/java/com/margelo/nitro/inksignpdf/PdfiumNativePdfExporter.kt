@@ -4,7 +4,22 @@ import java.io.File
 
 /** Serializes resolved PDFium text runs and validates the saved candidate. */
 internal object PdfiumNativePdfExporter {
-  fun export(snapshot: PdfExportSnapshot, text: PdfiumTextSnapshot, destination: File) {
+  fun export(snapshot: PdfExportSnapshot, text: PdfiumTextSnapshot, destination: File) =
+    exportInternal(snapshot, text, destination, forceSubsetSaveFailureForTesting = false)
+
+  internal fun exportForTesting(
+    snapshot: PdfExportSnapshot,
+    text: PdfiumTextSnapshot,
+    destination: File,
+    forceSubsetSaveFailure: Boolean,
+  ) = exportInternal(snapshot, text, destination, forceSubsetSaveFailure)
+
+  private fun exportInternal(
+    snapshot: PdfExportSnapshot,
+    text: PdfiumTextSnapshot,
+    destination: File,
+    forceSubsetSaveFailureForTesting: Boolean,
+  ) {
     val pageIndices = IntArray(snapshot.pages.size) { snapshot.pages[it].pageIndex }
     val pageDimensions = DoubleArray(snapshot.pages.size * 2) { index ->
       val page = snapshot.pages[index / 2]
@@ -62,6 +77,7 @@ internal object PdfiumNativePdfExporter {
     }
     val textRunColors = IntArray(textRuns.size) { textRuns[it].color }
     val fontResources = Array(text.fonts.size) { text.fonts[it].bytes.copyOf() }
+    val maySubsetFonts = text.fonts.all { it.fsType and 0x0100 == 0 }
 
     nativeExport(
       snapshot.sourcePath,
@@ -84,6 +100,8 @@ internal object PdfiumNativePdfExporter {
       textRunGeometry,
       textRunColors,
       fontResources,
+      maySubsetFonts,
+      forceSubsetSaveFailureForTesting,
       snapshot.color,
     )
   }
@@ -109,6 +127,8 @@ internal object PdfiumNativePdfExporter {
     textRunGeometry: FloatArray,
     textRunColors: IntArray,
     fontResources: Array<ByteArray>,
+    maySubsetFonts: Boolean,
+    forceSubsetSaveFailureForTesting: Boolean,
     inkColor: Int,
   )
 }

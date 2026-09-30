@@ -434,6 +434,12 @@ android {
   compileSdkVersion = getExtOrIntegerDefault('compileSdkVersion')
   compileSdkExtension = 18
 
+  sourceSets {
+    androidTest {
+      assets.srcDir(file('../example/assets'))
+    }
+  }
+
   buildFeatures {
     buildConfig = true
     prefab = true

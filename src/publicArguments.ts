@@ -90,3 +90,12 @@ export function validateTextPlacementOptions(value: unknown): void {
     );
   }
 }
+
+export function validateTextInsertionByKeyOptions(value: unknown): void {
+  if (value === undefined) return;
+  if (!isRecord(value) ||
+    (value.occurrence !== undefined && value.occurrence !== 'first' && value.occurrence !== 'last')) {
+    throw argumentError('invalid_text_key_options', 'Occurrence must be first or last');
+  }
+  validateTextAnnotationOptions(value);
+}

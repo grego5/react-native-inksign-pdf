@@ -33,6 +33,12 @@ internal data class PdfSessionInfo(
 
 }
 
+internal data class PdfiumKeyLookupPage(
+  val hasLiteralMatch: Boolean,
+  val matches: List<PdfiumTextKeyMatch>,
+  val rules: List<PdfiumHorizontalSnapCandidate>,
+)
+
 /** Stable open failures at the Android PDF boundary. */
 internal class PdfSessionException(
   val code: String,
@@ -48,6 +54,8 @@ internal interface PdfSessionResource : AutoCloseable {
   val info: PdfSessionInfo
 
   fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> = emptyList()
+  fun lookupTextKey(pageIndex: Int, key: String): PdfiumKeyLookupPage =
+    PdfiumKeyLookupPage(false, emptyList(), horizontalSnapCandidates(pageIndex))
 
   /** Transfers the returned bitmaps to the caller; the worker no longer owns them. */
   fun renderTiles(
@@ -110,6 +118,12 @@ internal class PdfSession private constructor(
 
   override fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> =
     pdfiumSession.horizontalSnapCandidates(pageIndex)
+
+  override fun lookupTextKey(pageIndex: Int, key: String): PdfiumKeyLookupPage {
+    val textLookup = pdfiumSession.textKeyLookup(pageIndex, key)
+    return PdfiumKeyLookupPage(textLookup.hasLiteralMatch, textLookup.matches,
+      pdfiumSession.horizontalSnapCandidates(pageIndex))
+  }
 
   override fun renderTiles(
     requests: List<PdfTileRequest>,
@@ -572,6 +586,30 @@ internal class PdfSessionWorker(
           val session = current ?: throw cancelled(generation)
           if (session.info.generation != generation) throw cancelled(generation)
           session.horizontalSnapCandidates(pageIndex)
+        }
+        completion(result)
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      completion(Result.failure(cancelled(generation)))
+    }
+  }
+
+  fun lookupTextKey(
+    generation: Long,
+    pageIndex: Int,
+    key: String,
+    completion: (Result<PdfiumKeyLookupPage>) -> Unit,
+  ) {
+    if (closed) {
+      completion(Result.failure(cancelled(generation)))
+      return
+    }
+    try {
+      executor.execute {
+        val result = runCatching {
+          val session = current ?: throw cancelled(generation)
+          if (session.info.generation != generation) throw cancelled(generation)
+          session.lookupTextKey(pageIndex, key)
         }
         completion(result)
       }

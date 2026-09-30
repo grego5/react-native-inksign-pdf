@@ -312,6 +312,56 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeHorizontalSnapCandid
   return values;
 }
 
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeTextKeyMatches(
+    JNIEnv* env, jclass, jlong handle, jint pageIndex, jstring key) {
+  const auto* session = reinterpret_cast<const PdfiumDocumentSession*>(handle);
+  if (session == nullptr || pageIndex < 0 || key == nullptr) return nullptr;
+  const jchar* chars = env->GetStringChars(key, nullptr);
+  if (chars == nullptr) return nullptr;
+  const auto length = env->GetStringLength(key);
+  std::u16string keyText(reinterpret_cast<const char16_t*>(chars),
+                         static_cast<std::size_t>(length));
+  env->ReleaseStringChars(key, chars);
+  std::vector<margelo::nitro::inksignpdf::pdfium::PdfiumTextKeyMatch> matches;
+  bool hasLiteralMatch = false;
+  if (!session->inspectTextKeyMatches(static_cast<std::size_t>(pageIndex), keyText,
+                                      hasLiteralMatch, matches)) {
+    return nullptr;
+  }
+  if (matches.size() > static_cast<std::size_t>(((std::numeric_limits<jsize>::max)() - 1) / 7)) {
+    return nullptr;
+  }
+  auto values = env->NewDoubleArray(static_cast<jsize>(matches.size() * 7 + 1));
+  if (values == nullptr) return nullptr;
+  std::vector<jdouble> flattened;
+  flattened.reserve(matches.size() * 7 + 1);
+  flattened.push_back(hasLiteralMatch ? 1.0 : 0.0);
+  for (const auto& match : matches) {
+    flattened.insert(flattened.end(), {match.left, match.top, match.right,
+        match.bottom, match.sourceIndex, match.lineCenter, match.lineHeight});
+  }
+  env->SetDoubleArrayRegion(values, 0, static_cast<jsize>(flattened.size()), flattened.data());
+  return values;
+}
+
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativePageAnalysisScanCountsForTesting(
+    JNIEnv* env, jclass, jlong handle) {
+  const auto* session = reinterpret_cast<const PdfiumDocumentSession*>(handle);
+  if (session == nullptr) return nullptr;
+  const auto counts = session->pageAnalysisScanCountsForTesting();
+  const jlong raw[] = {static_cast<jlong>(counts.textExtractions),
+                       static_cast<jlong>(counts.ruleInspections),
+                       static_cast<jlong>(counts.pageLoads),
+                       static_cast<jlong>(counts.textCharacters),
+                       static_cast<jlong>(counts.charactersWithGeometry)};
+  auto values = env->NewLongArray(5);
+  if (values == nullptr) return nullptr;
+  env->SetLongArrayRegion(values, 0, 5, raw);
+  return values;
+}
+
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeRenderPageIntoBitmap(
     JNIEnv* env,

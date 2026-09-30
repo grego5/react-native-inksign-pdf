@@ -517,6 +517,13 @@ internal class MutableDocumentCoordinator(
     completion: (Result<List<PdfiumHorizontalSnapCandidate>>) -> Unit,
   ) = sessionWorker.horizontalSnapCandidates(generation, pageIndex, completion)
 
+  fun lookupTextKey(
+    generation: Long,
+    pageIndex: Int,
+    key: String,
+    completion: (Result<PdfiumKeyLookupPage>) -> Unit,
+  ) = sessionWorker.lookupTextKey(generation, pageIndex, key, completion)
+
   suspend fun <T> executeStructuralMutation(
     generation: Long,
     request: PdfiumAssemblyRequest,

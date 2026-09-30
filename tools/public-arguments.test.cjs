@@ -6,6 +6,7 @@ const {
   validateTextAnnotationOptions,
   validateTextPlacementOptions,
 } = require('../lib/commonjs/publicArguments.js');
+const { createTextKeyInsertionCommand } = require('../lib/commonjs/textKeyInsertion.js');
 
 test('addPages accepts positive finite DPI and JPEG quality endpoints', () => {
   assert.doesNotThrow(() => validateAddPagesOptions({ targetDpi: Number.MIN_VALUE, jpegQuality: 0 }));
@@ -58,4 +59,21 @@ test('text options validate alignment and physical placement dimensions', () => 
       message: /^invalid_text_placement_options:/,
     });
   }
+});
+
+test('insertTextByKey forwards values through the public handle and rejects invalid options', async () => {
+  const calls = [];
+  const native = {
+    insertTextByKey: (...args) => { calls.push(args); return Promise.resolve(); },
+  };
+  const insertTextByKey = createTextKeyInsertionCommand(
+    (text, key, options) => native.insertTextByKey(text, key, options),
+  );
+  const options = { occurrence: 'last', direction: 'rtl', maxLines: 2, verticalAnchor: 'top' };
+  await insertTextByKey('Ada', 'Signer', options);
+  assert.deepEqual(calls, [['Ada', 'Signer', options]]);
+  await assert.rejects(insertTextByKey('Ada', 'Signer', { occurrence: 'nearest' }), {
+    message: /^invalid_text_key_options:/,
+  });
+  assert.equal(calls.length, 1);
 });

@@ -6,6 +6,7 @@ import androidx.test.filters.SmallTest
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -71,6 +72,72 @@ class PdfiumSmokeInstrumentationTest {
   }
 
   @Test
+  fun pdfiumKeyLookupFoldsAsciiSourceTextAndReturnsBounds() {
+    PdfiumRenderSession.open(textPdf()).use { session ->
+      val matches = session.textKeyMatches(0, "ab")
+      assertTrue("The source-text key should be found once", matches.size == 1)
+      val match = matches.single()
+      assertTrue(match.left >= 0.0 && match.right > match.left)
+      assertTrue(match.top >= 0.0 && match.bottom > match.top)
+      assertTrue(match.sourceIndex == 0.0 && match.lineHeight > 0.0)
+      assertTrue(session.textKeyMatches(0, "missing").isEmpty())
+      assertTrue(!session.textKeyLookup(0, "missing").hasLiteralMatch)
+    }
+  }
+
+  @Test
+  fun reopenedDocumentDoesNotReusePreviousPageAnalysis() {
+    PdfiumRenderSession.open(textPdf()).use { original ->
+      assertTrue(!original.textKeyLookup(0, "CD").hasLiteralMatch)
+      original.horizontalSnapCandidates(0)
+    }
+    PdfiumRenderSession.open(multilineTextPdf()).use { replacement ->
+      assertTrue(replacement.textKeyLookup(0, "CD").hasLiteralMatch)
+    }
+  }
+
+  @Test
+  fun pdfiumKeyLookupRejectsALiteralSpanningVisualLines() {
+    PdfiumRenderSession.open(multilineTextPdf()).use { session ->
+      assertTrue(session.textKeyMatches(0, "AB").size == 1)
+      assertTrue(session.textKeyMatches(0, "CD").size == 1)
+      val multilineMatches = session.textKeyMatches(0, "AB\r\nCD")
+      assertTrue(multilineMatches.size == 1)
+      assertTrue(multilineMatches.single().lineHeight == 0.0)
+    }
+  }
+
+  @Test
+  fun pdfiumMultiwordKeyKeepsAExtractedSpaceWithoutGlyphGeometry() {
+    PdfiumRenderSession.open(separatedWordsTextPdf()).use { session ->
+      val lookup = session.textKeyLookup(0, "Full Name")
+      assertTrue("The PDFium text page should synthesize the space", lookup.hasLiteralMatch)
+      val scans = session.pageAnalysisScanCountsForTesting()
+      assertEquals("lookup=$lookup scans=${scans.toList()}", 1, lookup.matches.size)
+      val match = lookup.matches.single()
+      assertTrue(match.lineHeight > 0.0)
+      assertTrue(match.lineCenter in match.top..match.bottom)
+      assertEquals("The fixture should include a character without geometry", scans[3] - 1, scans[4])
+    }
+  }
+
+  @Test
+  fun pdfiumPlacementPathsReusePageTextAndRuleAnalysis() {
+    PdfiumRenderSession.open(textPdf()).use { session ->
+      session.horizontalSnapCandidates(0)
+      val lookup = session.textKeyLookup(0, "ab")
+      assertTrue(lookup.matches.size == 1)
+      assertTrue(session.textKeyMatches(0, "AB").size == 1)
+      session.horizontalSnapCandidates(0)
+
+      val scans = session.pageAnalysisScanCountsForTesting()
+      assertEquals(1, scans[0])
+      assertEquals(1, scans[1])
+      assertEquals(1, scans[2])
+    }
+  }
+
+  @Test
   fun suppliedDiagnosticPdfsExposeBothHorizontalRuleStyles() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val testAssets = instrumentation.context.assets
@@ -113,6 +180,21 @@ class PdfiumSmokeInstrumentationTest {
           )
         }
       }
+    }
+  }
+
+  @Test
+  fun pdfiumJoinsCloselySpacedSquareShapesIntoADottedRule() {
+    val content = buildString {
+      append("0.4 0 0 0.4 0 0 cm\n")
+      for (x in 20..220 step 2) append("$x 100 1 1 re f\n")
+    }
+    PdfiumRenderSession.open(textPagePdf(content, pageWidth = 160)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue(
+        "A scaled row of small squares should form a usable dotted rule: $rules",
+        rules.any { it.right - it.left >= 70.0 },
+      )
     }
   }
 
@@ -203,11 +285,24 @@ class PdfiumSmokeInstrumentationTest {
   }
 
   private fun textPdf(): ByteArray {
-    val content = "BT /F1 20 Tf 1 0 0 1 10 60 Tm (AB) Tj ET\n"
+    return textPagePdf("BT /F1 20 Tf 1 0 0 1 10 60 Tm (AB) Tj ET\n")
+  }
+
+  private fun multilineTextPdf(): ByteArray {
+    return textPagePdf("BT /F1 20 Tf 1 0 0 1 10 70 Tm (AB) Tj 0 -30 Td (CD) Tj ET\n")
+  }
+
+  private fun separatedWordsTextPdf(): ByteArray {
+    val content = "BT /F1 20 Tf 1 0 0 1 10 60 Tm (Full) Tj ET\n" +
+      "BT /F1 20 Tf 1 0 0 1 49 60 Tm (Name) Tj ET\n"
+    return textPagePdf(content, pageWidth = 120)
+  }
+
+  private fun textPagePdf(content: String, pageWidth: Int = 100): ByteArray {
     val objects = listOf(
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
       "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-      "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] " +
+      "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $pageWidth 100] " +
         "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
       "4 0 obj\n<< /Length ${content.toByteArray(Charsets.ISO_8859_1).size} >>\n" +
         "stream\n$content\nendstream\nendobj\n",

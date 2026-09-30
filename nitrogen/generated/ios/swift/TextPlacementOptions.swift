@@ -62,7 +62,7 @@ public extension TextPlacementOptions {
   var direction: TextDirection? {
     return self.__direction.value
   }
-
+  
   @inline(__always)
   var width: Double? {
     return { () -> Double? in
@@ -74,7 +74,7 @@ public extension TextPlacementOptions {
       }
     }()
   }
-
+  
   @inline(__always)
   var height: Double? {
     return { () -> Double? in
@@ -86,7 +86,7 @@ public extension TextPlacementOptions {
       }
     }()
   }
-
+  
   @inline(__always)
   var maxLines: Double? {
     return { () -> Double? in
@@ -98,12 +98,12 @@ public extension TextPlacementOptions {
       }
     }()
   }
-
+  
   @inline(__always)
   var alignment: TextAlignment? {
     return self.__alignment.value
   }
-
+  
   @inline(__always)
   var verticalAnchor: TextVerticalAnchor? {
     return self.__verticalAnchor.value

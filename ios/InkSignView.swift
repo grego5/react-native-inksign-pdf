@@ -366,6 +366,8 @@ final class InkSignView: HybridInkSignViewSpec {
     case invalidText
     case invalidBounds
     case cancelled
+    case keyNotFound
+    case ruleNotFound
 
     var errorDescription: String? {
       switch self {
@@ -379,6 +381,10 @@ final class InkSignView: HybridInkSignViewSpec {
         return "invalid_text_bounds: Text bounds must define an ordered rectangle inside the active page"
       case .cancelled:
         return "operation_cancelled: The text request was disposed or superseded"
+      case .keyNotFound:
+        return "text_key_not_found: The requested text key was not found on the active page"
+      case .ruleNotFound:
+        return "text_rule_not_found: The selected text key has no usable rule or visible line"
       }
     }
   }

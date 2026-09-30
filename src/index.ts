@@ -9,11 +9,14 @@ import {
   validateTextAnnotationOptions,
   validateTextPlacementOptions,
 } from './publicArguments';
+import { createTextKeyInsertionCommand } from './textKeyInsertion';
 
 import type {
   PageInfo,
   TextAnnotationBounds,
   TextAnnotationOptions,
+  TextInsertionByKeyOptions,
+  TextKeyOccurrence,
   TextPlacementOptions,
   PageType,
   TextDirection,
@@ -40,6 +43,8 @@ export type {
   PageInfo,
   TextAnnotationBounds,
   TextAnnotationOptions,
+  TextInsertionByKeyOptions,
+  TextKeyOccurrence,
   TextPlacementOptions,
   PageType,
   TextDirection,
@@ -160,6 +165,9 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
       validateTextAnnotationOptions(options);
       native.addTextAnnotation(text, bounds, options);
     },
+    insertTextByKey: createTextKeyInsertionCommand(
+      (text, key, options) => native.insertTextByKey(text, key, options),
+    ),
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
         throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');

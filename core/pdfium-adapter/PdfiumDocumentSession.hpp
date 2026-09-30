@@ -6,6 +6,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace margelo::nitro::inksignpdf::pdfium {
@@ -94,6 +95,26 @@ struct PdfiumHorizontalSnapCandidate final {
   double y = 0.0;
 };
 
+/** One extractable source-text occurrence in canonical top-left page points. */
+struct PdfiumTextKeyMatch final {
+  double left = 0.0;
+  double top = 0.0;
+  double right = 0.0;
+  double bottom = 0.0;
+  double sourceIndex = 0.0;
+  double lineCenter = 0.0;
+  double lineHeight = 0.0;
+};
+
+/** Internal counters exposed to instrumentation tests for cache reuse checks. */
+struct PdfiumPageAnalysisScanCounts final {
+  std::uint64_t textExtractions = 0;
+  std::uint64_t ruleInspections = 0;
+  std::uint64_t pageLoads = 0;
+  std::uint64_t textCharacters = 0;
+  std::uint64_t charactersWithGeometry = 0;
+};
+
 struct PdfiumOpenResult final {
   std::unique_ptr<class PdfiumDocumentSession> session;
   PdfiumError error;
@@ -143,7 +164,14 @@ class PdfiumDocumentSession final {
                           PdfiumPageMetadata& metadata) const;
   PdfiumError inspectHorizontalSnapCandidates(
       std::size_t pageIndex,
-      std::vector<PdfiumHorizontalSnapCandidate>& candidates) const;
+      std::vector<PdfiumHorizontalSnapCandidate>& candidates,
+      bool copyCandidates = true) const;
+  PdfiumError inspectTextKeyMatches(
+      std::size_t pageIndex,
+      std::u16string_view key,
+      bool& hasLiteralMatch,
+      std::vector<PdfiumTextKeyMatch>& matches) const;
+  PdfiumPageAnalysisScanCounts pageAnalysisScanCountsForTesting() const;
   PdfiumError renderPage(const PdfiumPageRenderRequest& request) const;
   PdfiumError close() noexcept;
 

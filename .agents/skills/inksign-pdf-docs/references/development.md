@@ -74,6 +74,14 @@
 - When the local Mac VM is unavailable, use the repository's iOS workflow on a
   GitHub-hosted macOS runner and select the narrowest focus for the change.
 
+### Publish an iOS ad hoc IPA
+
+Run `tools/publish-ios-adhoc.ps1` from Windows PowerShell. Pass `-IpaPath` for
+an IPA on the host, or `-RemoteHost` and `-RemoteIpaPath` to retrieve one over
+SSH. The publisher requires GitHub CLI authenticated with repository write
+access. Keep machine-specific paths in command arguments, not repository
+scripts.
+
 ## Run Android tests and builds locally
 
 Use repository runners instead of manually reconstructing their commands:

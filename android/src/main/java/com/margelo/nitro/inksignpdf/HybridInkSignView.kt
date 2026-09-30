@@ -27,13 +27,14 @@ import kotlin.coroutines.resumeWithException
 @DoNotStrip
 class HybridInkSignView internal constructor(
     private val context: Context,
+    sessionWorker: PdfSessionWorker = PdfSessionWorker(),
 ) : HybridInkSignViewSpec() {
   private val artifactPolicy = CacheArtifactPolicy.initialize(context)
   private val pageInputCoordinator = PageInputCoordinator(context, artifactPolicy)
   private val container = FrameLayout(context)
   private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-  private val coordinator = MutableDocumentCoordinator(
-    sessionWorker = PdfSessionWorker(),
+  internal val coordinator = MutableDocumentCoordinator(
+    sessionWorker = sessionWorker,
     artifactPolicy = artifactPolicy,
   )
   private val inkEngine = InkEngine()
@@ -421,6 +422,83 @@ class HybridInkSignView internal constructor(
       checkMainThread()
       if (disposed) throw operationCancelled()
       textOverlay.addTextAnnotation(bounds, text, options)
+    }
+  }
+
+  override fun insertTextByKey(
+    text: String,
+    key: String,
+    options: TextInsertionByKeyOptions?,
+  ): Promise<Unit> = launchPromise {
+    checkMainThread()
+    if (disposed) throw operationCancelled()
+    val presentation = surface.textPresentationSnapshot() ?: throw PdfSessionException(
+      "view_not_ready", "A published PDF page is required for key-based text insertion",
+    )
+    val generation = presentation.generation
+    val pageIndex = presentation.pageIndex
+    val pageSwitchId = surface.currentPageSwitchId
+    val page = presentation.page
+    val directionRtl = textOverlay.resolveDirection(options?.direction)
+    val lookup = awaitCurrentPageKeyLookup(
+      awaitLookup = { awaitKeyLookup(generation, pageIndex, key) },
+      isCurrentPage = {
+        !disposed && coordinator.generation == generation &&
+          surface.currentPageSwitchId == pageSwitchId &&
+          runCatching { surface.currentPageInfo().pageIndex == pageIndex }.getOrDefault(false)
+      },
+    )
+    if (!lookup.hasLiteralMatch) {
+      throw PdfSessionException("text_key_not_found", "The requested text key was not found on the active page")
+    }
+    val placement = selectPdfiumTextKeyPlacement(
+      lookup.matches,
+      lookup.rules,
+      options?.occurrence ?: TextKeyOccurrence.FIRST,
+      directionRtl,
+      page,
+    ) ?: throw PdfSessionException(
+      "text_rule_not_found", "The selected text key has no usable adjacent rule",
+    )
+    val rule = placement.rule
+    val anchor = options?.verticalAnchor ?: TextVerticalAnchor.BOTTOM
+    if (rule.y <= 0.0 || rule.y >= page.height) {
+      throw PdfSessionException("text_rule_not_found", "The selected rule leaves no page area for text")
+    }
+    val bounds = if (anchor == TextVerticalAnchor.BOTTOM) {
+      TextAnnotationBounds(placement.contentLeft, 0.0, placement.contentRight - placement.contentLeft, rule.y)
+    } else {
+      TextAnnotationBounds(placement.contentLeft, rule.y,
+        placement.contentRight - placement.contentLeft, page.height - rule.y)
+    }
+    val commitOptions = TextAnnotationOptions(
+      direction = if (directionRtl) TextDirection.RTL else TextDirection.LTR,
+      maxLines = options?.maxLines,
+      alignment = options?.alignment ?: TextAlignment.START,
+      verticalAnchor = anchor,
+    )
+    checkMainThread()
+    if (disposed || coordinator.generation != generation ||
+      surface.currentPageInfo().pageIndex != pageIndex || surface.currentPageSwitchId != pageSwitchId) {
+      throw operationCancelled()
+    }
+    surface.withStateTransaction {
+      textOverlay.addTextAnnotation(bounds, text, commitOptions, requireVisibleLine = true,
+        resolvedDirectionRtl = directionRtl)
+    }
+    Unit
+  }
+
+  private suspend fun awaitKeyLookup(
+    generation: Long,
+    pageIndex: Int,
+    key: String,
+  ): PdfiumKeyLookupPage = suspendCancellableCoroutine { continuation ->
+    coordinator.lookupTextKey(generation, pageIndex, key) { result ->
+      result.fold(
+        onSuccess = { value -> continuation.resume(value) },
+        onFailure = { error -> continuation.resumeWithException(error) },
+      )
     }
   }
 
@@ -842,4 +920,15 @@ class HybridInkSignView internal constructor(
     )
   }
 
+}
+
+internal suspend fun <T> awaitCurrentPageKeyLookup(
+  awaitLookup: suspend () -> T,
+  isCurrentPage: () -> Boolean,
+): T {
+  val result = awaitLookup()
+  if (!isCurrentPage()) {
+    throw PdfSessionException("operation_cancelled", "The active page changed during text lookup")
+  }
+  return result
 }
