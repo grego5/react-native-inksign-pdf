@@ -31,6 +31,10 @@ final class InkSignPdfDocumentCoordinator {
     let generation: UInt64
     let type: OperationType
   }
+  private struct PageAnalysisKey: Hashable {
+    let generation: UInt64
+    let pageID: UUID
+  }
 
   let artifactPolicy: InkSignPdfCacheArtifactPolicy
   let pdfQueue = DispatchQueue(label: "ReactNativeInkSignPdf.ios.pdf",
@@ -46,6 +50,10 @@ final class InkSignPdfDocumentCoordinator {
   private var operationPublishedDocument = false
   private var pendingArtifacts = Set<URL>()
   private var ownedOutputs = Set<URL>()
+  private var pageAnalysisGeneration: UInt64?
+  private var pageAnalysisCache: [PageAnalysisKey: InkSignPdfPageAnalysis] = [:]
+  private var pageAnalysisLRU: [PageAnalysisKey] = []
+  private(set) var pageAnalysisBuildCountForTesting = 0
 
   var isDirty: Bool {
     structuralDirty || document?.pages.contains { !$0.history.content.isEmpty } == true
@@ -285,6 +293,50 @@ final class InkSignPdfDocumentCoordinator {
     structuralDirty = dirty
   }
 
+  func pageAnalysis(sourceURL: URL,
+                    generation: UInt64,
+                    pageIndex: Int,
+                    pageID: UUID,
+                    mediaBox: CGRect) -> InkSignPdfPageAnalysis? {
+    dispatchPrecondition(condition: .onQueue(pdfQueue))
+    if pageAnalysisGeneration != generation {
+      pageAnalysisCache.removeAll(keepingCapacity: true)
+      pageAnalysisLRU.removeAll(keepingCapacity: true)
+      pageAnalysisGeneration = generation
+    }
+    let key = PageAnalysisKey(generation: generation, pageID: pageID)
+    if let cached = pageAnalysisCache[key] {
+      pageAnalysisLRU.removeAll { $0 == key }
+      pageAnalysisLRU.append(key)
+      return cached
+    }
+    guard let source = PDFDocument(url: sourceURL),
+          let page = source.page(at: pageIndex) else { return nil }
+    let analysis = InkSignPdfPageAnalysis.build(generation: generation,
+                                                pageID: pageID,
+                                                pageIndex: pageIndex,
+                                                page: page,
+                                                mediaBox: mediaBox)
+    pageAnalysisCache[key] = analysis
+    pageAnalysisLRU.append(key)
+    pageAnalysisBuildCountForTesting += 1
+    while !pageAnalysisLRU.isEmpty {
+      let estimatedBytes = pageAnalysisCache.values.reduce(0) {
+        $0 + $1.estimatedMemoryBytes
+      }
+      guard pageAnalysisLRU.count > 8 || estimatedBytes > 8 * 1024 * 1024 else { break }
+      let evicted = pageAnalysisLRU.removeFirst()
+      pageAnalysisCache.removeValue(forKey: evicted)
+    }
+    return analysis
+  }
+
+  private func clearPageAnalysisCache() {
+    pageAnalysisGeneration = nil
+    pageAnalysisCache.removeAll(keepingCapacity: false)
+    pageAnalysisLRU.removeAll(keepingCapacity: false)
+  }
+
   func dispose() {
     lock.lock()
     guard !isDisposed else { lock.unlock(); return }
@@ -303,6 +355,7 @@ final class InkSignPdfDocumentCoordinator {
     if let previous {
       artifactPolicy.deleteExact(previous.workingURL)
     }
+    pdfQueue.async { [weak self] in self?.clearPageAnalysisCache() }
   }
 }
 

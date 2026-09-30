@@ -12,11 +12,16 @@ import android.text.TextDirectionHeuristics
 import android.text.TextPaint
 import android.text.TextShaper
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.tom_roush.pdfbox.contentstream.operator.Operator
+import com.tom_roush.pdfbox.cos.COSArray
+import com.tom_roush.pdfbox.cos.COSString
 import java.io.File
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
+import com.tom_roush.pdfbox.pdfparser.PDFStreamParser
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -570,6 +575,298 @@ internal class PdfExportContourTest {
     }
 
     @Test
+    fun exporterSubsetsRepeatedUnicodeFontResourcesWithoutLosingText() {
+        assumeTrue("TextRunShaper requires API 31", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .targetContext
+        val policy = CacheArtifactPolicy.initialize(context)
+        val source = File.createTempFile("subset-text-source-", ".pdf", context.cacheDir)
+        val output = policy.allocateSignedOutput()
+        val fullFontOutput = policy.allocateSignedOutput()
+        val subsetFailureOutput = policy.allocateSignedOutput()
+        try {
+            writeBlankPdf(source, listOf(600 to 140, 600 to 140))
+            val logicalText = "Latin 123 é שלום عالم"
+            val pages = (0..1).map { pageIndex ->
+                PdfPageExportSnapshot(
+                    pageIndex = pageIndex,
+                    dimensions = PdfPageDimensions(600.0, 140.0),
+                    strokes = emptyList(),
+                    textAnnotations = listOf(
+                        TextAnnotation(
+                            id = "subset-$pageIndex",
+                            text = logicalText,
+                            bounds = PageRect(20.0, 28.0, 580.0, 62.0),
+                            fontSize = 18.0,
+                        ),
+                    ),
+                )
+            }
+            val snapshot = PdfExportSnapshot(
+                sourcePath = source.path,
+                outputPath = output.path,
+                pages = pages,
+                generation = 1L,
+                color = Color.BLACK,
+            )
+            val resolved = PdfExportTextResolver.resolve(snapshot)
+            assumeTrue("The selected fonts must be embeddable and subsettable",
+                resolved.fonts.isNotEmpty() && resolved.fonts.all { it.fsType and 0x0100 == 0 })
+            PdfiumNativePdfExporter.export(snapshot, resolved, output)
+
+            val exportedText = extractTextWithPdfBox(output).replace("\uFEFF", "")
+                .filterNot(Char::isWhitespace)
+            val expectedText = (logicalText + logicalText).filterNot(Char::isWhitespace)
+            assertTrue("PDFBox must extract the complete logical text: $exportedText",
+                exportedText.contains(expectedText))
+
+            val embedded = embeddedFontProgramSizes(output)
+            val originalBytes = resolved.fonts.sumOf { it.bytes.size }
+            val embeddedBytes = embedded.sumOf { it.decodedBytes }
+            val compressedBytes = embedded.sumOf { it.compressedBytes }
+            println(
+                "PDFium subset metrics: pages=2 faces=${resolved.fonts.size} " +
+                    "sourceFontBytes=$originalBytes embeddedCompressedBytes=$compressedBytes " +
+                    "embeddedDecodedBytes=$embeddedBytes outputPdfBytes=${output.length()}",
+            )
+            assertEquals("Each selected face should be embedded once across both pages",
+                resolved.fonts.size, embedded.size)
+            assertTrue(
+                "Subset fonts should reduce decoded font bytes by at least 80%; " +
+                    "original=$originalBytes embedded=$embeddedBytes faces=$embedded",
+                embeddedBytes <= originalBytes / 5,
+            )
+
+            val noSubsetSnapshot = resolved.copy(
+                fonts = resolved.fonts.map { it.copy(fsType = it.fsType or 0x0100) },
+            )
+            PdfiumNativePdfExporter.export(snapshot, noSubsetSnapshot, fullFontOutput)
+            val fullFontEmbedded = embeddedFontProgramSizes(fullFontOutput)
+            assertEquals("The no-subsetting path should retain every selected face",
+                resolved.fonts.size, fullFontEmbedded.size)
+            val fullFontBytes = fullFontEmbedded.sumOf { it.decodedBytes }
+            assertTrue(
+                "Fonts with the no-subsetting flag must remain fully embedded; " +
+                    "original=$originalBytes embedded=$fullFontBytes",
+                fullFontBytes >= originalBytes * 0.8,
+            )
+
+            for (pageIndex in pages.indices) {
+                val subsetBitmap = Bitmap.createBitmap(600, 140, Bitmap.Config.ARGB_8888)
+                val fullBitmap = Bitmap.createBitmap(600, 140, Bitmap.Config.ARGB_8888)
+                try {
+                    renderPage(output, subsetBitmap, pageIndex)
+                    renderPage(fullFontOutput, fullBitmap, pageIndex)
+                    val subsetInk = darkPixelCount(subsetBitmap, Rect(0, 0, 600, 140))
+                    val fullInk = darkPixelCount(fullBitmap, Rect(0, 0, 600, 140))
+                    assertTrue("The subset export must render page $pageIndex", subsetInk > 0)
+                    val differingPixels = differingPixelCount(subsetBitmap, fullBitmap)
+                    val allowedDifferences = maxOf(1, (fullInk + 99) / 100)
+                    assertTrue(
+                        "Subset/full glyph pixels should match by position on page $pageIndex " +
+                            "(1% tolerance for rasterizer rounding); " +
+                            "different=$differingPixels allowed=$allowedDifferences",
+                        differingPixels <= allowedDifferences,
+                    )
+                } finally {
+                    subsetBitmap.recycle()
+                    fullBitmap.recycle()
+                }
+            }
+
+            PdfiumNativePdfExporter.exportForTesting(
+                snapshot,
+                resolved,
+                subsetFailureOutput,
+                forceSubsetSaveFailure = true,
+            )
+            val fallbackText = extractTextWithPdfBox(subsetFailureOutput).replace("\uFEFF", "")
+                .filterNot(Char::isWhitespace)
+            assertTrue("A subset save failure must keep the text extractable",
+                fallbackText.contains(expectedText))
+            val fallbackFontBytes = embeddedFontProgramSizes(subsetFailureOutput)
+                .sumOf { it.decodedBytes }
+            assertTrue("A subset save failure must retain full font embedding",
+                fallbackFontBytes >= originalBytes * 0.8)
+        } finally {
+            source.delete()
+            policy.deleteExact(output)
+            policy.deleteExact(fullFontOutput)
+            policy.deleteExact(subsetFailureOutput)
+        }
+    }
+
+    @Test
+    fun controlledLiberationFontSubsetRetainsAccentedTextAcrossPages() {
+        val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+        val fontBytes = instrumentation.context.assets
+            .open("liberation-sans-regular.ttf")
+            .use { it.readBytes() }
+        val fsType = checkNotNull(readOpenTypeFsType(fontBytes, 0))
+        assertTrue("The fixture must permit embedding", fsType and 0x000E == 0)
+        assertTrue("The fixture must permit subsetting", fsType and 0x0100 == 0)
+
+        val context = instrumentation.targetContext
+        val policy = CacheArtifactPolicy.initialize(context)
+        val source = File.createTempFile("controlled-font-source-", ".pdf", context.cacheDir)
+        val output = policy.allocateSignedOutput()
+        try {
+            writeBlankPdf(source, listOf(600 to 140, 600 to 140))
+            val text = "Aé 42"
+            val snapshot = PdfExportSnapshot(
+                sourcePath = source.path,
+                outputPath = output.path,
+                pages = (0..1).map { pageIndex ->
+                    PdfPageExportSnapshot(
+                        pageIndex = pageIndex,
+                        dimensions = PdfPageDimensions(600.0, 140.0),
+                        strokes = emptyList(),
+                    )
+                },
+                generation = 1L,
+                color = Color.BLACK,
+            )
+            val textSnapshot = PdfiumTextSnapshot(
+                fonts = listOf(PdfiumFontResource(fontBytes, collectionIndex = 0, fsType = fsType)),
+                runs = (0..1).map { pageIndex ->
+                    PdfiumTextRunEntry(
+                        pageIndex = pageIndex,
+                        lineId = pageIndex,
+                        text = text,
+                        sourceStart = 0,
+                        sourceLength = text.length,
+                        bidiLevel = 0,
+                        visualOrder = 0,
+                        baseDirectionRtl = false,
+                        textAlignment = 0,
+                        fontIndex = 0,
+                        boundsLeft = 24f,
+                        boundsRight = 576f,
+                        baselineFromTop = 70f,
+                        fontSize = 18f,
+                        estimatedAdvance = 80f,
+                        color = Color.BLACK,
+                    )
+                },
+            )
+            PdfiumNativePdfExporter.export(snapshot, textSnapshot, output)
+
+            val extracted = extractTextWithPdfBox(output).filterNot(Char::isWhitespace)
+            assertTrue("PDFBox must preserve the accented text on both pages: $extracted",
+                extracted.contains("Aé42Aé42"))
+            val embedded = embeddedFontProgramSizes(output)
+            assertEquals("One face should be embedded and reused across both pages", 1, embedded.size)
+            val decodedBytes = embedded.single().decodedBytes
+            assertTrue(
+                "The controlled sparse-glyph subset should reduce the font program by 80%; " +
+                    "source=${fontBytes.size} embedded=$decodedBytes",
+                decodedBytes <= fontBytes.size / 5,
+            )
+            println(
+                "Controlled font subset metrics: sourceFontBytes=${fontBytes.size} " +
+                    "embeddedCompressedBytes=${embedded.single().compressedBytes} " +
+                    "embeddedDecodedBytes=$decodedBytes outputPdfBytes=${output.length()}",
+            )
+        } finally {
+            source.delete()
+            policy.deleteExact(output)
+        }
+    }
+
+    @Test
+    fun exporterPreservesArabicLamAlefWhenTheGlyphMapsToMultipleCharacters() {
+        assumeTrue("TextRunShaper requires API 31", Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+        val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+            .targetContext
+        val policy = CacheArtifactPolicy.initialize(context)
+        val source = File.createTempFile("arabic-ligature-source-", ".pdf", context.cacheDir)
+        val output = policy.allocateSignedOutput()
+        try {
+            writeBlankPdf(source, listOf(240 to 100))
+            val text = "لا"
+            val snapshot = PdfExportSnapshot(
+                sourcePath = source.path,
+                outputPath = output.path,
+                pages = listOf(
+                    PdfPageExportSnapshot(
+                        pageIndex = 0,
+                        dimensions = PdfPageDimensions(240.0, 100.0),
+                        strokes = emptyList(),
+                        textAnnotations = listOf(
+                            TextAnnotation(
+                                id = "arabic-lam-alef",
+                                text = text,
+                                bounds = PageRect(20.0, 28.0, 220.0, 62.0),
+                                fontSize = 18.0,
+                                directionRtl = true,
+                            ),
+                        ),
+                    ),
+                ),
+                generation = 1L,
+                color = Color.BLACK,
+            )
+            val resolved = PdfExportTextResolver.resolve(snapshot)
+            assumeTrue("The Arabic font must resolve to an embeddable supported face",
+                resolved.fonts.isNotEmpty() && resolved.fonts.all {
+                    it.collectionIndex == 0 && it.fsType and 0x000E == 0
+                })
+            PdfiumNativePdfExporter.export(snapshot, resolved, output)
+
+            val extracted = extractTextWithPdfBox(output).replace("\uFEFF", "")
+            assertTrue("PDFBox must expose the emitted Arabic text: $extracted", extracted.isNotBlank())
+            val lamAlefGlyphCount = TextRunShaper.shapeTextRun(
+                text, 0, text.length, 0, text.length, 0f, 0f, true,
+                TextPaint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 18f },
+            ).glyphCount()
+            assertEquals("The fixture must shape lam-alef into one glyph", 1, lamAlefGlyphCount)
+            val pageContent = readPageContent(output)
+            val emittedCids = emittedTextCids(output)
+            assertTrue("The one-glyph fixture must emit CID 1; cids=$emittedCids",
+                emittedCids.contains(1))
+            val actualTextHex = Regex("/ActualText<FEFF([0-9A-F]+)>")
+                .find(pageContent)
+                ?.groupValues
+                ?.get(1)
+            val expectedActualTextHex = text
+                .map { it.code.toString(16).uppercase().padStart(4, '0') }
+                .joinToString(separator = "")
+            assertEquals("ActualText must retain the original logical string",
+                expectedActualTextHex, actualTextHex)
+            val emittedCidMappings = FileInputStream(output).use { input ->
+                PDDocument.load(input).use { document ->
+                    document.getPage(0).resources.fontNames.mapNotNull { fontName ->
+                        val font = document.getPage(0).resources.getFont(fontName)
+                        if (font is PDType0Font) font.toUnicode(1) else null
+                    }
+                }
+            }
+            assertTrue(
+                "An emitted CID must map to the two-character lam-alef sequence; " +
+                    "mappings=$emittedCidMappings",
+                emittedCidMappings.contains(text),
+            )
+            val originalFontBytes = resolved.fonts.sumOf { it.bytes.size }
+            val embeddedFontBytes = embeddedFontProgramSizes(output).sumOf { it.decodedBytes }
+            assertTrue("Multi-character glyph mappings must use full-font fallback; " +
+                "original=$originalFontBytes embedded=$embeddedFontBytes",
+                embeddedFontBytes >= originalFontBytes * 0.8)
+
+            val bitmap = Bitmap.createBitmap(240, 100, Bitmap.Config.ARGB_8888)
+            try {
+                renderPage(output, bitmap)
+                assertTrue("PDFium must render the Arabic lam-alef sequence",
+                    darkPixelCount(bitmap, Rect(10, 18, 230, 72)) > 10)
+            } finally {
+                bitmap.recycle()
+            }
+        } finally {
+            source.delete()
+            policy.deleteExact(output)
+        }
+    }
+
+    @Test
     fun exporterCountsExistingSourceTextSeparatelyFromAddedText() {
         val context = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
             .targetContext
@@ -722,12 +1019,71 @@ internal class PdfExportContourTest {
             }
         }
 
+    private data class EmbeddedFontProgramSize(val compressedBytes: Int, val decodedBytes: Int)
+
+    private fun embeddedFontProgramSizes(file: File): List<EmbeddedFontProgramSize> =
+        FileInputStream(file).use { input ->
+            PDDocument.load(input).use { document ->
+                val programs = java.util.IdentityHashMap<Any, EmbeddedFontProgramSize>()
+                for (pageIndex in 0 until document.numberOfPages) {
+                    val page = document.getPage(pageIndex)
+                    for (fontName in page.resources.fontNames) {
+                        val font = page.resources.getFont(fontName)
+                        val descriptor = if (font is PDType0Font) {
+                            font.descendantFont.fontDescriptor
+                        } else {
+                            font.fontDescriptor
+                        } ?: continue
+                        val stream = descriptor.fontFile2 ?: descriptor.fontFile3 ?: descriptor.fontFile
+                            ?: continue
+                        programs.putIfAbsent(
+                            stream.cosObject,
+                            EmbeddedFontProgramSize(
+                                stream.length,
+                                stream.createInputStream().use { it.readBytes().size },
+                            ),
+                        )
+                    }
+                }
+                programs.values.toList()
+            }
+        }
+
     private fun readPageContent(file: File): String =
         FileInputStream(file).use { input ->
             PDDocument.load(input).use { document ->
                 document.getPage(0).contents.use { content ->
                     String(content.readBytes(), Charsets.ISO_8859_1)
                 }
+            }
+        }
+
+    private fun emittedTextCids(file: File): List<Int> =
+        FileInputStream(file).use { input ->
+            PDDocument.load(input).use { document ->
+                val page = document.getPage(0)
+                val parser = PDFStreamParser(page)
+                parser.parse()
+                val tokens = parser.tokens
+                val result = mutableListOf<Int>()
+                for (index in tokens.indices) {
+                    val operator = tokens[index] as? Operator ?: continue
+                    if (operator.name != "Tj" && operator.name != "TJ") continue
+                    val operand = tokens.getOrNull(index - 1)
+                    val strings = when (operand) {
+                        is COSString -> listOf(operand)
+                        is COSArray -> operand.toList().filterIsInstance<COSString>()
+                        else -> emptyList()
+                    }
+                    for (string in strings) {
+                        val bytes = string.bytes
+                        for (byteIndex in 0 until bytes.size - 1 step 2) {
+                            result += ((bytes[byteIndex].toInt() and 0xFF) shl 8) or
+                                (bytes[byteIndex + 1].toInt() and 0xFF)
+                        }
+                    }
+                }
+                result
             }
         }
 
@@ -754,6 +1110,17 @@ internal class PdfExportContourTest {
             }
         }
         return count
+    }
+
+    private fun differingPixelCount(first: Bitmap, second: Bitmap): Int {
+        require(first.width == second.width && first.height == second.height)
+        var differingPixels = 0
+        for (y in 0 until first.height) {
+            for (x in 0 until first.width) {
+                if (first.getPixel(x, y) != second.getPixel(x, y)) differingPixels += 1
+            }
+        }
+        return differingPixels
     }
 
     private fun renderPage(file: File, bitmap: Bitmap, pageIndex: Int = 0) {

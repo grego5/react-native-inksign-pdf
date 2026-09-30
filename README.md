@@ -1,19 +1,12 @@
 # @grego5/react-native-inksign-pdf
 
-- PDF document signing with ink in a React Native module.
-- Load document or images programatically by path, or through native file picker. Images converted to pdf pages automatically.
-- Add additional files to be added as pages. Can add/remove/reorder pages.
-- Can bring own scanner module and bridge it seamlessly by adding pages through path to the file in cacae directory.
-- Displays loaded PDF as background. Including swipe/method pagination.
-- Uses PDFium on Android for document loading, rendering, page assembly, and export; iOS uses PDFKit, Quartz, and CoreText for PDF operations.
-- Android's optional `fallbackFont` applies to source-PDF rendering.
-- Supports velocity-driven ink, text annotations, and history.
-- Android using custom c++ InkEngine, integrating Google Ink line modeling algorithms, and low-latency front buffer api for zero lag drawing before committing to standard render node. For some reason uncommon technique in most apps.
-- iOS uses PDFKit for PDF operations and page presentation, CoreText for text, and PencilKit for ink input. No web support.
-- Exports a new PDF that retains visible source pages and adds text and signatures as locked annotations with vector appearances.
+- Sign PDF documents with ink and text annotations.
+- Open PDFs or images from a file path or the native file picker.
+- Add, remove, and reorder pages.
+- Navigate pages, zoom, and undo or redo edits.
+- Export the signed document as a new PDF.
 
-Intended workflow: open pdf, double click an area or dedicated button to enter edit mode, zoom into tapped area or prefined coordinates,
-draw a signature, save to new file. The brush doesn't scale with zoom level, but the drawn shape does.
+Use the editor to add a signature or text, then export the document.
 
 ![Screenshot 1](example/screenshot.jpg)
 
@@ -41,318 +34,80 @@ Go.
 
 ## Quick start
 
+Open a PDF, draw a signature, place text, and save the result:
+
 ```tsx
 import { useRef, useState } from 'react';
-import { Button, StyleSheet, Text, View } from 'react-native';
-import {
-  InkSignView,
-  type PageInfo,
-  type TextDirection,
-  type InkSignViewHandle,
-  type StateChangeEvent,
-} from '@grego5/react-native-inksign-pdf';
+import { Button, Text, View } from 'react-native';
+import { InkSignView, type InkSignViewHandle, type PageInfo } from '@grego5/react-native-inksign-pdf';
 
 export function SigningView({ pdfPath }: { pdfPath: string }) {
   const pdf = useRef<InkSignViewHandle>(null);
   const [page, setPage] = useState<PageInfo | null>(null);
-  const [state, setState] = useState<StateChangeEvent>({
-    canUndo: false,
-    canRedo: false,
-    isDirty: false,
-    mode: 'view',
-  });
-  const [status, setStatus] = useState('Choose a PDF to begin');
-  const [textDirection, setTextDirection] = useState<TextDirection>('auto');
+  const [savedPath, setSavedPath] = useState('');
 
   async function openPdf() {
-    try {
-      const info = await pdf.current!.open(pdfPath);
-      setPage(info);
-      setStatus('Ready to sign');
-    } catch {
-      setStatus('Unable to open PDF');
-    }
+    const info = await pdf.current?.open(pdfPath);
+    if (info) setPage(info);
   }
 
   async function savePdf() {
-    try {
-      const outputPath = await pdf.current!.finalize();
-      setStatus(`Signed PDF: ${outputPath}`);
-    } catch {
-      setStatus('Unable to export PDF');
-    }
+    const path = await pdf.current?.finalize();
+    if (path) setSavedPath(path);
   }
 
   return (
-    <View style={styles.screen}>
+    <View style={{ flex: 1 }}>
       <InkSignView
         ref={pdf}
-        style={styles.pdf}
-        strokeColor="#111111"
-        strokeMinWidth={2}
-        strokeMaxWidth={4}
-        onStateChange={setState}
+        style={{ flex: 1 }}
+        strokeColor="#111827"
         onPageChange={setPage}
       />
-
-      <Text style={styles.status}>
-        {page ? `Page ${page.pageIndex + 1} of ${page.pageCount}` : status}
-        {page ? ` · ${state.mode}${state.isDirty ? ' · unsaved' : ''}` : ''}
-      </Text>
-
-      <View style={styles.toolbar}>
-        <Button title="Open PDF" onPress={() => void openPdf()} />
-        <Button
-          title="Previous"
-          disabled={!page || page.pageIndex === 0}
-          onPress={() => {
-            try {
-              pdf.current?.previousPage();
-            } catch (error) {
-              console.warn('Page change failed', error);
-            }
-          }}
-        />
-        <Button
-          title="Next"
-          disabled={!page || page.pageIndex === page.pageCount - 1}
-          onPress={() => {
-            try {
-              pdf.current?.nextPage();
-            } catch (error) {
-              console.warn('Page change failed', error);
-            }
-          }}
-        />
-        <Button
-          title="Draw"
-          disabled={!page}
-          onPress={() => {
-            try {
-              pdf.current?.enterEditMode();
-            } catch (error) {
-              console.warn('Mode change failed', error);
-            }
-          }}
-        />
-        <Button
-          title="View"
-          disabled={!page}
-          onPress={() => {
-            try {
-              pdf.current?.enterViewMode();
-            } catch (error) {
-              console.warn('Mode change failed', error);
-            }
-          }}
-        />
-        <Button
-          title="Place text"
-          disabled={!page}
-          onPress={() => {
-            try {
-              pdf.current?.setTextDirection(textDirection);
-              pdf.current?.insertAnnotationOn();
-            } catch (error) {
-              console.warn('Text placement failed', error);
-            }
-          }}
-        />
-        <Button
-          title={`Text direction: ${textDirection.toUpperCase()}`}
-          onPress={() => {
-            setTextDirection((current) =>
-              current === 'auto' ? 'ltr' : current === 'ltr' ? 'rtl' : 'auto',
-            );
-          }}
-        />
-        <Button title="Undo" disabled={!state.canUndo} onPress={() => pdf.current?.undo()} />
-        <Button title="Redo" disabled={!state.canRedo} onPress={() => pdf.current?.redo()} />
-        <Button title="Clear" disabled={!state.isDirty} onPress={() => pdf.current?.clear()} />
-        <Button
-          title="Save signed PDF"
-          disabled={!page || !state.isDirty}
-          onPress={() => void savePdf()}
-        />
-      </View>
+      {page && <Text>Page {page.pageIndex + 1} of {page.pageCount}</Text>}
+      <Button title="Open PDF" onPress={() => void openPdf()} />
+      <Button title="Draw" onPress={() => pdf.current?.enterEditMode()} />
+      <Button title="Place text" onPress={() => pdf.current?.insertAnnotationOn()} />
+      <Button title="Undo" onPress={() => pdf.current?.undo()} />
+      <Button title="Save PDF" onPress={() => void savePdf()} />
+      {savedPath !== '' && <Text>Saved to {savedPath}</Text>}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  pdf: { flex: 1 },
-  status: { padding: 8, textAlign: 'center' },
-  toolbar: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    justifyContent: 'center',
-    padding: 8,
-  },
-});
 ```
 
-## Component API
+Tap the page after choosing **Draw** or **Place text**. `finalize()` returns a
+temporary PDF path; copy the file if it needs to remain available after the
+signing view closes.
 
-### Props
+## Common actions
 
-- `fallbackFont` — one optional Android PDFium fallback font resource; changes take effect on the next `open()` or `addPages()`.
-- `strokeColor` — ink color as `#RRGGBB`.
-- `strokeMinWidth`, `strokeMaxWidth` — ink width range.
-- `strokeSmoothing` — Android input smoothing from `0` to `1`.
-- `defaultTextFontSize` — font size for new text annotations.
-- `defaultTextColor` — color saved with new text annotations.
-- `outlineColor`, `selectedOutlineColor` — text outline colors.
-- `editorBackgroundColor`, `selectedBackgroundColor` — text UI colors.
-- `doubleTap` — `{ zoom, enterEditMode? }` double-tap behavior.
-- `keyboardAvoidanceEnabled` — keep the text editor above the keyboard.
-- `onStateChange` — coarse interaction and history state.
-- `onPageChange` — notification after a real page switch.
-
-Example color configuration:
-
-```tsx
-<InkSignView
-  strokeColor="#111827"
-  defaultTextColor="#0F172A"
-  outlineColor="#64748B"
-  selectedOutlineColor="#2563EB"
-  editorBackgroundColor="#FFFFFF"
-  selectedBackgroundColor="#DBEAFE"
-/>
-```
-
-Colors use opaque `#RRGGBB` strings. `defaultTextColor` is saved with new
-annotations; the other text colors control presentation.
-
-### Ref methods
+Add local PDF or image pages:
 
 ```ts
-open(path, options?)
-addPages(options?)
-removePage()
-movePage(pageIndex)
-nextPage()
-previousPage()
-getViewport()
-enterEditMode(viewport?)
-enterViewMode(viewport?)
-undo()
-redo()
-clear()
-addTextAnnotation(text, bounds, options?)
-setTextDirection(direction)
-insertAnnotationOn(options?)
-insertAnnotationOff()
-increaseTextSize()
-decreaseTextSize()
-removeTextAnnotation()
-finalize()
-```
-
-`addPages()` opens the native picker; pass `sources` to import local files
-directly. PDFs add all their pages, and each image adds one page. Use `type` to
-filter the picker and `imagePageSize` to set image-page dimensions. Image
-encoding defaults to 200 DPI and JPEG quality `0.72`. Set `targetDpi` to limit
-resolution to the image's available detail, or `jpegQuality` from `0` to `1` to
-control compression. Omitting `targetDpi` retains the legacy 200 DPI raster;
-PDF pages are copied without re-encoding.
-
-`activePage` defaults to `current`, keeping the active page or selecting the
-first page of a new document. Use `firstAdded` or `lastAdded` to select an
-imported page.
-
-```ts
-const result = await pdf.current?.addPages({
-  type: 'image',
+await pdf.current?.addPages({
+  sources: [imagePath],
   imagePageSize: { width: 420, height: 594 },
-  targetDpi: 150,
-  jpegQuality: 0.85,
   activePage: 'lastAdded',
 });
-// { addedPageCount: number, pageInfo?: PageInfo }
 ```
 
-`removePage()` removes the current page; the final page cannot be removed.
-`movePage(pageIndex)` reorders the current page.
-
-Page navigation is synchronous to initiate and publishes the committed result
-through `onPageChange`:
+Add text directly to a page. Bounds are in PDF points from the page's top-left:
 
 ```ts
-{
-  (pageIndex, pageCount, width, height);
-}
+pdf.current?.addTextAnnotation('Approved', { x: 48, y: 72, width: 172, height: 68 });
 ```
 
-`getViewport()` returns a viewport snapshot synchronously and throws when the
-view is not ready. Synchronous commands throw validation errors directly.
-
-`addTextAnnotation(text, bounds, options?)` commits text directly on the active
-page without opening the editor. `bounds` uses PDF points from the page's
-top-left: `{ x, y, width, height }`. `x` and `y` always identify the physical
-top-left corner; direction and vertical anchor never change the rectangle.
-This fixed rectangle is the flow area, while visible text may use
-less of it; direct insertion clips overflow. `maxLines` can limit complete
-visible lines, and `verticalAnchor`
-keeps the visible block against its top or bottom edge. `alignment` defaults to
-`start`; `start` and `end` resolve against text direction. Direction follows the
-last `setTextDirection()` choice or app direction unless specified in options.
+Fill a field beside a printed label:
 
 ```ts
-pdf.current?.addTextAnnotation(
-  'Approved',
-  { x: 48, y: 72, width: 172, height: 68 },
-  {
-    direction: 'ltr',
-    alignment: 'start',
-  },
-);
+await pdf.current?.insertTextByKey('Ada Lovelace', 'Signature', { occurrence: 'first' });
 ```
 
-Page indexes are zero-based. Viewport values use canonical PDF page
-coordinates:
+`insertTextByKey()` searches the active page and skips labels without a usable
+same-row writing rule. Choose `occurrence: 'last'` to use the last eligible
+match. A found key without a usable rule rejects with `text_rule_not_found`.
 
-```ts
-{
-  (x, y, zoom);
-}
-```
-
-Pass paired `x` and `y` to focus a page point. Pass `zoom` for an absolute
-zoom level. An empty viewport object fits and centers the page; omitting the
-argument preserves the current viewport where applicable.
-
-## Interaction model
-
-- View mode supports panning, pinch zoom, and page navigation. Draw mode accepts
-  finger or stylus ink.
-- Call `insertAnnotationOn()` and tap the page to place text. Pass
-  `TextPlacementOptions` to set direction, physical box `width` and `height`,
-  alignment, line count, and vertical anchor. A bounded box starts at the tap
-  and extends right and down. Without box dimensions, placement remains
-  tap-centered, auto-sized, and rule-aware.
-  `setTextDirection()` updates an active editor without moving its box.
-  Bounded editors limit new text to the visible region and allow deletion
-  after reflow. Direction and font-size changes retain entered text.
-- Tap existing text to select or edit it. Editing keeps the current zoom and moves the view as needed to keep the text and caret visible.
-- The native view manages ink, text, undo, redo, and clear. `onStateChange` reports editing mode, undo/redo availability, and whether the document changed.
-- The application owns its toolbar and any saved viewport bookmarks.
-
-## Export
-
-```tsx
-const signedPath = await pdf.current?.finalize();
-```
-
-The source PDF is preserved. The returned file contains the committed ink and
-text annotations and is written to native temporary storage. Copy it to the
-application's durable destination when it must outlive the signing view.
-
-## Further documentation
-
-- [Public API spec](./src/InkSignView.nitro.ts)
-- [Architecture and invariants](./.agents/skills/inksign-pdf-docs/references/architecture.md)
-- [Android input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/android/viewport-input.md)
-- [iOS input and viewport behavior](./.agents/skills/inksign-pdf-docs/references/swift-ios/viewport-input.md)
+Use `nextPage()`, `previousPage()`, `undo()`, `redo()`, and `clear()` for
+navigation and editing. See the [public API](./src/InkSignView.nitro.ts) for
+all props, options, and methods.

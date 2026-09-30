@@ -28,6 +28,11 @@
   overflow, while an overflowing extension preserves the existing composition.
   Direction and font-size changes retain entered text. `verticalAnchor` changes
   placement, not fit. Direct `addTextAnnotation()` clips supplied text.
+- `insertTextByKey(text, key, options?)` resolves source text and rule geometry
+  on the serial document worker. Before committing through annotation history,
+  the UI checks that the captured document generation and active page are still
+  current. See the [README](../../../../README.md) for occurrence selection,
+  layout, and error behavior.
 - Without box dimensions, placement centers the box horizontally and aligns its
   inner bottom to the tap, subject to page clamping and rule snapping. Snap
   candidates are loaded lazily for the active page and discarded on page or

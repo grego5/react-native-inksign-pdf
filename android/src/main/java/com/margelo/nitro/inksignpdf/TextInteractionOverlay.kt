@@ -560,12 +560,14 @@ internal class TextInteractionOverlay(
     bounds: TextAnnotationBounds,
     text: String,
     options: TextAnnotationOptions?,
+    requireVisibleLine: Boolean = false,
+    resolvedDirectionRtl: Boolean? = null,
   ) {
     val presentation = surface.textPresentationSnapshot() ?: throw PdfSessionException(
       "view_not_ready",
       "A PDF page must be open before adding text",
     )
-    val directionRtl = when (options?.direction) {
+    val directionRtl = resolvedDirectionRtl ?: when (options?.direction) {
       TextDirection.LTR -> false
       TextDirection.RTL -> true
       TextDirection.AUTO -> appLayoutIsRtl()
@@ -588,7 +590,18 @@ internal class TextInteractionOverlay(
       alignment = alignment,
     )
     val annotation = boundedAnnotation.copy(bounds = TextLayoutSpec.visibleBounds(boundedAnnotation, flowBounds))
+    if (requireVisibleLine && (annotation.bounds.right <= annotation.bounds.left ||
+      annotation.bounds.bottom <= annotation.bounds.top)) {
+      throw PdfSessionException("text_rule_not_found", "No complete text line fits beside the selected rule")
+    }
     surface.appendTextAnnotation(presentation.generation, presentation.pageIndex, annotation)
+  }
+
+  internal fun resolveDirection(direction: TextDirection?): Boolean = when (direction) {
+    TextDirection.LTR -> false
+    TextDirection.RTL -> true
+    TextDirection.AUTO -> appLayoutIsRtl()
+    null -> requestedTextDirectionRtl ?: appLayoutIsRtl()
   }
 
   internal fun setTextDirection(direction: TextDirection) {
@@ -906,9 +919,10 @@ internal class TextInteractionOverlay(
       }
       canvas.save()
       canvas.concat(matrix)
+      val originalOrigin = original.flowBounds?.let { PagePoint(it.left, it.top) } ?: original.position
       canvas.translate(
-        (state.position.x - original.position.x).toFloat(),
-        (state.position.y - original.position.y).toFloat(),
+        (state.position.x - originalOrigin.x).toFloat(),
+        (state.position.y - originalOrigin.y).toFloat(),
       )
       state.renderLayer.draw(canvas)
       canvas.restore()

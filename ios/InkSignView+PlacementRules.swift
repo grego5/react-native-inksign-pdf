@@ -17,9 +17,11 @@ extension InkSignView {
     let source = document.workingURL
     let mediaBox = document.activePage.geometry.mediaBox
     documentCoordinator.pdfQueue.async { [weak self] in
-      let rules = InkSignPdfPlacementRuleDetector.scan(url: source,
-                                                       pageIndex: pageIndex,
-                                                       mediaBox: mediaBox)
+      let rules = self?.documentCoordinator.pageAnalysis(sourceURL: source,
+                                                          generation: generation,
+                                                          pageIndex: pageIndex,
+                                                          pageID: pageID,
+                                                          mediaBox: mediaBox)?.rules ?? []
       DispatchQueue.main.async {
         guard let self, !self.disposed,
               self.documentCoordinator.generation == generation,

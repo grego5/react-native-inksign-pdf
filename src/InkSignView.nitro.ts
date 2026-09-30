@@ -48,10 +48,21 @@ export interface TextPlacementOptions {
   verticalAnchor?: TextVerticalAnchor
 }
 
+/**
+ * Options for searching extractable source text on the active PDF page and
+ * inserting one value beside a matching key and horizontal rule. A selected
+ * key without a usable rule rejects with `text_rule_not_found`.
+ */
+export interface TextInsertionByKeyOptions extends TextAnnotationOptions {
+  /** Selects the first (default) or last matching key on the active page. */
+  occurrence?: TextKeyOccurrence
+}
+
 export type PageType = 'pdf' | 'image'
 export type TextDirection = 'ltr' | 'rtl' | 'auto'
 export type TextAlignment = 'start' | 'end' | 'center'
 export type TextVerticalAnchor = 'top' | 'bottom'
+export type TextKeyOccurrence = 'first' | 'last'
 export type AddPagesActivePage = 'current' | 'firstAdded' | 'lastAdded'
 
 /** Image page dimensions in PDF points. */
@@ -161,6 +172,16 @@ export interface InkSignViewMethods extends HybridViewMethods {
   clear(): void
   /** Commits text inside a fixed physical page rectangle, clipping to complete visible lines. */
   addTextAnnotation(text: string, bounds: TextAnnotationBounds, options?: TextAnnotationOptions): void
+  /**
+   * Finds a literal source-text key on the active page, comparing ASCII
+   * letters without case and all other characters exactly, then pairs it with
+   * an adjacent horizontal rule and commits one value. The rule's full width is
+   * used; bottom anchoring defaults to text growing upward above it, while top
+   * anchoring places text below it. The search does not OCR image pages. A
+   * missing key rejects with `text_key_not_found`; stale or disposed requests
+   * reject with `operation_cancelled`.
+   */
+  insertTextByKey(text: string, key: string, options?: TextInsertionByKeyOptions): Promise<void>
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
   /** Arms one-shot text placement; optional width and height bound the box from the tap's top-left. */

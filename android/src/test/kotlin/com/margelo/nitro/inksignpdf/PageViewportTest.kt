@@ -421,6 +421,24 @@ class PageViewportTest {
   }
 
   @Test
+  fun oversizedVisibleRectIsCenteredOnEachAxisWithoutChangingZoom() {
+    val viewport = PageViewport(
+      page = PdfPageDimensions(1200.0, 800.0),
+      initialSize = ViewportSize(400.0, 300.0, density = 1.0),
+    )
+    viewport.setZoom(2.0, PagePoint(600.0, 400.0))
+
+    assertTrue(viewport.ensurePageRectVisible(400.0, 300.0, 700.0, 480.0, 16.0))
+
+    assertEquals(2.0, viewport.zoom, epsilon)
+    assertEquals(550.0, viewport.focus.x, epsilon)
+    assertEquals(390.0, viewport.focus.y, epsilon)
+    val visibleRectCenter = viewport.pageToView(PagePoint(550.0, 390.0))
+    assertEquals(200.0, visibleRectCenter.x, epsilon)
+    assertEquals(150.0, visibleRectCenter.y, epsilon)
+  }
+
+  @Test
   fun caretAtEitherPageEdgeKeepsViewportComfortMargin() {
     val viewport = PageViewport(
       page = PdfPageDimensions(300.0, 300.0),

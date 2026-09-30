@@ -310,15 +310,24 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   func addTextAnnotation(text: String,
                          bounds: TextAnnotationBounds,
-                         options: TextAnnotationOptions?) throws {
-    guard let owner, let presentation = presentation() else {
+                         options: TextAnnotationOptions?,
+                         resolvedDirectionRtl: Bool? = nil,
+                         requireVisibleLine: Bool = false,
+                         capturedPage: (generation: UInt64, pageIndex: Int, pageSize: CGSize)? = nil) throws {
+    guard let owner else { throw InkSignView.TextError.notReady }
+    let context: (generation: UInt64, pageIndex: Int, pageSize: CGSize)
+    if let capturedPage {
+      context = capturedPage
+    } else if let presentation = presentation() {
+      context = (presentation.generation, presentation.pageIndex, presentation.pageSize)
+    } else {
       throw InkSignView.TextError.notReady
     }
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw InkSignView.TextError.invalidText
     }
-    let isRTL = resolvedDirection(options?.direction)
-    let pageSize = presentation.pageSize
+    let isRTL = resolvedDirectionRtl ?? resolvedDirection(options?.direction)
+    let pageSize = context.pageSize
     guard let flowBounds = makeFlowBounds(bounds: bounds, pageSize: pageSize) else {
       throw InkSignView.TextError.invalidBounds
     }
@@ -343,16 +352,19 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       maxLines: maxLines,
       verticalAnchor: verticalAnchor,
       alignment: alignment)
+    if requireVisibleLine && (annotation.bounds.isNull || annotation.bounds.isEmpty) {
+      throw InkSignView.TextError.ruleNotFound
+    }
     owner.appendTextAnnotation(annotation,
-                               generation: presentation.generation,
-                               pageIndex: presentation.pageIndex)
+                               generation: context.generation,
+                               pageIndex: context.pageIndex)
   }
 
   private func appLayoutIsRTL() -> Bool {
     owner?.container.effectiveUserInterfaceLayoutDirection == .rightToLeft
   }
 
-  private func resolvedDirection(_ direction: TextDirection?) -> Bool {
+  func resolvedDirection(_ direction: TextDirection?) -> Bool {
     switch direction {
     case .some(.ltr): return false
     case .some(.rtl): return true

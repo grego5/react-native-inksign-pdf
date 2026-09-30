@@ -1,4 +1,5 @@
 #include <jni.h>
+#include <android/log.h>
 
 #include <fpdf_edit.h>
 #include <fpdf_save.h>
@@ -445,6 +446,8 @@ std::string exportPdf(
     const std::vector<jfloat>& textRunGeometry,
     const std::vector<jint>& textRunColors,
     const std::vector<std::vector<std::uint8_t>>& fontResources,
+    bool maySubsetFonts,
+    bool forceSubsetSaveFailureForTesting,
     jint inkColor,
     std::vector<std::uint8_t>& candidateBytes) {
   if (pageIndices.empty() || pageDimensions.size() != pageIndices.size() * 2 ||
@@ -1019,9 +1022,30 @@ std::string exportPdf(
   }
   pages.clear();
 
+  const bool hasMultiUnitUnicodeMapping = std::any_of(
+      unicodeByFont.begin(), unicodeByFont.end(), [](const auto& mappings) {
+        return std::any_of(mappings.begin(), mappings.end(), [](const auto& mapping) {
+          return mapping.second.size() > 1;
+        });
+      });
+  const bool shouldSubsetFonts = maySubsetFonts && !hasMultiUnitUnicodeMapping;
   VectorFileWriter writer;
-  if (!FPDF_SaveAsCopy(rawDocument, &writer.api, FPDF_NO_INCREMENTAL) ||
-      writer.bytes.empty()) {
+  const FPDF_DWORD saveFlags = FPDF_NO_INCREMENTAL |
+      (shouldSubsetFonts ? FPDF_SUBSET_NEW_FONTS : 0);
+  if (shouldSubsetFonts) {
+    const bool savedWithSubset = !forceSubsetSaveFailureForTesting &&
+        FPDF_SaveAsCopy(rawDocument, &writer.api, saveFlags) && !writer.bytes.empty();
+    if (!savedWithSubset) {
+      writer.bytes.clear();
+      __android_log_print(ANDROID_LOG_WARN, "InkSignPdf",
+                          "Font subsetting save failed; retrying with full font programs");
+      if (!FPDF_SaveAsCopy(rawDocument, &writer.api, FPDF_NO_INCREMENTAL) ||
+          writer.bytes.empty()) {
+        return "PDFium could not save the exported candidate with or without font subsetting";
+      }
+    }
+  } else if (!FPDF_SaveAsCopy(rawDocument, &writer.api, FPDF_NO_INCREMENTAL) ||
+             writer.bytes.empty()) {
     return "PDFium could not save the exported candidate";
   }
 
@@ -1139,6 +1163,8 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
     jfloatArray textRunGeometryValue,
     jintArray textRunColorsValue,
     jobjectArray fontResourcesValue,
+    jboolean maySubsetFontsValue,
+    jboolean forceSubsetSaveFailureForTestingValue,
     jint inkColor) {
   std::string sourcePath;
   std::string destinationPath;
@@ -1270,7 +1296,9 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
                       pathCoordinates, textRunPageIndices, textRunLineIds,
                       textRunTexts, textRunSourceRanges, textRunBidiLevels,
                       textRunVisualOrder, textRunBaseDirections, textRunAlignments, textRunFontIndices,
-                      textRunGeometry, textRunColors, fontResources, inkColor,
+                      textRunGeometry, textRunColors, fontResources,
+                      maySubsetFontsValue == JNI_TRUE,
+                      forceSubsetSaveFailureForTestingValue == JNI_TRUE, inkColor,
                       candidateBytes);
   }
   if (!error.empty()) {

@@ -9,6 +9,10 @@
   presentation and input; the text overlay owns draft and editor state.
 - Android stages files and owns display surfaces. PDFium parses, assembles, renders,
   and exports PDFs.
+- Each worker-owned PDFium session caches source text geometry and writing rules
+  for both placement paths. The least-recently-used cache is bounded to eight
+  pages and 8 MiB estimated storage. Page navigation does not invalidate entries;
+  replacing or closing the session releases them.
 
 ## Opening
 

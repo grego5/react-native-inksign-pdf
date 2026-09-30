@@ -375,7 +375,11 @@ internal class PageViewport(
     setFocusCoordinates(currentFocusX + deltaX / scale, currentFocusY + deltaY / scale)
   }
 
-  /** Applies the smallest focus change that places a canonical page rect in the usable frame. */
+  /**
+   * Moves a canonical page rect into the usable frame without changing zoom. If it is too large
+   * to fit on an axis, center that rect on the usable frame; text-edit focus separately centers
+   * the caret when its editor bounds are too large.
+   */
   fun ensurePageRectVisible(
     left: Double,
     top: Double,
@@ -393,30 +397,51 @@ internal class PageViewport(
     val originalFocus = focus
     var nextFocusX = currentFocusX
     var nextFocusY = currentFocusY
-    val leftAdjustment = if (mappedTopLeft.x < padding) {
-      -(padding - mappedTopLeft.x) / scale
-    } else 0.0
-    val rightAdjustment = if (mappedBottomRight.x > viewportSize.widthPx - padding) {
-      (mappedBottomRight.x - (viewportSize.widthPx - padding)) / scale
-    } else 0.0
     if (includeHorizontal) {
-      nextFocusX += leftAdjustment + rightAdjustment
+      nextFocusX += visibilityFocusAdjustment(
+        mappedTopLeft.x,
+        mappedBottomRight.x,
+        viewportSize.widthPx,
+        padding,
+        scale,
+      )
       temporaryHorizontalFocusAllowancePx = focusAllowancePx(
         nextFocusX, page.width, viewportSize.widthPx / scale, scale,
       )
     }
-    val topAdjustment = if (mappedTopLeft.y < padding) {
-      -(padding - mappedTopLeft.y) / scale
-    } else 0.0
-    val bottomAdjustment = if (mappedBottomRight.y > usableHeightPx - padding) {
-      (mappedBottomRight.y - (usableHeightPx - padding)) / scale
-    } else 0.0
-    nextFocusY += topAdjustment + bottomAdjustment
+    nextFocusY += visibilityFocusAdjustment(
+      mappedTopLeft.y,
+      mappedBottomRight.y,
+      usableHeightPx,
+      padding,
+      scale,
+    )
     temporaryVerticalFocusAllowancePx = focusAllowancePx(
       nextFocusY, page.height, usableHeightPx / scale, scale,
     )
     setFocusCoordinates(nextFocusX, nextFocusY)
     return focus != originalFocus
+  }
+
+  private fun visibilityFocusAdjustment(
+    mappedStart: Double,
+    mappedEnd: Double,
+    viewportExtentPx: Double,
+    paddingPx: Double,
+    scale: Double,
+  ): Double {
+    val availableExtent = viewportExtentPx - 2.0 * paddingPx
+    return if (mappedEnd - mappedStart > availableExtent) {
+      ((mappedStart + mappedEnd) / 2.0 - viewportExtentPx / 2.0) / scale
+    } else {
+      val startAdjustment = if (mappedStart < paddingPx) {
+        -(paddingPx - mappedStart) / scale
+      } else 0.0
+      val endAdjustment = if (mappedEnd > viewportExtentPx - paddingPx) {
+        (mappedEnd - (viewportExtentPx - paddingPx)) / scale
+      } else 0.0
+      startAdjustment + endAdjustment
+    }
   }
 
   fun pageToView(point: PagePoint): ViewPoint {

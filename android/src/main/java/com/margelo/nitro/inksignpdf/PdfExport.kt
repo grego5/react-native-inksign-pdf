@@ -422,7 +422,7 @@ internal object PdfExportTextResolver {
       val fsType = readOpenTypeFsType(bytes, font.ttcIndex) ?: return null
       val permission = fsType and 0x000E
       val embeddingAllowed = (permission == 0 || permission == 0x0008) &&
-        fsType and 0x0200 == 0 && fsType and 0x0100 == 0
+        fsType and 0x0200 == 0
       if (!embeddingAllowed) return null
       return PdfiumFontResource(bytes, font.ttcIndex, fsType)
     }

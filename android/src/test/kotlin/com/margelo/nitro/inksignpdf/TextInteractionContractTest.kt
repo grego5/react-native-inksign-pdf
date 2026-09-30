@@ -1,6 +1,7 @@
 package com.margelo.nitro.inksignpdf
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -175,6 +176,58 @@ class TextInteractionContractTest {
         maximumDistancePx = 12.0,
       ),
     )
+  }
+
+  @Test
+  fun keyInsertionSkipsEarlierNameWithoutRuleBeforeApplyingOccurrence() {
+    val matches = listOf(
+      PdfiumTextKeyMatch(10.0, 10.0, 20.0, 20.0, 0.0, 15.0, 10.0),
+      PdfiumTextKeyMatch(10.0, 30.0, 20.0, 40.0, 8.0, 35.0, 10.0),
+      PdfiumTextKeyMatch(10.0, 50.0, 20.0, 60.0, 16.0, 55.0, 10.0),
+    )
+    val rules = listOf(
+      PdfiumHorizontalSnapCandidate(25.0, 100.0, 40.0),
+      PdfiumHorizontalSnapCandidate(25.0, 100.0, 60.0),
+    )
+    val page = PdfPageDimensions(120.0, 120.0)
+
+    val first = selectPdfiumTextKeyPlacement(
+      matches, rules, TextKeyOccurrence.FIRST, directionRtl = false, page = page,
+    )
+    assertEquals(8.0, first?.match?.sourceIndex)
+    assertEquals(rules[0], first?.rule)
+    val last = selectPdfiumTextKeyPlacement(
+      matches, rules, TextKeyOccurrence.LAST, directionRtl = false, page = page,
+    )
+    assertEquals(16.0, last?.match?.sourceIndex)
+    assertEquals(rules[1], last?.rule)
+    assertNull(selectPdfiumTextKeyPlacement(
+      listOf(matches.first().copy(lineHeight = 0.0)),
+      emptyList(),
+      TextKeyOccurrence.FIRST,
+      directionRtl = false,
+      page = page,
+    ))
+  }
+
+  @Test
+  fun keyUnderlineRuleLeavesTheLabelAndMarginOutsideTheTextFlow() {
+    val match = PdfiumTextKeyMatch(40.0, 20.0, 60.0, 30.0, 0.0, 25.0, 10.0)
+    val page = PdfPageDimensions(120.0, 120.0)
+    val ltrRule = PdfiumHorizontalSnapCandidate(50.0, 100.0, 25.0)
+    val rtlRule = PdfiumHorizontalSnapCandidate(0.0, 50.0, 25.0)
+
+    val ltr = selectPdfiumTextKeyPlacement(
+      listOf(match), listOf(ltrRule), TextKeyOccurrence.FIRST, directionRtl = false, page = page,
+    )
+    assertEquals(62.0, ltr?.contentLeft)
+    assertEquals(100.0, ltr?.contentRight)
+
+    val rtl = selectPdfiumTextKeyPlacement(
+      listOf(match), listOf(rtlRule), TextKeyOccurrence.FIRST, directionRtl = true, page = page,
+    )
+    assertEquals(0.0, rtl?.contentLeft)
+    assertEquals(38.0, rtl?.contentRight)
   }
 
   @Test

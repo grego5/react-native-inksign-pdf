@@ -189,6 +189,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun insertTextByKey(text: String, key: String, options: TextInsertionByKeyOptions?): Promise<Unit>
+  
+  @DoNotStrip
+  @Keep
   abstract fun setTextDirection(direction: TextDirection): Unit
   
   @DoNotStrip

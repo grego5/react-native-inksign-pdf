@@ -29,6 +29,21 @@ internal data class PdfiumHorizontalSnapCandidate(
   val y: Double,
 )
 
+internal data class PdfiumTextKeyMatch(
+  val left: Double,
+  val top: Double,
+  val right: Double,
+  val bottom: Double,
+  val sourceIndex: Double,
+  val lineCenter: Double,
+  val lineHeight: Double,
+)
+
+internal data class PdfiumTextKeyLookup(
+  val hasLiteralMatch: Boolean,
+  val matches: List<PdfiumTextKeyMatch>,
+)
+
 /** Worker-owned bridge to one detached PDFium document session. */
 internal class PdfiumRenderSession private constructor(
   private var nativeHandle: Long,
@@ -46,6 +61,33 @@ internal class PdfiumRenderSession private constructor(
       val offset = index * 3
       PdfiumHorizontalSnapCandidate(values[offset], values[offset + 1], values[offset + 2])
     }
+  }
+
+  fun textKeyMatches(pageIndex: Int, key: String): List<PdfiumTextKeyMatch> {
+    return textKeyLookup(pageIndex, key).matches
+  }
+
+  fun textKeyLookup(pageIndex: Int, key: String): PdfiumTextKeyLookup {
+    check(pageIndex in 0 until pageCount) { "Invalid PDFium page index: $pageIndex" }
+    val handle = nativeHandle
+    if (handle == 0L) throw PdfSessionException("pdfium_closed", "The PDFium render session is closed")
+    val values = nativeTextKeyMatches(handle, pageIndex, key) ?: DoubleArray(0)
+    check(values.isNotEmpty() && (values.size - 1) % 7 == 0) {
+      "PDFium returned incomplete text key lookup data"
+    }
+    val matches = List((values.size - 1) / 7) { index ->
+      val offset = 1 + index * 7
+      PdfiumTextKeyMatch(values[offset], values[offset + 1], values[offset + 2],
+        values[offset + 3], values[offset + 4], values[offset + 5], values[offset + 6])
+    }
+    return PdfiumTextKeyLookup(values[0] == 1.0, matches)
+  }
+
+  internal fun pageAnalysisScanCountsForTesting(): LongArray {
+    val handle = nativeHandle
+    if (handle == 0L) throw PdfSessionException("pdfium_closed", "The PDFium render session is closed")
+    return nativePageAnalysisScanCountsForTesting(handle)
+      ?: throw PdfSessionException("pdfium_closed", "The PDFium render session is closed")
   }
 
   fun pageSize(pageIndex: Int): PdfiumPageSize {
@@ -157,6 +199,16 @@ internal class PdfiumRenderSession private constructor(
       handle: Long,
       pageIndex: Int,
     ): DoubleArray?
+
+    @JvmStatic
+    private external fun nativeTextKeyMatches(
+      handle: Long,
+      pageIndex: Int,
+      key: String,
+    ): DoubleArray?
+
+    @JvmStatic
+    private external fun nativePageAnalysisScanCountsForTesting(handle: Long): LongArray?
 
     @JvmStatic
     private external fun nativeRenderPageIntoBitmap(

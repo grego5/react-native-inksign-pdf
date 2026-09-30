@@ -1,10 +1,15 @@
 name: Build iOS Ad Hoc dev client
+run-name: iOS Ad Hoc - ${{ inputs.reuse_release_tag || inputs.reuse_run_id || 'build' }}
 
 on:
   workflow_dispatch:
     inputs:
       reuse_run_id:
         description: 'Existing successful dev-client run ID whose IPA artifact should be republished (leave empty to build)'
+        required: false
+        type: string
+      reuse_release_tag:
+        description: 'Draft release tag containing a locally uploaded IPA to publish'
         required: false
         type: string
 
@@ -34,38 +39,49 @@ jobs:
       IOS_AD_HOC_PROFILE_B64: ${{ secrets.IOS_AD_HOC_PROFILE_B64 }}
 
     steps:
+      - name: Validate reuse inputs
+        working-directory: ${{ github.workspace }}
+        env:
+          IOS_REUSE_RUN_ID: ${{ inputs.reuse_run_id }}
+          IOS_REUSE_RELEASE_TAG: ${{ inputs.reuse_release_tag }}
+        run: |
+          if [[ -n "$IOS_REUSE_RUN_ID" && -n "$IOS_REUSE_RELEASE_TAG" ]]; then
+            echo 'Choose either reuse_run_id or reuse_release_tag, not both.' >&2
+            exit 1
+          fi
+
       - name: Check out library source
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         uses: actions/checkout@v5
 
       - name: Select Node.js
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         uses: actions/setup-node@v5
         with:
           node-version: '22'
 
       - name: Select Xcode
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         run: |
           sudo xcode-select -s /Applications/Xcode_26.5.app/Contents/Developer
           xcodebuild -version
 
       - name: Install consumer dependencies
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         run: npm install --no-package-lock --ignore-scripts --install-links --no-audit --no-fund
 
       - name: Generate iOS project
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         env:
           CI: '1'
         run: npx expo prebuild --platform ios --no-install
 
       - name: Install CocoaPods
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         run: pod install --project-directory=ios
 
       - name: Install Apple signing credentials
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         shell: bash
         run: |
           set -euo pipefail
@@ -108,7 +124,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Archive iOS app
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         run: |
           set -o pipefail
           workspace="$(find ios -maxdepth 1 -type d -name '*.xcworkspace' -print -quit)"
@@ -133,7 +149,7 @@ jobs:
             archive 2>&1 | tee "$RUNNER_TEMP/inksign-ios-archive.log"
 
       - name: Export ad hoc IPA
-        if: inputs.reuse_run_id == ''
+        if: inputs.reuse_run_id == '' && inputs.reuse_release_tag == ''
         run: |
           set -euo pipefail
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
@@ -163,7 +179,7 @@ jobs:
 
 
       - name: Download existing IPA artifact
-        if: inputs.reuse_run_id != ''
+        if: inputs.reuse_run_id != '' && inputs.reuse_release_tag == ''
         uses: actions/download-artifact@v7
         with:
           name: inksign-pdf-test-ios-devclient
@@ -171,16 +187,41 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.reuse_run_id }}
 
+      - name: Download locally uploaded IPA
+        if: inputs.reuse_release_tag != ''
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IOS_REUSE_RELEASE_TAG: ${{ inputs.reuse_release_tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ios-export"
+          gh release download "$IOS_REUSE_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.ipa' \
+            --dir "$RUNNER_TEMP/ios-export"
+          ipa_count="$(find "$RUNNER_TEMP/ios-export" -maxdepth 1 -type f -name '*.ipa' | wc -l | tr -d ' ')"
+          test "$ipa_count" = 1 || {
+            echo "Expected one IPA in release $IOS_REUSE_RELEASE_TAG; found $ipa_count." >&2
+            exit 1
+          }
+
       - name: Prepare IPA for publishing
         shell: bash
         working-directory: ${{ github.workspace }}
+        env:
+          IOS_REUSE_RELEASE_TAG: ${{ inputs.reuse_release_tag }}
         run: |
           set -euo pipefail
           ipa_path="$(find "$RUNNER_TEMP/ios-export" -maxdepth 1 -name '*.ipa' -type f -print -quit)"
           test -n "$ipa_path"
           echo "IOS_IPA_PATH=$ipa_path" >> "$GITHUB_ENV"
           echo "IOS_IPA_NAME=$(basename "$ipa_path")" >> "$GITHUB_ENV"
-          echo "IOS_RELEASE_TAG=ios-devclient-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+          release_tag="$IOS_REUSE_RELEASE_TAG"
+          if [[ -z "$release_tag" ]]; then
+            release_tag="ios-devclient-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+          echo "IOS_RELEASE_TAG=$release_tag" >> "$GITHUB_ENV"
 
       - name: Upload installable IPA artifact
         uses: actions/upload-artifact@v7
@@ -190,6 +231,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish IPA GitHub Release
+        if: inputs.reuse_release_tag == ''
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: ${{ github.workspace }}
@@ -200,6 +242,19 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --title "iOS Ad Hoc dev client workflow run ${GITHUB_RUN_NUMBER}" \
             --notes "Installable iOS Ad Hoc dev client from workflow run ${GITHUB_RUN_ID}."
+
+      - name: Publish locally uploaded IPA release
+        if: inputs.reuse_release_tag != ''
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release edit "$IOS_RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "iOS Ad Hoc dev client workflow run ${GITHUB_RUN_NUMBER}" \
+            --notes "Installable iOS Ad Hoc dev client from workflow run ${GITHUB_RUN_ID}." \
+            --draft=false
 
       - name: Create OTA manifest
         working-directory: ${{ github.workspace }}
