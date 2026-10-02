@@ -30,12 +30,13 @@ extension InkSignView {
   }
 
   func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult> {
-    let promise = Promise<AddPagesResult>()
+    let settlement = InkSignPdfOperationPromise<AddPagesResult>()
+    let promise = settlement.promise
     performOnMain {
       let requestedImageSize = options?.imagePageSize.map {
         CGSize(width: CGFloat($0.width), height: CGFloat($0.height))
       }
-      guard let context = self.beginStructuralOperation(promise: promise,
+      guard let context = self.beginStructuralOperation(settlement: settlement,
                                                        requiresDocument: false) else { return }
       let inputOptions = InkSignPdfPageInputOptions(
         type: options?.type.map { InkSignPdfPageInputType(rawValue: $0.stringValue) },
@@ -44,25 +45,30 @@ extension InkSignView {
         guard let self else {
           context.coordinator.settle(context.operation, succeeded: false)
           context.coordinator.stagedCleanup(result)
-          promise.reject(withError: MutablePageError.operationCancelled)
+          settlement.reject(MutablePageError.operationCancelled)
           return
         }
         switch result {
         case .failure(let error):
-          self.finishStructuralFailure(context, error: error, promise: promise)
+          self.finishStructuralFailure(context, error: error, settlement: settlement)
         case .success(let staged):
           guard !staged.isEmpty else {
+            guard self.documentCoordinator.isCurrent(context.operation) else {
+              self.documentCoordinator.settle(context.operation, succeeded: false)
+              settlement.reject(MutablePageError.operationCancelled)
+              return
+            }
             let info = (try? self.currentPageInfo()).map { self.toPublicPageInfo($0) }
             if let info {
               self.documentCoordinator.settle(context.operation, succeeded: true)
-              promise.resolve(withResult: AddPagesResult(pageInfo: info, addedPageCount: 0))
+              settlement.resolve(AddPagesResult(pageInfo: info, addedPageCount: 0))
             } else {
               self.documentCoordinator.settle(context.operation, succeeded: true)
-              promise.resolve(withResult: AddPagesResult(pageInfo: nil, addedPageCount: 0))
+              settlement.resolve(AddPagesResult(pageInfo: nil, addedPageCount: 0))
             }
             return
           }
-          guard self.prepareStructuralMutation(context, promise: promise) else {
+          guard self.prepareStructuralMutation(context, settlement: settlement) else {
             self.documentCoordinator.releaseStagedInputs(staged)
             return
           }
@@ -74,9 +80,9 @@ extension InkSignView {
                                            },
                                            imageTargetDpi: options?.targetDpi,
                                            imageJpegQuality: options?.jpegQuality,
-                                           promise: promise) { pageInfo, count in
-            promise.resolve(withResult: AddPagesResult(pageInfo: pageInfo,
-                                                       addedPageCount: Double(count)))
+                                           settlement: settlement) { pageInfo, count in
+            settlement.resolve(AddPagesResult(pageInfo: pageInfo,
+                                               addedPageCount: Double(count)))
           }
         }
       }
@@ -85,7 +91,8 @@ extension InkSignView {
   }
 
   func removePage() throws -> Promise<PageInfo> {
-    let promise = Promise<PageInfo>()
+    let settlement = InkSignPdfOperationPromise<PageInfo>()
+    let promise = settlement.promise
     performOnMain {
       guard let state = self.documentCoordinator.document else {
         promise.reject(withError: MutablePageError.notReady)
@@ -95,25 +102,26 @@ extension InkSignView {
         promise.reject(withError: MutablePageError.lastPageRequired)
         return
       }
-      guard let context = self.beginStructuralOperation(promise: promise) else { return }
-      guard self.prepareStructuralMutation(context, promise: promise) else { return }
+      guard let context = self.beginStructuralOperation(settlement: settlement) else { return }
+      guard self.prepareStructuralMutation(context, settlement: settlement) else { return }
       self.assembleStructuralCandidate(context,
                                        staged: [],
                                        command: .remove,
-                                       promise: promise) { pageInfo, _ in
-        promise.resolve(withResult: pageInfo)
+                                       settlement: settlement) { pageInfo, _ in
+        settlement.resolve(pageInfo)
       }
     }
     return promise
   }
 
   func movePage(pageIndex: Double) throws -> Promise<PageInfo> {
-    let promise = Promise<PageInfo>()
+    let settlement = InkSignPdfOperationPromise<PageInfo>()
+    let promise = settlement.promise
     performOnMain {
-      guard let context = self.beginStructuralOperation(promise: promise) else { return }
+      guard let context = self.beginStructuralOperation(settlement: settlement) else { return }
       guard pageIndex < Double(context.pages.count) else {
         self.documentCoordinator.settle(context.operation, succeeded: false)
-        promise.reject(withError: MutablePageError.invalidPageIndex)
+        settlement.reject(MutablePageError.invalidPageIndex)
         return
       }
       let destination = Int(pageIndex)
@@ -124,24 +132,24 @@ extension InkSignView {
           activePageID: context.activePageID,
           mutation: .moveActive(to: destination))
       } catch {
-        self.finishStructuralFailure(context, error: error, promise: promise)
+        self.finishStructuralFailure(context, error: error, settlement: settlement)
         return
       }
       if !order.changed {
         self.documentCoordinator.settle(context.operation, succeeded: true)
         if let pageInfo = try? self.currentPageInfo() {
-          promise.resolve(withResult: self.toPublicPageInfo(pageInfo))
+          settlement.resolve(self.toPublicPageInfo(pageInfo))
         } else {
-          promise.reject(withError: MutablePageError.notReady)
+          settlement.reject(MutablePageError.notReady)
         }
         return
       }
-      guard self.prepareStructuralMutation(context, promise: promise) else { return }
+      guard self.prepareStructuralMutation(context, settlement: settlement) else { return }
       self.assembleStructuralCandidate(context,
                                        staged: [],
                                        command: .move(to: destination),
-                                       promise: promise) { pageInfo, _ in
-        promise.resolve(withResult: pageInfo)
+                                       settlement: settlement) { pageInfo, _ in
+        settlement.resolve(pageInfo)
       }
     }
     return promise
@@ -179,23 +187,29 @@ extension InkSignView {
 
   private typealias StructuralCommand = InkSignPdfDocumentCoordinator.StructuralCommand
 
-  private func beginStructuralOperation<T>(promise: Promise<T>,
+  private func beginStructuralOperation<T>(settlement: InkSignPdfOperationPromise<T>,
                                            requiresDocument: Bool = true) -> StructuralContext? {
     guard !disposed else {
-      promise.reject(withError: MutablePageError.operationCancelled)
+      settlement.reject(MutablePageError.operationCancelled)
       return nil
     }
     let oldState = documentCoordinator.document
     guard (oldState.map { _ in true } ?? false) || !requiresDocument else {
-      promise.reject(withError: MutablePageError.notReady)
+      settlement.reject(MutablePageError.notReady)
       return nil
     }
     guard !hasDrawingTransaction else {
-      promise.reject(withError: MutablePageError.activeInkGesture)
+      settlement.reject(MutablePageError.activeInkGesture)
       return nil
     }
     guard let operation = documentCoordinator.admit(.structural) else {
-      promise.reject(withError: MutablePageError.operationInProgress)
+      settlement.reject(MutablePageError.operationInProgress)
+      return nil
+    }
+    guard documentCoordinator.registerCancellation(for: operation, handler: {
+      settlement.reject(MutablePageError.operationCancelled)
+    }) else {
+      settlement.reject(MutablePageError.operationCancelled)
       return nil
     }
     let viewport = try? currentViewportSnapshot()
@@ -217,13 +231,13 @@ extension InkSignView {
   }
 
   private func prepareStructuralMutation<T>(_ context: StructuralContext,
-                                             promise: Promise<T>) -> Bool {
+                                             settlement: InkSignPdfOperationPromise<T>) -> Bool {
     guard documentCoordinator.isCurrent(context.operation) else {
-      promise.reject(withError: MutablePageError.operationCancelled)
+      settlement.reject(MutablePageError.operationCancelled)
       return false
     }
     guard !hasDrawingTransaction else {
-      finishStructuralFailure(context, error: MutablePageError.activeInkGesture, promise: promise)
+      finishStructuralFailure(context, error: MutablePageError.activeInkGesture, settlement: settlement)
       return false
     }
     cancelPendingPageSwitch()
@@ -240,7 +254,7 @@ extension InkSignView {
     imageGeometry: PageGeometry? = nil,
     imageTargetDpi: Double? = nil,
     imageJpegQuality: Double? = nil,
-    promise: Promise<T>,
+    settlement: InkSignPdfOperationPromise<T>,
     resolve: @escaping (PageInfo, Int) -> Void
   ) {
     let coordinator = context.coordinator
@@ -261,7 +275,7 @@ extension InkSignView {
           guard let self, !self.disposed else {
             coordinator.discardCandidate(candidate)
             coordinator.settle(context.operation, succeeded: false)
-            promise.reject(withError: MutablePageError.operationCancelled)
+            settlement.reject(MutablePageError.operationCancelled)
             return
           }
           let previous: InkSignPdfDocumentState?
@@ -276,7 +290,7 @@ extension InkSignView {
           guard published else {
             coordinator.discardCandidate(candidate)
             coordinator.settle(context.operation, succeeded: false)
-            promise.reject(withError: MutablePageError.operationCancelled)
+            settlement.reject(MutablePageError.operationCancelled)
             return
           }
           self.installStructuralPresentation(candidate, generation: coordinator.generation,
@@ -294,13 +308,13 @@ extension InkSignView {
         DispatchQueue.main.async { [weak self] in
           guard let self else {
             coordinator.settle(context.operation, succeeded: false)
-            promise.reject(withError: MutablePageError.operationCancelled)
+            settlement.reject(MutablePageError.operationCancelled)
             return
           }
           self.finishStructuralFailure(context,
                                        error: coordinator.isCurrent(context.operation)
                                          ? error : MutablePageError.operationCancelled,
-                                       promise: promise)
+                                       settlement: settlement)
         }
       }
     }
@@ -308,8 +322,9 @@ extension InkSignView {
 
   private func finishStructuralFailure<T>(_ context: StructuralContext,
                                           error: Error,
-                                          promise: Promise<T>) {
-    if documentCoordinator.isCurrent(context.operation) {
+                                          settlement: InkSignPdfOperationPromise<T>) {
+    let isCurrent = documentCoordinator.isCurrent(context.operation)
+    if isCurrent {
       documentCoordinator.settle(context.operation, succeeded: false)
       if context.prepared, let oldState = context.oldState {
         restoreStructuralPresentation(oldState,
@@ -320,7 +335,7 @@ extension InkSignView {
         setInteractionMode(editing: false, interactionsEnabled: true)
       }
     }
-    promise.reject(withError: error)
+    settlement.reject(isCurrent ? error : MutablePageError.operationCancelled)
   }
 
   private func restoreStructuralPresentation(_ state: InkSignPdfDocumentState,

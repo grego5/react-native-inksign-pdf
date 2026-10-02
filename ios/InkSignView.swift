@@ -72,14 +72,6 @@ final class InkSignView: HybridInkSignViewSpec {
     var phase: Phase = .preparing
   }
 
-  struct QueuedOpen {
-    let path: String
-    let zoom: Double?
-    let focus: CGPoint?
-    let fitToPage: Bool
-    let promise: Promise<PageInfo>
-  }
-
   let container = UIView()
   let documentView = PDFView()
   let pdfViewInteractionOwnership = PDFViewInteractionOwnership()
@@ -99,7 +91,6 @@ final class InkSignView: HybridInkSignViewSpec {
   var pendingPageSwitchCompletion: ((Result<PageInfo, Error>) -> Void)?
   var textKeyboardOcclusion: CGFloat = 0
   var pendingOpen: PendingOpen?
-  var queuedOpen: QueuedOpen?
   var editMode = false
   var viewInteractionsEnabled = true
   var doubleTap: DoubleTapOptions?
@@ -140,7 +131,7 @@ final class InkSignView: HybridInkSignViewSpec {
   }()
 
   // Shared Nitro property; Android PDFium consumes this font configuration.
-  var fallbackFont: PdfFallbackFont?
+  var androidFallbackFont: AndroidFallbackFont?
   var strokeColor: String? {
     didSet { enqueueNativeConfiguration(.pen(color: strokeColor, maxWidth: strokeMaxWidth)) }
   }
@@ -240,8 +231,6 @@ final class InkSignView: HybridInkSignViewSpec {
   deinit {
     disposed = true
     pendingOpen = nil
-    queuedOpen?.promise.reject(withError: LoadError.cancelled)
-    queuedOpen = nil
     pageNavigationRequestID &+= 1
     textInteractionOverlay.discardForDisposal()
     documentView.document = nil
@@ -266,9 +255,6 @@ final class InkSignView: HybridInkSignViewSpec {
       let pendingOpen = self.pendingOpen
       self.pendingOpen = nil
       pendingOpen?.promise.reject(withError: LoadError.cancelled)
-      let queuedOpen = self.queuedOpen
-      self.queuedOpen = nil
-      queuedOpen?.promise.reject(withError: LoadError.cancelled)
       self.pageSwitchRequestID &+= 1
       self.pageNavigationRequestID &+= 1
       self.documentView.document = nil

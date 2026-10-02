@@ -20,7 +20,7 @@ namespace margelo::nitro::inksignpdf::views {
                                                  const HybridInkSignViewProps& sourceProps,
                                                  const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
-    fallbackFont(nitro::ReactProp<std::optional<PdfFallbackFont>>::fromRawValue("InkSignView", "fallbackFont", rawProps, sourceProps.fallbackFont)),
+    androidFallbackFont(nitro::ReactProp<std::optional<AndroidFallbackFont>>::fromRawValue("InkSignView", "androidFallbackFont", rawProps, sourceProps.androidFallbackFont)),
     strokeColor(nitro::ReactProp<std::optional<std::string>>::fromRawValue("InkSignView", "strokeColor", rawProps, sourceProps.strokeColor)),
     strokeMinWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("InkSignView", "strokeMinWidth", rawProps, sourceProps.strokeMinWidth)),
     strokeMaxWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("InkSignView", "strokeMaxWidth", rawProps, sourceProps.strokeMaxWidth)),
@@ -39,7 +39,7 @@ namespace margelo::nitro::inksignpdf::views {
 
   bool HybridInkSignViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
-      case hashString("fallbackFont"): return true;
+      case hashString("androidFallbackFont"): return true;
       case hashString("strokeColor"): return true;
       case hashString("strokeMinWidth"): return true;
       case hashString("strokeMaxWidth"): return true;

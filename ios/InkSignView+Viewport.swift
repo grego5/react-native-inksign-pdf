@@ -170,15 +170,6 @@ extension InkSignView {
     }
   }
 
-  func startQueuedOpen() {
-    guard let next = queuedOpen else { return }
-    queuedOpen = nil
-    beginLoad(next.path,
-              zoom: next.zoom,
-              focus: next.focus,
-              fitToPage: next.fitToPage,
-              promise: next.promise)
-  }
 
   func currentViewportSnapshot() throws -> Viewport {
     try requireViewportReady(request: .preserve)

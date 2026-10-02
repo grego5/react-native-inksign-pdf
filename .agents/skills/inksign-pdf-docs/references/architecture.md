@@ -31,8 +31,9 @@ and export.
   thread owns presentation and callbacks.
 - Each platform backend prepares, validates, and publishes its own detached
   candidate as one document transition.
-- Document operations are coordinated per view. Worker results are accepted
-  only while their document and request remain current.
+- Each mounted view owns an independent document coordinator and operation
+  session. See [document operations](#document-operations) for replacement,
+  cancellation, and promise settlement.
 - Android renders PDFium tiles beneath native annotation presentation and uses
   the shared C++ stroke engine. iOS renders PDFKit pages through Quartz and
   uses PencilKit for ink input; export retains source pages and adds committed
@@ -45,13 +46,47 @@ and export.
   selection are temporary presentation state.
 - Stored geometry uses canonical page coordinates: media-box-relative with a
   top-left origin. Viewport transforms are presentation-only.
-- Opens and page mutations prepare detached candidates. A current open failure
-  clears the document; failed, cancelled, or stale page mutations leave it in
-  place. Superseded work cannot replace newer state, and source files are never
-  overwritten.
+- Opens and page mutations prepare detached candidates. Failed or cancelled
+  page mutations leave the current document intact. Caller source files are
+  never overwritten.
 - Finalize exports an immutable snapshot of committed content from the current
   working document to a separate output. It does not consume or replace the
   working document.
+
+## Document operations
+
+- The coordinator owns session identity, pending document operations, and
+  cancellation for its view. Each operation captures its session and request
+  identity when admitted.
+- An accepted `open()` invalidates the previous session, cancels its pending
+  opens, imports, page mutations, text lookups, navigation, viewport requests,
+  and document exports, and clears the previous document's presentation and
+  input state. Debug recording export remains independent of document replacement.
+  Replacement proceeds even when those operations are active.
+- Opening waits internally for document loading and usable presentation geometry.
+  Only the latest accepted open may install a document. Its promise resolves
+  after complete installation; state and page callbacks describe that document.
+  A current open failure leaves the view empty. A superseded open cannot clear
+  or restore a newer session.
+- Check operation identity on the owning thread before publishing mutations,
+  emitting asynchronous callbacks, and settling promises. Superseded successes
+  and failures reject with `operation_cancelled`; each promise settles once.
+  A result already settled before replacement cannot be withdrawn.
+- Cancellation prevents further publication immediately. A worker may finish its
+  current serialized request before the queue closes its reader or deletes its
+  temporary files; cleanup follows worker ownership even after its promise has
+  been cancelled.
+  Unpublished outputs are retired. Finalized outputs remain view-owned until
+  disposal, as described in the platform export references.
+- Disposal invalidates the session, cancels pending operations, clears callbacks
+  and presentation, and releases resources through the same cleanup rules.
+- Android's optional `androidFallbackFont` contains the app-shared local `uri`,
+  HTTP(S) fallback `url`, and optional collection index. Android reuses a valid
+  file at `uri` or downloads and atomically publishes `url` there. The app owns
+  the shared file and its invalidation; iOS uses system font fallback.
+- Required validation covers replacement during each asynchronous operation,
+  stale success and failure, empty imports, repeated opens, disposal, exactly-once
+  settlement, unchanged newer content/history, and eventual resource cleanup.
 
 ## Scope
 

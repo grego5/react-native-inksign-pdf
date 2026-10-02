@@ -10,7 +10,7 @@ import NitroModules
 /// See ``HybridInkSignViewSpec``
 public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   // Properties
-  var fallbackFont: PdfFallbackFont? { get set }
+  var androidFallbackFont: AndroidFallbackFont? { get set }
   var strokeColor: String? { get set }
   var strokeMinWidth: Double? { get set }
   var strokeMaxWidth: Double? { get set }

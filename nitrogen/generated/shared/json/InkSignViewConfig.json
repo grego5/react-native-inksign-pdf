@@ -4,7 +4,7 @@
   "bubblingEventTypes": {},
   "directEventTypes": {},
   "validAttributes": {
-    "fallbackFont": true,
+    "androidFallbackFont": true,
     "strokeColor": true,
     "strokeMinWidth": true,
     "strokeMaxWidth": true,

@@ -50,8 +50,8 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Properties
-    std::optional<PdfFallbackFont> getFallbackFont() override;
-    void setFallbackFont(const std::optional<PdfFallbackFont>& fallbackFont) override;
+    std::optional<AndroidFallbackFont> getAndroidFallbackFont() override;
+    void setAndroidFallbackFont(const std::optional<AndroidFallbackFont>& androidFallbackFont) override;
     std::optional<std::string> getStrokeColor() override;
     void setStrokeColor(const std::optional<std::string>& strokeColor) override;
     std::optional<double> getStrokeMinWidth() override;

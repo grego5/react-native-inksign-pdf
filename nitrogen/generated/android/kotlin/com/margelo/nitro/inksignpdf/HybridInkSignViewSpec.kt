@@ -32,7 +32,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var fallbackFont: PdfFallbackFont?
+  abstract var androidFallbackFont: AndroidFallbackFont?
   
   @get:DoNotStrip
   @get:Keep

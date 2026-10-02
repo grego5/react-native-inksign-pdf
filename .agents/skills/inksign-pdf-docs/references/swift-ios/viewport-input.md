@@ -26,10 +26,13 @@
   inside it. `maxLines` retains
   complete lines; `verticalAnchor` fixes the top or bottom of the visible block.
 - **Key insertion:** `insertTextByKey(text, key, options?)` resolves source text
-  and rule geometry on the serial PDF queue. Before committing through text
-  history, the main thread checks that the captured document generation and
-  stable page identity are still current. See the [README](../../../../README.md)
-  for occurrence selection, layout, and error behavior.
+  and rule geometry on the serial PDF queue. It captures the selected page ID
+  and commits to that page even if navigation changes the active page. The
+  commit is cancelled if the document is replaced, the captured page is removed,
+  or the view is disposed. A commit to the active page cancels its live stroke
+  and syncs the text overlay; an inactive-page commit leaves current input in
+  place. See the [README](../../../../README.md) for occurrence selection,
+  layout, and error behavior.
 - **Bounded editing:** `insertAnnotationOn(options?)` applies an optional
   physical width and height from the tap toward the right and down, plus
   alignment and line options, to the live editor and committed text. Without

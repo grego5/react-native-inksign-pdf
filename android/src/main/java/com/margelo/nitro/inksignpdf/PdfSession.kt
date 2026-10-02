@@ -9,6 +9,9 @@ import java.util.concurrent.ThreadFactory
 
 internal const val pdfiumAndroidDisplayFlags = 0x13
 
+/** Local font path passed from open preparation to PDFium. */
+internal data class PdfFallbackFont(val path: String, val collectionIndex: Double?)
+
 /** Point dimensions reported by one page of an opened source PDF. */
 internal data class PdfPageDimensions(
   val width: Double,
@@ -696,6 +699,36 @@ internal class PdfSessionWorker(
         requestedGeneration = Long.MIN_VALUE
         requestedTileEpoch = Long.MIN_VALUE
         requestedPreviewEpoch = Long.MIN_VALUE
+      }
+    }
+  }
+
+  /** Clears reader state after a view accepts replacement; queued workers retain ownership until drained. */
+  fun clearCurrentForReplacement(completion: (Result<Unit>) -> Unit = {}) {
+    synchronized(stateLock) {
+      if (closed) {
+        completion(Result.success(Unit))
+        return
+      }
+      requestedGeneration = Long.MIN_VALUE
+      requestedTileEpoch = Long.MIN_VALUE
+      requestedPreviewEpoch = Long.MIN_VALUE
+      try {
+        executor.execute {
+          val resources = synchronized(stateLock) {
+            listOfNotNull(current, replacedOpenSession) + preparedOpenSessions.values.toList()
+              .also {
+                current = null
+                replacedOpenSession = null
+                preparedOpenSessions.clear()
+                acceptedOpenAttemptIds.clear()
+              }
+          }
+          resources.distinct().forEach { runCatching { it.close() } }
+          completion(Result.success(Unit))
+        }
+      } catch (error: java.util.concurrent.RejectedExecutionException) {
+        completion(Result.failure(error))
       }
     }
   }

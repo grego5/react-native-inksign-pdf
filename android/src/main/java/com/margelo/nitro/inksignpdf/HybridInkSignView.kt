@@ -10,9 +10,12 @@ import android.widget.FrameLayout
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.core.Promise
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -30,6 +33,7 @@ class HybridInkSignView internal constructor(
     sessionWorker: PdfSessionWorker = PdfSessionWorker(),
 ) : HybridInkSignViewSpec() {
   private val artifactPolicy = CacheArtifactPolicy.initialize(context)
+  private val fallbackFontResolver = AndroidFallbackFontResolver()
   private val pageInputCoordinator = PageInputCoordinator(context, artifactPolicy)
   private val container = FrameLayout(context)
   private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -58,12 +62,13 @@ class HybridInkSignView internal constructor(
   private var pageNavigationRequestID = 0L
   @Volatile private var disposed = false
   private var editMode = false
-  private val pendingPromises = IdentityHashMap<Promise<*>, Unit>()
+  private data class PendingPromise(val documentBound: Boolean, var job: Job? = null)
+  private val pendingPromises = IdentityHashMap<Promise<*>, PendingPromise>()
 
   override val view: View
     get() = container
 
-  override var fallbackFont: PdfFallbackFont? = null
+  override var androidFallbackFont: AndroidFallbackFont? = null
   override var strokeColor: String? = null
     set(value) {
       field = value
@@ -195,22 +200,31 @@ class HybridInkSignView internal constructor(
     return launchPromise {
       checkMainThread()
       if (disposed) throw operationCancelled()
+      val openJob = currentCoroutineContext()[Job]
       val viewport = ViewportRequestParser.parseOpen(options)
-      val fallbackFontSnapshot = fallbackFont
+      val fallbackFontSnapshot = androidFallbackFont
       logFallbackFontSnapshot(fallbackFontSnapshot)
       val pageInfo = coordinator.executeOpen(
         sourcePath = path,
         fallbackFont = fallbackFontSnapshot,
+        resolveFallbackFont = fallbackFontResolver::resolve,
         awaitContainerSize = { surface.awaitUsableViewportSize() },
+        invalidatePrevious = {
+          cancelSupersededDocumentOperations(openJob)
+          pageInputCoordinator.cancelPending()
+          viewportRequestID += 1L
+          pageNavigationRequestID += 1L
+          textOverlay.cancelForDocumentReplacement()
+          surface.clearDocument()
+          editMode = false
+          lastInkState = InkState(false, false, false)
+          runCatching { emitState() }
+        },
         preparePresentation = { info, size ->
           val presentation = surface.prepareDocumentPresentation(info, viewport, size)
           presentation to toPublicPageInfo(presentation.pageInfo)
         },
-        beginHandoff = {
-          pageInputCoordinator.cancelPending()
-          surface.beginOpenHandoff()
-          textOverlay.finishForLifecycle()
-        },
+        beginHandoff = { surface.beginOpenHandoff() },
         publishPresentation = { (prepared, pageInfo) ->
           viewportRequestID += 1L
           pageNavigationRequestID += 1L
@@ -229,19 +243,19 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  private fun logFallbackFontSnapshot(fallbackFontSnapshot: PdfFallbackFont?) {
+  private fun logFallbackFontSnapshot(fallbackFontSnapshot: AndroidFallbackFont?) {
     if (BuildConfig.DEBUG) {
       Log.i(
         "InkSignPdf",
         "PDFium component fallback snapshot configured=${fallbackFontSnapshot != null} " +
-          "path=${fallbackFontSnapshot?.path ?: ""}",
+          "uri=${fallbackFontSnapshot?.uri ?: ""}",
       )
     }
   }
 
   override fun addPages(options: AddPagesOptions?): Promise<AddPagesResult> {
     return launchPromise {
-      val fontFallbackSnapshot = fallbackFont
+      val fontFallbackSnapshot = coordinator.fallbackFont
       val requestedImageSize = options?.imagePageSize?.let {
         PdfPageDimensions(it.width, it.height)
       }
@@ -253,6 +267,7 @@ class HybridInkSignView internal constructor(
         val imageSize = requestedImageSize ?: activePage?.dimensions ?:
           PdfPageDimensions(595.28, 841.89)
         staged = pageInputCoordinator.stage(options)
+        ensureCurrentStructural(generation)
         if (staged.isEmpty()) {
           return@launchPromise AddPagesResult(
             pageInfo = activePage?.let { toPublicPageInfo(it) },
@@ -437,19 +452,15 @@ class HybridInkSignView internal constructor(
     )
     val generation = presentation.generation
     val pageIndex = presentation.pageIndex
-    val pageSwitchId = surface.currentPageSwitchId
+    val pageId = presentation.pageId
     val page = presentation.page
     val directionRtl = textOverlay.resolveDirection(options?.direction)
-    val lookup = awaitCurrentPageKeyLookup(
+    val lookup = awaitCapturedDocumentPageLookup(
       awaitLookup = { awaitKeyLookup(generation, pageIndex, key) },
-      isCurrentPage = {
-        !disposed && coordinator.generation == generation &&
-          surface.currentPageSwitchId == pageSwitchId &&
-          runCatching { surface.currentPageInfo().pageIndex == pageIndex }.getOrDefault(false)
-      },
+      isTargetPageCurrent = { isCurrentTextTarget(generation, pageId) },
     )
     if (!lookup.hasLiteralMatch) {
-      throw PdfSessionException("text_key_not_found", "The requested text key was not found on the active page")
+      throw PdfSessionException("text_key_not_found", "The requested text key was not found on the captured page")
     }
     val placement = selectPdfiumTextKeyPlacement(
       lookup.matches,
@@ -478,13 +489,11 @@ class HybridInkSignView internal constructor(
       verticalAnchor = anchor,
     )
     checkMainThread()
-    if (disposed || coordinator.generation != generation ||
-      surface.currentPageInfo().pageIndex != pageIndex || surface.currentPageSwitchId != pageSwitchId) {
-      throw operationCancelled()
-    }
+    requireCurrentTextTarget(generation, pageId)
     surface.withStateTransaction {
       textOverlay.addTextAnnotation(bounds, text, commitOptions, requireVisibleLine = true,
-        resolvedDirectionRtl = directionRtl)
+        resolvedDirectionRtl = directionRtl,
+        capturedPage = CapturedTextPage(generation, pageId, page))
     }
     Unit
   }
@@ -500,6 +509,14 @@ class HybridInkSignView internal constructor(
         onFailure = { error -> continuation.resumeWithException(error) },
       )
     }
+  }
+
+  private fun isCurrentTextTarget(generation: Long, pageId: String): Boolean =
+    !disposed && coordinator.hasDocument && coordinator.generation == generation &&
+      coordinator.pageIndexForId(pageId) != null
+
+  private fun requireCurrentTextTarget(generation: Long, pageId: String) {
+    if (!isCurrentTextTarget(generation, pageId)) throw operationCancelled()
   }
 
   private fun runHistoryCommand(command: () -> Unit) {
@@ -611,7 +628,7 @@ class HybridInkSignView internal constructor(
           throw normalizeFinalizeError(error)
         }
         try {
-          val output = awaitWorkerResult(snapshot.generation) { completion ->
+          val output = awaitWorkerResult { completion ->
             coordinator.exportSession(snapshot, completion)
           }
           publishExport(snapshot, output)
@@ -634,7 +651,7 @@ class HybridInkSignView internal constructor(
   }
 
   override fun exportDebugRecording(): Promise<String> {
-    return launchPromise {
+    return launchPromise(documentBound = false) {
       checkMainThread()
       val snapshot = traceRecorder.snapshotForExport()
       val output = artifactPolicy.allocateDebugRecording()
@@ -649,16 +666,20 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  private fun <T> launchPromise(operation: suspend () -> T): Promise<T> {
+  private fun <T> launchPromise(
+    documentBound: Boolean = true,
+    operation: suspend () -> T,
+  ): Promise<T> {
     val promise = Promise<T>()
+    val pending = PendingPromise(documentBound)
     synchronized(this) {
       if (disposed) {
         promise.reject(operationCancelled())
         return promise
       }
-      pendingPromises[promise] = Unit
+      pendingPromises[promise] = pending
     }
-    mainScope.launch {
+    val job = mainScope.launch(start = CoroutineStart.LAZY) {
       try {
         resolvePromise(promise, operation())
       } catch (error: Throwable) {
@@ -669,7 +690,21 @@ class HybridInkSignView internal constructor(
         }
       }
     }
+    synchronized(this) { pending.job = job }
+    job.start()
     return promise
+  }
+
+  private fun cancelSupersededDocumentOperations(currentJob: Job?) {
+    val superseded = synchronized(this) {
+      pendingPromises.entries
+        .filter { (promise, pending) -> pending.documentBound && pending.job !== currentJob }
+        .map { it.key to it.value.job }
+    }
+    superseded.forEach { (promise, job) ->
+      rejectPromise(promise, operationCancelled())
+      job?.cancel()
+    }
   }
 
   private fun <T> runTextCommand(action: () -> T): T {
@@ -700,7 +735,6 @@ class HybridInkSignView internal constructor(
   }
 
   private suspend fun <T> awaitWorkerResult(
-    generation: Long,
     start: (((Result<T>) -> Unit) -> Unit),
   ): T {
     return suspendCancellableCoroutine { continuation ->
@@ -709,9 +743,6 @@ class HybridInkSignView internal constructor(
           onSuccess = { value -> continuation.resume(value) },
           onFailure = { error -> continuation.resumeWithException(error) },
         )
-      }
-      continuation.invokeOnCancellation {
-        coordinator.cancel(generation)
       }
     }
   }
@@ -922,13 +953,18 @@ class HybridInkSignView internal constructor(
 
 }
 
-internal suspend fun <T> awaitCurrentPageKeyLookup(
+internal suspend fun <T> awaitCapturedDocumentPageLookup(
   awaitLookup: suspend () -> T,
-  isCurrentPage: () -> Boolean,
+  isTargetPageCurrent: () -> Boolean,
 ): T {
-  val result = awaitLookup()
-  if (!isCurrentPage()) {
-    throw PdfSessionException("operation_cancelled", "The active page changed during text lookup")
+  val result = try {
+    Result.success(awaitLookup())
+  } catch (error: Throwable) {
+    Result.failure(error)
   }
-  return result
+  if (!isTargetPageCurrent()) throw PdfSessionException(
+    "operation_cancelled",
+    "The document or captured page changed during text lookup",
+  )
+  return result.getOrThrow()
 }

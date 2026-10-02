@@ -12,8 +12,8 @@
 // Forward declaration of `HybridInkSignViewSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 
-// Forward declaration of `PdfFallbackFont` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
+// Forward declaration of `AndroidFallbackFont` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
@@ -53,7 +53,7 @@ namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `TextPlacementOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
-#include "PdfFallbackFont.hpp"
+#include "AndroidFallbackFont.hpp"
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
@@ -125,12 +125,12 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Properties
-    inline std::optional<PdfFallbackFont> getFallbackFont() noexcept override {
-      auto __result = _swiftPart.getFallbackFont();
+    inline std::optional<AndroidFallbackFont> getAndroidFallbackFont() noexcept override {
+      auto __result = _swiftPart.getAndroidFallbackFont();
       return __result;
     }
-    inline void setFallbackFont(const std::optional<PdfFallbackFont>& fallbackFont) noexcept override {
-      _swiftPart.setFallbackFont(fallbackFont);
+    inline void setAndroidFallbackFont(const std::optional<AndroidFallbackFont>& androidFallbackFont) noexcept override {
+      _swiftPart.setAndroidFallbackFont(androidFallbackFont);
     }
     inline std::optional<std::string> getStrokeColor() noexcept override {
       auto __result = _swiftPart.getStrokeColor();

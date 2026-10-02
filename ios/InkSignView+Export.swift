@@ -7,6 +7,13 @@ extension InkSignView {
     guard let operation = documentCoordinator.admit(.finalize) else {
       return Promise.rejected(withError: ExportError.operationInProgress)
     }
+    let settlement = InkSignPdfOperationPromise<String>()
+    guard documentCoordinator.registerCancellation(for: operation, handler: {
+      settlement.reject(ExportError.cancelled)
+    }) else {
+      settlement.reject(ExportError.cancelled)
+      return settlement.promise
+    }
     let captureResult: Result<ExportSnapshot, Error>
     if Thread.isMainThread {
       captureResult = Result { try captureExportSnapshot(operation: operation) }
@@ -16,8 +23,9 @@ extension InkSignView {
         captured = Result { try self.captureExportSnapshot(operation: operation) }
       }
       guard let captured else {
-        documentCoordinator.finish(operation)
-        return Promise.rejected(withError: ExportError.cancelled)
+        documentCoordinator.settle(operation, succeeded: false)
+        settlement.reject(ExportError.cancelled)
+        return settlement.promise
       }
       captureResult = captured
     }
@@ -27,18 +35,15 @@ extension InkSignView {
     case .success(let value):
       snapshot = value
     case .failure(let error):
-      documentCoordinator.finish(operation)
-      return Promise.rejected(withError: error)
+      documentCoordinator.settle(operation, succeeded: false)
+      settlement.reject(error)
+      return settlement.promise
     }
 
     let coordinator = documentCoordinator
-    return Promise.parallel(coordinator.pdfQueue) {
-      defer { coordinator.finish(snapshot.operation) }
+    coordinator.pdfQueue.async {
       var outputPublished = false
-      defer {
-        coordinator.discardArtifact(snapshot.sourceSnapshot)
-        if !outputPublished { coordinator.discardArtifact(snapshot.output) }
-      }
+      let result: Result<String, Error>
       do {
         try FileManager.default.copyItem(at: snapshot.source, to: snapshot.sourceSnapshot)
         let temporary = try Self.writePDF(source: snapshot.sourceSnapshot,
@@ -51,12 +56,30 @@ extension InkSignView {
         }
         guard didPublish else { throw ExportError.cancelled }
         outputPublished = true
-        return snapshot.output.path
+        result = .success(snapshot.output.path)
       } catch {
-        guard coordinator.isCurrent(snapshot.operation) else { throw ExportError.cancelled }
-        throw Self.normalizeExportError(error)
+        result = .failure(coordinator.isCurrent(snapshot.operation)
+                          ? Self.normalizeExportError(error)
+                          : ExportError.cancelled)
+      }
+      coordinator.discardArtifact(snapshot.sourceSnapshot)
+      if !outputPublished { coordinator.discardArtifact(snapshot.output) }
+      DispatchQueue.main.async {
+        guard coordinator.isCurrent(snapshot.operation) else {
+          settlement.reject(ExportError.cancelled)
+          return
+        }
+        switch result {
+        case .success(let path):
+          coordinator.finish(snapshot.operation)
+          settlement.resolve(path)
+        case .failure(let error):
+          coordinator.settle(snapshot.operation, succeeded: false)
+          settlement.reject(error)
+        }
       }
     }
+    return settlement.promise
   }
 
   /// Captures committed document content on the main-thread-owned state

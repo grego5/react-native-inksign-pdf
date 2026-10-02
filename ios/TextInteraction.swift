@@ -313,13 +313,13 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                          options: TextAnnotationOptions?,
                          resolvedDirectionRtl: Bool? = nil,
                          requireVisibleLine: Bool = false,
-                         capturedPage: (generation: UInt64, pageIndex: Int, pageSize: CGSize)? = nil) throws {
+                         capturedPage: (generation: UInt64, pageID: UUID, pageSize: CGSize)? = nil) throws {
     guard let owner else { throw InkSignView.TextError.notReady }
-    let context: (generation: UInt64, pageIndex: Int, pageSize: CGSize)
+    let context: (generation: UInt64, pageIndex: Int?, pageID: UUID?, pageSize: CGSize)
     if let capturedPage {
-      context = capturedPage
+      context = (capturedPage.generation, nil, capturedPage.pageID, capturedPage.pageSize)
     } else if let presentation = presentation() {
-      context = (presentation.generation, presentation.pageIndex, presentation.pageSize)
+      context = (presentation.generation, presentation.pageIndex, nil, presentation.pageSize)
     } else {
       throw InkSignView.TextError.notReady
     }
@@ -355,9 +355,17 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     if requireVisibleLine && (annotation.bounds.isNull || annotation.bounds.isEmpty) {
       throw InkSignView.TextError.ruleNotFound
     }
-    owner.appendTextAnnotation(annotation,
-                               generation: context.generation,
-                               pageIndex: context.pageIndex)
+    if let pageID = context.pageID {
+      try owner.appendTextAnnotation(annotation,
+                                     generation: context.generation,
+                                     pageID: pageID)
+    } else if let pageIndex = context.pageIndex {
+      owner.appendTextAnnotation(annotation,
+                                 generation: context.generation,
+                                 pageIndex: pageIndex)
+    } else {
+      throw InkSignView.TextError.cancelled
+    }
   }
 
   private func appLayoutIsRTL() -> Bool {
@@ -464,6 +472,13 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     } else if case .dragging = interactionState {
       commitDrag()
     }
+    clearSelection()
+  }
+
+  func discardForDocumentReplacement() {
+    clearPlacementRules()
+    closeEditor()
+    interactionState = .idle
     clearSelection()
   }
 

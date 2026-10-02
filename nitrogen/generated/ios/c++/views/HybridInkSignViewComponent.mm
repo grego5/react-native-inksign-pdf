@@ -98,11 +98,11 @@ using namespace margelo::nitro::inksignpdf::views;
   if (hasTransactionPropChanges) {
     swiftPart.beforeUpdate();
 
-    // fallbackFont: optional
+    // androidFallbackFont: optional
     if (oldViewProps == nullptr
-          ? newViewProps.fallbackFont.isProvided()
-          : !newViewProps.fallbackFont.hasSameValue(oldViewProps->fallbackFont)) {
-      swiftPart.setFallbackFont(newViewProps.fallbackFont.get());
+          ? newViewProps.androidFallbackFont.isProvided()
+          : !newViewProps.androidFallbackFont.hasSameValue(oldViewProps->androidFallbackFont)) {
+      swiftPart.setAndroidFallbackFont(newViewProps.androidFallbackFont.get());
     }
     // strokeColor: optional
     if (oldViewProps == nullptr

@@ -121,12 +121,12 @@ open class HybridInkSignViewSpec_cxx {
   }
 
   // Properties
-  public final var fallbackFont: bridge.std__optional_PdfFallbackFont_ {
+  public final var androidFallbackFont: bridge.std__optional_AndroidFallbackFont_ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_PdfFallbackFont_ in
-        if let __unwrappedValue = self.__implementation.fallbackFont {
-          return bridge.create_std__optional_PdfFallbackFont_(__unwrappedValue)
+      return { () -> bridge.std__optional_AndroidFallbackFont_ in
+        if let __unwrappedValue = self.__implementation.androidFallbackFont {
+          return bridge.create_std__optional_AndroidFallbackFont_(__unwrappedValue)
         } else {
           return .init()
         }
@@ -134,7 +134,7 @@ open class HybridInkSignViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.fallbackFont = newValue.value
+      self.__implementation.androidFallbackFont = newValue.value
     }
   }
   

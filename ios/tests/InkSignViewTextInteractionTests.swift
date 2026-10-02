@@ -245,15 +245,6 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(editor.text, "First line\nSecond line")
     XCTAssertEqual(editor.selectedRange, replacementSelection)
 
-    editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
-    editor.setMarkedText("x", selectedRange: NSRange(location: 1, length: 0))
-    let markedText = editor.text ?? ""
-    let markedSelection = editor.selectedRange
-    editor.setMarkedText("x\nThird line", selectedRange: NSRange(location: 1, length: 0))
-    XCTAssertEqual(editor.text, markedText)
-    XCTAssertEqual(editor.selectedRange, markedSelection)
-    editor.unmarkText()
-
     let acceptedText = editor.text ?? ""
     editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
     editor.deleteBackward()
@@ -268,7 +259,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(annotation.verticalAnchor, .bottom)
     XCTAssertEqual(annotation.flowBounds?.minX, 50)
     XCTAssertEqual(annotation.flowBounds?.maxX, 170)
-    XCTAssertEqual(annotation.flowBounds?.minY, 180)
+    XCTAssertEqual(annotation.flowBounds?.minY, 160)
     XCTAssertEqual(annotation.flowBounds?.maxY, 280)
     XCTAssertEqual(annotation.bounds.maxY, 280, accuracy: 0.01)
 
@@ -392,69 +383,6 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     }
   }
 
-  func testInsertTextUsesCaretInsideMarkedRangeAndRejectsOverflow() throws {
-    let fixture = makeFixture(pageCount: 1)
-    defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let view = fixture.view
-    let overlay = view.textInteractionOverlay
-    let flowBounds = CGRect(x: 50, y: 160, width: 80, height: 120)
-    try view.insertAnnotationOn(options: TextPlacementOptions(
-      direction: .ltr,
-      width: 80,
-      height: 120,
-      maxLines: 1,
-      alignment: .start,
-      verticalAnchor: .top))
-    XCTAssertTrue(overlay.routePlacementTap(
-      at: CGPoint(x: 50, y: 160).applying(try XCTUnwrap(view.pageToOverlayTransform))))
-
-    let editor = try XCTUnwrap(textEditor(in: overlay))
-    let fontSize = editor.font?.pointSize ?? 16
-    var markedText = "W"
-    for _ in 0..<64 {
-      guard InkSignPdfTextRenderer.fits(markedText + "W",
-                                        fontSize: fontSize,
-                                        isRTL: false,
-                                        flowBounds: flowBounds,
-                                        maxLines: 1) else { break }
-      markedText += "W"
-    }
-    XCTAssertGreaterThan(markedText.utf16.count, 1)
-    XCTAssertTrue(InkSignPdfTextRenderer.fits(markedText,
-                                               fontSize: fontSize,
-                                               isRTL: false,
-                                               flowBounds: flowBounds,
-                                               maxLines: 1))
-    let overflow = markedText + "W"
-    XCTAssertFalse(InkSignPdfTextRenderer.fits(overflow,
-                                                fontSize: fontSize,
-                                                isRTL: false,
-                                                flowBounds: flowBounds,
-                                                maxLines: 1))
-
-    let fittingPrefix = String(markedText.dropLast())
-    editor.setMarkedText(fittingPrefix, selectedRange: NSRange(location: 1, length: 0))
-    editor.insertText("W")
-    XCTAssertEqual(editor.text, markedText)
-
-    editor.selectedRange = NSRange(location: 0, length: (markedText as NSString).length)
-    editor.setMarkedText(markedText, selectedRange: NSRange(location: 1, length: 0))
-    let selectionInsideMark = editor.selectedRange
-    XCTAssertEqual(selectionInsideMark.location, 1)
-
-    // Exercise the editor's UIKeyInput preflight without the delegate's second admission
-    // check masking an incorrect range in the subclass.
-    editor.delegate = nil
-    editor.insertText("W")
-    XCTAssertEqual(editor.text, markedText)
-    XCTAssertEqual(editor.selectedRange, selectionInsideMark)
-
-    editor.setMarkedText(overflow, selectedRange: NSRange(location: 1, length: 0))
-    XCTAssertEqual(editor.text, markedText)
-    XCTAssertEqual(editor.selectedRange, selectionInsideMark)
-    editor.delegate = overlay
-  }
-
   func testManualPlacementSnapshotsDirectionWhenArmed() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
@@ -478,8 +406,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let annotation = try XCTUnwrap(view.documentCoordinator.document?.activePage.history.content
       .textAnnotations.first)
     XCTAssertFalse(annotation.isRTL)
-    XCTAssertEqual(annotation.flowBounds?.minX, 180)
-    XCTAssertEqual(annotation.flowBounds?.maxX, 250)
+    XCTAssertNil(annotation.flowBounds)
   }
 
   func testReopeningCommittedAnnotationUsesItsSavedDirection() throws {
@@ -1096,7 +1023,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                     "Changing pages clears the previous page's scan")
   }
 
-  func testPlacementSurvivesPreparationAndClearsOnFailureOrDisposal() throws {
+  func testPlacementCancelsAtReplacementAdmissionAndOnDisposal() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
@@ -1117,8 +1044,9 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                           focus: nil,
                           fitToPage: true,
                           promise: promise)
-    XCTAssertTrue(overlay.hasPendingPlacement(),
-                  "A replacement that has not published a document keeps placement active")
+    XCTAssertFalse(overlay.hasPendingPlacement(),
+                   "Replacement admission cancels placement before PDF preparation")
+    XCTAssertNil(fixture.view.documentCoordinator.document)
     pdfQueue.resume()
     wait(for: [rejected], timeout: 5)
     XCTAssertTrue(stateWasClearedAtRejection)

@@ -6,6 +6,7 @@ import androidx.test.filters.SmallTest
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
 import java.io.File
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -222,6 +223,32 @@ class PdfiumSmokeInstrumentationTest {
       withoutFallback.toList(),
       withFallback.toList(),
     )
+  }
+
+  @Test
+  fun appPreloadedFontUriResolvesAndRendersWithoutFetchingFallbackUrl() = runBlocking {
+    val context = InstrumentationRegistry.getInstrumentation().targetContext
+    val cacheFile = File(context.cacheDir, "inksign-test-font/fallback.ttf")
+    check(cacheFile.parentFile?.mkdirs() == true || cacheFile.parentFile?.isDirectory == true)
+    InstrumentationRegistry.getInstrumentation().context.assets
+      .open("liberation-sans-regular.ttf").use { source ->
+        cacheFile.outputStream().use { destination -> source.copyTo(destination) }
+      }
+    val resolver = AndroidFallbackFontResolver(openConnection = {
+      throw AssertionError("A valid app-preloaded font must not fetch its fallback URL")
+    })
+
+    val resolved = resolver.resolve(AndroidFallbackFont(
+      url = "https://assets.example.test/fonts/fallback.ttf",
+      uri = cacheFile.absolutePath,
+      collectionIndex = null,
+    ))
+    assertEquals(cacheFile.canonicalPath, resolved.path)
+
+    val source = missingFontPdf()
+    val withoutFallback = renderPixels(source, null)
+    val withFallback = renderPixels(source, resolved)
+    assertNotEquals(withoutFallback.toList(), withFallback.toList())
   }
 
   private fun renderPixels(

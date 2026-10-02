@@ -3,12 +3,17 @@
 ## Ownership
 
 - `HybridInkSignView` exposes the Nitro/Fabric API and owns the document coordinator.
-- The coordinator owns the published working PDF, page order, active page, histories,
-  dirty state, and module-created files.
+- The coordinator owns the working PDF, page order, active page, histories,
+  dirty state, operation session, pending operation cancellation, and module-created files.
 - `PdfSessionWorker` serializes PDFium sessions and document work. `SurfaceView` owns
   presentation and input; the text overlay owns draft and editor state.
 - Android stages files and owns display surfaces. PDFium parses, assembles, renders,
   and exports PDFs.
+- The app owns the `androidFallbackFont.uri` cache file. Android validates and
+  reuses it before opening PDFium; when absent or invalid, it downloads the
+  configured URL to a temporary sibling, validates it, and publishes it
+  atomically. React preloading should also publish a complete file atomically.
+  Native cleanup never removes the app's shared font file.
 - Each worker-owned PDFium session caches source text geometry and writing rules
   for both placement paths. The least-recently-used cache is bounded to eight
   pages and 8 MiB estimated storage. Page navigation does not invalidate entries;
@@ -16,37 +21,37 @@
 
 ## Opening
 
-- Each `open()` gets an attempt ID and a module-owned working copy; the caller's file
-  is left untouched.
-- Prepare and validate the PDFium candidate while the published document and editor
-  remain usable. Wait cancellably for a nonzero host viewport without changing the
-  viewer, editor, or tile requests.
-- Before commit, build the candidate model and fully configured viewport. The handoff
-  finishes editing and blocks input and tile requests; after worker acceptance, a
-  non-cancellable UI transaction installs the matching model and prepared presentation.
-  It invokes no public callbacks midway. Callbacks and tile requests follow publication.
-- Retire the replaced reader and working file after publication. A superseded attempt
-  releases only its candidate and working copy.
-- A failed initial open leaves the viewer empty. If replacement preparation or worker
-  commit fails, abort the handoff, reconcile the old document's editor/undo/dirty state,
-  and keep its published model and reader. Superseded attempts release only their candidate.
-- Requests arriving after handoff starts wait for that handoff to finish before proceeding.
-- Reopen each assembled candidate before publication and validate page count, order,
-  dimensions, and rotation. Compare image-page dimensions at PDFium's serialization
-  precision; use reopened metadata as the published dimensions.
+- Follow the shared [document operation contract](../architecture.md#document-operations).
+  Accepting a replacement clears the old viewer, editor, navigation, and tile
+  requests and cancels pending document work.
+- Each open owns an attempt ID and working copy. Prepare and validate the PDFium
+  candidate, resolve the optional fallback font, then wait cancellably for a
+  nonzero host viewport.
+- The worker owns reader lifetime. Release old readers and working files after
+  their users finish; rendering-session lifetime must not keep a cancelled
+  operation eligible to publish.
+- Cancelling one waiting operation detaches its caller. Replacement and disposal
+  perform session-wide invalidation so a targeted lookup does not stale unrelated
+  tile or preview requests.
+- Install the current candidate's worker session, model, and configured viewport
+  as one publication. Invoke callbacks and request tiles after installation.
+  Preparation or publication failure leaves the viewer empty.
 
 ## Page history and disposal
 
 - Page identities and histories travel with pages through structural edits. Structural
   dirty state is document-level; undo and redo history is page-local.
+- Reopen assembled candidates before publication and validate page count, order,
+  dimensions, and rotation. Compare image-page dimensions at PDFium's serialization
+  precision; use reopened metadata as the published dimensions.
 - `addPages()` chooses the active page inside its detached candidate: omission or
   `current` retains the existing active page, `firstAdded` and `lastAdded` select
   the corresponding page imported by that call, and `current` selects the first
   imported page when creating a document. Empty imports do not publish a candidate.
 - Clearing a page is one undoable action. Dirty state reflects remaining ink and
   document structure; clearing the last ink in an otherwise clean document leaves it clean.
-- Disposal rejects pending work, clears presentation and callbacks, and closes PDFium
-  readers and module-owned files.
+- Disposal uses the shared operation cancellation and cleanup rules; PDFium
+  reader and file release remains serialized with worker access.
 
 See [viewport-input.md](viewport-input.md) for navigation and input,
 [rendering-front-buffer.md](rendering-front-buffer.md) for page and ink presentation,
