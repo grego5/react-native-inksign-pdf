@@ -36,6 +36,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -846,49 +847,6 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
-  fun staleKeyLookupIsCancelledBeforeMissingKeyErrorOrHistoryMutation() = runBlocking {
-    val workerStarted = CompletableDeferred<Unit>()
-    val workerResult = CompletableDeferred<PdfiumKeyLookupPage>()
-    val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
-    var pageSwitchId = 1L
-    val history = InkHistory().apply {
-      appendText(
-        TextAnnotation("existing", "unchanged", PageRect(10.0, 10.0, 50.0, 28.0), 16.0),
-      )
-    }
-    val originalContent = history.contentSnapshot()
-    val originalState = history.state()
-    try {
-      val insertion = scope.async {
-        val lookup = awaitCurrentPageKeyLookup(
-          awaitLookup = {
-            workerStarted.complete(Unit)
-            workerResult.await()
-          },
-          isCurrentPage = { pageSwitchId == 1L },
-        )
-        if (!lookup.hasLiteralMatch) {
-          throw PdfSessionException("text_key_not_found", "The key was not found")
-        }
-        history.appendText(
-          TextAnnotation("inserted", "new", PageRect(60.0, 10.0, 100.0, 28.0), 16.0),
-        )
-      }
-
-      workerStarted.await()
-      pageSwitchId = 2L
-      workerResult.complete(PdfiumKeyLookupPage(false, emptyList(), emptyList()))
-      val error = runCatching { insertion.await() }.exceptionOrNull() as PdfSessionException
-
-      assertEquals("operation_cancelled", error.code)
-      assertEquals(originalContent, history.contentSnapshot())
-      assertEquals(originalState, history.state())
-    } finally {
-      scope.cancel()
-    }
-  }
-
-  @Test
   fun snapMeasurementsAreRequestedForOnePageAndClearedOnPageChange() = runBlocking {
     val source = java.io.File.createTempFile("lazy-snap-", ".pdf").apply { writeText("candidate") }
     try {
@@ -930,12 +888,11 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
-  fun replacementWaitingForViewportKeepsCurrentPageAndEditorActive() = runBlocking {
+  fun replacementWaitingForViewportClearsPreviousDocumentAndEditor() = runBlocking {
     val source = java.io.File.createTempFile("replacement-wait-", ".pdf").apply {
       writeText("candidate")
     }
     var overlay: TextInteractionOverlay? = null
-    var originalPath = ""
     var originalGeneration = 0L
     var replacement: Deferred<PdfPageInfo>? = null
     val pageChanges = AtomicInteger()
@@ -949,7 +906,6 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(dispatch(activeOverlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_100L))
         assertTrue(dispatch(activeOverlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 1_120L))
         assertEquals(InteractionMode.TEXTEDITING, activeOverlay.interactionMode())
-        originalPath = harness.coordinator.sourcePath
         originalGeneration = harness.coordinator.generation
         harness.surface.layout(0, 0, 0, 0)
       }
@@ -958,6 +914,10 @@ internal class TextPlacementInstrumentationTest {
         harness.coordinator.executeOpen(
           sourcePath = source.absolutePath,
           fallbackFont = null,
+          invalidatePrevious = {
+            checkNotNull(overlay).cancelForDocumentReplacement()
+            harness.surface.clearDocument()
+          },
           awaitContainerSize = {
             waiting.complete(Unit)
             harness.surface.awaitUsableViewportSize()
@@ -983,18 +943,19 @@ internal class TextPlacementInstrumentationTest {
       waiting.await()
 
       withContext(Dispatchers.Main) {
-        assertEquals(originalPath, harness.coordinator.sourcePath)
-        assertEquals(originalGeneration, harness.coordinator.generation)
-        assertEquals(InteractionMode.TEXTEDITING, checkNotNull(overlay).interactionMode())
-        assertNotNull(checkNotNull(overlay).editingAnnotationId())
-        assertEquals(0, harness.surface.currentPageInfo().pageIndex)
+        assertEquals("", harness.coordinator.sourcePath)
+        assertTrue(harness.coordinator.generation > originalGeneration)
+        assertFalse(harness.coordinator.hasDocument)
+        assertEquals(InteractionMode.VIEW, checkNotNull(overlay).interactionMode())
+        assertNull(checkNotNull(overlay).editingAnnotationId())
+        assertEquals(InkState(false, false, false), harness.surface.lastReportedState)
         assertEquals(0, pageChanges.get())
       }
 
       withContext(Dispatchers.Main) { harness.surface.layout(0, 0, 300, 300) }
       val candidateInfo = checkNotNull(replacement).await()
       assertEquals(0, candidateInfo.pageIndex)
-      assertTrue(harness.coordinator.sourcePath != originalPath)
+      assertTrue(harness.coordinator.sourcePath.isNotEmpty())
       assertEquals(1, pageChanges.get())
       withContext(Dispatchers.Main) {
         assertEquals(InteractionMode.VIEW, checkNotNull(overlay).interactionMode())
@@ -1009,7 +970,7 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
-  fun presentationPreparationFailureLeavesPublishedDocumentUsable() = runBlocking {
+  fun presentationPreparationFailureLeavesViewEmptyAfterReplacementAdmission() = runBlocking {
     val sourceA = java.io.File.createTempFile("open-a-", ".pdf").apply { writeText("open-a") }
     val sourceB = java.io.File.createTempFile("open-b-", ".pdf").apply { writeText("open-b") }
     try {
@@ -1025,16 +986,17 @@ internal class TextPlacementInstrumentationTest {
       }
 
       assertTrue(failed.isFailure)
-      assertEquals(oldPath, harness.coordinator.sourcePath)
-      assertEquals(oldGeneration, harness.coordinator.generation)
-      assertTrue(java.io.File(oldPath).exists())
-      assertEquals(setOf(java.io.File(oldPath)), harness.coordinator.workingFiles())
+      assertFalse(harness.coordinator.hasDocument)
+      assertEquals("", harness.coordinator.sourcePath)
+      assertTrue(harness.coordinator.generation > oldGeneration)
+      assertFalse(java.io.File(oldPath).exists())
+      assertTrue(harness.coordinator.workingFiles().isEmpty())
       withContext(Dispatchers.Main) {
-        assertEquals(220.0, harness.surface.currentPageInfo().dimensions.width, 0.0)
+        assertEquals(InkState(false, false, false), harness.surface.lastReportedState)
       }
       assertTrue(harness.openedResources.last().closed)
       assertFalse(java.io.File(harness.openedResources.last().info.sourcePath).exists())
-      assertReaderRenders(oldGeneration)
+      assertReaderCancelled(oldGeneration)
     } finally {
       sourceA.delete()
       sourceB.delete()
@@ -1078,24 +1040,25 @@ internal class TextPlacementInstrumentationTest {
       }
 
       assertTrue(failed.isFailure)
-      assertEquals(oldPath, harness.coordinator.sourcePath)
-      assertEquals(oldGeneration, harness.coordinator.generation)
-      assertTrue(java.io.File(oldPath).exists())
-      assertEquals(java.io.File(oldPath), harness.coordinator.currentWorkingFile())
-      assertTrue(harness.coordinator.workingFiles().contains(java.io.File(oldPath)))
+      assertFalse(harness.coordinator.hasDocument)
+      assertEquals("", harness.coordinator.sourcePath)
+      assertTrue(harness.coordinator.generation > oldGeneration)
+      assertFalse(java.io.File(oldPath).exists())
+      assertNull(harness.coordinator.currentWorkingFile())
+      assertTrue(harness.coordinator.workingFiles().isEmpty())
       withContext(Dispatchers.Main) {
-        assertEquals(220.0, harness.surface.currentPageInfo().dimensions.width, 0.0)
-        val committedText = checkNotNull(harness.surface.textPresentationSnapshot())
-          .annotations.single().text
-        assertEquals("committed on abort", committedText.replace('\n', ' ').replace(Regex(" +"), " "))
-        assertEquals(1, publicStates.size)
-        assertTrue(publicStates.single().first.canUndo)
-        assertTrue(publicStates.single().first.isDirty)
-        assertEquals(InteractionMode.VIEW, publicStates.single().second)
+        assertEquals(InkState(false, false, false), harness.surface.lastReportedState)
+        assertEquals(InteractionMode.VIEW, overlay.interactionMode())
+        assertNull(overlay.editingAnnotationId())
+        assertNull(harness.surface.textPresentationSnapshot())
+        val finalState = publicStates.last()
+        assertFalse(finalState.first.canUndo)
+        assertFalse(finalState.first.isDirty)
+        assertEquals(InteractionMode.VIEW, finalState.second)
       }
       assertTrue(harness.openedResources.last().closed)
       assertFalse(java.io.File(harness.openedResources.last().info.sourcePath).exists())
-      assertReaderRenders(oldGeneration)
+      assertReaderCancelled(oldGeneration)
     } finally {
       sourceA.delete()
       sourceB.delete()
@@ -1112,15 +1075,16 @@ internal class TextPlacementInstrumentationTest {
       openCandidate(sourceA)
       val oldPath = harness.coordinator.sourcePath
       val oldGeneration = harness.coordinator.generation
-      val commitGate = harness.executor.pauseAfter(additionalSubmissions = 2)
+      val commitGate = harness.executor.pauseAfter(additionalSubmissions = 3)
       gate = commitGate
       val replacement = operationScope.async { openCandidate(sourceB) }
       commitGate.awaitStarted()
 
       withContext(Dispatchers.Main) {
-        assertEquals(oldPath, harness.coordinator.sourcePath)
-        assertEquals(oldGeneration, harness.coordinator.generation)
-        assertEquals(220.0, harness.surface.currentPageInfo().dimensions.width, 0.0)
+        assertFalse(harness.coordinator.hasDocument)
+        assertEquals("", harness.coordinator.sourcePath)
+        assertTrue(harness.coordinator.generation > oldGeneration)
+        assertEquals(InkState(false, false, false), harness.surface.lastReportedState)
         assertFalse(harness.openedResources.last().closed)
       }
       replacement.cancel()
@@ -2225,6 +2189,11 @@ internal class TextPlacementInstrumentationTest {
     harness.coordinator.executeOpen(
       sourcePath = source.absolutePath,
       fallbackFont = null,
+      invalidatePrevious = {
+        harness.overlay?.cancelForDocumentReplacement()
+        harness.surface.clearDocument()
+        harness.surface.onStateChange?.invoke(harness.surface.lastReportedState)
+      },
       awaitContainerSize = { harness.surface.awaitUsableViewportSize() },
       preparePresentation = { info, size ->
         preparePresentation?.invoke(info, size) ?: harness.surface.prepareDocumentPresentation(
@@ -2255,6 +2224,19 @@ internal class TextPlacementInstrumentationTest {
     }
     assertTrue("PDF reader did not answer the render request", completed.await(5L, TimeUnit.SECONDS))
     assertTrue(result.get().isSuccess)
+  }
+
+  private fun assertReaderCancelled(generation: Long) {
+    val tileEpoch = generation + 100L
+    val completed = CountDownLatch(1)
+    val result = java.util.concurrent.atomic.AtomicReference<Result<List<PdfTile>>>()
+    harness.worker.updateTileEpoch(generation, tileEpoch)
+    harness.worker.renderTiles(generation, tileEpoch, emptyList()) {
+      result.set(it)
+      completed.countDown()
+    }
+    assertTrue("PDF reader did not answer the stale render request", completed.await(5L, TimeUnit.SECONDS))
+    assertTrue("stale PDF reader unexpectedly rendered tiles", result.get().isFailure)
   }
 
   private fun choosePlacementDirection(overlay: TextInteractionOverlay, rtl: Boolean) {

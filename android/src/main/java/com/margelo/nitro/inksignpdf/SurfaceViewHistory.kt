@@ -82,6 +82,23 @@ internal fun SurfaceView.validateTextMutation(generation: Long, pageIndex: Int) 
   }
 }
 
+internal fun SurfaceView.resolveTextMutationPage(generation: Long, pageId: String): InkPageState {
+  requireOnUiThread()
+  if (disposed) {
+    throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+  }
+  if (!documentCoordinator.hasDocument || documentCoordinator.generation != generation) {
+    throw PdfSessionException(
+      "operation_cancelled",
+      "The document or captured page changed during text insertion",
+    )
+  }
+  return documentCoordinator.pageForId(pageId) ?: throw PdfSessionException(
+    "operation_cancelled",
+    "The document or captured page changed during text insertion",
+  )
+}
+
 internal fun SurfaceView.reportedState(): InkState {
   val state = documentCoordinator.takeIf { it.hasDocument } ?: return InkState(false, false, false)
   val active = state.activeHistoryState()

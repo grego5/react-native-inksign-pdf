@@ -1,5 +1,40 @@
 import Foundation
 import PDFKit
+import NitroModules
+
+/// Serializes cancellation and worker completion onto the promise's owning
+/// thread so a late worker result cannot settle an already-cancelled command.
+final class InkSignPdfOperationPromise<Value>: @unchecked Sendable {
+  let promise = Promise<Value>()
+  private let lock = NSLock()
+  private var settled = false
+
+  func resolve(_ value: Value) {
+    settle(.success(value))
+  }
+
+  func reject(_ error: Error) {
+    settle(.failure(error))
+  }
+
+  private func settle(_ result: Result<Value, Error>) {
+    let complete = { [self] in
+      lock.lock()
+      guard !settled else { lock.unlock(); return }
+      settled = true
+      lock.unlock()
+      switch result {
+      case .success(let value): promise.resolve(withResult: value)
+      case .failure(let error): promise.reject(withError: error)
+      }
+    }
+    if Thread.isMainThread {
+      complete()
+    } else {
+      DispatchQueue.main.async(execute: complete)
+    }
+  }
+}
 
 /// Owns the currently published PDF and all document generation state.
 final class InkSignPdfDocumentCoordinator {
@@ -45,6 +80,7 @@ final class InkSignPdfDocumentCoordinator {
   private(set) var isDisposed = false
   private(set) var structuralDirty = false
   private var activeOperation: OperationToken?
+  private var pendingCancellations: [UUID: () -> Void] = [:]
   private var rollbackDocument: InkSignPdfDocumentState?
   private var rollbackStructuralDirty: Bool?
   private var operationPublishedDocument = false
@@ -122,10 +158,22 @@ final class InkSignPdfDocumentCoordinator {
   func admit(_ type: OperationType) -> OperationToken? {
     lock.lock()
     guard !isDisposed else { lock.unlock(); return nil }
-    var cancelledArtifacts: [URL] = []
-    if type == .open, activeOperation?.type == .structural {
+    var supersededRollback: InkSignPdfDocumentState?
+    var replacedDocument: InkSignPdfDocumentState?
+    var retiredArtifacts = Set<URL>()
+    var cancellationHandlers: [() -> Void] = []
+    if type == .open {
       activeOperation = nil
-      cancelledArtifacts = Array(pendingArtifacts)
+      cancellationHandlers = Array(pendingCancellations.values)
+      pendingCancellations.removeAll()
+      supersededRollback = rollbackDocument
+      replacedDocument = document
+      document = nil
+      structuralDirty = false
+      rollbackDocument = nil
+      rollbackStructuralDirty = nil
+      operationPublishedDocument = false
+      retiredArtifacts = pendingArtifacts
       pendingArtifacts.removeAll()
     } else if activeOperation != nil {
       lock.unlock()
@@ -136,7 +184,14 @@ final class InkSignPdfDocumentCoordinator {
     activeOperation = token
     operationPublishedDocument = false
     lock.unlock()
-    cancelledArtifacts.forEach(artifactPolicy.deleteExact)
+    cancellationHandlers.forEach { $0() }
+    let retiredDocuments = [supersededRollback, replacedDocument].compactMap { $0 }
+    if !retiredDocuments.isEmpty || !retiredArtifacts.isEmpty {
+      pdfQueue.async { [artifactPolicy = self.artifactPolicy] in
+        Set(retiredDocuments.map(\.workingURL)).forEach(artifactPolicy.deleteExact)
+        retiredArtifacts.forEach(artifactPolicy.deleteExact)
+      }
+    }
     return token
   }
 
@@ -154,6 +209,7 @@ final class InkSignPdfDocumentCoordinator {
     lock.lock()
     guard activeOperation?.id == token.id else { lock.unlock(); return }
     activeOperation = nil
+    pendingCancellations.removeValue(forKey: token.id)
     let obsolete: InkSignPdfDocumentState?
     if token.type == .open {
       if succeeded {
@@ -175,6 +231,33 @@ final class InkSignPdfDocumentCoordinator {
     if let obsolete, document.map({ obsolete !== $0 }) ?? true {
       artifactPolicy.deleteExact(obsolete.workingURL)
     }
+  }
+
+  func registerCancellation(for token: OperationToken, handler: @escaping () -> Void) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    guard !isDisposed, generation == token.generation, activeOperation?.id == token.id else {
+      return false
+    }
+    pendingCancellations[token.id] = handler
+    return true
+  }
+
+  func registerPending(generation expectedGeneration: UInt64,
+                       handler: @escaping () -> Void) -> UUID? {
+    lock.lock()
+    defer { lock.unlock() }
+    guard !isDisposed, generation == expectedGeneration else { return nil }
+    let id = UUID()
+    pendingCancellations[id] = handler
+    return id
+  }
+
+  @discardableResult
+  func completePending(_ id: UUID) -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    return pendingCancellations.removeValue(forKey: id) != nil
   }
 
   func registerPendingArtifact(_ url: URL, for token: OperationToken) -> Bool {
@@ -284,7 +367,9 @@ final class InkSignPdfDocumentCoordinator {
   }
 
   func clearDocument() {
-    if let workingURL = document?.workingURL { artifactPolicy.deleteExact(workingURL) }
+    if let workingURL = document?.workingURL {
+      pdfQueue.async { [artifactPolicy = self.artifactPolicy] in artifactPolicy.deleteExact(workingURL) }
+    }
     document = nil
     structuralDirty = false
   }
@@ -343,6 +428,8 @@ final class InkSignPdfDocumentCoordinator {
     isDisposed = true
     generation &+= 1
     activeOperation = nil
+    let cancellationHandlers = Array(pendingCancellations.values)
+    pendingCancellations.removeAll()
     let artifacts = pendingArtifacts.union(ownedOutputs)
     let previous = rollbackDocument
     rollbackDocument = nil
@@ -351,11 +438,12 @@ final class InkSignPdfDocumentCoordinator {
     ownedOutputs.removeAll()
     clearDocument()
     lock.unlock()
-    artifacts.forEach(artifactPolicy.deleteExact)
-    if let previous {
-      artifactPolicy.deleteExact(previous.workingURL)
+    cancellationHandlers.forEach { $0() }
+    pdfQueue.async { [weak self, artifactPolicy = self.artifactPolicy] in
+      artifacts.forEach(artifactPolicy.deleteExact)
+      if let previous { artifactPolicy.deleteExact(previous.workingURL) }
+      self?.clearPageAnalysisCache()
     }
-    pdfQueue.async { [weak self] in self?.clearPageAnalysisCache() }
   }
 }
 

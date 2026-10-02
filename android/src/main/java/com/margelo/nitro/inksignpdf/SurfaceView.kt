@@ -697,6 +697,7 @@ internal class SurfaceView(
     return TextPresentationSnapshot(
       generation = state.generation,
       pageIndex = state.activePageIndex,
+      pageId = page.id,
       page = page.dimensions,
       transform = transform,
       annotations = page.content.mapNotNull { it.textAnnotationOrNull() },
@@ -755,6 +756,22 @@ internal class SurfaceView(
     notifyStateChange()
     invalidate()
     onTextContentChanged?.invoke()
+  }
+
+  internal fun appendTextAnnotationForPage(
+    generation: Long,
+    pageId: String,
+    annotation: TextAnnotation,
+  ) {
+    val targetPage = resolveTextMutationPage(generation, pageId)
+    documentCoordinator.appendText(targetPage, annotation)
+    val targetIsActive = documentCoordinator.activePageId() == targetPage.id
+    if (targetIsActive) rebuildCommittedTextLayer()
+    notifyStateChange()
+    if (targetIsActive) {
+      invalidate()
+      onTextContentChanged?.invoke()
+    }
   }
 
   internal fun replaceTextAnnotation(

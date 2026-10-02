@@ -56,10 +56,17 @@ internal fun normalizeTextFontSize(value: Double?): Double =
 internal data class TextPresentationSnapshot(
   val generation: Long,
   val pageIndex: Int,
+  val pageId: String,
   val page: PdfPageDimensions,
   val transform: PageTransform,
   val annotations: List<TextAnnotation>,
   val snapCandidates: List<PdfiumHorizontalSnapCandidate> = emptyList(),
+)
+
+internal data class CapturedTextPage(
+  val generation: Long,
+  val pageId: String,
+  val dimensions: PdfPageDimensions,
 )
 
 internal data class TextTransformSnapshot(
@@ -562,18 +569,23 @@ internal class TextInteractionOverlay(
     options: TextAnnotationOptions?,
     requireVisibleLine: Boolean = false,
     resolvedDirectionRtl: Boolean? = null,
+    capturedPage: CapturedTextPage? = null,
   ) {
-    val presentation = surface.textPresentationSnapshot() ?: throw PdfSessionException(
-      "view_not_ready",
-      "A PDF page must be open before adding text",
-    )
+    val presentation = if (capturedPage == null) {
+      surface.textPresentationSnapshot() ?: throw PdfSessionException(
+        "view_not_ready",
+        "A PDF page must be open before adding text",
+      )
+    } else {
+      null
+    }
     val directionRtl = resolvedDirectionRtl ?: when (options?.direction) {
       TextDirection.LTR -> false
       TextDirection.RTL -> true
       TextDirection.AUTO -> appLayoutIsRtl()
       null -> requestedTextDirectionRtl ?: appLayoutIsRtl()
     }
-    val page = presentation.page
+    val page = capturedPage?.dimensions ?: checkNotNull(presentation).page
     val flowBounds = programmaticTextFlowBounds(bounds, page)
     val verticalAnchor = options?.verticalAnchor ?: TextVerticalAnchor.TOP
     val alignment = options?.alignment ?: TextAlignment.START
@@ -594,7 +606,12 @@ internal class TextInteractionOverlay(
       annotation.bounds.bottom <= annotation.bounds.top)) {
       throw PdfSessionException("text_rule_not_found", "No complete text line fits beside the selected rule")
     }
-    surface.appendTextAnnotation(presentation.generation, presentation.pageIndex, annotation)
+    if (capturedPage != null) {
+      surface.appendTextAnnotationForPage(capturedPage.generation, capturedPage.pageId, annotation)
+    } else {
+      checkNotNull(presentation)
+      surface.appendTextAnnotation(presentation.generation, presentation.pageIndex, annotation)
+    }
   }
 
   internal fun resolveDirection(direction: TextDirection?): Boolean = when (direction) {
@@ -768,6 +785,12 @@ internal class TextInteractionOverlay(
   fun finishForLifecycle() {
     clearPlacementForLifecycle()
     finishEditing()
+    clearSelection()
+  }
+
+  fun cancelForDocumentReplacement() {
+    clearPlacementForLifecycle()
+    cancelEditing()
     clearSelection()
   }
 

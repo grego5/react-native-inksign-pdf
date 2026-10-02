@@ -29,10 +29,13 @@
   Direction and font-size changes retain entered text. `verticalAnchor` changes
   placement, not fit. Direct `addTextAnnotation()` clips supplied text.
 - `insertTextByKey(text, key, options?)` resolves source text and rule geometry
-  on the serial document worker. Before committing through annotation history,
-  the UI checks that the captured document generation and active page are still
-  current. See the [README](../../../../README.md) for occurrence selection,
-  layout, and error behavior.
+  on the serial document worker. It captures the selected page ID and commits to
+  that page even if navigation changes the active page. The commit is cancelled
+  if the document is replaced, the captured page is removed, or the view is
+  disposed. An inactive-page commit updates history and document dirty state
+  without rebuilding or syncing the active text presentation. See the
+  [README](../../../../README.md) for occurrence selection, layout, and error
+  behavior.
 - Without box dimensions, placement centers the box horizontally and aligns its
   inner bottom to the tap, subject to page clamping and rule snapping. Snap
   candidates are loaded lazily for the active page and discarded on page or

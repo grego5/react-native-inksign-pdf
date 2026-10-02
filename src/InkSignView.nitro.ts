@@ -113,8 +113,9 @@ export interface ViewportOptions {
   zoom?: number
 }
 
-export interface PdfFallbackFont {
-  path: string
+export interface AndroidFallbackFont {
+  url: string
+  uri: string
   collectionIndex?: number
 }
 
@@ -132,8 +133,8 @@ export interface DoubleTapOptions {
 }
 
 export interface InkSignViewProps extends HybridViewProps {
-  /** Android-only PDFium fallback font; iOS uses Core Text system fallback. */
-  fallbackFont?: PdfFallbackFont
+  /** Android PDFium font asset. Reuses uri when present, otherwise downloads url there; iOS ignores this. */
+  androidFallbackFont?: AndroidFallbackFont
   strokeColor?: StrokeColor
   strokeMinWidth?: number
   strokeMaxWidth?: number

@@ -29,7 +29,7 @@ class PageNavigationPolicyTest {
   fun thresholdAndVerticalDominanceDoNotNavigate() {
     val state = gesture(pageIndex = 1, focusX = 200.0)
 
-    assertNull("dead zone", PageNavigationPolicy.update(state, 115.0, 100.0).targetDelta)
+    assertNull("dead zone", PageNavigationPolicy.update(state, 103.0, 100.0).targetDelta)
     assertNull(PageNavigationPolicy.update(state, 340.0, 400.0).targetDelta)
   }
 

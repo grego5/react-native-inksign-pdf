@@ -167,6 +167,11 @@ internal class MutableDocumentCoordinator(
     return PageSnapshot(page.id, page.dimensions, page.history.contentSnapshot())
   }
 
+  fun pageIndexForId(pageId: String): Int? =
+    mutablePages.indexOfFirst { it.id == pageId }.takeIf { it >= 0 }
+
+  fun pageForId(pageId: String): InkPageState? = mutablePages.firstOrNull { it.id == pageId }
+
   fun pageHistoryRevision(index: Int): Long = page(index).history.revision
   fun activeHistoryRevision(): Long = activeHistory().revision
   fun activeHistoryState(): InkState = activeHistory().state()
@@ -179,6 +184,7 @@ internal class MutableDocumentCoordinator(
 
   fun appendActiveInk(outline: StrokeOutline) = activeHistory().append(outline)
   fun appendActiveText(annotation: TextAnnotation) = activeHistory().appendText(annotation)
+  fun appendText(page: InkPageState, annotation: TextAnnotation) = page.history.appendText(annotation)
   fun replaceActiveText(before: TextAnnotation, after: TextAnnotation) =
     activeHistory().replaceText(before, after)
   fun removeActiveText(annotation: TextAnnotation) = activeHistory().removeTextAnnotation(annotation)
@@ -226,9 +232,10 @@ internal class MutableDocumentCoordinator(
 
   private data class OpenRequest(
     val attemptId: Long,
-    val fallbackFont: PdfFallbackFont?,
+    val fallbackFont: AndroidFallbackFont?,
     val workingFile: java.io.File,
     val operationID: Long,
+    val previousWorkingFile: java.io.File?,
     val superseded: CompletableDeferred<Unit> = CompletableDeferred(),
     // Null before handoff, then completed when newer opens may proceed.
     var handoffFinished: CompletableDeferred<Unit>? = null,
@@ -244,21 +251,25 @@ internal class MutableDocumentCoordinator(
     val previousWorkingFile: java.io.File?,
   )
 
-  /** Prepares offscreen, then commits worker, model, and viewer state in one handoff. */
+  /** Clears the previous document on admission, then installs only the latest prepared open. */
   suspend fun <P, T> executeOpen(
     sourcePath: String,
-    fallbackFont: PdfFallbackFont?,
+    fallbackFont: AndroidFallbackFont?,
+    resolveFallbackFont: suspend (AndroidFallbackFont) -> PdfFallbackFont = {
+      throw PdfSessionException("invalid_fallback_font", "No Android fallback font resolver is configured")
+    },
     awaitContainerSize: suspend () -> ViewportSize,
+    invalidatePrevious: () -> Unit = {},
     preparePresentation: (PdfSessionInfo, ViewportSize) -> P,
     beginHandoff: () -> Unit = {},
     publishPresentation: (P) -> T,
     notifyPublished: (T) -> Unit = {},
     abortHandoff: () -> Unit = {},
   ): T {
-    val request = beginOpen(fallbackFont)
+    val request = beginOpen(fallbackFont, invalidatePrevious)
     var committed = false
     try {
-      val info = awaitUnlessSuperseded(request) {
+      val preparedOpen: Pair<PdfSessionInfo, PdfFallbackFont?> = awaitUnlessSuperseded(request) {
         withContext(Dispatchers.IO) {
           val source = try {
             java.io.File(sourcePath).canonicalFile
@@ -270,22 +281,29 @@ internal class MutableDocumentCoordinator(
           }
           source.copyTo(request.workingFile, overwrite = true)
         }
-        val candidate = awaitWorkerResult(request.attemptId) { completion ->
+        val resolvedFont: PdfFallbackFont? = if (request.fallbackFont == null) {
+          null
+        } else {
+          resolveFallbackFont(request.fallbackFont)
+        }
+        val candidate = awaitWorkerResult { completion ->
           sessionWorker.prepareOpen(
             request.attemptId,
             request.workingFile.path,
-            request.fallbackFont,
+            resolvedFont,
             completion,
           )
         }
         ensureCurrentOpen(request.attemptId)
         if (candidate.generation != request.attemptId) throw cancelled()
-        candidate
+        candidate to resolvedFont
       }
+      val info = preparedOpen.first
+      val resolvedFallbackFont = preparedOpen.second
       val containerSize = awaitUnlessSuperseded(request, awaitContainerSize)
       ensureCurrentOpen(request.attemptId)
       val presentation = preparePresentation(info, containerSize)
-      val preparedCandidate = prepareOpenCandidate(request, info)
+      val preparedCandidate = prepareOpenCandidate(request, info, resolvedFallbackFont)
       synchronized(openStateLock) {
         ensureCurrentOpen(request.attemptId)
         request.handoffFinished = CompletableDeferred()
@@ -296,7 +314,7 @@ internal class MutableDocumentCoordinator(
 
       // A request arriving after this point waits for the handoff to finish.
       val (previousWorkingFile, value) = withContext(NonCancellable) {
-        awaitWorkerResult<Unit>(request.attemptId) { completion ->
+        awaitWorkerResult<Unit> { completion ->
           sessionWorker.commitPreparedOpen(request.attemptId, completion)
         }
         if (disposed) throw cancelled()
@@ -310,7 +328,7 @@ internal class MutableDocumentCoordinator(
         }
         runCatching { notifyPublished(publication.second) }
         runCatching {
-          awaitWorkerResult<Unit>(request.attemptId) { completion ->
+          awaitWorkerResult<Unit> { completion ->
             sessionWorker.retireReplacedOpenSession(request.attemptId, completion)
           }
         }
@@ -332,7 +350,7 @@ internal class MutableDocumentCoordinator(
         if (!committed) {
           withContext(NonCancellable) {
             runCatching {
-              awaitWorkerResult<Unit>(request.attemptId) { completion ->
+              awaitWorkerResult<Unit> { completion ->
                 sessionWorker.discardPreparedOpen(request.attemptId, completion)
               }
             }
@@ -345,42 +363,43 @@ internal class MutableDocumentCoordinator(
     }
   }
 
-  private suspend fun beginOpen(fallbackFont: PdfFallbackFont?): OpenRequest {
-    val requestSequence = synchronized(openStateLock) {
+  private fun beginOpen(fallbackFont: AndroidFallbackFont?, invalidatePrevious: () -> Unit): OpenRequest {
+    val request = synchronized(openStateLock) {
       if (disposed) throw cancelled()
       openRequestSequence += 1L
-      openRequestSequence
-    }
-    while (true) {
-      var waitForHandoff: CompletableDeferred<Unit>? = null
-      val request = synchronized(openStateLock) {
-        if (disposed) throw cancelled()
-        if (requestSequence != openRequestSequence) throw cancelled()
-        val active = activeOpenRequest
-        val handoffFinished = active?.handoffFinished
-        if (handoffFinished != null) {
-          waitForHandoff = handoffFinished
-          null
-        } else {
-          val workingFile = artifactPolicy.allocateWorkingPdf()
-          try {
-            val attemptId = sessionWorker.reserveOpenAttemptId(generationValue)
-            active?.superseded?.complete(Unit)
-            val operationID = nextOperation()
-            trackWorkingFile(workingFile)
-            currentWorkingFile()?.let(::trackWorkingFile)
-            OpenRequest(attemptId, fallbackFont, workingFile, operationID).also {
-              activeOpenRequest = it
-            }
-          } catch (error: Throwable) {
-            artifactPolicy.deleteExact(workingFile)
-            throw error
+      val previousOpen = activeOpenRequest
+      val previousWorkingFile = currentWorkingFile()
+      val workingFile = artifactPolicy.allocateWorkingPdf()
+      try {
+        val attemptId = sessionWorker.reserveOpenAttemptId(generationValue)
+        previousOpen?.superseded?.complete(Unit)
+        previousOpen?.handoffFinished?.complete(Unit)
+        activeOperation = null
+        generationValue = attemptId
+        mutablePages.clear()
+        activePageId = null
+        sourcePath = ""
+        this.fallbackFont = null
+        structuralDirty = false
+        val operationID = nextOperation()
+        trackWorkingFile(workingFile)
+        previousWorkingFile?.let(::trackWorkingFile)
+        sessionWorker.clearCurrentForReplacement { result ->
+          result.exceptionOrNull()?.let {
+            android.util.Log.e("InkSignPdf", "Unable to close replaced PDF session", it)
           }
+          previousWorkingFile?.let(::retireWorkingFile)
         }
+        OpenRequest(attemptId, fallbackFont, workingFile, operationID, previousWorkingFile).also {
+          activeOpenRequest = it
+        }
+      } catch (error: Throwable) {
+        artifactPolicy.deleteExact(workingFile)
+        throw error
       }
-      if (request != null) return request
-      checkNotNull(waitForHandoff).await()
     }
+    runCatching(invalidatePrevious)
+    return request
   }
 
   private suspend fun <T> awaitUnlessSuperseded(
@@ -403,7 +422,11 @@ internal class MutableDocumentCoordinator(
     }
   }
 
-  private fun prepareOpenCandidate(request: OpenRequest, info: PdfSessionInfo): PreparedOpenCandidate {
+  private fun prepareOpenCandidate(
+    request: OpenRequest,
+    info: PdfSessionInfo,
+    resolvedFallbackFont: PdfFallbackFont?,
+  ): PreparedOpenCandidate {
     val pages = info.pages.map { dimensions ->
       InkPageState(PageRecord.newId(), dimensions)
     }.toMutableList()
@@ -412,9 +435,9 @@ internal class MutableDocumentCoordinator(
       activePageId = pages.first().id,
       sourcePath = request.workingFile.path,
       generation = request.attemptId,
-      fallbackFont = request.fallbackFont,
+      fallbackFont = resolvedFallbackFont,
       workingFile = request.workingFile,
-      previousWorkingFile = currentWorkingFile(),
+      previousWorkingFile = request.previousWorkingFile,
     )
   }
 
@@ -464,14 +487,14 @@ internal class MutableDocumentCoordinator(
     if (disposed || generation != expectedGeneration) throw cancelled()
   }
 
-  fun trackWorkingFile(file: java.io.File) { workingFiles += file }
-  fun untrackWorkingFile(file: java.io.File) { workingFiles.remove(file) }
+  fun trackWorkingFile(file: java.io.File) { synchronized(openStateLock) { workingFiles += file } }
+  fun untrackWorkingFile(file: java.io.File) { synchronized(openStateLock) { workingFiles.remove(file) } }
   fun retireWorkingFile(file: java.io.File) {
     untrackWorkingFile(file)
     artifactPolicy.deleteExact(file)
   }
   fun currentWorkingFile(): java.io.File? = sourcePath.takeIf { it.isNotEmpty() }?.let { java.io.File(it) }
-  fun workingFiles(): Set<java.io.File> = workingFiles.toSet()
+  fun workingFiles(): Set<java.io.File> = synchronized(openStateLock) { workingFiles.toSet() }
 
   fun allocateMutationCandidate(): java.io.File = artifactPolicy.allocateMutationScratch().also(::trackWorkingFile)
 
@@ -509,8 +532,6 @@ internal class MutableDocumentCoordinator(
     sessionWorker.discardPreparedMutation(candidate.path, retireCandidate)
   }
 
-  fun cancel(generation: Long) { sessionWorker.cancel(generation) }
-
   fun horizontalSnapCandidates(
     generation: Long,
     pageIndex: Int,
@@ -537,7 +558,7 @@ internal class MutableDocumentCoordinator(
     val policy = artifactPolicy
     var published = false
     try {
-      val info = awaitWorkerResult(generation) { completion ->
+      val info = awaitWorkerResult { completion ->
         prepareMutation(
           candidate,
           generation,
@@ -551,7 +572,7 @@ internal class MutableDocumentCoordinator(
       val pageCandidate = candidateBuilder(info)
       validateCandidateAggregate(info, pageCandidate)
       validate(info, pageCandidate)
-      awaitWorkerResult<Unit>(generation) { completion ->
+      awaitWorkerResult<Unit> { completion ->
         commitPreparedMutation(candidate, generation, completion)
       }
       ensureCurrent(generation)
@@ -624,7 +645,6 @@ internal class MutableDocumentCoordinator(
   }
 
   private suspend fun <T> awaitWorkerResult(
-    generation: Long,
     start: (((Result<T>) -> Unit) -> Unit),
   ): T = suspendCancellableCoroutine { continuation ->
     start { result ->
@@ -633,7 +653,6 @@ internal class MutableDocumentCoordinator(
         onFailure = { error -> continuation.resumeWithException(error) },
       )
     }
-    continuation.invokeOnCancellation { cancel(generation) }
   }
 
   private fun cancelled(): PdfSessionException = PdfSessionException(

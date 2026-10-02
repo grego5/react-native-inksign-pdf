@@ -80,6 +80,16 @@ Tap the page after choosing **Draw** or **Place text**. `finalize()` returns a
 temporary PDF path; copy the file if it needs to remain available after the
 signing view closes.
 
+On Android, an optional fallback font can use one shared local cache file. Set
+`uri` to the app's writable font file and `url` to its download source; a valid
+file already at `uri` is reused:
+
+```tsx
+<InkSignView
+  androidFallbackFont={{ url: fontDownloadUrl, uri: fontCacheFileUri }}
+/>
+```
+
 ## Common actions
 
 Add local PDF or image pages:
@@ -104,9 +114,9 @@ Fill a field beside a printed label:
 await pdf.current?.insertTextByKey('Ada Lovelace', 'Signature', { occurrence: 'first' });
 ```
 
-`insertTextByKey()` searches the active page and skips labels without a usable
-same-row writing rule. Choose `occurrence: 'last'` to use the last eligible
-match. A found key without a usable rule rejects with `text_rule_not_found`.
+`insertTextByKey()` searches the page selected when called and skips labels
+without a usable same-row writing rule. `occurrence` chooses the first or last
+eligible match.
 
 Use `nextPage()`, `previousPage()`, `undo()`, `redo()`, and `clear()` for
 navigation and editing. See the [public API](./src/InkSignView.nitro.ts) for

@@ -104,30 +104,34 @@ extension InkSignView {
       promise.reject(withError: LoadError.cancelled)
       return
     }
-    if let pending = pendingOpen {
-      switch pending.phase {
-      case .preparing:
-        pendingOpen = nil
-        documentCoordinator.settle(pending.operation, succeeded: false)
-        pending.promise.reject(withError: LoadError.cancelled)
-      case .installing, .awaitingReadiness:
-        queueOpen(path, zoom: zoom, focus: focus, fitToPage: fitToPage, promise: promise)
-        failOpenAttempt(error: LoadError.cancelled, pending: pending)
-        return
-      case .clearing:
-        queueOpen(path, zoom: zoom, focus: focus, fitToPage: fitToPage, promise: promise)
-        return
-      }
-    }
+    let replacedOpen = pendingOpen
+    pendingOpen = nil
     guard let operation = documentCoordinator.admit(.open) else {
+      replacedOpen?.promise.reject(withError: LoadError.cancelled)
       promise.reject(withError: LoadError.operationInProgress)
       return
     }
+    textInteractionOverlay.discardForDocumentReplacement()
+    pageInputCoordinator.cancelPending()
+    cancelActiveStroke(clearLive: false)
+    cancelPendingPageSwitch()
+    pageNavigationRequestID &+= 1
+    pageSwitchRequestID &+= 1
+    pendingPageSwitchID = nil
+    applyInteractionMode(editing: false, interactionsEnabled: false)
+    textInteractionOverlay.clearPlacementRules()
+    documentView.document = nil
+    overlayProvider.reset()
+    documentCoordinator.clearDocument()
+    attachedOverlayPage = nil
+    invalidateOverlayTransformCache()
+    emitChange(force: true)
     pendingOpen = PendingOpen(operation: operation,
                               promise: promise,
                               zoom: zoom,
                               focus: focus,
                               fitToPage: fitToPage)
+    replacedOpen?.promise.reject(withError: LoadError.cancelled)
 
     let url = URL(fileURLWithPath: path)
       .standardizedFileURL
@@ -258,20 +262,6 @@ extension InkSignView {
     }
   }
 
-  private func queueOpen(_ path: String,
-                         zoom: Double?,
-                         focus: CGPoint?,
-                         fitToPage: Bool,
-                         promise: Promise<PageInfo>) {
-    let replaced = queuedOpen
-    queuedOpen = QueuedOpen(path: path,
-                            zoom: zoom,
-                            focus: focus,
-                            fitToPage: fitToPage,
-                            promise: promise)
-    replaced?.promise.reject(withError: LoadError.cancelled)
-  }
-
   func failOpenAttempt(
     error: Error,
     pending failed: PendingOpen? = nil
@@ -298,13 +288,6 @@ extension InkSignView {
     pendingOpen = nil
     emitChange(force: true)
     pending.promise.reject(withError: error)
-    guard !disposed, pendingOpen == nil else {
-      let superseded = queuedOpen
-      queuedOpen = nil
-      superseded?.promise.reject(withError: LoadError.cancelled)
-      return
-    }
-    startQueuedOpen()
   }
 
   func setInteractionMode(editing: Bool, interactionsEnabled: Bool = true) {

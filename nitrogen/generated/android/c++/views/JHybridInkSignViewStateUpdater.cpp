@@ -54,9 +54,9 @@ void JHybridInkSignViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass>
 
   // Update only props that differ from the previous State snapshot.
   if (oldProps == nullptr
-        ? newProps->fallbackFont.isProvided()
-        : !newProps->fallbackFont.hasSameValue(oldProps->fallbackFont)) {
-    hybridView->setFallbackFont(newProps->fallbackFont.get());
+        ? newProps->androidFallbackFont.isProvided()
+        : !newProps->androidFallbackFont.hasSameValue(oldProps->androidFallbackFont)) {
+    hybridView->setAndroidFallbackFont(newProps->androidFallbackFont.get());
   }
   if (oldProps == nullptr
         ? newProps->strokeColor.isProvided()

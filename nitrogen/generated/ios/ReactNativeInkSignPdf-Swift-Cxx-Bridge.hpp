@@ -14,6 +14,8 @@ namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
+// Forward declaration of `AndroidFallbackFont` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
@@ -26,8 +28,6 @@ namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `PageType` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PageType; }
-// Forward declaration of `PdfFallbackFont` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
 // Forward declaration of `TextAlignment` to properly resolve imports.
@@ -57,13 +57,13 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "AddPagesActivePage.hpp"
 #include "AddPagesOptions.hpp"
 #include "AddPagesResult.hpp"
+#include "AndroidFallbackFont.hpp"
 #include "DoubleTapOptions.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
 #include "PageInfo.hpp"
 #include "PageType.hpp"
-#include "PdfFallbackFont.hpp"
 #include "StateChangeEvent.hpp"
 #include "TextAlignment.hpp"
 #include "TextAnnotationOptions.hpp"
@@ -105,18 +105,18 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::optional<PdfFallbackFont>
+  // pragma MARK: std::optional<AndroidFallbackFont>
   /**
-   * Specialized version of `std::optional<PdfFallbackFont>`.
+   * Specialized version of `std::optional<AndroidFallbackFont>`.
    */
-  using std__optional_PdfFallbackFont_ = std::optional<PdfFallbackFont>;
-  inline std::optional<PdfFallbackFont> create_std__optional_PdfFallbackFont_(const PdfFallbackFont& value) noexcept {
-    return std::optional<PdfFallbackFont>(value);
+  using std__optional_AndroidFallbackFont_ = std::optional<AndroidFallbackFont>;
+  inline std::optional<AndroidFallbackFont> create_std__optional_AndroidFallbackFont_(const AndroidFallbackFont& value) noexcept {
+    return std::optional<AndroidFallbackFont>(value);
   }
-  inline bool has_value_std__optional_PdfFallbackFont_(const std::optional<PdfFallbackFont>& optional) noexcept {
+  inline bool has_value_std__optional_AndroidFallbackFont_(const std::optional<AndroidFallbackFont>& optional) noexcept {
     return optional.has_value();
   }
-  inline PdfFallbackFont get_std__optional_PdfFallbackFont_(const std::optional<PdfFallbackFont>& optional) noexcept {
+  inline AndroidFallbackFont get_std__optional_AndroidFallbackFont_(const std::optional<AndroidFallbackFont>& optional) noexcept {
     return optional.value();
   }
   

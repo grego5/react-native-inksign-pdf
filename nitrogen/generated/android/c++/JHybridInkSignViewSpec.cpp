@@ -7,8 +7,8 @@
 
 #include "JHybridInkSignViewSpec.hpp"
 
-// Forward declaration of `PdfFallbackFont` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
+// Forward declaration of `AndroidFallbackFont` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
@@ -48,9 +48,9 @@ namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `TextPlacementOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
-#include "PdfFallbackFont.hpp"
+#include "AndroidFallbackFont.hpp"
 #include <optional>
-#include "JPdfFallbackFont.hpp"
+#include "JAndroidFallbackFont.hpp"
 #include <string>
 #include "DoubleTapOptions.hpp"
 #include "JDoubleTapOptions.hpp"
@@ -129,14 +129,14 @@ namespace margelo::nitro::inksignpdf {
   }
 
   // Properties
-  std::optional<PdfFallbackFont> JHybridInkSignViewSpec::getFallbackFont() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPdfFallbackFont>()>("getFallbackFont");
+  std::optional<AndroidFallbackFont> JHybridInkSignViewSpec::getAndroidFallbackFont() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JAndroidFallbackFont>()>("getAndroidFallbackFont");
     auto __result = method(_javaPart);
     return __result != nullptr ? std::make_optional(__result->toCpp()) : std::nullopt;
   }
-  void JHybridInkSignViewSpec::setFallbackFont(const std::optional<PdfFallbackFont>& fallbackFont) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JPdfFallbackFont> /* fallbackFont */)>("setFallbackFont");
-    method(_javaPart, fallbackFont.has_value() ? JPdfFallbackFont::fromCpp(fallbackFont.value()) : nullptr);
+  void JHybridInkSignViewSpec::setAndroidFallbackFont(const std::optional<AndroidFallbackFont>& androidFallbackFont) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JAndroidFallbackFont> /* androidFallbackFont */)>("setAndroidFallbackFont");
+    method(_javaPart, androidFallbackFont.has_value() ? JAndroidFallbackFont::fromCpp(androidFallbackFont.value()) : nullptr);
   }
   std::optional<std::string> JHybridInkSignViewSpec::getStrokeColor() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getStrokeColor");

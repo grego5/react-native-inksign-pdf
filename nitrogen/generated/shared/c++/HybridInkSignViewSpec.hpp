@@ -13,8 +13,8 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-// Forward declaration of `PdfFallbackFont` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PdfFallbackFont; }
+// Forward declaration of `AndroidFallbackFont` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
@@ -40,7 +40,7 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `TextPlacementOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
-#include "PdfFallbackFont.hpp"
+#include "AndroidFallbackFont.hpp"
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
@@ -85,8 +85,8 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Properties
-      virtual std::optional<PdfFallbackFont> getFallbackFont() = 0;
-      virtual void setFallbackFont(const std::optional<PdfFallbackFont>& fallbackFont) = 0;
+      virtual std::optional<AndroidFallbackFont> getAndroidFallbackFont() = 0;
+      virtual void setAndroidFallbackFont(const std::optional<AndroidFallbackFont>& androidFallbackFont) = 0;
       virtual std::optional<std::string> getStrokeColor() = 0;
       virtual void setStrokeColor(const std::optional<std::string>& strokeColor) = 0;
       virtual std::optional<double> getStrokeMinWidth() = 0;

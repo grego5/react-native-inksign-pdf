@@ -17,7 +17,7 @@
 
 #include <string>
 
-#include "PdfFallbackFont.hpp"
+#include "AndroidFallbackFont.hpp"
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
@@ -47,7 +47,7 @@ namespace margelo::nitro::inksignpdf::views {
                            const react::RawProps& rawProps);
 
   public:
-    nitro::ReactProp<std::optional<PdfFallbackFont>> fallbackFont;
+    nitro::ReactProp<std::optional<AndroidFallbackFont>> androidFallbackFont;
     nitro::ReactProp<std::optional<std::string>> strokeColor;
     nitro::ReactProp<std::optional<double>> strokeMinWidth;
     nitro::ReactProp<std::optional<double>> strokeMaxWidth;
@@ -66,7 +66,7 @@ namespace margelo::nitro::inksignpdf::views {
 
     [[nodiscard]]
     bool hasSameProps(const HybridInkSignViewProps& other) const noexcept {
-      return fallbackFont.hasSameValue(other.fallbackFont) &&
+      return androidFallbackFont.hasSameValue(other.androidFallbackFont) &&
              strokeColor.hasSameValue(other.strokeColor) &&
              strokeMinWidth.hasSameValue(other.strokeMinWidth) &&
              strokeMaxWidth.hasSameValue(other.strokeMaxWidth) &&
@@ -86,7 +86,7 @@ namespace margelo::nitro::inksignpdf::views {
 
     [[nodiscard]]
     bool hasAnyProvidedProps() const noexcept {
-      return fallbackFont.isProvided() ||
+      return androidFallbackFont.isProvided() ||
              strokeColor.isProvided() ||
              strokeMinWidth.isProvided() ||
              strokeMaxWidth.isProvided() ||

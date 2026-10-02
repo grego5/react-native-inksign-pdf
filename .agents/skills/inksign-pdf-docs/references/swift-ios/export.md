@@ -26,3 +26,5 @@
 
 - The exporter validates a detached output before the finalize coordinator
   publishes it for the current operation.
+- Replacement and disposal cancel pending export through the
+  [document operation contract](../architecture.md#document-operations).

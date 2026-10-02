@@ -32,7 +32,7 @@ internal data class NavigationGesture(
 
 /** Pure down-time policy for one-step page navigation from a content edge. */
 internal object PageNavigationPolicy {
-  private const val DEAD_ZONE_DP = 8.0
+  private const val DEAD_ZONE_DP = 2.0
   private const val ARM_FRACTION = 0.30
   private const val MAX_PRESENTATION_OFFSET_DP = 40.0
   private const val ARM_SCALE_START = 0.72

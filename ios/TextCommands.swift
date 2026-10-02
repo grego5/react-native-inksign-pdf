@@ -168,7 +168,15 @@ extension InkSignView {
                                               maxLines: options?.maxLines,
                                               alignment: options?.alignment ?? .start,
                                               verticalAnchor: anchor)
-    return Promise.parallel(coordinator.pdfQueue) {
+    let settlement = InkSignPdfOperationPromise<Void>()
+    guard let pendingID = coordinator.registerPending(generation: captured.1, handler: {
+      settlement.reject(InkSignView.TextError.cancelled)
+    }) else {
+      settlement.reject(InkSignView.TextError.cancelled)
+      return settlement.promise
+    }
+    coordinator.pdfQueue.async {
+      let result: Result<Void, Error>
       do {
       guard let analysis = coordinator.pageAnalysis(sourceURL: captured.0,
                                                     generation: captured.1,
@@ -206,25 +214,39 @@ extension InkSignView {
         guard !self.disposed,
               self.documentCoordinator.generation == captured.1,
               let current = self.documentCoordinator.document,
-              current.activePageIndex == captured.2,
-              current.activePage.id == captured.3 else { throw InkSignView.TextError.cancelled }
+              current.index(of: captured.3) != nil else { throw InkSignView.TextError.cancelled }
         try self.textInteractionOverlay.addTextAnnotation(text: text,
                                                            bounds: bounds,
                                                            options: commitOptions,
                                                            resolvedDirectionRtl: captured.6,
                                                            requireVisibleLine: true,
-                                                           capturedPage: (captured.1, captured.2, captured.5))
+                                                           capturedPage: (captured.1, captured.3, captured.5))
       }
+      result = .success(())
       } catch {
         let stillCurrent = DispatchQueue.main.sync {
           !self.disposed && self.documentCoordinator.generation == captured.1 &&
-            self.documentCoordinator.document?.activePageIndex == captured.2 &&
-            self.documentCoordinator.document?.activePage.id == captured.3
+            self.documentCoordinator.document?.index(of: captured.3) != nil
         }
-        if !stillCurrent { throw InkSignView.TextError.cancelled }
-        throw error
+        result = .failure(stillCurrent ? error : InkSignView.TextError.cancelled)
+      }
+      DispatchQueue.main.async {
+        guard coordinator.completePending(pendingID) else { return }
+        let stillCurrent = !self.disposed && coordinator.generation == captured.1 &&
+          coordinator.document?.index(of: captured.3) != nil
+        guard stillCurrent else {
+          settlement.reject(InkSignView.TextError.cancelled)
+          return
+        }
+        switch result {
+        case .success:
+          settlement.resolve(())
+        case .failure(let error):
+          settlement.reject(error)
+        }
       }
     }
+    return settlement.promise
   }
 
   func increaseTextSize() throws -> Double {
@@ -258,6 +280,24 @@ extension InkSignView {
     cancelActiveStroke()
     guard state.activePage.history.appendText(annotation) else { return }
     textInteractionOverlay.syncContent()
+    emitChange()
+  }
+
+  func appendTextAnnotation(
+    _ annotation: InkSignPdfTextAnnotation,
+    generation: UInt64,
+    pageID: UUID
+  ) throws {
+    guard !disposed,
+          documentCoordinator.generation == generation,
+          let state = documentCoordinator.document,
+          let target = state.pages.first(where: { $0.id == pageID }) else {
+      throw TextError.cancelled
+    }
+    let targetIsActive = state.activePageID == pageID
+    if targetIsActive { cancelActiveStroke() }
+    guard target.history.appendText(annotation) else { return }
+    if targetIsActive { textInteractionOverlay.syncContent() }
     emitChange()
   }
 

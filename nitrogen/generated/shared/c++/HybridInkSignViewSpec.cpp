@@ -14,8 +14,8 @@ namespace margelo::nitro::inksignpdf {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
-      prototype.registerHybridGetter("fallbackFont", &HybridInkSignViewSpec::getFallbackFont);
-      prototype.registerHybridSetter("fallbackFont", &HybridInkSignViewSpec::setFallbackFont);
+      prototype.registerHybridGetter("androidFallbackFont", &HybridInkSignViewSpec::getAndroidFallbackFont);
+      prototype.registerHybridSetter("androidFallbackFont", &HybridInkSignViewSpec::setAndroidFallbackFont);
       prototype.registerHybridGetter("strokeColor", &HybridInkSignViewSpec::getStrokeColor);
       prototype.registerHybridSetter("strokeColor", &HybridInkSignViewSpec::setStrokeColor);
       prototype.registerHybridGetter("strokeMinWidth", &HybridInkSignViewSpec::getStrokeMinWidth);

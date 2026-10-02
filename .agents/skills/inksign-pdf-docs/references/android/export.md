@@ -10,6 +10,8 @@
   geometry, text font sizes, and placements before atomically publishing it.
 - Export leaves the caller's source and working document unchanged. Stale or cancelled
   work cannot publish an output.
+- Replacement and disposal cancel pending export through the
+  [document operation contract](../architecture.md#document-operations).
 
 ## Text and fonts
 
