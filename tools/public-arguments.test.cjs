@@ -6,7 +6,7 @@ const {
   validateTextAnnotationOptions,
   validateTextPlacementOptions,
 } = require('../lib/commonjs/publicArguments.js');
-const { createTextKeyInsertionCommand } = require('../lib/commonjs/textKeyInsertion.js');
+const { createFieldFocusCommand, createTextKeyInsertionCommand } = require('../lib/commonjs/textKeyInsertion.js');
 
 test('addPages accepts positive finite DPI and JPEG quality endpoints', () => {
   assert.doesNotThrow(() => validateAddPagesOptions({ targetDpi: Number.MIN_VALUE, jpegQuality: 0 }));
@@ -61,19 +61,35 @@ test('text options validate alignment and physical placement dimensions', () => 
   }
 });
 
-test('insertTextByKey forwards values through the public handle and rejects invalid options', async () => {
+test('insertTextByFieldName forwards values through the public handle and rejects invalid options', async () => {
   const calls = [];
   const native = {
-    insertTextByKey: (...args) => { calls.push(args); return Promise.resolve(); },
+    insertTextByFieldName: (...args) => { calls.push(args); return Promise.resolve(); },
   };
-  const insertTextByKey = createTextKeyInsertionCommand(
-    (text, key, options) => native.insertTextByKey(text, key, options),
+  const insertTextByFieldName = createTextKeyInsertionCommand(
+    (text, key, options) => native.insertTextByFieldName(text, key, options),
   );
   const options = { occurrence: 'last', direction: 'rtl', maxLines: 2, verticalAnchor: 'top' };
-  await insertTextByKey('Ada', 'Signer', options);
+  await insertTextByFieldName('Ada', 'Signer', options);
   assert.deepEqual(calls, [['Ada', 'Signer', options]]);
-  await assert.rejects(insertTextByKey('Ada', 'Signer', { occurrence: 'nearest' }), {
+  await assert.rejects(insertTextByFieldName('Ada', 'Signer', { occurrence: 'nearest' }), {
     message: /^invalid_text_key_options:/,
   });
   assert.equal(calls.length, 1);
+});
+
+test('focusPageByFieldName forwards focus options and waits for native completion', async () => {
+  const calls = [];
+  let complete;
+  const nativeCompletion = new Promise(resolve => { complete = resolve; });
+  const focus = createFieldFocusCommand((...args) => {
+    calls.push(args);
+    return nativeCompletion;
+  });
+  const options = { occurrence: 'last', zoom: 3, enterEditMode: true };
+  const pending = focus('Signature', options);
+  assert.deepEqual(calls, [['Signature', options]]);
+  assert.equal(pending, nativeCompletion);
+  complete();
+  await pending;
 });

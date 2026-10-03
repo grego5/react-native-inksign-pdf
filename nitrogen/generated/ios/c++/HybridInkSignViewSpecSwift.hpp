@@ -50,6 +50,8 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
+// Forward declaration of `FieldFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
 // Forward declaration of `TextPlacementOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
@@ -77,6 +79,7 @@ namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 #include "TextVerticalAnchor.hpp"
 #include "TextInsertionByKeyOptions.hpp"
 #include "TextKeyOccurrence.hpp"
+#include "FieldFocusOptions.hpp"
 #include "TextPlacementOptions.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
@@ -321,8 +324,16 @@ namespace margelo::nitro::inksignpdf {
         std::rethrow_exception(__result.error());
       }
     }
-    inline std::shared_ptr<Promise<void>> insertTextByKey(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) override {
-      auto __result = _swiftPart.insertTextByKey(text, key, options);
+    inline std::shared_ptr<Promise<void>> insertTextByFieldName(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) override {
+      auto __result = _swiftPart.insertTextByFieldName(text, key, options);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<void>> focusPageByFieldName(const std::string& key, const std::optional<FieldFocusOptions>& options) override {
+      auto __result = _swiftPart.focusPageByFieldName(key, options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

@@ -81,6 +81,7 @@ extension InkSignView {
 
   func applyModeTransition(toEditing: Bool, request: ViewportRequest) throws {
     try requireViewportReady(request: request)
+    fieldFocusRequestID &+= 1
     cancelPendingPageSwitch()
     cancelActiveStroke()
     setInteractionMode(editing: toEditing)
@@ -292,6 +293,7 @@ extension InkSignView {
     guard !disposed, !editMode,
           documentCoordinator.document != nil else { return }
     if !isFittedToPage() {
+      fieldFocusRequestID &+= 1
       applyViewport(request: .fit)
       return
     }
@@ -312,6 +314,7 @@ extension InkSignView {
 
     let entersEditMode = doubleTap?.enterEditMode == true
     guard applyViewport(target: ViewportTarget(zoom: clampedTargetZoom, focus: focus)) else { return }
+    fieldFocusRequestID &+= 1
     if entersEditMode { setInteractionMode(editing: true) }
   }
 

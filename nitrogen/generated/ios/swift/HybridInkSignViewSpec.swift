@@ -40,7 +40,8 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func redo() throws -> Void
   func clear() throws -> Void
   func addTextAnnotation(text: String, bounds: TextAnnotationBounds, options: TextAnnotationOptions?) throws -> Void
-  func insertTextByKey(text: String, key: String, options: TextInsertionByKeyOptions?) throws -> Promise<Void>
+  func insertTextByFieldName(text: String, key: String, options: TextInsertionByKeyOptions?) throws -> Promise<Void>
+  func focusPageByFieldName(key: String, options: FieldFocusOptions?) throws -> Promise<Void>
   func setTextDirection(direction: TextDirection) throws -> Void
   func insertAnnotationOn(options: TextPlacementOptions?) throws -> Void
   func insertAnnotationOff() throws -> Void

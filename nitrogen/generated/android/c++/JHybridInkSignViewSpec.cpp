@@ -45,6 +45,8 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
+// Forward declaration of `FieldFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
 // Forward declaration of `TextPlacementOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 
@@ -96,6 +98,8 @@ namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 #include "JTextInsertionByKeyOptions.hpp"
 #include "TextKeyOccurrence.hpp"
 #include "JTextKeyOccurrence.hpp"
+#include "FieldFocusOptions.hpp"
+#include "JFieldFocusOptions.hpp"
 #include "TextPlacementOptions.hpp"
 #include "JTextPlacementOptions.hpp"
 
@@ -383,9 +387,24 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<JTextAnnotationBounds> /* bounds */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("addTextAnnotation");
     method(_javaPart, jni::make_jstring(text), JTextAnnotationBounds::fromCpp(bounds), options.has_value() ? JTextAnnotationOptions::fromCpp(options.value()) : nullptr);
   }
-  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::insertTextByKey(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<jni::JString> /* key */, jni::alias_ref<JTextInsertionByKeyOptions> /* options */)>("insertTextByKey");
+  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::insertTextByFieldName(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<jni::JString> /* key */, jni::alias_ref<JTextInsertionByKeyOptions> /* options */)>("insertTextByFieldName");
     auto __result = method(_javaPart, jni::make_jstring(text), jni::make_jstring(key), options.has_value() ? JTextInsertionByKeyOptions::fromCpp(options.value()) : nullptr);
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
+  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::focusPageByFieldName(const std::string& key, const std::optional<FieldFocusOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* key */, jni::alias_ref<JFieldFocusOptions> /* options */)>("focusPageByFieldName");
+    auto __result = method(_javaPart, jni::make_jstring(key), options.has_value() ? JFieldFocusOptions::fromCpp(options.value()) : nullptr);
     return [&]() {
       auto __promise = Promise<void>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {

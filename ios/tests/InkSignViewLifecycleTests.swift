@@ -748,7 +748,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
 
     let inserted = expectation(description: "captured-page key text commits")
     var insertionError: Error?
-    let insertion = try view.insertTextByKey(text: "filled", key: "Name", options: nil)
+    let insertion = try view.insertTextByFieldName(text: "filled", key: "Name", options: nil)
     insertion.then { _ in inserted.fulfill() }
     insertion.catch { error in insertionError = error; inserted.fulfill() }
 
@@ -761,6 +761,67 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(coordinator.document?.activePageIndex, 1)
     XCTAssertEqual(coordinator.document?.pages[0].history.content.textAnnotations.map(\.text), ["filled"])
     XCTAssertTrue(coordinator.document?.pages[1].history.content.textAnnotations.isEmpty == true)
+  }
+
+  func testManualPlacementSupersedesPendingFieldFocus() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let keyPDFURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignFieldFocus-\(UUID().uuidString).pdf")
+    defer {
+      try? FileManager.default.removeItem(at: keyPDFURL)
+      fixture.view.dispose(); fixture.window.isHidden = true
+    }
+    try UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 300, height: 400))
+      .writePDF(to: keyPDFURL) { context in
+        context.beginPage()
+        NSAttributedString(string: "Name", attributes: [.font: UIFont.systemFont(ofSize: 18)])
+          .draw(at: CGPoint(x: 70, y: 120))
+        context.cgContext.setStrokeColor(UIColor.black.cgColor)
+        context.cgContext.setLineWidth(1)
+        context.cgContext.move(to: CGPoint(x: 70, y: 131))
+        context.cgContext.addLine(to: CGPoint(x: 250, y: 131))
+        context.cgContext.strokePath()
+      }
+
+    let view = fixture.view
+    let coordinator = view.documentCoordinator
+    let opened = expectation(description: "field-focus fixture opens")
+    var openError: Error?
+    let openPromise = Promise<PageInfo>()
+    openPromise.then { _ in opened.fulfill() }
+    openPromise.catch { error in openError = error; opened.fulfill() }
+    view.beginLoad(keyPDFURL.path, zoom: nil, focus: nil, fitToPage: true, promise: openPromise)
+    wait(for: [opened], timeout: 5)
+    XCTAssertNil(openError)
+    coordinator.pdfQueue.sync {}
+
+    let workerEntered = DispatchSemaphore(value: 0)
+    let releaseWorker = DispatchSemaphore(value: 0)
+    defer { releaseWorker.signal() }
+    coordinator.pdfQueue.async {
+      workerEntered.signal()
+      _ = releaseWorker.wait(timeout: .now() + 5)
+    }
+    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
+
+    let settled = expectation(description: "superseded field focus settles")
+    var focusError: Error?
+    let focus = try view.focusPageByFieldName(key: "Name",
+      options: FieldFocusOptions(occurrence: nil, zoom: 3, enterEditMode: true))
+    focus.then { _ in settled.fulfill() }
+    focus.catch { error in focusError = error; settled.fulfill() }
+
+    try view.insertAnnotationOn(options: nil)
+    XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
+    let placementViewport = try view.currentViewportSnapshot()
+    releaseWorker.signal()
+    wait(for: [settled], timeout: 10)
+
+    XCTAssertTrue(focusError?.localizedDescription.hasPrefix("operation_cancelled") == true)
+    XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
+    XCTAssertFalse(view.editMode)
+    XCTAssertEqual(try view.currentViewportSnapshot().zoom, placementViewport.zoom)
+    XCTAssertTrue(coordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
   }
 
   func testReplacementCancelsProductionTextLookupAndIgnoresLateWorkerResult() throws {
@@ -813,7 +874,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
 
-    let lookup = try view.insertTextByKey(text: "filled", key: "Name", options: nil)
+    let lookup = try view.insertTextByFieldName(text: "filled", key: "Name", options: nil)
     let lookupCancelled = expectation(description: "text lookup cancellation settles promptly")
     var lookupError: Error?
     var lookupRejectionCount = 0

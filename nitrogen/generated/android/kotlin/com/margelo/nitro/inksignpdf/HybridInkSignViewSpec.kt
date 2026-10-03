@@ -189,7 +189,11 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun insertTextByKey(text: String, key: String, options: TextInsertionByKeyOptions?): Promise<Unit>
+  abstract fun insertTextByFieldName(text: String, key: String, options: TextInsertionByKeyOptions?): Promise<Unit>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun focusPageByFieldName(key: String, options: FieldFocusOptions?): Promise<Unit>
   
   @DoNotStrip
   @Keep

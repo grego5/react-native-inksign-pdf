@@ -57,7 +57,8 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
       prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
       prototype.registerHybridMethod("addTextAnnotation", &HybridInkSignViewSpec::addTextAnnotation);
-      prototype.registerHybridMethod("insertTextByKey", &HybridInkSignViewSpec::insertTextByKey);
+      prototype.registerHybridMethod("insertTextByFieldName", &HybridInkSignViewSpec::insertTextByFieldName);
+      prototype.registerHybridMethod("focusPageByFieldName", &HybridInkSignViewSpec::focusPageByFieldName);
       prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);
       prototype.registerHybridMethod("insertAnnotationOn", &HybridInkSignViewSpec::insertAnnotationOn);
       prototype.registerHybridMethod("insertAnnotationOff", &HybridInkSignViewSpec::insertAnnotationOff);

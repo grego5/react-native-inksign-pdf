@@ -84,7 +84,7 @@ internal class HybridInkSignViewTextKeyTest {
       val failure = AtomicReference<Throwable>()
       val insertion = AtomicReference<Promise<Unit>>()
       instrumentation.runOnMainSync {
-        insertion.set(viewRef.get().insertTextByKey("new value", "Missing", null))
+        insertion.set(viewRef.get().insertTextByFieldName("new value", "Missing", null))
       }
       insertion.get().then { settled.countDown() }
         .catch { error -> failure.set(error); settled.countDown() }
@@ -94,7 +94,7 @@ internal class HybridInkSignViewTextKeyTest {
       val changesBeforeCommit = AtomicInteger()
       instrumentation.runOnMainSync { changesBeforeCommit.set(textContentChanges.get()) }
       releaseLookup.countDown()
-      assertTrue("insertTextByKey did not settle", settled.await(10L, TimeUnit.SECONDS))
+      assertTrue("insertTextByFieldName did not settle", settled.await(10L, TimeUnit.SECONDS))
       assertTrue("key insertion failed after navigation: ${failure.get()}", failure.get() == null)
       assertEquals("an inactive-page commit must not sync the active overlay",
         changesBeforeCommit.get(), textContentChanges.get())
@@ -161,7 +161,7 @@ internal class HybridInkSignViewTextKeyTest {
       val lookupError = AtomicReference<Throwable>()
       val lookup = AtomicReference<Promise<Unit>>()
       instrumentation.runOnMainSync {
-        lookup.set(viewRef.get().insertTextByKey("value", "Missing", null))
+        lookup.set(viewRef.get().insertTextByFieldName("value", "Missing", null))
       }
       lookup.get().then { lookupSettled.countDown() }
         .catch { error -> lookupError.set(error); rejectionCount.incrementAndGet(); lookupSettled.countDown() }

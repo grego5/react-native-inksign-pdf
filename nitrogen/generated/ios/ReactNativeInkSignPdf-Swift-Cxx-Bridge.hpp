@@ -18,6 +18,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
+// Forward declaration of `FieldFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
@@ -59,6 +61,7 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "AddPagesResult.hpp"
 #include "AndroidFallbackFont.hpp"
 #include "DoubleTapOptions.hpp"
+#include "FieldFocusOptions.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
@@ -544,6 +547,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline TextInsertionByKeyOptions get_std__optional_TextInsertionByKeyOptions_(const std::optional<TextInsertionByKeyOptions>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<FieldFocusOptions>
+  /**
+   * Specialized version of `std::optional<FieldFocusOptions>`.
+   */
+  using std__optional_FieldFocusOptions_ = std::optional<FieldFocusOptions>;
+  inline std::optional<FieldFocusOptions> create_std__optional_FieldFocusOptions_(const FieldFocusOptions& value) noexcept {
+    return std::optional<FieldFocusOptions>(value);
+  }
+  inline bool has_value_std__optional_FieldFocusOptions_(const std::optional<FieldFocusOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline FieldFocusOptions get_std__optional_FieldFocusOptions_(const std::optional<FieldFocusOptions>& optional) noexcept {
     return optional.value();
   }
   
