@@ -18,10 +18,16 @@ public extension FieldFocusOptions {
   /**
    * Create a new instance of `FieldFocusOptions`.
    */
-  init(occurrence: TextKeyOccurrence?, zoom: Double?, enterEditMode: Bool?) {
+  init(occurrence: TextKeyOccurrence?, direction: TextDirection?, zoom: Double?, enterEditMode: Bool?) {
     self.init({ () -> bridge.std__optional_TextKeyOccurrence_ in
       if let __unwrappedValue = occurrence {
         return bridge.create_std__optional_TextKeyOccurrence_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_TextDirection_ in
+      if let __unwrappedValue = direction {
+        return bridge.create_std__optional_TextDirection_(__unwrappedValue)
       } else {
         return .init()
       }
@@ -43,6 +49,11 @@ public extension FieldFocusOptions {
   @inline(__always)
   var occurrence: TextKeyOccurrence? {
     return self.__occurrence.value
+  }
+  
+  @inline(__always)
+  var direction: TextDirection? {
+    return self.__direction.value
   }
   
   @inline(__always)

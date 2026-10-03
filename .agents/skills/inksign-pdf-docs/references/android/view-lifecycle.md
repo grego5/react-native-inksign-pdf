@@ -41,6 +41,8 @@
 
 - Page identities and histories travel with pages through structural edits. Structural
   dirty state is document-level; undo and redo history is page-local.
+- `hasInk()` reads committed ink entries on the active page, so navigation,
+  undo, redo, and clear are reflected directly by history.
 - Reopen assembled candidates before publication and validate page count, order,
   dimensions, and rotation. Compare image-page dimensions at PDFium's serialization
   precision; use reopened metadata as the published dimensions.

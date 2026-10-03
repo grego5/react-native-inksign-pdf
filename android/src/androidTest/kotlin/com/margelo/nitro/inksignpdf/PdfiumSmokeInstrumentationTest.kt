@@ -103,8 +103,7 @@ class PdfiumSmokeInstrumentationTest {
       assertTrue(session.textKeyMatches(0, "AB").size == 1)
       assertTrue(session.textKeyMatches(0, "CD").size == 1)
       val multilineMatches = session.textKeyMatches(0, "AB\r\nCD")
-      assertTrue(multilineMatches.size == 1)
-      assertTrue(multilineMatches.single().lineHeight == 0.0)
+      assertTrue(multilineMatches.isEmpty())
     }
   }
 
@@ -118,7 +117,20 @@ class PdfiumSmokeInstrumentationTest {
       val match = lookup.matches.single()
       assertTrue(match.lineHeight > 0.0)
       assertTrue(match.lineCenter in match.top..match.bottom)
+      assertEquals(lookup.matches, session.textKeyLookup(0, "Name Full").matches)
+      assertTrue(!session.textKeyLookup(0, "Full Nam").hasLiteralMatch)
       assertEquals("The fixture should include a character without geometry", scans[3] - 1, scans[4])
+    }
+  }
+
+  @Test
+  fun pdfiumMultiwordKeyDoesNotCombineDistantFieldsOnOneRow() {
+    val content = "BT /F1 12 Tf 1 0 0 1 10 60 Tm (Full) Tj " +
+      "1 0 0 1 250 60 Tm (Name) Tj ET\n"
+    PdfiumRenderSession.open(textPagePdf(content, pageWidth = 400)).use { session ->
+      assertTrue(session.textKeyLookup(0, "Full").matches.isNotEmpty())
+      assertTrue(session.textKeyLookup(0, "Name").matches.isNotEmpty())
+      assertTrue(session.textKeyLookup(0, "Full Name").matches.isEmpty())
     }
   }
 

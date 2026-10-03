@@ -23,6 +23,9 @@ data class FieldFocusOptions(
   val occurrence: TextKeyOccurrence?,
   @DoNotStrip
   @Keep
+  val direction: TextDirection?,
+  @DoNotStrip
+  @Keep
   val zoom: Double?,
   @DoNotStrip
   @Keep
@@ -34,6 +37,7 @@ data class FieldFocusOptions(
     if (this === other) return true
     if (other !is FieldFocusOptions) return false
     return Objects.deepEquals(this.occurrence, other.occurrence)
+      && Objects.deepEquals(this.direction, other.direction)
       && Objects.deepEquals(this.zoom, other.zoom)
       && Objects.deepEquals(this.enterEditMode, other.enterEditMode)
   }
@@ -41,6 +45,7 @@ data class FieldFocusOptions(
   override fun hashCode(): Int {
     return arrayOf<Any?>(
       occurrence,
+      direction,
       zoom,
       enterEditMode
     ).contentDeepHashCode()
@@ -54,8 +59,8 @@ data class FieldFocusOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(occurrence: TextKeyOccurrence?, zoom: Double?, enterEditMode: Boolean?): FieldFocusOptions {
-      return FieldFocusOptions(occurrence, zoom, enterEditMode)
+    private fun fromCpp(occurrence: TextKeyOccurrence?, direction: TextDirection?, zoom: Double?, enterEditMode: Boolean?): FieldFocusOptions {
+      return FieldFocusOptions(occurrence, direction, zoom, enterEditMode)
     }
   }
 }

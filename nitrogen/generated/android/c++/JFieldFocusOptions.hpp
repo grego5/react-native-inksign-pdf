@@ -10,7 +10,9 @@
 #include <fbjni/fbjni.h>
 #include "FieldFocusOptions.hpp"
 
+#include "JTextDirection.hpp"
 #include "JTextKeyOccurrence.hpp"
+#include "TextDirection.hpp"
 #include "TextKeyOccurrence.hpp"
 #include <optional>
 
@@ -35,12 +37,15 @@ namespace margelo::nitro::inksignpdf {
       static const auto clazz = javaClassStatic();
       static const auto fieldOccurrence = clazz->getField<JTextKeyOccurrence>("occurrence");
       jni::local_ref<JTextKeyOccurrence> occurrence = this->getFieldValue(fieldOccurrence);
+      static const auto fieldDirection = clazz->getField<JTextDirection>("direction");
+      jni::local_ref<JTextDirection> direction = this->getFieldValue(fieldDirection);
       static const auto fieldZoom = clazz->getField<jni::JDouble>("zoom");
       jni::local_ref<jni::JDouble> zoom = this->getFieldValue(fieldZoom);
       static const auto fieldEnterEditMode = clazz->getField<jni::JBoolean>("enterEditMode");
       jni::local_ref<jni::JBoolean> enterEditMode = this->getFieldValue(fieldEnterEditMode);
       return FieldFocusOptions(
         occurrence != nullptr ? std::make_optional(occurrence->toCpp()) : std::nullopt,
+        direction != nullptr ? std::make_optional(direction->toCpp()) : std::nullopt,
         zoom != nullptr ? std::make_optional(zoom->value()) : std::nullopt,
         enterEditMode != nullptr ? std::make_optional(static_cast<bool>(enterEditMode->value())) : std::nullopt
       );
@@ -52,12 +57,13 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JFieldFocusOptions::javaobject> fromCpp(const FieldFocusOptions& value) {
-      using JSignature = JFieldFocusOptions(jni::alias_ref<JTextKeyOccurrence>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JBoolean>);
+      using JSignature = JFieldFocusOptions(jni::alias_ref<JTextKeyOccurrence>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JBoolean>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
         value.occurrence.has_value() ? JTextKeyOccurrence::fromCpp(value.occurrence.value()) : nullptr,
+        value.direction.has_value() ? JTextDirection::fromCpp(value.direction.value()) : nullptr,
         value.zoom.has_value() ? jni::JDouble::valueOf(value.zoom.value()) : nullptr,
         value.enterEditMode.has_value() ? jni::JBoolean::valueOf(value.enterEditMode.value()) : nullptr
       );

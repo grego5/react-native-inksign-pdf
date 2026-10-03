@@ -148,6 +148,7 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
     nextPage: () => native.nextPage(),
     previousPage: () => native.previousPage(),
     getViewport: () => native.getViewport(),
+    hasInk: () => native.hasInk(),
     enterEditMode(viewport) {
       validateViewportOptions(viewport);
       native.enterEditMode(viewport);

@@ -7,6 +7,45 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport {
+  func testHasInkTracksActivePageCommittedInkHistory() throws {
+    let emptyView = InkSignView()
+    XCTAssertFalse(try emptyView.hasInk())
+    emptyView.dispose()
+
+    let fixture = makeFixture(pageCount: 2, activePageIndex: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let page = try XCTUnwrap(view.documentCoordinator.document?.activePage)
+    let before = page.history.content
+    let point = PKStrokePoint(location: CGPoint(x: 80, y: 90),
+                              timeOffset: 0,
+                              size: CGSize(width: 4, height: 4),
+                              opacity: 1,
+                              force: 0.5,
+                              azimuth: 0,
+                              altitude: .pi / 2)
+    let stroke = PKStroke(ink: PKInk(.pen, color: .black),
+                          path: PKStrokePath(controlPoints: [point], creationDate: Date()),
+                          transform: .identity,
+                          mask: nil)
+    XCTAssertTrue(page.history.record(type: .ink,
+                                     before: before,
+                                     after: before.replacingDrawing(PKDrawing(strokes: [stroke]))))
+    XCTAssertTrue(try view.hasInk())
+
+    _ = try view.switchPage(to: 0)
+    XCTAssertFalse(try view.hasInk())
+    _ = try view.switchPage(to: 1)
+    XCTAssertTrue(try view.hasInk())
+
+    try view.undo()
+    XCTAssertFalse(try view.hasInk())
+    try view.redo()
+    XCTAssertTrue(try view.hasInk())
+    try view.clear()
+    XCTAssertFalse(try view.hasInk())
+  }
+
   private func cachePlacementRules(_ rules: [InkSignPdfPlacementRule],
                                   overlay: InkSignPdfTextInteractionOverlay,
                                   generation: UInt64,

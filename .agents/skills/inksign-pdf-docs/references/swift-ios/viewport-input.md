@@ -1,7 +1,8 @@
 # iOS viewport and input
 
 - **Field focus:** `focusPageByFieldName()` uses cached page analysis to find an
-  eligible label and adjacent rule, then focuses the captured page's writing
+  eligible label and adjacent rule on the resolved direction's side, using the
+  text-placement direction policy, then focuses the captured page's writing
   area. Newer focus or input-mode actions supersede pending focus. Document
   replacement, disposal, or target-page deletion cancels it.
 
@@ -41,6 +42,10 @@
   removal, or disposal cancels the request. An active-page commit cancels its
   live stroke and syncs the text overlay; an inactive-page commit leaves current
   input in place.
+- Both field commands match multiword keys as consecutive complete words in
+  extracted text, regardless of word order. Glyphs must share a visual row and
+  neighboring word bounds must be within one row height. Whitespace does not
+  participate in row geometry; rule selection uses the combined glyph bounds.
 - **Bounded editing:** `insertAnnotationOn(options?)` applies an optional
   physical width and height from the tap toward the right and down, plus
   alignment and line options, to the live editor and committed text. Without

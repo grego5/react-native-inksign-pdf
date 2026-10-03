@@ -288,6 +288,14 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline bool hasInk() override {
+      auto __result = _swiftPart.hasInk();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline void enterEditMode(const std::optional<ViewportOptions>& viewport) override {
       auto __result = _swiftPart.enterEditMode(viewport);
       if (__result.hasError()) [[unlikely]] {

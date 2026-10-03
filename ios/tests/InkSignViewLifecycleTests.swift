@@ -807,7 +807,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let settled = expectation(description: "superseded field focus settles")
     var focusError: Error?
     let focus = try view.focusPageByFieldName(key: "Name",
-      options: FieldFocusOptions(occurrence: nil, zoom: 3, enterEditMode: true))
+      options: FieldFocusOptions(occurrence: nil, direction: nil, zoom: 3, enterEditMode: true))
     focus.then { _ in settled.fulfill() }
     focus.catch { error in focusError = error; settled.fulfill() }
 

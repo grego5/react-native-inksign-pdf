@@ -165,6 +165,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun hasInk(): Boolean
+  
+  @DoNotStrip
+  @Keep
   abstract fun enterEditMode(viewport: ViewportOptions?): Unit
   
   @DoNotStrip

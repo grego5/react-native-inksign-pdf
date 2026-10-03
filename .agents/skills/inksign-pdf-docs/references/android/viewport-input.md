@@ -4,7 +4,8 @@
 
 - `focusPageByFieldName(key, options?)` reuses cached page analysis and selects
   the first (default) or last eligible literal-label match with a usable same-row
-  rule on either side. It returns to the captured page and centers the viewport
+  rule on the resolved direction's side, using the text-placement direction policy.
+  It returns to the captured page and centers the viewport
   on the usable writing area at the rule. Zoom defaults to 2;
   `enterEditMode: true` enables ink after focus. A newer focus or mode request,
   document replacement, disposal, or target-page deletion cancels the request.
@@ -45,6 +46,10 @@
   ID before mutation; replacement, page removal, or disposal cancels the request.
   An inactive-page commit updates history and dirty state without rebuilding
   the active text presentation.
+- Both field commands match multiword keys as consecutive complete words in
+  extracted text, regardless of word order. Glyphs must share a visual row and
+  neighboring word bounds must be within one row height. Whitespace does not
+  participate in row geometry; rule selection uses the combined glyph bounds.
 - Without box dimensions, placement centers the box horizontally and aligns its
   inner bottom to the tap, subject to page clamping and rule snapping. Snap
   candidates are loaded lazily for the active page and discarded on page or

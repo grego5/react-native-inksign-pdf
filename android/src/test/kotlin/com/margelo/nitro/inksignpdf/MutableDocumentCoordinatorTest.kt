@@ -18,6 +18,37 @@ import org.junit.Test
 
 class MutableDocumentCoordinatorTest {
   @Test
+  fun activePageHasInkTracksCommittedHistoryAndPageSelection() {
+    val empty = MutableDocumentCoordinator(
+      sessionWorker = PdfSessionWorker(),
+      artifactPolicy = TestDocumentArtifactPolicy(),
+    )
+    assertFalse(empty.activePageHasInk())
+
+    val coordinator = coordinator()
+    assertFalse(coordinator.activePageHasInk())
+    val ink = StrokeOutline.fromCommands(listOf(
+      InkPathCommand(InkPathCommand.MOVE, 0f, 0f),
+      InkPathCommand(InkPathCommand.CUBIC, 10f, 0f, 3f, 4f, 7f, -4f),
+      InkPathCommand(InkPathCommand.CLOSE),
+    ))
+    coordinator.appendActiveInk(ink)
+    assertTrue(coordinator.activePageHasInk())
+
+    coordinator.setActivePage(0)
+    assertFalse(coordinator.activePageHasInk())
+    coordinator.setActivePage(1)
+    assertTrue(coordinator.activePageHasInk())
+
+    coordinator.undoActiveHistory()
+    assertFalse(coordinator.activePageHasInk())
+    coordinator.redoActiveHistory()
+    assertTrue(coordinator.activePageHasInk())
+    coordinator.clearActiveHistory()
+    assertFalse(coordinator.activePageHasInk())
+  }
+
+  @Test
   fun pageIdsRemainStableAcrossMoveAndRemovalCandidate() {
     val coordinator = coordinator()
     val original = coordinator.pages.map { it.id }
