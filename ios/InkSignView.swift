@@ -85,6 +85,7 @@ final class InkSignView: HybridInkSignViewSpec {
   lazy var textInteractionOverlay = InkSignPdfTextInteractionOverlay(frame: .zero)
   private lazy var pdfViewGestureDelegate = InkSignPdfViewGestureDelegate(owner: self)
   var pageSwitchRequestID: UInt64 = 0
+  var fieldFocusRequestID: UInt64 = 0
   var pageNavigationRequestID: UInt64 = 0
   var pendingPageSwitchID: UInt64?
   var pendingPageSwitchEditing = false

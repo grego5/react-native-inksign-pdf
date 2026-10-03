@@ -35,6 +35,8 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextInsertionByKeyOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
+// Forward declaration of `FieldFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `TextPlacementOptions` to properly resolve imports.
@@ -55,6 +57,7 @@ namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 #include "TextAnnotationBounds.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "TextInsertionByKeyOptions.hpp"
+#include "FieldFocusOptions.hpp"
 #include "TextDirection.hpp"
 #include "TextPlacementOptions.hpp"
 
@@ -131,7 +134,8 @@ namespace margelo::nitro::inksignpdf {
       virtual void redo() = 0;
       virtual void clear() = 0;
       virtual void addTextAnnotation(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) = 0;
-      virtual std::shared_ptr<Promise<void>> insertTextByKey(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) = 0;
+      virtual std::shared_ptr<Promise<void>> insertTextByFieldName(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) = 0;
+      virtual std::shared_ptr<Promise<void>> focusPageByFieldName(const std::string& key, const std::optional<FieldFocusOptions>& options) = 0;
       virtual void setTextDirection(TextDirection direction) = 0;
       virtual void insertAnnotationOn(const std::optional<TextPlacementOptions>& options) = 0;
       virtual void insertAnnotationOff() = 0;

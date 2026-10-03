@@ -1,5 +1,10 @@
 # iOS viewport and input
 
+- **Field focus:** `focusPageByFieldName()` uses cached page analysis to find an
+  eligible label and adjacent rule, then focuses the captured page's writing
+  area. Newer focus or input-mode actions supersede pending focus. Document
+  replacement, disposal, or target-page deletion cancels it.
+
 - **Presentation:** `PDFView` owns page display, zoom, scrolling, and navigation.
   The document coordinator owns page identity and committed content.
 - **View mode:** PDF gestures handle navigation; admitted text touches and armed
@@ -25,14 +30,17 @@
   physical top-left in either direction. Alignment positions measured text
   inside it. `maxLines` retains
   complete lines; `verticalAnchor` fixes the top or bottom of the visible block.
-- **Key insertion:** `insertTextByKey(text, key, options?)` resolves source text
-  and rule geometry on the serial PDF queue. It captures the selected page ID
-  and commits to that page even if navigation changes the active page. The
-  commit is cancelled if the document is replaced, the captured page is removed,
-  or the view is disposed. A commit to the active page cancels its live stroke
-  and syncs the text overlay; an inactive-page commit leaves current input in
-  place. See the [README](../../../../README.md) for occurrence selection,
-  layout, and error behavior.
+- **Key insertion:** `insertTextByFieldName(text, key, options?)` resolves
+  literal matches and rule geometry from cached page analysis on the serial PDF
+  queue. It skips matches without a usable same-row rule on the resolved
+  direction's side, then chooses the first (default) or last eligible match in
+  page order. A missing key rejects with `text_key_not_found`; matches without
+  a usable rule reject with `text_rule_not_found`. Lookup runs on the serial PDF
+  queue; the main queue revalidates document generation and page ID before
+  committing to the captured page, even after navigation. Replacement, page
+  removal, or disposal cancels the request. An active-page commit cancels its
+  live stroke and syncs the text overlay; an inactive-page commit leaves current
+  input in place.
 - **Bounded editing:** `insertAnnotationOn(options?)` applies an optional
   physical width and height from the tap toward the right and down, plus
   alignment and line options, to the live editor and committed text. Without

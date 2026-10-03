@@ -49,13 +49,24 @@ export interface TextPlacementOptions {
 }
 
 /**
- * Options for searching extractable source text on the active PDF page and
- * inserting one value beside a matching key and horizontal rule. A selected
- * key without a usable rule rejects with `text_rule_not_found`.
+ * Options for searching extractable source text on the page selected when the
+ * command is called and inserting beside a matching key and horizontal rule.
+ * Matches without a usable same-row rule on the resolved direction's side are
+ * skipped; if the key exists but no eligible match remains, the command rejects
+ * with `text_rule_not_found`.
  */
 export interface TextInsertionByKeyOptions extends TextAnnotationOptions {
-  /** Selects the first (default) or last matching key on the active page. */
+  /** Selects the first (default) or last eligible key match in page order. */
   occurrence?: TextKeyOccurrence
+}
+
+/** Focus a page on a matching label's adjacent rule without creating an annotation. */
+export interface FieldFocusOptions {
+  occurrence?: TextKeyOccurrence
+  /** Positive zoom factor; defaults to 2 and is clamped to the native viewport limits. */
+  zoom?: number
+  /** Enable freehand drawing after focusing. Omission preserves the current mode. */
+  enterEditMode?: boolean
 }
 
 export type PageType = 'pdf' | 'image'
@@ -174,15 +185,19 @@ export interface InkSignViewMethods extends HybridViewMethods {
   /** Commits text inside a fixed physical page rectangle, clipping to complete visible lines. */
   addTextAnnotation(text: string, bounds: TextAnnotationBounds, options?: TextAnnotationOptions): void
   /**
-   * Finds a literal source-text key on the active page, comparing ASCII
-   * letters without case and all other characters exactly, then pairs it with
-   * an adjacent horizontal rule and commits one value. The rule's full width is
-   * used; bottom anchoring defaults to text growing upward above it, while top
-   * anchoring places text below it. The search does not OCR image pages. A
-   * missing key rejects with `text_key_not_found`; stale or disposed requests
-   * reject with `operation_cancelled`.
+   * Finds literal source-text matches on the page selected when called,
+   * comparing ASCII letters without case and all other characters exactly.
+   * Skips matches without a usable same-row horizontal rule on the resolved
+   * direction's side, then uses the first (default) or last eligible match.
+   * Bottom anchoring grows text upward from the rule; top anchoring places it
+   * below. The search does not OCR image pages. A missing key rejects with
+   * `text_key_not_found`; matches without a usable rule reject with
+   * `text_rule_not_found`. Document replacement, target-page deletion, or
+   * disposal rejects with `operation_cancelled`.
    */
-  insertTextByKey(text: string, key: string, options?: TextInsertionByKeyOptions): Promise<void>
+  insertTextByFieldName(text: string, key: string, options?: TextInsertionByKeyOptions): Promise<void>
+  /** Focuses a label's adjacent writing rule; a newer focus or mode request can cancel it. */
+  focusPageByFieldName(key: string, options?: FieldFocusOptions): Promise<void>
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
   /** Arms one-shot text placement; optional width and height bound the box from the tap's top-left. */

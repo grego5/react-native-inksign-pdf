@@ -9,9 +9,10 @@ import {
   validateTextAnnotationOptions,
   validateTextPlacementOptions,
 } from './publicArguments';
-import { createTextKeyInsertionCommand } from './textKeyInsertion';
+import { createFieldFocusCommand, createTextKeyInsertionCommand } from './textKeyInsertion';
 
 import type {
+  FieldFocusOptions,
   PageInfo,
   TextAnnotationBounds,
   TextAnnotationOptions,
@@ -40,6 +41,7 @@ import type {
 } from './InkSignView.nitro';
 
 export type {
+  FieldFocusOptions,
   PageInfo,
   TextAnnotationBounds,
   TextAnnotationOptions,
@@ -165,8 +167,11 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
       validateTextAnnotationOptions(options);
       native.addTextAnnotation(text, bounds, options);
     },
-    insertTextByKey: createTextKeyInsertionCommand(
-      (text, key, options) => native.insertTextByKey(text, key, options),
+    insertTextByFieldName: createTextKeyInsertionCommand(
+      (text, key, options) => native.insertTextByFieldName(text, key, options),
+    ),
+    focusPageByFieldName: createFieldFocusCommand(
+      (key, options) => native.focusPageByFieldName(key, options),
     ),
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {

@@ -674,6 +674,26 @@ internal class SurfaceView(
     documentController.requireViewportCommandReady()
   }
 
+  internal fun focusField(
+    request: ViewportRequest,
+    enterEditMode: Boolean,
+    isCurrent: () -> Boolean,
+    completion: () -> Unit,
+    cancelled: () -> Unit,
+  ) {
+    requireModeTransitionReady()
+    pageNavigationController.cancel()
+    cancelActiveStroke()
+    documentController.applyViewport(request, animated = true, completion = {
+      if (isCurrent()) {
+        if (enterEditMode) enterEditModeFromDoubleTap()
+        completion()
+      } else {
+        cancelled()
+      }
+    }, cancelled = cancelled)
+  }
+
   internal fun requireTextInteractionReady() {
     requireOnUiThread()
     if (disposed) {

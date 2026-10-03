@@ -440,7 +440,7 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  override fun insertTextByKey(
+  override fun insertTextByFieldName(
     text: String,
     key: String,
     options: TextInsertionByKeyOptions?,
@@ -494,6 +494,40 @@ class HybridInkSignView internal constructor(
       textOverlay.addTextAnnotation(bounds, text, commitOptions, requireVisibleLine = true,
         resolvedDirectionRtl = directionRtl,
         capturedPage = CapturedTextPage(generation, pageId, page))
+    }
+    Unit
+  }
+
+  override fun focusPageByFieldName(key: String, options: FieldFocusOptions?): Promise<Unit> = launchPromise {
+    checkMainThread()
+    if (disposed) throw operationCancelled()
+    surface.requireModeTransitionReady()
+    val presentation = surface.textPresentationSnapshot()
+      ?: throw PdfSessionException("view_not_ready", "A PDF must be opened before focusing a field")
+    val generation = presentation.generation
+    val pageId = presentation.pageId
+    viewportRequestID += 1L
+    val requestID = viewportRequestID
+    val lookup = awaitCapturedDocumentPageLookup(
+      awaitLookup = { awaitKeyLookup(generation, presentation.pageIndex, key) },
+      isTargetPageCurrent = { isCurrentTextTarget(generation, pageId) && viewportRequestID == requestID },
+    )
+    if (!lookup.hasLiteralMatch) throw PdfSessionException("text_key_not_found", "Text key was not found")
+    val placement = selectPdfiumTextKeyPlacement(lookup.matches, lookup.rules,
+      options?.occurrence ?: TextKeyOccurrence.FIRST, null, presentation.page)
+      ?: throw PdfSessionException("text_rule_not_found", "No usable horizontal rule beside the text key")
+    requireCurrentTextTarget(generation, pageId)
+    textOverlay.finishForLifecycle()
+    surface.switchPage(checkNotNull(coordinator.pageIndexForId(pageId)))
+    val request = ViewportRequest.FocusAndZoom(
+      PagePoint((placement.contentLeft + placement.contentRight) / 2.0, placement.rule.y),
+      options?.zoom ?: 2.0,
+    )
+    suspendCancellableCoroutine<Unit> { continuation ->
+      surface.focusField(request, options?.enterEditMode == true,
+        isCurrent = { isCurrentTextTarget(generation, pageId) && viewportRequestID == requestID },
+        completion = { if (continuation.isActive) continuation.resume(Unit) },
+        cancelled = { if (continuation.isActive) continuation.resumeWithException(operationCancelled()) })
     }
     Unit
   }

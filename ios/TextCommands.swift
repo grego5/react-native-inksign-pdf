@@ -24,8 +24,9 @@ enum InkSignPdfKeyRuleSelector {
   static func select(matches: [InkSignPdfKeyTextMatch],
                      rules: [InkSignPdfPlacementRule],
                      occurrence: TextKeyOccurrence,
-                     directionRtl: Bool,
+                     directionRtl: Bool?,
                      pageSize: CGSize) -> InkSignPdfKeyRulePlacement? {
+    let directions = directionRtl.map { [$0] } ?? [false, true]
     let orderedMatches = matches.sorted {
       if $0.bounds.minY != $1.bounds.minY { return $0.bounds.minY < $1.bounds.minY }
       if $0.bounds.minX != $1.bounds.minX { return $0.bounds.minX < $1.bounds.minX }
@@ -46,45 +47,47 @@ enum InkSignPdfKeyRuleSelector {
         guard candidate.minX.isFinite && candidate.maxX.isFinite && candidate.y.isFinite &&
           candidate.minX >= 0 && candidate.maxX <= pageSize.width && candidate.maxX > candidate.minX &&
           candidate.y >= 0 && candidate.y <= pageSize.height else { continue }
-        let overlapsLabel = directionRtl
-          ? candidate.maxX > match.bounds.minX
-          : candidate.minX < match.bounds.maxX
-        let isOnDirectionSide = directionRtl
-          ? candidate.minX < match.bounds.minX
-          : candidate.maxX > match.bounds.maxX
-        let contentMinX = directionRtl || !overlapsLabel
-          ? candidate.minX
-          : match.bounds.maxX + keyInsertionLabelMarginPoints
-        let contentMaxX = !directionRtl || !overlapsLabel
-          ? candidate.maxX
-          : match.bounds.minX - keyInsertionLabelMarginPoints
-        let horizontalGap = directionRtl
-          ? match.bounds.minX - contentMaxX
-          : contentMinX - match.bounds.maxX
-        let verticalGap = abs(candidate.y - centerY)
-        guard isOnDirectionSide, contentMaxX > contentMinX, horizontalGap >= 0,
-              verticalGap <= match.lineHeight else { continue }
+        for rtl in directions {
+          let overlapsLabel = rtl
+            ? candidate.maxX > match.bounds.minX
+            : candidate.minX < match.bounds.maxX
+          let isOnDirectionSide = rtl
+            ? candidate.minX < match.bounds.minX
+            : candidate.maxX > match.bounds.maxX
+          let contentMinX = rtl || !overlapsLabel
+            ? candidate.minX
+            : match.bounds.maxX + keyInsertionLabelMarginPoints
+          let contentMaxX = !rtl || !overlapsLabel
+            ? candidate.maxX
+            : match.bounds.minX - keyInsertionLabelMarginPoints
+          let horizontalGap = rtl
+            ? match.bounds.minX - contentMaxX
+            : contentMinX - match.bounds.maxX
+          let verticalGap = abs(candidate.y - centerY)
+          guard isOnDirectionSide, contentMaxX > contentMinX, horizontalGap >= 0,
+                verticalGap <= match.lineHeight else { continue }
 
-        let isBetter: Bool
-        if let current = bestFit {
-          if horizontalGap != current.horizontalGap {
-            isBetter = horizontalGap < current.horizontalGap
-          } else if verticalGap != current.verticalGap {
-            isBetter = verticalGap < current.verticalGap
-          } else if candidate.minX != current.rule.minX {
-            isBetter = candidate.minX < current.rule.minX
+          let isBetter: Bool
+          if let current = bestFit {
+            if horizontalGap != current.horizontalGap {
+              isBetter = horizontalGap < current.horizontalGap
+            } else if verticalGap != current.verticalGap {
+              isBetter = verticalGap < current.verticalGap
+            } else if candidate.minX != current.rule.minX {
+              isBetter = candidate.minX < current.rule.minX
+            } else {
+              isBetter = candidate.y < current.rule.y
+            }
           } else {
-            isBetter = candidate.y < current.rule.y
+            isBetter = true
           }
-        } else {
-          isBetter = true
-        }
-        if isBetter {
-          bestFit = InkSignPdfKeyRuleFit(rule: candidate,
-                                         contentMinX: contentMinX,
-                                         contentMaxX: contentMaxX,
-                                         horizontalGap: horizontalGap,
-                                         verticalGap: verticalGap)
+          if isBetter {
+            bestFit = InkSignPdfKeyRuleFit(rule: candidate,
+                                           contentMinX: contentMinX,
+                                           contentMaxX: contentMaxX,
+                                           horizontalGap: horizontalGap,
+                                           verticalGap: verticalGap)
+          }
         }
       }
       if let bestFit {
@@ -109,6 +112,7 @@ extension InkSignView {
       guard !self.disposed else { throw TextError.cancelled }
       if self.textInteractionOverlay.hasPendingPlacement() { return }
       try self.requireViewportReady(request: .preserve)
+      self.fieldFocusRequestID &+= 1
       self.textInteractionOverlay.finishForLifecycle()
       self.setInteractionMode(editing: false)
       try self.textInteractionOverlay.armPlacement(generation: self.documentCoordinator.generation,
@@ -143,7 +147,7 @@ extension InkSignView {
     }
   }
 
-  func insertTextByKey(text: String,
+  func insertTextByFieldName(text: String,
                        key: String,
                        options: TextInsertionByKeyOptions?) throws -> Promise<Void> {
     let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect, CGSize, Bool) in
@@ -176,7 +180,7 @@ extension InkSignView {
       return settlement.promise
     }
     coordinator.pdfQueue.async {
-      let result: Result<Void, Error>
+      let result: Result<TextAnnotationBounds, Error>
       do {
       guard let analysis = coordinator.pageAnalysis(sourceURL: captured.0,
                                                     generation: captured.1,
@@ -210,40 +214,112 @@ extension InkSignView {
                                       width: placement.contentMaxX - placement.contentMinX,
                                       height: captured.5.height - selectedRule.y)
       }
-      try DispatchQueue.main.sync {
-        guard !self.disposed,
-              self.documentCoordinator.generation == captured.1,
-              let current = self.documentCoordinator.document,
-              current.index(of: captured.3) != nil else { throw InkSignView.TextError.cancelled }
-        try self.textInteractionOverlay.addTextAnnotation(text: text,
-                                                           bounds: bounds,
-                                                           options: commitOptions,
-                                                           resolvedDirectionRtl: captured.6,
-                                                           requireVisibleLine: true,
-                                                           capturedPage: (captured.1, captured.3, captured.5))
-      }
-      result = .success(())
+      result = .success(bounds)
       } catch {
-        let stillCurrent = DispatchQueue.main.sync {
-          !self.disposed && self.documentCoordinator.generation == captured.1 &&
-            self.documentCoordinator.document?.index(of: captured.3) != nil
-        }
-        result = .failure(stillCurrent ? error : InkSignView.TextError.cancelled)
+        result = .failure(error)
       }
       DispatchQueue.main.async {
         guard coordinator.completePending(pendingID) else { return }
-        let stillCurrent = !self.disposed && coordinator.generation == captured.1 &&
-          coordinator.document?.index(of: captured.3) != nil
-        guard stillCurrent else {
+        guard !self.disposed,
+              coordinator.generation == captured.1,
+              let current = coordinator.document,
+              current.index(of: captured.3) != nil else {
           settlement.reject(InkSignView.TextError.cancelled)
           return
         }
-        switch result {
-        case .success:
+        do {
+          let bounds = try result.get()
+          try self.textInteractionOverlay.addTextAnnotation(text: text,
+                                                             bounds: bounds,
+                                                             options: commitOptions,
+                                                             resolvedDirectionRtl: captured.6,
+                                                             requireVisibleLine: true,
+                                                             capturedPage: (captured.1, captured.3, captured.5))
           settlement.resolve(())
-        case .failure(let error):
+        } catch {
           settlement.reject(error)
         }
+      }
+    }
+    return settlement.promise
+  }
+
+  func focusPageByFieldName(key: String, options: FieldFocusOptions?) throws -> Promise<Void> {
+    let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect, UInt64) in
+      guard !self.disposed else { throw TextError.cancelled }
+      try self.requireViewportReady(request: .preserve)
+      guard let document = self.documentCoordinator.document else { throw TextError.notReady }
+      self.fieldFocusRequestID &+= 1
+      return (document.workingURL, self.documentCoordinator.generation,
+              document.activePageIndex, document.activePage.id, document.activePage.geometry.mediaBox,
+              self.fieldFocusRequestID)
+    }
+    let coordinator = documentCoordinator
+    let settlement = InkSignPdfOperationPromise<Void>()
+    guard let pendingID = coordinator.registerPending(generation: captured.1, handler: {
+      settlement.reject(InkSignView.TextError.cancelled)
+    }) else {
+      settlement.reject(InkSignView.TextError.cancelled)
+      return settlement.promise
+    }
+    let occurrence = options?.occurrence ?? .first
+    coordinator.pdfQueue.async {
+      let result: Result<InkSignPdfKeyRulePlacement, Error>
+      do {
+        guard let analysis = coordinator.pageAnalysis(sourceURL: captured.0, generation: captured.1,
+          pageIndex: captured.2, pageID: captured.3, mediaBox: captured.4) else {
+          throw InkSignView.TextError.keyNotFound
+        }
+        let lookup = analysis.lookup(key: key)
+        guard lookup.hasLiteralMatch else { throw InkSignView.TextError.keyNotFound }
+        guard let placement = InkSignPdfKeyRuleSelector.select(matches: lookup.matches, rules: analysis.rules,
+          occurrence: occurrence, directionRtl: nil, pageSize: captured.4.size) else {
+          throw InkSignView.TextError.ruleNotFound
+        }
+        result = .success(placement)
+      } catch { result = .failure(error) }
+      DispatchQueue.main.async {
+        guard !self.disposed, coordinator.generation == captured.1, self.fieldFocusRequestID == captured.5,
+              let document = coordinator.document, let pageIndex = document.index(of: captured.3) else {
+          if coordinator.completePending(pendingID) { settlement.reject(InkSignView.TextError.cancelled) }
+          return
+        }
+        let finish: (Result<Void, Error>) -> Void = { outcome in
+          guard coordinator.completePending(pendingID) else { return }
+          switch outcome {
+          case .success: settlement.resolve(())
+          case .failure(let error): settlement.reject(error)
+          }
+        }
+        do {
+          let placement = try result.get()
+          self.textInteractionOverlay.finishForLifecycle()
+          let focus = {
+            guard !self.disposed, coordinator.generation == captured.1,
+                  self.fieldFocusRequestID == captured.5,
+                  coordinator.document?.activePage.id == captured.3 else {
+              finish(.failure(InkSignView.TextError.cancelled)); return
+            }
+            self.cancelActiveStroke()
+            guard self.applyViewport(target: ViewportTarget(zoom: CGFloat(options?.zoom ?? 2),
+              focus: CGPoint(x: (placement.contentMinX + placement.contentMaxX) / 2,
+                             y: placement.rule.y))) else {
+              finish(.failure(InkSignView.TextError.notReady)); return
+            }
+            if options?.enterEditMode == true { self.setInteractionMode(editing: true) }
+            finish(.success(()))
+          }
+          if pageIndex == document.activePageIndex {
+            focus()
+          } else {
+            try self.switchPage(to: pageIndex, completion: { navigation in
+              switch navigation {
+              case .success: focus()
+              case .failure(let error): finish(.failure(error))
+              }
+            })
+          }
+        } catch { finish(.failure(error)) }
       }
     }
     return settlement.promise

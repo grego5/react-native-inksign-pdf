@@ -2,6 +2,13 @@
 
 ## Viewport
 
+- `focusPageByFieldName(key, options?)` reuses cached page analysis and selects
+  the first (default) or last eligible literal-label match with a usable same-row
+  rule on either side. It returns to the captured page and centers the viewport
+  on the usable writing area at the rule. Zoom defaults to 2;
+  `enterEditMode: true` enables ink after focus. A newer focus or mode request,
+  document replacement, disposal, or target-page deletion cancels the request.
+
 - View and document state belong to the UI thread. Page geometry stays in
   canonical, top-left page coordinates; one transform maps it to the view.
 - Opening and page changes fit the page unless viewport options override it.
@@ -28,14 +35,16 @@
   overflow, while an overflowing extension preserves the existing composition.
   Direction and font-size changes retain entered text. `verticalAnchor` changes
   placement, not fit. Direct `addTextAnnotation()` clips supplied text.
-- `insertTextByKey(text, key, options?)` resolves source text and rule geometry
-  on the serial document worker. It captures the selected page ID and commits to
-  that page even if navigation changes the active page. The commit is cancelled
-  if the document is replaced, the captured page is removed, or the view is
-  disposed. An inactive-page commit updates history and document dirty state
-  without rebuilding or syncing the active text presentation. See the
-  [README](../../../../README.md) for occurrence selection, layout, and error
-  behavior.
+- `insertTextByFieldName(text, key, options?)` resolves literal matches and rule
+  geometry from cached page analysis on the serial document worker. It skips
+  matches without a usable same-row rule on the resolved direction's side, then
+  chooses the first (default) or last eligible match in page order. A missing
+  key rejects with `text_key_not_found`; matches without a usable rule reject
+  with `text_rule_not_found`. It commits to the page captured at invocation,
+  even after navigation. The UI thread revalidates document generation and page
+  ID before mutation; replacement, page removal, or disposal cancels the request.
+  An inactive-page commit updates history and dirty state without rebuilding
+  the active text presentation.
 - Without box dimensions, placement centers the box horizontally and aligns its
   inner bottom to the tap, subject to page clamping and rule snapping. Snap
   candidates are loaded lazily for the active page and discarded on page or

@@ -17,7 +17,7 @@ internal fun selectPdfiumTextKeyPlacement(
   matches: List<PdfiumTextKeyMatch>,
   rules: List<PdfiumHorizontalSnapCandidate>,
   occurrence: TextKeyOccurrence,
-  directionRtl: Boolean,
+  directionRtl: Boolean?,
   page: PdfPageDimensions,
 ): PdfiumTextKeyPlacement? {
   data class RuleFit(
@@ -27,6 +27,8 @@ internal fun selectPdfiumTextKeyPlacement(
     val horizontalGap: Double,
     val verticalGap: Double,
   )
+
+  val directions = directionRtl?.let { listOf(it) } ?: listOf(false, true)
 
   val orderedMatches = matches.sortedWith(
     compareBy<PdfiumTextKeyMatch> { it.top }.thenBy { it.left }.thenBy { it.sourceIndex },
@@ -46,26 +48,28 @@ internal fun selectPdfiumTextKeyPlacement(
         candidate.left < 0.0 || candidate.right > page.width || candidate.right <= candidate.left ||
         candidate.y !in 0.0..page.height) continue
 
-      val overlapsLabel = if (directionRtl) candidate.right > match.left else candidate.left < match.right
-      val contentLeft = if (directionRtl || !overlapsLabel) candidate.left
-        else match.right + keyInsertionLabelMarginPoints
-      val contentRight = if (!directionRtl || !overlapsLabel) candidate.right
-        else match.left - keyInsertionLabelMarginPoints
-      val isOnDirectionSide = if (directionRtl) candidate.left < match.left else candidate.right > match.right
-      val horizontalGap = if (directionRtl) match.left - contentRight else contentLeft - match.right
-      val verticalGap = abs(candidate.y - centerY)
-      if (!isOnDirectionSide || contentRight <= contentLeft || horizontalGap < 0.0 ||
-        verticalGap > match.lineHeight) continue
+      for (rtl in directions) {
+        val overlapsLabel = if (rtl) candidate.right > match.left else candidate.left < match.right
+        val contentLeft = if (rtl || !overlapsLabel) candidate.left
+          else match.right + keyInsertionLabelMarginPoints
+        val contentRight = if (!rtl || !overlapsLabel) candidate.right
+          else match.left - keyInsertionLabelMarginPoints
+        val isOnDirectionSide = if (rtl) candidate.left < match.left else candidate.right > match.right
+        val horizontalGap = if (rtl) match.left - contentRight else contentLeft - match.right
+        val verticalGap = abs(candidate.y - centerY)
+        if (!isOnDirectionSide || contentRight <= contentLeft || horizontalGap < 0.0 ||
+          verticalGap > match.lineHeight) continue
 
-      val current = bestFit
-      val isBetter = when {
-        current == null -> true
-        horizontalGap != current.horizontalGap -> horizontalGap < current.horizontalGap
-        verticalGap != current.verticalGap -> verticalGap < current.verticalGap
-        candidate.left != current.rule.left -> candidate.left < current.rule.left
-        else -> candidate.y < current.rule.y
+        val current = bestFit
+        val isBetter = when {
+          current == null -> true
+          horizontalGap != current.horizontalGap -> horizontalGap < current.horizontalGap
+          verticalGap != current.verticalGap -> verticalGap < current.verticalGap
+          candidate.left != current.rule.left -> candidate.left < current.rule.left
+          else -> candidate.y < current.rule.y
+        }
+        if (isBetter) bestFit = RuleFit(candidate, contentLeft, contentRight, horizontalGap, verticalGap)
       }
-      if (isBetter) bestFit = RuleFit(candidate, contentLeft, contentRight, horizontalGap, verticalGap)
     }
     bestFit?.let { return PdfiumTextKeyPlacement(match, it.rule, it.contentLeft, it.contentRight) }
   }

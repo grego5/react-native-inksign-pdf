@@ -322,7 +322,12 @@ internal class InkDocumentController(
     applyViewport(request, animated = false)
   }
 
-  fun applyViewport(request: ViewportRequest, animated: Boolean) {
+  fun applyViewport(
+    request: ViewportRequest,
+    animated: Boolean,
+    completion: (() -> Unit)? = null,
+    cancelled: (() -> Unit)? = null,
+  ) {
     requireViewportCommandReady()
     val currentViewport = checkNotNull(viewport)
     stopViewportAnimation()
@@ -331,7 +336,7 @@ internal class InkDocumentController(
       if (target != null &&
         (target.zoom != currentViewport.zoom || target.focus != currentViewport.focus)
       ) {
-        animateViewport(currentViewport, target)
+        animateViewport(currentViewport, target, completion, cancelled)
         return
       }
     }
@@ -346,6 +351,7 @@ internal class InkDocumentController(
     onViewportChanged?.invoke()
     requestVisibleTiles()
     requestInvalidate()
+    completion?.invoke()
   }
 
   fun draw(
@@ -765,6 +771,7 @@ internal class InkDocumentController(
     currentViewport: PageViewport,
     target: PageViewportTarget,
     completion: (() -> Unit)? = null,
+    cancelled: (() -> Unit)? = null,
   ) {
     val startZoom = currentViewport.zoom
     val startFocus = currentViewport.focus
@@ -796,7 +803,10 @@ internal class InkDocumentController(
         }
 
         override fun onAnimationCancel(animation: android.animation.Animator) {
-          if (viewportAnimator === animation) viewportAnimator = null
+          if (viewportAnimator === animation) {
+            viewportAnimator = null
+            cancelled?.invoke()
+          }
         }
       })
     }

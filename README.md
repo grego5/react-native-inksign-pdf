@@ -111,12 +111,20 @@ pdf.current?.addTextAnnotation('Approved', { x: 48, y: 72, width: 172, height: 6
 Fill a field beside a printed label:
 
 ```ts
-await pdf.current?.insertTextByKey('Ada Lovelace', 'Signature', { occurrence: 'first' });
+await pdf.current?.insertTextByFieldName('Ada Lovelace', 'Signature', { occurrence: 'first' });
 ```
 
-`insertTextByKey()` searches the page selected when called and skips labels
-without a usable same-row writing rule. `occurrence` chooses the first or last
-eligible match.
+It skips labels without an adjacent writing line.
+
+Zoom to a signing line without adding text:
+
+```ts
+await pdf.current?.focusPageByFieldName('Signature', { zoom: 3, enterEditMode: true });
+```
+
+Both methods use the first eligible label by default; set `occurrence: 'last'`
+to use the last. Zoom defaults to 2. Set `enterEditMode: true` to enable
+freehand drawing after focusing.
 
 Use `nextPage()`, `previousPage()`, `undo()`, `redo()`, and `clear()` for
 navigation and editing. See the [public API](./src/InkSignView.nitro.ts) for
