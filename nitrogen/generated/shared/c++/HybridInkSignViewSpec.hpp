@@ -128,6 +128,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void nextPage() = 0;
       virtual void previousPage() = 0;
       virtual Viewport getViewport() = 0;
+      virtual bool hasInk() = 0;
       virtual void enterEditMode(const std::optional<ViewportOptions>& viewport) = 0;
       virtual void enterViewMode(const std::optional<ViewportOptions>& viewport) = 0;
       virtual void undo() = 0;

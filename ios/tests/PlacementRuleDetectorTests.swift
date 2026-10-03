@@ -102,8 +102,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
                                               mediaBox: page.bounds(for: .mediaBox)).lookup(key: key)
     XCTAssertTrue(lookup.hasLiteralMatch)
     let matches = lookup.matches
-    XCTAssertEqual(matches.count, 1)
-    XCTAssertEqual(matches[0].lineHeight, 0)
+    XCTAssertTrue(matches.isEmpty)
   }
 
   func testPDFKitExtractedSpaceWithoutGeometryStillAllowsMultiwordKeyLookup() throws {
@@ -135,6 +134,10 @@ final class PlacementRuleDetectorTests: XCTestCase {
     XCTAssertEqual(lookup.matches.count, 1)
     XCTAssertGreaterThan(lookup.matches[0].lineHeight, 0)
     XCTAssertNotNil(lookup.matches[0].lineCenterY)
+    let reorderedLookup = analysis.lookup(key: "Name Full")
+    XCTAssertEqual(reorderedLookup.matches.count, 1)
+    XCTAssertEqual(reorderedLookup.matches.first?.bounds, lookup.matches.first?.bounds)
+    XCTAssertFalse(analysis.lookup(key: "Full Nam").hasLiteralMatch)
 
     // PDFKit may assign a rectangle to inferred whitespace. Remove only that
     // geometry to cover extracted spaces with no drawable character bounds.
@@ -159,6 +162,22 @@ final class PlacementRuleDetectorTests: XCTestCase {
     XCTAssertEqual(geometrySparseLookup.matches.count, 1)
     XCTAssertGreaterThan(geometrySparseLookup.matches[0].lineHeight, 0)
     XCTAssertNotNil(geometrySparseLookup.matches[0].lineCenterY)
+  }
+
+  func testMultiwordKeyDoesNotCombineDistantFieldsOnOneRow() throws {
+    let url = try makePDF { _ in
+      let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 18)]
+      NSAttributedString(string: "Full", attributes: attributes).draw(at: CGPoint(x: 80, y: 120))
+      NSAttributedString(string: "Name", attributes: attributes).draw(at: CGPoint(x: 300, y: 120))
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let analysis = InkSignPdfPageAnalysis.build(generation: 1, pageID: UUID(), pageIndex: 0,
+                                               page: page, mediaBox: page.bounds(for: .mediaBox))
+    XCTAssertFalse(analysis.lookup(key: "Full").matches.isEmpty)
+    XCTAssertFalse(analysis.lookup(key: "Name").matches.isEmpty)
+    XCTAssertTrue(analysis.lookup(key: "Full Name").matches.isEmpty)
   }
 
   func testKeyRuleSelectionSkipsEarlierNameWithoutRuleBeforeApplyingOccurrence() {

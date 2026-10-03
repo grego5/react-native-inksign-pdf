@@ -90,6 +90,7 @@ namespace margelo::nitro::inksignpdf {
     void nextPage() override;
     void previousPage() override;
     Viewport getViewport() override;
+    bool hasInk() override;
     void enterEditMode(const std::optional<ViewportOptions>& viewport) override;
     void enterViewMode(const std::optional<ViewportOptions>& viewport) override;
     void undo() override;

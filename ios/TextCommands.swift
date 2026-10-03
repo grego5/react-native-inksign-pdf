@@ -245,14 +245,14 @@ extension InkSignView {
   }
 
   func focusPageByFieldName(key: String, options: FieldFocusOptions?) throws -> Promise<Void> {
-    let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect, UInt64) in
+    let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect, UInt64, Bool) in
       guard !self.disposed else { throw TextError.cancelled }
       try self.requireViewportReady(request: .preserve)
       guard let document = self.documentCoordinator.document else { throw TextError.notReady }
       self.fieldFocusRequestID &+= 1
       return (document.workingURL, self.documentCoordinator.generation,
               document.activePageIndex, document.activePage.id, document.activePage.geometry.mediaBox,
-              self.fieldFocusRequestID)
+              self.fieldFocusRequestID, self.textInteractionOverlay.resolvedDirection(options?.direction))
     }
     let coordinator = documentCoordinator
     let settlement = InkSignPdfOperationPromise<Void>()
@@ -273,7 +273,7 @@ extension InkSignView {
         let lookup = analysis.lookup(key: key)
         guard lookup.hasLiteralMatch else { throw InkSignView.TextError.keyNotFound }
         guard let placement = InkSignPdfKeyRuleSelector.select(matches: lookup.matches, rules: analysis.rules,
-          occurrence: occurrence, directionRtl: nil, pageSize: captured.4.size) else {
+          occurrence: occurrence, directionRtl: captured.6, pageSize: captured.4.size) else {
           throw InkSignView.TextError.ruleNotFound
         }
         result = .success(placement)

@@ -12,9 +12,10 @@ export function createFieldFocusCommand(
       }
       if (options !== undefined && (options === null || typeof options !== 'object' ||
         (options.occurrence !== undefined && options.occurrence !== 'first' && options.occurrence !== 'last') ||
+        (options.direction !== undefined && options.direction !== 'auto' && options.direction !== 'ltr' && options.direction !== 'rtl') ||
         (options.zoom !== undefined && (!Number.isFinite(options.zoom) || options.zoom <= 0)) ||
         (options.enterEditMode !== undefined && typeof options.enterEditMode !== 'boolean'))) {
-        throw argumentError('invalid_field_focus_options', 'Expected first/last occurrence, positive zoom and optional edit-mode flag');
+        throw argumentError('invalid_field_focus_options', 'Expected first/last occurrence, auto/ltr/rtl direction, positive zoom and optional edit-mode flag');
       }
       return invoke(key, options);
     } catch (error) {

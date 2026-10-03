@@ -595,6 +595,18 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
+  public final func hasInk() -> bridge.Result_bool_ {
+    do {
+      let __result = try self.__implementation.hasInk()
+      let __resultCpp = __result
+      return bridge.create_Result_bool_(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_bool_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func enterEditMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_void_ {
     do {
       try self.__implementation.enterEditMode(viewport: viewport.value)

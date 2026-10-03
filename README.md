@@ -39,7 +39,11 @@ Open a PDF, draw a signature, place text, and save the result:
 ```tsx
 import { useRef, useState } from 'react';
 import { Button, Text, View } from 'react-native';
-import { InkSignView, type InkSignViewHandle, type PageInfo } from '@grego5/react-native-inksign-pdf';
+import {
+  InkSignView,
+  type InkSignViewHandle,
+  type PageInfo,
+} from '@grego5/react-native-inksign-pdf';
 
 export function SigningView({ pdfPath }: { pdfPath: string }) {
   const pdf = useRef<InkSignViewHandle>(null);
@@ -58,13 +62,12 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
 
   return (
     <View style={{ flex: 1 }}>
-      <InkSignView
-        ref={pdf}
-        style={{ flex: 1 }}
-        strokeColor="#111827"
-        onPageChange={setPage}
-      />
-      {page && <Text>Page {page.pageIndex + 1} of {page.pageCount}</Text>}
+      <InkSignView ref={pdf} style={{ flex: 1 }} strokeColor="#111827" onPageChange={setPage} />
+      {page && (
+        <Text>
+          Page {page.pageIndex + 1} of {page.pageCount}
+        </Text>
+      )}
       <Button title="Open PDF" onPress={() => void openPdf()} />
       <Button title="Draw" onPress={() => pdf.current?.enterEditMode()} />
       <Button title="Place text" onPress={() => pdf.current?.insertAnnotationOn()} />
@@ -85,9 +88,7 @@ On Android, an optional fallback font can use one shared local cache file. Set
 file already at `uri` is reused:
 
 ```tsx
-<InkSignView
-  androidFallbackFont={{ url: fontDownloadUrl, uri: fontCacheFileUri }}
-/>
+<InkSignView androidFallbackFont={{ url: fontDownloadUrl, uri: fontCacheFileUri }} />
 ```
 
 ## Common actions
@@ -114,7 +115,9 @@ Fill a field beside a printed label:
 await pdf.current?.insertTextByFieldName('Ada Lovelace', 'Signature', { occurrence: 'first' });
 ```
 
-It skips labels without an adjacent writing line.
+It skips labels without an adjacent writing line. Both field methods match
+multiword names as adjacent complete words on one visual row, regardless of
+the PDF's extracted word order.
 
 Zoom to a signing line without adding text:
 
@@ -124,8 +127,12 @@ await pdf.current?.focusPageByFieldName('Signature', { zoom: 3, enterEditMode: t
 
 Both methods use the first eligible label by default; set `occurrence: 'last'`
 to use the last. Zoom defaults to 2. Set `enterEditMode: true` to enable
-freehand drawing after focusing.
+freehand drawing after focusing. Both methods select the line on the resolved
+direction's side: right for LTR, left for RTL. Use `direction: 'auto'` for app
+direction, or explicitly set `'ltr'` or `'rtl'`; omission follows text-placement policy.
 
 Use `nextPage()`, `previousPage()`, `undo()`, `redo()`, and `clear()` for
-navigation and editing. See the [public API](./src/InkSignView.nitro.ts) for
-all props, options, and methods.
+navigation and editing.
+`hasInk()` reports whether the active page has committed ink.
+See the [public API](./src/InkSignView.nitro.ts) for all props,
+options, and methods.

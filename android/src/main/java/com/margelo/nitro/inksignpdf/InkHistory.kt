@@ -126,6 +126,7 @@ internal class InkHistory {
     private set
 
   fun state() = InkState(undoStack.isNotEmpty(), redoStack.isNotEmpty(), completed.isNotEmpty())
+  fun hasInk(): Boolean = completed.any { it is PageContent.Ink }
   /** Ink-only projection retained for the existing ink renderer and exporter. */
   fun snapshot(): List<StrokeOutline> = completed.inkOutlines()
 

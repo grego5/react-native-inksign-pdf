@@ -63,6 +63,8 @@ export interface TextInsertionByKeyOptions extends TextAnnotationOptions {
 /** Focus a page on a matching label's adjacent rule without creating an annotation. */
 export interface FieldFocusOptions {
   occurrence?: TextKeyOccurrence
+  /** Rule side follows text-placement direction policy: explicit LTR/RTL or auto app direction. */
+  direction?: TextDirection
   /** Positive zoom factor; defaults to 2 and is clamped to the native viewport limits. */
   zoom?: number
   /** Enable freehand drawing after focusing. Omission preserves the current mode. */
@@ -177,6 +179,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   nextPage(): void
   previousPage(): void
   getViewport(): Viewport
+  /** Returns whether the active page has committed ink; undo, redo, clear, and page changes are reflected. */
+  hasInk(): boolean
   enterEditMode(viewport?: ViewportOptions): void
   enterViewMode(viewport?: ViewportOptions): void
   undo(): void
@@ -187,6 +191,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   /**
    * Finds literal source-text matches on the page selected when called,
    * comparing ASCII letters without case and all other characters exactly.
+   * Multiword keys match adjacent complete words on one visual row, regardless
+   * of extracted word order. The combined label bounds select the writing rule.
    * Skips matches without a usable same-row horizontal rule on the resolved
    * direction's side, then uses the first (default) or last eligible match.
    * Bottom anchoring grows text upward from the rule; top anchoring places it

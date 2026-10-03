@@ -2,6 +2,8 @@
 
 - Each page owns an ordered history of committed `PKDrawing` content and text
   annotations in canonical page coordinates.
+- `hasInk()` reads whether the active page's committed drawing has strokes;
+  page navigation, undo, redo, and clear are reflected directly by history.
 - Live strokes, predictions, the text editor, and selection stay outside history.
 - A PencilKit stroke commits once per drawing transaction. Installing a drawing
   programmatically does not create history.

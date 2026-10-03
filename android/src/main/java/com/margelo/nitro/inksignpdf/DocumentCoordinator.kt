@@ -175,6 +175,8 @@ internal class MutableDocumentCoordinator(
   fun pageHistoryRevision(index: Int): Long = page(index).history.revision
   fun activeHistoryRevision(): Long = activeHistory().revision
   fun activeHistoryState(): InkState = activeHistory().state()
+  fun activePageHasInk(): Boolean =
+    hasDocument && activeHistory().hasInk()
   fun isDirty(): Boolean = structuralDirty || mutablePages.any { it.history.state().isDirty }
 
   fun activatePage(index: Int): PageSnapshot {

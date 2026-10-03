@@ -34,6 +34,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func nextPage() throws -> Void
   func previousPage() throws -> Void
   func getViewport() throws -> Viewport
+  func hasInk() throws -> Bool
   func enterEditMode(viewport: ViewportOptions?) throws -> Void
   func enterViewMode(viewport: ViewportOptions?) throws -> Void
   func undo() throws -> Void

@@ -67,7 +67,10 @@ struct InkSignPdfPageAnalysis {
     } else {
       characterBounds = []
     }
-    let (characterVisualRows, visualRows) = Self.visualRows(for: characterBounds)
+    let rowBounds = characterBounds.enumerated().map { index, bounds -> CGRect? in
+      Self.isSpace(sourceString.character(at: index)) ? nil : bounds
+    }
+    let (characterVisualRows, visualRows) = Self.visualRows(for: rowBounds)
     let rules = pageRef.map {
       InkSignPdfPlacementRuleDetector.scan(page: $0, mediaBox: mediaBox)
     } ?? []
@@ -92,34 +95,79 @@ struct InkSignPdfPageAnalysis {
     let sourceString = sourceText as NSString
     let keyString = key as NSString
     let keyLength = keyString.length
-    guard keyLength <= sourceString.length else {
-      return InkSignPdfTextLookup(hasLiteralMatch: false, matches: [])
-    }
     func asciiFold(_ value: unichar) -> unichar {
       (value >= 0x41 && value <= 0x5A) ? value + 0x20 : value
+    }
+    func words(_ text: NSString) -> [(range: NSRange, value: [unichar])] {
+      var result: [(range: NSRange, value: [unichar])] = []
+      var index = 0
+      while index < text.length {
+        if Self.isSpace(text.character(at: index)) { index += 1; continue }
+        let start = index
+        var value: [unichar] = []
+        while index < text.length && !Self.isSpace(text.character(at: index)) {
+          value.append(asciiFold(text.character(at: index))); index += 1
+        }
+        result.append((NSRange(location: start, length: index - start), value))
+      }
+      return result
+    }
+    func wordCounts(_ words: ArraySlice<(range: NSRange, value: [unichar])>) -> [[unichar]: Int] {
+      Dictionary(grouping: words.map(\.value), by: { $0 }).mapValues(\.count)
+    }
+    let keyWords = words(keyString)
+    let multiword = keyWords.count > 1
+    var occurrences: [NSRange] = []
+    if multiword {
+      let wanted = wordCounts(keyWords[...])
+      let sourceWords = words(sourceString)
+      if sourceWords.count >= keyWords.count {
+        for index in 0...(sourceWords.count - keyWords.count) {
+          guard wordCounts(sourceWords[index..<(index + keyWords.count)]) == wanted else { continue }
+          let start = sourceWords[index].range.location
+          let end = NSMaxRange(sourceWords[index + keyWords.count - 1].range)
+          occurrences.append(NSRange(location: start, length: end - start))
+        }
+      }
+    } else if keyLength <= sourceString.length {
+      for location in 0...(sourceString.length - keyLength) {
+        let equal = (0..<keyLength).allSatisfy { offset in
+          asciiFold(sourceString.character(at: location + offset)) ==
+            asciiFold(keyString.character(at: offset))
+        }
+        if equal { occurrences.append(NSRange(location: location, length: keyLength)) }
+      }
     }
 
     var hasLiteralMatch = false
     var matches: [InkSignPdfKeyTextMatch] = []
-    for location in 0...(sourceString.length - keyLength) {
-      let equal = (0..<keyLength).allSatisfy { offset in
-        asciiFold(sourceString.character(at: location + offset)) ==
-          asciiFold(keyString.character(at: offset))
-      }
-      guard equal else { continue }
+    for occurrence in occurrences {
+      let location = occurrence.location
+      let end = NSMaxRange(occurrence)
       hasLiteralMatch = true
-      guard location + keyLength <= characterBounds.count else { continue }
-      let occurrenceBounds = characterBounds[location..<(location + keyLength)].compactMap { $0 }
+      guard end <= characterBounds.count else { continue }
+      let occurrenceBounds = (location..<end).compactMap { index -> CGRect? in
+        Self.isSpace(sourceString.character(at: index)) ? nil : characterBounds[index]
+      }
       guard let first = occurrenceBounds.first else { continue }
       let union = occurrenceBounds.dropFirst().reduce(first) { $0.union($1) }
       var matchedRow: Int?
       var sameVisualRow = true
-      for offset in 0..<keyLength {
-        let index = location + offset
+      var wordBounds: [CGRect] = []
+      var currentWord: CGRect?
+      for index in location..<end {
         let character = sourceString.character(at: index)
         if character == 0x0A || character == 0x0D || character == 0x0B ||
             character == 0x0C || character == 0x85 || character == 0x2028 || character == 0x2029 {
           sameVisualRow = false
+        }
+        if Self.isSpace(character) {
+          if let currentWord { wordBounds.append(currentWord) }
+          currentWord = nil
+          continue
+        }
+        if let bounds = characterBounds[index] {
+          currentWord = currentWord.map { $0.union(bounds) } ?? bounds
         }
         guard characterBounds[index] != nil else { continue }
         let row = characterVisualRows[index]
@@ -133,8 +181,16 @@ struct InkSignPdfPageAnalysis {
           matchedRow = row
         }
       }
+      if let currentWord { wordBounds.append(currentWord) }
       let rowGeometry = sameVisualRow ? matchedRow.map { visualRows[$0] } : nil
       let lineHeight = rowGeometry?.height ?? 0
+      if multiword {
+        guard rowGeometry != nil, wordBounds.count == keyWords.count else { continue }
+        wordBounds.sort { $0.minX < $1.minX }
+        guard (1..<wordBounds.count).allSatisfy({ index in
+          wordBounds[index].minX - wordBounds[index - 1].maxX <= lineHeight
+        }) else { continue }
+      }
       guard !union.isNull, !union.isEmpty,
             union.minX >= 0, union.minY >= 0,
             union.maxX <= pageSize.width, union.maxY <= pageSize.height else { continue }
@@ -144,6 +200,10 @@ struct InkSignPdfPageAnalysis {
                                             lineCenterY: rowGeometry?.centerY))
     }
     return InkSignPdfTextLookup(hasLiteralMatch: hasLiteralMatch, matches: matches)
+  }
+
+  private static func isSpace(_ value: unichar) -> Bool {
+    UnicodeScalar(value).map { CharacterSet.whitespacesAndNewlines.contains($0) } ?? false
   }
 
   private static func canonicalRect(_ rect: CGRect,

@@ -77,6 +77,14 @@ extension InkSignView {
     }
   }
 
+  func hasInk() throws -> Bool {
+    try performOnMainSync {
+      guard !self.disposed,
+            let page = self.documentCoordinator.document?.activePage else { return false }
+      return !page.history.content.drawing.strokes.isEmpty
+    }
+  }
+
   func enterEditMode(viewport: ViewportOptions?) throws {
     try performOnMainSync { try self.transition(toEditing: true, viewport: viewport) }
   }

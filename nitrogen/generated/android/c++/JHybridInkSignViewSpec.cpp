@@ -363,6 +363,11 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart);
     return __result->toCpp();
   }
+  bool JHybridInkSignViewSpec::hasInk() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jboolean()>("hasInk");
+    auto __result = method(_javaPart);
+    return static_cast<bool>(__result);
+  }
   void JHybridInkSignViewSpec::enterEditMode(const std::optional<ViewportOptions>& viewport) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JViewportOptions> /* viewport */)>("enterEditMode");
     method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);

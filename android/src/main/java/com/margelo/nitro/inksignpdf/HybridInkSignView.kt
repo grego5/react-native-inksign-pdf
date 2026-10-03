@@ -410,6 +410,11 @@ class HybridInkSignView internal constructor(
     }
   }
 
+  override fun hasInk(): Boolean = runOnMainSync {
+    checkMainThread()
+    coordinator.activePageHasInk()
+  }
+
   override fun enterEditMode(viewport: ViewportOptions?) {
     runOnMainSync { enterMode(edit = true, viewport) }
   }
@@ -508,13 +513,14 @@ class HybridInkSignView internal constructor(
     val pageId = presentation.pageId
     viewportRequestID += 1L
     val requestID = viewportRequestID
+    val directionRtl = textOverlay.resolveDirection(options?.direction)
     val lookup = awaitCapturedDocumentPageLookup(
       awaitLookup = { awaitKeyLookup(generation, presentation.pageIndex, key) },
       isTargetPageCurrent = { isCurrentTextTarget(generation, pageId) && viewportRequestID == requestID },
     )
     if (!lookup.hasLiteralMatch) throw PdfSessionException("text_key_not_found", "Text key was not found")
     val placement = selectPdfiumTextKeyPlacement(lookup.matches, lookup.rules,
-      options?.occurrence ?: TextKeyOccurrence.FIRST, null, presentation.page)
+      options?.occurrence ?: TextKeyOccurrence.FIRST, directionRtl, presentation.page)
       ?: throw PdfSessionException("text_rule_not_found", "No usable horizontal rule beside the text key")
     requireCurrentTextTarget(generation, pageId)
     textOverlay.finishForLifecycle()
