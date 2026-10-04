@@ -35,8 +35,8 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func previousPage() throws -> Void
   func getViewport() throws -> Viewport
   func hasInk() throws -> Bool
-  func enterEditMode(viewport: ViewportOptions?) throws -> Void
-  func enterViewMode(viewport: ViewportOptions?) throws -> Void
+  func setInkMode(viewport: ViewportOptions?) throws -> Void
+  func setViewMode(viewport: ViewportOptions?) throws -> Void
   func undo() throws -> Void
   func redo() throws -> Void
   func clear() throws -> Void
@@ -44,8 +44,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func insertTextByFieldName(text: String, key: String, options: TextInsertionByKeyOptions?) throws -> Promise<Void>
   func focusPageByFieldName(key: String, options: FieldFocusOptions?) throws -> Promise<Void>
   func setTextDirection(direction: TextDirection) throws -> Void
-  func insertAnnotationOn(options: TextPlacementOptions?) throws -> Void
-  func insertAnnotationOff() throws -> Void
+  func setTextMode(options: TextModeOptions?) throws -> Void
   func increaseTextSize() throws -> Double
   func decreaseTextSize() throws -> Double
   func removeTextAnnotation() throws -> Void

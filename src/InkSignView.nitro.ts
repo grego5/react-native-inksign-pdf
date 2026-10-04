@@ -38,8 +38,8 @@ export interface TextAnnotationOptions {
   verticalAnchor?: TextVerticalAnchor
 }
 
-/** Optional manual-placement box dimensions, with the tap as the rectangle's top-left corner. */
-export interface TextPlacementOptions {
+/** One-shot text placement; viewport changes apply after the tap. Box dimensions are PDF page points. */
+export interface TextModeOptions extends ViewportOptions {
   direction?: TextDirection
   width?: number
   height?: number
@@ -121,8 +121,10 @@ export type InteractionMode =
   | 'textEditing'
 
 export interface ViewportOptions {
+  /** Canonical page focus coordinates; x and y must be supplied together. */
   x?: number
   y?: number
+  /** Absolute positive zoom, clamped to native viewport limits. */
   zoom?: number
 }
 
@@ -181,8 +183,10 @@ export interface InkSignViewMethods extends HybridViewMethods {
   getViewport(): Viewport
   /** Returns whether the active page has committed ink; undo, redo, clear, and page changes are reflected. */
   hasInk(): boolean
-  enterEditMode(viewport?: ViewportOptions): void
-  enterViewMode(viewport?: ViewportOptions): void
+  /** Ends text interaction and enables ink. Omission preserves the viewport; an empty object fits. */
+  setInkMode(viewport?: ViewportOptions): void
+  /** Ends text/ink interaction. Omission preserves the viewport; an empty object fits. */
+  setViewMode(viewport?: ViewportOptions): void
   undo(): void
   redo(): void
   clear(): void
@@ -206,10 +210,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   focusPageByFieldName(key: string, options?: FieldFocusOptions): Promise<void>
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
-  /** Arms one-shot text placement; optional width and height bound the box from the tap's top-left. */
-  insertAnnotationOn(options?: TextPlacementOptions): void
-  /** Cancels a pending one-shot text placement, if any. */
-  insertAnnotationOff(): void
+  /** Arms one-shot text placement; omission preserves the viewport, an empty object fits after the tap. */
+  setTextMode(options?: TextModeOptions): void
   increaseTextSize(): number
   decreaseTextSize(): number
   removeTextAnnotation(): void

@@ -52,8 +52,8 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("previousPage", &HybridInkSignViewSpec::previousPage);
       prototype.registerHybridMethod("getViewport", &HybridInkSignViewSpec::getViewport);
       prototype.registerHybridMethod("hasInk", &HybridInkSignViewSpec::hasInk);
-      prototype.registerHybridMethod("enterEditMode", &HybridInkSignViewSpec::enterEditMode);
-      prototype.registerHybridMethod("enterViewMode", &HybridInkSignViewSpec::enterViewMode);
+      prototype.registerHybridMethod("setInkMode", &HybridInkSignViewSpec::setInkMode);
+      prototype.registerHybridMethod("setViewMode", &HybridInkSignViewSpec::setViewMode);
       prototype.registerHybridMethod("undo", &HybridInkSignViewSpec::undo);
       prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
       prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
@@ -61,8 +61,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("insertTextByFieldName", &HybridInkSignViewSpec::insertTextByFieldName);
       prototype.registerHybridMethod("focusPageByFieldName", &HybridInkSignViewSpec::focusPageByFieldName);
       prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);
-      prototype.registerHybridMethod("insertAnnotationOn", &HybridInkSignViewSpec::insertAnnotationOn);
-      prototype.registerHybridMethod("insertAnnotationOff", &HybridInkSignViewSpec::insertAnnotationOff);
+      prototype.registerHybridMethod("setTextMode", &HybridInkSignViewSpec::setTextMode);
       prototype.registerHybridMethod("increaseTextSize", &HybridInkSignViewSpec::increaseTextSize);
       prototype.registerHybridMethod("decreaseTextSize", &HybridInkSignViewSpec::decreaseTextSize);
       prototype.registerHybridMethod("removeTextAnnotation", &HybridInkSignViewSpec::removeTextAnnotation);

@@ -811,7 +811,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     focus.then { _ in settled.fulfill() }
     focus.catch { error in focusError = error; settled.fulfill() }
 
-    try view.insertAnnotationOn(options: nil)
+    try view.setTextMode(options: nil)
     XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
     let placementViewport = try view.currentViewportSnapshot()
     releaseWorker.signal()

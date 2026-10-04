@@ -231,13 +231,14 @@ internal class TextPlacementInstrumentationTest {
       try {
         overlay.armPlacement(
           1L,
-          TextPlacementOptions(
+          TextModeOptions(
             direction = TextDirection.LTR,
             width = null,
             height = null,
             maxLines = 2.0,
             alignment = TextAlignment.START,
             verticalAnchor = TextVerticalAnchor.TOP,
+            x = null, y = null, zoom = null,
           ),
         )
         val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -423,13 +424,14 @@ internal class TextPlacementInstrumentationTest {
       harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
-        val options = TextPlacementOptions(
+        val options = TextModeOptions(
           direction = TextDirection.LTR,
           width = 110.0,
           height = 80.0,
           maxLines = 2.0,
           alignment = TextAlignment.START,
           verticalAnchor = TextVerticalAnchor.BOTTOM,
+          x = null, y = null, zoom = null,
         )
         overlay.armPlacement(1L, options)
         val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -496,13 +498,14 @@ internal class TextPlacementInstrumentationTest {
           TextLayoutSpec.createPaint(defaultTextFontSize).measureText("MMMM").toDouble(),
         )
         val flowBounds = PageRect(20.0, 100.0, 20.0 + fourCharacterWidth, 250.0)
-        val options = TextPlacementOptions(
+        val options = TextModeOptions(
           direction = TextDirection.LTR,
           width = flowBounds.right - flowBounds.left,
           height = flowBounds.bottom - flowBounds.top,
           maxLines = 2.0,
           alignment = TextAlignment.START,
           verticalAnchor = TextVerticalAnchor.BOTTOM,
+          x = null, y = null, zoom = null,
         )
         overlay.armPlacement(1L, options)
         val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -606,13 +609,14 @@ internal class TextPlacementInstrumentationTest {
         val flowBounds = PageRect(20.0, 100.0, 20.0 + fourCharacterWidth, 250.0)
         overlay.armPlacement(
           1L,
-          TextPlacementOptions(
+          TextModeOptions(
             direction = TextDirection.LTR,
             width = flowBounds.right - flowBounds.left,
             height = flowBounds.bottom - flowBounds.top,
             maxLines = 2.0,
             alignment = TextAlignment.START,
             verticalAnchor = TextVerticalAnchor.BOTTOM,
+            x = null, y = null, zoom = null,
           ),
         )
         val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -725,7 +729,7 @@ internal class TextPlacementInstrumentationTest {
     }
     harness.waitForViewportAnimationToFinish()
     harness.runOnMain {
-      assertEquals(2.0, harness.surface.currentViewportState().zoom, 0.02)
+      assertEquals(1.0, harness.surface.currentViewportState().zoom, 0.02)
       harness.surface.setKeyboardOcclusion(80.0)
       overlay.syncTransform()
       assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
@@ -745,7 +749,7 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
-  fun placementUsesConfiguredDoubleTapZoomAndPreservesHigherZoom() {
+  fun placementViewportIsDeferredAndIndependentOfDoubleTap() {
     harness.runOnMain {
       val overlay = harness.createOverlay()
       harness.surface.setDoubleTapConfiguration(
@@ -764,7 +768,7 @@ internal class TextPlacementInstrumentationTest {
     }
     harness.waitForViewportAnimationToFinish()
     harness.runOnMain {
-      assertEquals(2.5, harness.surface.currentViewportState().zoom, 0.02)
+      assertEquals(1.0, harness.surface.currentViewportState().zoom, 0.02)
       val overlay = checkNotNull(harness.overlay)
       overlay.finishForLifecycle()
       harness.surface.setDoubleTapConfiguration(
@@ -777,13 +781,40 @@ internal class TextPlacementInstrumentationTest {
         fitToPage = false,
       )
       overlay.syncContent()
-      overlay.armPlacement(1L)
+      overlay.armPlacement(1L, TextModeOptions(
+        direction = null, width = null, height = null, maxLines = null,
+        alignment = null, verticalAnchor = null, x = null, y = null, zoom = 2.5,
+      ))
+      assertEquals(3.0, harness.surface.currentViewportState().zoom, 0.02)
       assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_200L))
       assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 1_220L))
     }
     harness.waitForViewportAnimationToFinish()
     harness.runOnMain {
+      assertEquals(2.5, harness.surface.currentViewportState().zoom, 0.02)
+      harness.overlay?.dispose()
+    }
+  }
+
+  @Test
+  fun emptyTextModeOptionsFitOnlyAfterPlacementTap() {
+    var fittedZoom = 0.0
+    harness.runOnMain {
+      harness.setDocument(harness.info)
+      fittedZoom = harness.surface.currentViewportState().zoom
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      overlay.armPlacement(1L, TextModeOptions(
+        direction = null, width = null, height = null, maxLines = null,
+        alignment = null, verticalAnchor = null, x = null, y = null, zoom = null,
+      ))
       assertEquals(3.0, harness.surface.currentViewportState().zoom, 0.02)
+      assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_100L))
+      assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 1_120L))
+    }
+    harness.waitForViewportAnimationToFinish()
+    harness.runOnMain {
+      assertEquals(fittedZoom, harness.surface.currentViewportState().zoom, 0.02)
       harness.overlay?.dispose()
     }
   }

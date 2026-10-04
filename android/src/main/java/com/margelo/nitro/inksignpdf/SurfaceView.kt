@@ -572,9 +572,10 @@ internal class SurfaceView(
     caret: PageRect,
     paddingPx: Double,
     zoomAnchor: PagePoint,
+    request: ViewportRequest,
   ): Boolean {
     requireOnUiThread()
-    return documentController.focusTextForPlacement(rect, caret, paddingPx, zoomAnchor)
+    return documentController.focusTextForPlacement(rect, caret, paddingPx, zoomAnchor, request)
   }
 
   private fun enterEditModeFromDoubleTap() {

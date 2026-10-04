@@ -91,8 +91,8 @@ namespace margelo::nitro::inksignpdf {
     void previousPage() override;
     Viewport getViewport() override;
     bool hasInk() override;
-    void enterEditMode(const std::optional<ViewportOptions>& viewport) override;
-    void enterViewMode(const std::optional<ViewportOptions>& viewport) override;
+    void setInkMode(const std::optional<ViewportOptions>& viewport) override;
+    void setViewMode(const std::optional<ViewportOptions>& viewport) override;
     void undo() override;
     void redo() override;
     void clear() override;
@@ -100,8 +100,7 @@ namespace margelo::nitro::inksignpdf {
     std::shared_ptr<Promise<void>> insertTextByFieldName(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) override;
     std::shared_ptr<Promise<void>> focusPageByFieldName(const std::string& key, const std::optional<FieldFocusOptions>& options) override;
     void setTextDirection(TextDirection direction) override;
-    void insertAnnotationOn(const std::optional<TextPlacementOptions>& options) override;
-    void insertAnnotationOff() override;
+    void setTextMode(const std::optional<TextModeOptions>& options) override;
     double increaseTextSize() override;
     double decreaseTextSize() override;
     void removeTextAnnotation() override;

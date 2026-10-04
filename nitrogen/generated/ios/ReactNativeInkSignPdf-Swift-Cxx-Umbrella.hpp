@@ -44,8 +44,8 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
-// Forward declaration of `TextPlacementOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
+// Forward declaration of `TextModeOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
@@ -72,7 +72,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "TextDirection.hpp"
 #include "TextInsertionByKeyOptions.hpp"
 #include "TextKeyOccurrence.hpp"
-#include "TextPlacementOptions.hpp"
+#include "TextModeOptions.hpp"
 #include "TextVerticalAnchor.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"

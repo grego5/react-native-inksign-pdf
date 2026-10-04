@@ -107,23 +107,15 @@ extension InkSignView {
     return "text-\(nextTextAnnotationID)"
   }
 
-  func insertAnnotationOn(options: TextPlacementOptions?) throws {
+  func setTextMode(options: TextModeOptions?) throws {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
-      if self.textInteractionOverlay.hasPendingPlacement() { return }
       try self.requireViewportReady(request: .preserve)
       self.fieldFocusRequestID &+= 1
       self.textInteractionOverlay.finishForLifecycle()
       self.setInteractionMode(editing: false)
       try self.textInteractionOverlay.armPlacement(generation: self.documentCoordinator.generation,
                                                   options: options)
-    }
-  }
-
-  func insertAnnotationOff() throws {
-    try performOnMainSync {
-      guard !self.disposed else { throw TextError.cancelled }
-      self.textInteractionOverlay.cancelPendingPlacement()
     }
   }
 

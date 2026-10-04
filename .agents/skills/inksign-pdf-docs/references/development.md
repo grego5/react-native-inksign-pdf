@@ -52,11 +52,14 @@
 ### Run iOS tests on local network Mac
 
 - From Windows, connect with `ssh mac-vm`. The SSH alias uses the host's key; do not copy credentials into the repository.
-- VMware exposes `C:\dev` at `~/Network/dev/`. At the Mac prompt, enter the shared checkout or worktree you want to test and run. Replace the example path below when testing another worktree:
+- Select a Mac source directory matching the current Windows checkout. Compare
+  SHA-256 hashes of changed files before validation. Use a live shared folder,
+  or transfer source, generated bindings, and required fixtures to a staging
+  directory. Run the repository runner from that verified directory:
 
   ```sh
-  cd "~/Network/dev/react-native-inksign-pdf"
-  ./tools/test-ios-mac-vm.sh
+  cd /path/to/current/react-native-inksign-pdf
+  bash ./tools/test-ios-mac-vm.sh
   ```
 
 - Set `IOS_TEST_ONLY` to a test selector, such as `InkSignViewLifecycleTests/testFailedReplacementClearsDocumentAndEditingMode()`,

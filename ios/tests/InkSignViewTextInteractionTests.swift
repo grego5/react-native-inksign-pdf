@@ -253,13 +253,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let overlay = view.textInteractionOverlay
-    let options = TextPlacementOptions(direction: .ltr,
+    let options = TextModeOptions(direction: .ltr,
                                         width: 120,
                                         height: 120,
                                         maxLines: 2,
                                         alignment: .start,
-                                        verticalAnchor: .bottom)
-    try view.insertAnnotationOn(options: options)
+                                        verticalAnchor: .bottom, x: nil, y: nil, zoom: nil)
+    try view.setTextMode(options: options)
     XCTAssertFalse(overlay.routePlacementTap(
       at: CGPoint(x: 300, y: 300).applying(try XCTUnwrap(view.pageToOverlayTransform))))
     XCTAssertTrue(overlay.hasPendingPlacement())
@@ -322,13 +322,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let overlay = view.textInteractionOverlay
-    try view.insertAnnotationOn(options: TextPlacementOptions(
+    try view.setTextMode(options: TextModeOptions(
       direction: .ltr,
       width: nil,
       height: nil,
       maxLines: 2,
       alignment: .start,
-      verticalAnchor: .top))
+      verticalAnchor: .top, x: nil, y: nil, zoom: nil))
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 40, y: 60)))
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
@@ -365,13 +365,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     let flowBounds = CGRect(x: 50, y: 160, width: 160, height: 120)
-    try view.insertAnnotationOn(options: TextPlacementOptions(
+    try view.setTextMode(options: TextModeOptions(
       direction: .ltr,
       width: 160,
       height: 120,
       maxLines: 2,
       alignment: .start,
-      verticalAnchor: .bottom))
+      verticalAnchor: .bottom, x: nil, y: nil, zoom: nil))
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 50, y: 160)))
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
@@ -428,13 +428,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     try view.setTextDirection(direction: .ltr)
-    try view.insertAnnotationOn(options: TextPlacementOptions(
+    try view.setTextMode(options: TextModeOptions(
       direction: nil,
       width: nil,
       height: nil,
       maxLines: 2,
       alignment: .start,
-      verticalAnchor: nil))
+      verticalAnchor: nil, x: nil, y: nil, zoom: nil))
     try view.setTextDirection(direction: .rtl)
 
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 180, y: 100)))
@@ -944,18 +944,66 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     }
   }
 
-  func testTextPlacementOnAndOffAreIdempotent() throws {
+  func testTextModeViewportIsDeferredAndIndependentOfDoubleTap() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let view = fixture.view
+    defer { view.dispose(); fixture.window.isHidden = true }
+    let overlay = view.textInteractionOverlay
+    view.doubleTap = DoubleTapOptions(zoom: 6, enterEditMode: false)
+    try view.setViewMode(viewport: ViewportOptions(x: 150, y: 200, zoom: 3))
+
+    func place() throws {
+      let tap = CGPoint(x: 150, y: 200).applying(try XCTUnwrap(view.pageToOverlayTransform))
+      XCTAssertTrue(overlay.routePlacementTap(at: tap))
+    }
+    try view.setTextMode(options: nil)
+    try place()
+    XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    editor.text = "draft"
+    overlay.textViewDidChange(editor)
+    try view.setInkMode(viewport: nil)
+    XCTAssertEqual(view.documentCoordinator.document?.activePage.history.content.textAnnotations.first?.text, "draft")
+    XCTAssertNil(textEditor(in: overlay))
+
+    try view.setTextMode(options: TextModeOptions(
+      direction: nil, width: nil, height: nil, maxLines: 1,
+      alignment: nil, verticalAnchor: nil, x: nil, y: nil, zoom: nil))
+    try place()
+    XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
+
+    try view.setTextMode(options: TextModeOptions(
+      direction: nil, width: nil, height: nil, maxLines: nil,
+      alignment: nil, verticalAnchor: nil, x: 150, y: 200, zoom: 2))
+    XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
+    try place()
+    XCTAssertEqual(try view.getViewport().zoom, 2, accuracy: 0.01)
+
+    try view.setViewMode(viewport: ViewportOptions(x: nil, y: nil, zoom: nil))
+    let fittedZoom = try view.getViewport().zoom
+    try view.setInkMode(viewport: ViewportOptions(x: nil, y: nil, zoom: 3))
+    try view.setTextMode(options: TextModeOptions(
+      direction: nil, width: nil, height: nil, maxLines: nil,
+      alignment: nil, verticalAnchor: nil, x: nil, y: nil, zoom: nil))
+    XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
+    try place()
+    XCTAssertEqual(try view.getViewport().zoom, fittedZoom, accuracy: 0.01)
+    overlay.finishForLifecycle()
+    XCTAssertTrue(overlay.interactionMode() == .view)
+  }
+
+  func testModeSwitchCancelsArmedTextPlacement() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
 
-    try fixture.view.insertAnnotationOn(options: nil)
-    try fixture.view.insertAnnotationOn(options: nil)
+    try fixture.view.setTextMode(options: nil)
+    try fixture.view.setTextMode(options: nil)
     XCTAssertTrue(overlay.hasPendingPlacement())
     XCTAssertNil(textEditor(in: overlay))
 
-    try fixture.view.insertAnnotationOff()
-    try fixture.view.insertAnnotationOff()
+    try fixture.view.setViewMode(viewport: nil)
+    try fixture.view.setViewMode(viewport: nil)
     XCTAssertFalse(overlay.hasPendingPlacement())
     XCTAssertNil(textEditor(in: overlay))
   }

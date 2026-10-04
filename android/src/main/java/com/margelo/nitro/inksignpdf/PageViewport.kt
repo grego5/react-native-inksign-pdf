@@ -241,20 +241,10 @@ internal class PageViewport(
     editorBounds: PageRect,
     caret: PageRect,
     paddingPx: Double,
-    minimumZoom: Double? = null,
-    zoomAnchor: PagePoint? = null,
   ): PageViewportTarget {
-    val zoom = minimumZoom?.let { maxOf(currentZoom, clampZoom(it)) } ?: currentZoom
-    val focus = if (zoom > currentZoom) {
-      val anchor = checkNotNull(zoomAnchor)
-      val viewPoint = pageToView(anchor)
-      checkNotNull(zoomTo(viewPoint.x, viewPoint.y, zoom)).focus
-    } else {
-      PagePoint(currentFocusX, currentFocusY)
-    }
     val base = PageViewportTarget(
-      zoom = zoom,
-      focus = clampedFocus(focus, zoom),
+      zoom = currentZoom,
+      focus = clampedFocus(PagePoint(currentFocusX, currentFocusY), currentZoom),
     )
     val scale = base.zoom * viewportSize.density
     val padding = paddingPx.coerceAtLeast(0.0)

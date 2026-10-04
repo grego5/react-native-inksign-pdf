@@ -4,7 +4,7 @@ const {
   validateAddPagesOptions,
   validateTextAnnotationBounds,
   validateTextAnnotationOptions,
-  validateTextPlacementOptions,
+  validateTextModeOptions,
 } = require('../lib/commonjs/publicArguments.js');
 const { createFieldFocusCommand, createTextKeyInsertionCommand } = require('../lib/commonjs/textKeyInsertion.js');
 
@@ -53,9 +53,9 @@ test('text options validate alignment and physical placement dimensions', () => 
   assert.throws(() => validateTextAnnotationOptions({ alignment: 'middle' }), {
     message: /^invalid_text_options:/,
   });
-  assert.doesNotThrow(() => validateTextPlacementOptions({ width: 80, height: 40 }));
+  assert.doesNotThrow(() => validateTextModeOptions({ width: 80, height: 40 }));
   for (const options of [{ width: 80 }, { width: 0, height: 40 }, { width: 80, height: NaN }]) {
-    assert.throws(() => validateTextPlacementOptions(options), {
+    assert.throws(() => validateTextModeOptions(options), {
       message: /^invalid_text_placement_options:/,
     });
   }

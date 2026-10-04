@@ -169,11 +169,11 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun enterEditMode(viewport: ViewportOptions?): Unit
+  abstract fun setInkMode(viewport: ViewportOptions?): Unit
   
   @DoNotStrip
   @Keep
-  abstract fun enterViewMode(viewport: ViewportOptions?): Unit
+  abstract fun setViewMode(viewport: ViewportOptions?): Unit
   
   @DoNotStrip
   @Keep
@@ -205,11 +205,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun insertAnnotationOn(options: TextPlacementOptions?): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun insertAnnotationOff(): Unit
+  abstract fun setTextMode(options: TextModeOptions?): Unit
   
   @DoNotStrip
   @Keep
