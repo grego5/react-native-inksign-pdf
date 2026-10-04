@@ -56,9 +56,9 @@ export default function App() {
     }
     try {
       if (target === 'edit') {
-        inkSignView.enterEditMode(viewport);
+        inkSignView.setInkMode(viewport);
       } else {
-        inkSignView.enterViewMode(viewport);
+        inkSignView.setViewMode(viewport);
       }
     } catch (error) {
       Alert.alert('Mode change failed', String(error));
@@ -80,9 +80,9 @@ export default function App() {
 
     try {
       if (placementArmed) {
-        inkSignView.insertAnnotationOff();
+        inkSignView.setViewMode();
       } else {
-        inkSignView.insertAnnotationOn();
+        inkSignView.setTextMode();
       }
     } catch (error) {
       Alert.alert(

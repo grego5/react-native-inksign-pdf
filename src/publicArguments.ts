@@ -73,7 +73,8 @@ export function validateTextAnnotationOptions(value: unknown): void {
   }
 }
 
-export function validateTextPlacementOptions(value: unknown): void {
+export function validateTextModeOptions(value: unknown): void {
+  validateViewportOptions(value);
   if (value === undefined) return;
   if (!isRecord(value)) {
     throw argumentError('invalid_text_placement_options', 'Placement options must be an object');
@@ -98,4 +99,28 @@ export function validateTextInsertionByKeyOptions(value: unknown): void {
     throw argumentError('invalid_text_key_options', 'Occurrence must be first or last');
   }
   validateTextAnnotationOptions(value);
+}
+
+export function validateViewportOptions(value: unknown): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) {
+    throw argumentError('invalid_viewport', 'Viewport options must be an object');
+  }
+  const hasX = value.x !== undefined;
+  const hasY = value.y !== undefined;
+  if (hasX !== hasY) {
+    throw argumentError('invalid_viewport', 'Viewport x and y must be supplied together');
+  }
+  const coordinateKeys: ReadonlyArray<'x' | 'y'> = ['x', 'y'];
+  for (const key of coordinateKeys) {
+    const coordinate = value[key];
+    if (coordinate !== undefined && (typeof coordinate !== 'number' || !Number.isFinite(coordinate))) {
+      throw argumentError('invalid_viewport', `Viewport ${key} must be finite`);
+    }
+  }
+  const zoom = value.zoom;
+  if (zoom !== undefined &&
+    (typeof zoom !== 'number' || !Number.isFinite(zoom) || zoom <= 0)) {
+    throw argumentError('invalid_viewport', 'Viewport zoom must be finite and positive');
+  }
 }

@@ -248,9 +248,9 @@ internal class InkDocumentController(
     return viewportAnimator != null
   }
 
-  /** Animates the current zoom to expose the editor bounds around the active caret. */
+  /** Exposes the editor and active caret without changing zoom. */
   fun focusTextForEditing(rect: PageRect, caret: PageRect, paddingPx: Double): Boolean {
-    return focusText(rect, caret, paddingPx, minimumZoom = null)
+    return focusText(rect, caret, paddingPx, request = ViewportRequest.Preserve)
   }
 
   fun focusTextForPlacement(
@@ -258,12 +258,13 @@ internal class InkDocumentController(
     caret: PageRect,
     paddingPx: Double,
     zoomAnchor: PagePoint,
+    request: ViewportRequest,
   ): Boolean {
     return focusText(
       rect,
       caret,
       paddingPx,
-      minimumZoom = doubleTapZoom,
+      request = request,
       zoomAnchor = zoomAnchor,
     )
   }
@@ -272,19 +273,20 @@ internal class InkDocumentController(
     rect: PageRect,
     caret: PageRect,
     paddingPx: Double,
-    minimumZoom: Double?,
+    request: ViewportRequest,
     zoomAnchor: PagePoint? = null,
   ): Boolean {
     requireOnUiThread()
     if (disposed) return false
     val currentViewport = viewport ?: return false
-    val target = currentViewport.targetForTextEditing(
-      editorBounds = rect,
-      caret = caret,
-      paddingPx = paddingPx,
-      minimumZoom = minimumZoom,
-      zoomAnchor = zoomAnchor,
-    )
+    val target = if (request == ViewportRequest.Preserve) {
+      currentViewport.targetForTextEditing(rect, caret, paddingPx)
+    } else {
+      val resolved = if (request is ViewportRequest.FocusAndZoom) {
+        ViewportRequest.FocusAndZoom(request.focus ?: zoomAnchor, request.zoom)
+      } else request
+      checkNotNull(currentViewport.targetFor(resolved))
+    }
     if (currentViewport.zoom == target.zoom && currentViewport.focus == target.focus) return false
     stopViewportAnimation()
     animateViewport(currentViewport, target)

@@ -52,8 +52,8 @@ namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `FieldFocusOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
-// Forward declaration of `TextPlacementOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
+// Forward declaration of `TextModeOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 
 #include "AndroidFallbackFont.hpp"
 #include <optional>
@@ -80,7 +80,7 @@ namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 #include "TextInsertionByKeyOptions.hpp"
 #include "TextKeyOccurrence.hpp"
 #include "FieldFocusOptions.hpp"
-#include "TextPlacementOptions.hpp"
+#include "TextModeOptions.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
 
@@ -296,14 +296,14 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline void enterEditMode(const std::optional<ViewportOptions>& viewport) override {
-      auto __result = _swiftPart.enterEditMode(viewport);
+    inline void setInkMode(const std::optional<ViewportOptions>& viewport) override {
+      auto __result = _swiftPart.setInkMode(viewport);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
     }
-    inline void enterViewMode(const std::optional<ViewportOptions>& viewport) override {
-      auto __result = _swiftPart.enterViewMode(viewport);
+    inline void setViewMode(const std::optional<ViewportOptions>& viewport) override {
+      auto __result = _swiftPart.setViewMode(viewport);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
@@ -354,14 +354,8 @@ namespace margelo::nitro::inksignpdf {
         std::rethrow_exception(__result.error());
       }
     }
-    inline void insertAnnotationOn(const std::optional<TextPlacementOptions>& options) override {
-      auto __result = _swiftPart.insertAnnotationOn(options);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
-    inline void insertAnnotationOff() override {
-      auto __result = _swiftPart.insertAnnotationOff();
+    inline void setTextMode(const std::optional<TextModeOptions>& options) override {
+      auto __result = _swiftPart.setTextMode(options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

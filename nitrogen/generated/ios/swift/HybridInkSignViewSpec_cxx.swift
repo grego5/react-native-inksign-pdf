@@ -607,9 +607,9 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func enterEditMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_void_ {
+  public final func setInkMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_void_ {
     do {
-      try self.__implementation.enterEditMode(viewport: viewport.value)
+      try self.__implementation.setInkMode(viewport: viewport.value)
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
@@ -618,9 +618,9 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func enterViewMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_void_ {
+  public final func setViewMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_void_ {
     do {
-      try self.__implementation.enterViewMode(viewport: viewport.value)
+      try self.__implementation.setViewMode(viewport: viewport.value)
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
@@ -722,20 +722,9 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func insertAnnotationOn(options: bridge.std__optional_TextPlacementOptions_) -> bridge.Result_void_ {
+  public final func setTextMode(options: bridge.std__optional_TextModeOptions_) -> bridge.Result_void_ {
     do {
-      try self.__implementation.insertAnnotationOn(options: options.value)
-      return bridge.create_Result_void_()
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func insertAnnotationOff() -> bridge.Result_void_ {
-    do {
-      try self.__implementation.insertAnnotationOff()
+      try self.__implementation.setTextMode(options: options.value)
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()

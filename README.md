@@ -69,8 +69,8 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
         </Text>
       )}
       <Button title="Open PDF" onPress={() => void openPdf()} />
-      <Button title="Draw" onPress={() => pdf.current?.enterEditMode()} />
-      <Button title="Place text" onPress={() => pdf.current?.insertAnnotationOn()} />
+      <Button title="Draw" onPress={() => pdf.current?.setInkMode()} />
+      <Button title="Place text" onPress={() => pdf.current?.setTextMode()} />
       <Button title="Undo" onPress={() => pdf.current?.undo()} />
       <Button title="Save PDF" onPress={() => void savePdf()} />
       {savedPath !== '' && <Text>Saved to {savedPath}</Text>}
@@ -92,6 +92,12 @@ file already at `uri` is reused:
 ```
 
 ## Common actions
+
+Use `setViewMode()`, `setInkMode()`, or `setTextMode()` to choose an input mode.
+Omit options to preserve the viewport; pass `{}` to fit the page, or
+`{ zoom: 3, x: 200, y: 600 }` to zoom and focus. Text-mode viewport changes
+apply after the placement tap. Text finishes in view mode; switching modes also
+finishes an open text draft. `doubleTap.zoom` controls double taps only.
 
 Add local PDF or image pages:
 

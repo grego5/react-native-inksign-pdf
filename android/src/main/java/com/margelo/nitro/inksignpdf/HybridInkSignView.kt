@@ -415,11 +415,11 @@ class HybridInkSignView internal constructor(
     coordinator.activePageHasInk()
   }
 
-  override fun enterEditMode(viewport: ViewportOptions?) {
+  override fun setInkMode(viewport: ViewportOptions?) {
     runOnMainSync { enterMode(edit = true, viewport) }
   }
 
-  override fun enterViewMode(viewport: ViewportOptions?) {
+  override fun setViewMode(viewport: ViewportOptions?) {
     runOnMainSync { enterMode(edit = false, viewport) }
   }
 
@@ -568,11 +568,10 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  override fun insertAnnotationOn(options: TextPlacementOptions?) {
+  override fun setTextMode(options: TextModeOptions?) {
     runOnMainSync {
       checkMainThread()
       if (disposed) throw operationCancelled()
-      if (textOverlay.hasPendingPlacement()) return@runOnMainSync
       surface.requireModeTransitionReady()
       viewportRequestID += 1L
       val requestID = viewportRequestID
@@ -606,14 +605,6 @@ class HybridInkSignView internal constructor(
       checkMainThread()
       if (disposed) throw operationCancelled()
       textOverlay.setTextDirection(direction)
-    }
-  }
-
-  override fun insertAnnotationOff() {
-    runOnMainSync {
-      checkMainThread()
-      if (disposed) throw operationCancelled()
-      textOverlay.cancelPendingPlacement()
     }
   }
 

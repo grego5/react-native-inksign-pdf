@@ -334,7 +334,7 @@ internal class TextInteractionOverlay(
       val generation: Long,
       val pageIndex: Int,
       var directionRtl: Boolean,
-      val options: TextPlacementOptions?,
+      val options: TextModeOptions?,
     ) : InteractionState
 
     data class Editing(
@@ -532,7 +532,7 @@ internal class TextInteractionOverlay(
 
   internal fun hasPendingPlacement(): Boolean = interactionState is InteractionState.Placing
 
-  internal fun armPlacement(generation: Long, options: TextPlacementOptions? = null) {
+  internal fun armPlacement(generation: Long, options: TextModeOptions? = null) {
     if (interactionState is InteractionState.Placing) return
     val presentation = surface.textPresentationSnapshot() ?: throw PdfSessionException(
       "view_not_ready",
@@ -697,6 +697,7 @@ internal class TextInteractionOverlay(
     val id = "text-${UUID.randomUUID()}"
     val isRtl = placement.directionRtl
     val options = placement.options
+    val viewportRequest = ViewportRequestParser.parseTextMode(options)
     val verticalAnchor = options?.verticalAnchor ?: TextVerticalAnchor.TOP
     val flowBounds = if (options?.width == null || options.height == null) {
       null
@@ -742,6 +743,7 @@ internal class TextInteractionOverlay(
           (flowBounds.left + flowBounds.right) / 2.0,
           (flowBounds.top + flowBounds.bottom) / 2.0,
         ),
+        viewportRequest,
       )
       syncContent()
       return
@@ -778,6 +780,7 @@ internal class TextInteractionOverlay(
         (focusBounds.left + focusBounds.right) / 2.0,
         (focusBounds.top + focusBounds.bottom) / 2.0,
       ),
+      viewportRequest,
     )
     syncContent()
   }

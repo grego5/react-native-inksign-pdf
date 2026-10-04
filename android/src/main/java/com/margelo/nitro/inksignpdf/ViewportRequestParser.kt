@@ -2,6 +2,19 @@ package com.margelo.nitro.inksignpdf
 
 /** Validated viewport options produced at the public Nitro boundary. */
 internal object ViewportRequestParser {
+  fun parseTextMode(options: TextModeOptions?): ViewportRequest {
+    if (options == null) return ViewportRequest.Preserve
+    if (options.x != null || options.y != null || options.zoom != null) {
+      return ViewportRequest.FocusAndZoom(
+        options.x?.let { PagePoint(it, checkNotNull(options.y)) }, options.zoom,
+      )
+    }
+    return if (options.direction != null || options.width != null || options.height != null ||
+      options.maxLines != null || options.alignment != null || options.verticalAnchor != null) {
+      ViewportRequest.Preserve
+    } else ViewportRequest.Fit
+  }
+
   fun parse(options: ViewportOptions?): ViewportRequest {
     if (options == null) return ViewportRequest.Preserve
     val x = options.x

@@ -372,6 +372,18 @@ extension InkSignView {
     return .focus(focus, zoom: options.zoom)
   }
 
+  func applyTextPlacementViewport(_ options: TextModeOptions?, editorFocus: CGPoint) {
+    guard let options else { return }
+    if options.x != nil || options.y != nil || options.zoom != nil {
+      let focus = options.x.map { CGPoint(x: $0, y: options.y!) } ?? editorFocus
+      _ = applyViewport(target: ViewportTarget(
+        zoom: CGFloat(options.zoom ?? Double(documentView.scaleFactor)), focus: focus))
+    } else if options.direction == nil && options.width == nil && options.height == nil &&
+      options.maxLines == nil && options.alignment == nil && options.verticalAnchor == nil {
+      applyViewport(request: .fit)
+    }
+  }
+
   static func parseOpenViewport(_ options: ViewportOptions?) -> (zoom: Double?, focus: CGPoint?, fitToPage: Bool) {
     guard let options else { return (nil, nil, true) }
     let focus = options.x.flatMap { x in

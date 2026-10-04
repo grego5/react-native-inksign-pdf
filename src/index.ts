@@ -3,11 +3,11 @@ import { callback, getHostComponent } from 'react-native-nitro-modules';
 import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConfig.json';
 import {
   argumentError,
-  isRecord,
   validateAddPagesOptions,
   validateTextAnnotationBounds,
   validateTextAnnotationOptions,
-  validateTextPlacementOptions,
+  validateTextModeOptions,
+  validateViewportOptions,
 } from './publicArguments';
 import { createFieldFocusCommand, createTextKeyInsertionCommand } from './textKeyInsertion';
 
@@ -18,7 +18,7 @@ import type {
   TextAnnotationOptions,
   TextInsertionByKeyOptions,
   TextKeyOccurrence,
-  TextPlacementOptions,
+  TextModeOptions,
   PageType,
   TextDirection,
   TextAlignment,
@@ -47,7 +47,7 @@ export type {
   TextAnnotationOptions,
   TextInsertionByKeyOptions,
   TextKeyOccurrence,
-  TextPlacementOptions,
+  TextModeOptions,
   PageType,
   TextDirection,
   TextAlignment,
@@ -81,30 +81,6 @@ type InkSignViewComponentProps = Omit<NativeInkSignViewProps, 'hybridRef' | 'onS
   onStateChange?: InkSignViewProps['onStateChange'];
   onPageChange?: InkSignViewProps['onPageChange'];
 };
-
-function validateViewportOptions(value: unknown): void {
-  if (value === undefined) return;
-  if (!isRecord(value)) {
-    throw argumentError('invalid_viewport', 'Viewport options must be an object');
-  }
-  const hasX = value.x !== undefined;
-  const hasY = value.y !== undefined;
-  if (hasX !== hasY) {
-    throw argumentError('invalid_viewport', 'Viewport x and y must be supplied together');
-  }
-  const coordinateKeys: ReadonlyArray<'x' | 'y'> = ['x', 'y'];
-  for (const key of coordinateKeys) {
-    const coordinate = value[key];
-    if (coordinate !== undefined && (typeof coordinate !== 'number' || !Number.isFinite(coordinate))) {
-      throw argumentError('invalid_viewport', `Viewport ${key} must be finite`);
-    }
-  }
-  const zoom = value.zoom;
-  if (zoom !== undefined &&
-    (typeof zoom !== 'number' || !Number.isFinite(zoom) || zoom <= 0)) {
-    throw argumentError('invalid_viewport', 'Viewport zoom must be finite and positive');
-  }
-}
 
 function callAsync<T>(validate: () => void, invoke: () => Promise<T>): Promise<T> {
   try {
@@ -149,13 +125,13 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
     previousPage: () => native.previousPage(),
     getViewport: () => native.getViewport(),
     hasInk: () => native.hasInk(),
-    enterEditMode(viewport) {
+    setInkMode(viewport) {
       validateViewportOptions(viewport);
-      native.enterEditMode(viewport);
+      native.setInkMode(viewport);
     },
-    enterViewMode(viewport) {
+    setViewMode(viewport) {
       validateViewportOptions(viewport);
-      native.enterViewMode(viewport);
+      native.setViewMode(viewport);
     },
     undo: () => native.undo(),
     redo: () => native.redo(),
@@ -180,11 +156,10 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
       }
       native.setTextDirection(direction);
     },
-    insertAnnotationOn(options) {
-      validateTextPlacementOptions(options);
-      native.insertAnnotationOn(options);
+    setTextMode(options) {
+      validateTextModeOptions(options);
+      native.setTextMode(options);
     },
-    insertAnnotationOff: () => native.insertAnnotationOff(),
     increaseTextSize: () => native.increaseTextSize(),
     decreaseTextSize: () => native.decreaseTextSize(),
     removeTextAnnotation: () => native.removeTextAnnotation(),

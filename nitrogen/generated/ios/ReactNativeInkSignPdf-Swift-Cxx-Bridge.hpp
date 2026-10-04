@@ -42,8 +42,8 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
-// Forward declaration of `TextPlacementOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
+// Forward declaration of `TextModeOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
@@ -73,7 +73,7 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "TextDirection.hpp"
 #include "TextInsertionByKeyOptions.hpp"
 #include "TextKeyOccurrence.hpp"
-#include "TextPlacementOptions.hpp"
+#include "TextModeOptions.hpp"
 #include "TextVerticalAnchor.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
@@ -565,18 +565,18 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::optional<TextPlacementOptions>
+  // pragma MARK: std::optional<TextModeOptions>
   /**
-   * Specialized version of `std::optional<TextPlacementOptions>`.
+   * Specialized version of `std::optional<TextModeOptions>`.
    */
-  using std__optional_TextPlacementOptions_ = std::optional<TextPlacementOptions>;
-  inline std::optional<TextPlacementOptions> create_std__optional_TextPlacementOptions_(const TextPlacementOptions& value) noexcept {
-    return std::optional<TextPlacementOptions>(value);
+  using std__optional_TextModeOptions_ = std::optional<TextModeOptions>;
+  inline std::optional<TextModeOptions> create_std__optional_TextModeOptions_(const TextModeOptions& value) noexcept {
+    return std::optional<TextModeOptions>(value);
   }
-  inline bool has_value_std__optional_TextPlacementOptions_(const std::optional<TextPlacementOptions>& optional) noexcept {
+  inline bool has_value_std__optional_TextModeOptions_(const std::optional<TextModeOptions>& optional) noexcept {
     return optional.has_value();
   }
-  inline TextPlacementOptions get_std__optional_TextPlacementOptions_(const std::optional<TextPlacementOptions>& optional) noexcept {
+  inline TextModeOptions get_std__optional_TextModeOptions_(const std::optional<TextModeOptions>& optional) noexcept {
     return optional.value();
   }
   

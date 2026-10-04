@@ -85,11 +85,11 @@ extension InkSignView {
     }
   }
 
-  func enterEditMode(viewport: ViewportOptions?) throws {
+  func setInkMode(viewport: ViewportOptions?) throws {
     try performOnMainSync { try self.transition(toEditing: true, viewport: viewport) }
   }
 
-  func enterViewMode(viewport: ViewportOptions?) throws {
+  func setViewMode(viewport: ViewportOptions?) throws {
     try performOnMainSync { try self.transition(toEditing: false, viewport: viewport) }
   }
 

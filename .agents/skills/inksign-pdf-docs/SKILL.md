@@ -74,20 +74,10 @@ sources, or documentation routing changes:
 
 Maintainer references are current-state contracts, not project diaries.
 
-- Add a statement only when it records a stable, externally relevant contract:
-  ownership, data flow, invariants, interfaces, failure rules, or required
-  validation. Place it in the reference for the subsystem that owns the fact.
-- Rewrite an existing statement in place when behavior changes. Do not append a
-  changelog entry or describe the old and new designs together.
-- Remove content that is historical, speculative, duplicated elsewhere, or only
-  explains an implementation transition. Keep a state transition only when it
-  is observable behavior or a required lifecycle/failure rule.
-- Prefer positive descriptions of the implemented system. Use a negative
-  statement only when the absence itself is an externally meaningful invariant
-  such as an API guarantee, ownership boundary, or safety rule.
-- Cross-reference another reference instead of duplicating formulas, contracts,
-  or detailed ownership rules. Keep sections short and bullets compact; use a
-  diagram only when it communicates relationships more clearly than prose.
-- Before finishing, compare every changed statement with the current
-  implementation and focused tests. Delete claims that cannot be verified from
-  code, tests, or an explicitly maintained contract.
+- Add a statement when it records a stable, externally relevant contract: ownership, data flow, invariants, interfaces, failure rules, or required validation. Place it in the reference for the subsystem that owns the fact.
+- Rewrite an existing statement in place when behavior changes. Do not append a changelog entry or describe the old and new designs together.
+- Remove content that is historical, speculative, duplicated elsewhere, or explains an implementation transition. Keep a state transition when it is observable behavior or a required lifecycle/failure rule.
+- Prefer positive descriptions of the implemented system. Negative statement acceptable when the absence itself is an externally meaningful invariant such as an API guarantee, ownership boundary, or safety rule.
+- Cross-reference another reference instead of duplicating formulas, contracts, or detailed ownership rules. Keep sections short and bullets compact; use a diagram when it communicates relationships more clearly than prose.
+- Before finishing, compare every changed statement with the current implementation and focused tests. Delete claims that cannot be verified from code, tests, or an explicitly maintained contract.
+

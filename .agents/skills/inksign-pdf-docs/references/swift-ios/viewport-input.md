@@ -6,6 +6,12 @@
   area. Newer focus or input-mode actions supersede pending focus. Document
   replacement, disposal, or target-page deletion cancels it.
 
+- **Mode commands:** `setViewMode()` and `setInkMode()` finish text interaction
+  and apply viewport options immediately. Omission preserves the viewport; an
+  empty object fits; zoom and paired x/y override supplied values. `setTextMode()`
+  captures its viewport request until a valid placement tap; text-only settings
+  preserve the viewport. Switching modes commits a draft or cancels untapped
+  placement. Finishing the text draft returns to view mode.
 - **Presentation:** `PDFView` owns page display, zoom, scrolling, and navigation.
   The document coordinator owns page identity and committed content.
 - **View mode:** PDF gestures handle navigation; admitted text touches and armed
@@ -19,6 +25,9 @@
   draft and a nearby horizontal rule may set its bottom anchor. With dimensions,
   the tap is the physical rectangle's top-left corner; invalid rectangles leave
   placement armed for another tap.
+- **Placement viewport:** Explicit zoom is an absolute target clamped by PDFKit.
+  Zoom alone focuses the editor; paired x/y override that focus. Omitted zoom
+  preserves the current zoom. `doubleTap.zoom` affects only double taps.
 - **Rule candidates:** Solid horizontal writing rules may appear anywhere on a
   page; horizontal strokes crossed by vertical table borders are excluded.
   Rows of evenly spaced dots are also supported.
@@ -46,7 +55,7 @@
   extracted text, regardless of word order. Glyphs must share a visual row and
   neighboring word bounds must be within one row height. Whitespace does not
   participate in row geometry; rule selection uses the combined glyph bounds.
-- **Bounded editing:** `insertAnnotationOn(options?)` applies an optional
+- **Bounded editing:** `setTextMode(options?)` applies an optional
   physical width and height from the tap toward the right and down, plus
   alignment and line options, to the live editor and committed text. Without
   dimensions it keeps auto-sized tap placement, with `maxLines` still capping

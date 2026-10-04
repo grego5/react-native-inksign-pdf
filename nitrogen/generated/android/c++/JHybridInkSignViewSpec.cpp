@@ -47,8 +47,8 @@ namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `FieldFocusOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
-// Forward declaration of `TextPlacementOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
+// Forward declaration of `TextModeOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 
 #include "AndroidFallbackFont.hpp"
 #include <optional>
@@ -100,8 +100,8 @@ namespace margelo::nitro::inksignpdf { struct TextPlacementOptions; }
 #include "JTextKeyOccurrence.hpp"
 #include "FieldFocusOptions.hpp"
 #include "JFieldFocusOptions.hpp"
-#include "TextPlacementOptions.hpp"
-#include "JTextPlacementOptions.hpp"
+#include "TextModeOptions.hpp"
+#include "JTextModeOptions.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -368,12 +368,12 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart);
     return static_cast<bool>(__result);
   }
-  void JHybridInkSignViewSpec::enterEditMode(const std::optional<ViewportOptions>& viewport) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JViewportOptions> /* viewport */)>("enterEditMode");
+  void JHybridInkSignViewSpec::setInkMode(const std::optional<ViewportOptions>& viewport) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JViewportOptions> /* viewport */)>("setInkMode");
     method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);
   }
-  void JHybridInkSignViewSpec::enterViewMode(const std::optional<ViewportOptions>& viewport) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JViewportOptions> /* viewport */)>("enterViewMode");
+  void JHybridInkSignViewSpec::setViewMode(const std::optional<ViewportOptions>& viewport) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JViewportOptions> /* viewport */)>("setViewMode");
     method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);
   }
   void JHybridInkSignViewSpec::undo() {
@@ -426,13 +426,9 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextDirection> /* direction */)>("setTextDirection");
     method(_javaPart, JTextDirection::fromCpp(direction));
   }
-  void JHybridInkSignViewSpec::insertAnnotationOn(const std::optional<TextPlacementOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextPlacementOptions> /* options */)>("insertAnnotationOn");
-    method(_javaPart, options.has_value() ? JTextPlacementOptions::fromCpp(options.value()) : nullptr);
-  }
-  void JHybridInkSignViewSpec::insertAnnotationOff() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("insertAnnotationOff");
-    method(_javaPart);
+  void JHybridInkSignViewSpec::setTextMode(const std::optional<TextModeOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextModeOptions> /* options */)>("setTextMode");
+    method(_javaPart, options.has_value() ? JTextModeOptions::fromCpp(options.value()) : nullptr);
   }
   double JHybridInkSignViewSpec::increaseTextSize() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<double()>("increaseTextSize");

@@ -65,7 +65,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     let generation: UInt64
     let pageIndex: Int
     var isRTL: Bool
-    let options: TextPlacementOptions?
+    let options: TextModeOptions?
   }
 
   private struct DragState {
@@ -403,7 +403,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   internal func armPlacement(generation: UInt64,
-                             options: TextPlacementOptions? = nil) throws {
+                             options: TextModeOptions? = nil) throws {
     if hasPendingPlacement() { return }
     guard let owner, let presentation = presentation() else { throw InkSignView.TextError.notReady }
     guard presentation.generation == generation else { throw InkSignView.TextError.cancelled }
@@ -598,6 +598,10 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                 maxLines: lineLimit(placement.options?.maxLines),
                 verticalAnchor: verticalAnchor,
                 alignment: InkSignPdfTextAlignment(placement.options?.alignment))
+    let editorFocus = flowBounds.map { CGPoint(x: $0.midX, y: $0.midY) } ??
+      editor.flatMap { owner?.canonicalPagePoint(fromOverlay:
+        CGPoint(x: $0.frame.midX, y: $0.frame.midY)) } ?? pagePoint
+    owner?.applyTextPlacementViewport(placement.options, editorFocus: editorFocus)
     return true
   }
 
