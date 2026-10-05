@@ -133,6 +133,21 @@ internal class MutableDocumentCoordinator(
     return StructuralCandidate(next, checkNotNull(activePageId))
   }
 
+  fun rotatePageCandidate(pageId: String, dimensions: PdfPageDimensions): StructuralCandidate {
+    val index = pageIndexForId(pageId)
+      ?: throw PdfSessionException("operation_cancelled", "The target page no longer exists")
+    val next = mutablePages.toMutableList()
+    val current = next[index]
+    next[index] = InkPageState(
+      current.id,
+      dimensions,
+      current.history,
+      current.geometryRevision + 1L,
+      current.sourceDimensions,
+    )
+    return StructuralCandidate(next, pageId)
+  }
+
   fun markStructuralDirty() { structuralDirty = true }
 
   fun markStructuralClean() { structuralDirty = false }
@@ -538,14 +553,49 @@ internal class MutableDocumentCoordinator(
     generation: Long,
     pageIndex: Int,
     completion: (Result<List<PdfiumHorizontalSnapCandidate>>) -> Unit,
-  ) = sessionWorker.horizontalSnapCandidates(generation, pageIndex, completion)
+  ) {
+    val page = page(pageIndex)
+    val transform = PageCoordinates(page.dimensions).layoutToDisplay(page.sourceDimensions)
+    sessionWorker.horizontalSnapCandidates(generation, pageIndex) { result ->
+      completion(result.map { transformRules(it, transform) })
+    }
+  }
 
   fun lookupTextKey(
     generation: Long,
     pageIndex: Int,
     key: String,
     completion: (Result<PdfiumKeyLookupPage>) -> Unit,
-  ) = sessionWorker.lookupTextKey(generation, pageIndex, key, completion)
+  ) {
+    val page = page(pageIndex)
+    val transform = PageCoordinates(page.dimensions).layoutToDisplay(page.sourceDimensions)
+    sessionWorker.lookupTextKey(generation, pageIndex, key) { result ->
+      completion(result.map { lookup ->
+        lookup.copy(
+          matches = lookup.matches.map { match ->
+            val bounds = textAnnotationOuterBounds(
+              PageRect(match.left, match.top, match.right, match.bottom), transform, 0.0, 0.0,
+            )
+            match.copy(left = bounds.left, top = bounds.top, right = bounds.right,
+              bottom = bounds.bottom,
+              lineCenter = transform.map(PagePoint(match.left, match.lineCenter)).y)
+          },
+          rules = transformRules(lookup.rules, transform),
+        )
+      })
+    }
+  }
+
+  private fun transformRules(
+    rules: List<PdfiumHorizontalSnapCandidate>,
+    transform: PageTransform,
+  ): List<PdfiumHorizontalSnapCandidate> = rules.mapNotNull { rule ->
+    val start = transform.map(PagePoint(rule.left, rule.y))
+    val end = transform.map(PagePoint(rule.right, rule.y))
+    if (kotlin.math.abs(start.y - end.y) > 0.001) null else {
+      PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y)
+    }
+  }
 
   suspend fun <T> executeStructuralMutation(
     generation: Long,
@@ -637,7 +687,7 @@ internal class MutableDocumentCoordinator(
 
   internal fun validateCandidateAggregate(info: PdfSessionInfo, candidate: StructuralCandidate) {
     if (info.pages.size != candidate.pages.size ||
-      info.pages.indices.any { index -> info.pages[index] != candidate.pages[index].dimensions }
+      info.pages.indices.any { index -> info.pages[index] != candidate.pages[index].sourceDimensions }
     ) {
       throw PdfSessionException(
         "pdf_mutation_failed",

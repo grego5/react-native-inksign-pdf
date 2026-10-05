@@ -21,6 +21,7 @@ internal object PdfiumNativePdfExporter {
     forceSubsetSaveFailureForTesting: Boolean,
   ) {
     val pageIndices = IntArray(snapshot.pages.size) { snapshot.pages[it].pageIndex }
+    val pageRotations = IntArray(snapshot.pages.size) { snapshot.pages[it].dimensions.rotation }
     val pageDimensions = DoubleArray(snapshot.pages.size * 2) { index ->
       val page = snapshot.pages[index / 2]
       if (index % 2 == 0) page.dimensions.width else page.dimensions.height
@@ -76,6 +77,17 @@ internal object PdfiumNativePdfExporter {
       }
     }
     val textRunColors = IntArray(textRuns.size) { textRuns[it].color }
+    val textRunTransforms = FloatArray(textRuns.size * 6) { index ->
+      val transform = textRuns[index / 6].layoutToRaw
+      when (index % 6) {
+        0 -> transform.a.toFloat()
+        1 -> transform.b.toFloat()
+        2 -> transform.c.toFloat()
+        3 -> transform.d.toFloat()
+        4 -> transform.tx.toFloat()
+        else -> transform.ty.toFloat()
+      }
+    }
     val fontResources = Array(text.fonts.size) { text.fonts[it].bytes.copyOf() }
     val maySubsetFonts = text.fonts.all { it.fsType and 0x0100 == 0 }
 
@@ -84,6 +96,7 @@ internal object PdfiumNativePdfExporter {
       destination.path,
       pageIndices,
       pageDimensions,
+      pageRotations,
       pathPageIndices,
       pathCommandOffsets,
       pathCommandTypes,
@@ -99,6 +112,7 @@ internal object PdfiumNativePdfExporter {
       textRunFontIndices,
       textRunGeometry,
       textRunColors,
+      textRunTransforms,
       fontResources,
       maySubsetFonts,
       forceSubsetSaveFailureForTesting,
@@ -111,6 +125,7 @@ internal object PdfiumNativePdfExporter {
     destinationPath: String,
     pageIndices: IntArray,
     pageDimensions: DoubleArray,
+    pageRotations: IntArray,
     pathPageIndices: IntArray,
     pathCommandOffsets: IntArray,
     pathCommandTypes: IntArray,
@@ -126,6 +141,7 @@ internal object PdfiumNativePdfExporter {
     textRunFontIndices: IntArray,
     textRunGeometry: FloatArray,
     textRunColors: IntArray,
+    textRunTransforms: FloatArray,
     fontResources: Array<ByteArray>,
     maySubsetFonts: Boolean,
     forceSubsetSaveFailureForTesting: Boolean,

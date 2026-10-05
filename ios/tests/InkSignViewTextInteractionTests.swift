@@ -127,7 +127,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let overlay = view.textInteractionOverlay
-    try view.addTextAnnotation(text: "bounded text",
+    try view.insertTextAt(text: "bounded text",
                                bounds: TextAnnotationBounds(x: 150, y: 100, width: 130, height: 80),
                                options: TextAnnotationOptions(direction: .ltr,
                                                               maxLines: nil,
@@ -171,15 +171,15 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     view.container.semanticContentAttribute = .forceRightToLeft
     try view.setTextDirection(direction: .ltr)
 
-    try view.addTextAnnotation(text: "left to right",
+    try view.insertTextAt(text: "left to right",
                                bounds: TextAnnotationBounds(x: 80, y: 50, width: 220, height: 350),
                                options: nil)
-    try view.addTextAnnotation(text: "right to left",
+    try view.insertTextAt(text: "right to left",
                                bounds: TextAnnotationBounds(x: 30, y: 80, width: 80, height: 40),
                                options: TextAnnotationOptions(direction: .auto, maxLines: nil,
                                                               alignment: .start, verticalAnchor: nil))
     try view.setTextDirection(direction: .auto)
-    try view.addTextAnnotation(text: "resolved app direction",
+    try view.insertTextAt(text: "resolved app direction",
                                bounds: TextAnnotationBounds(x: 0, y: 140, width: 100, height: 260),
                                options: nil)
 
@@ -203,7 +203,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
 
-    try fixture.view.addTextAnnotation(
+    try fixture.view.insertTextAt(
       text: "first line\nsecond line\nthird line",
       bounds: TextAnnotationBounds(x: 80, y: 180, width: 200, height: 100),
       options: TextAnnotationOptions(direction: .ltr,
@@ -224,7 +224,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                              2 * InkSignPdfTextStyle.font(size: annotation.fontSize).lineHeight + 0.01)
 
     let lineHeight = InkSignPdfTextStyle.font(size: annotation.fontSize).lineHeight
-    try fixture.view.addTextAnnotation(
+    try fixture.view.insertTextAt(
       text: "only visible line\nhidden second line",
       bounds: TextAnnotationBounds(x: 20, y: 20, width: 160,
                                     height: Double(lineHeight + 0.1)),

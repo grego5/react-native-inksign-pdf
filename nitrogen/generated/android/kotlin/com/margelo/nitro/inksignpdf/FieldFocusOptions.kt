@@ -29,7 +29,13 @@ data class FieldFocusOptions(
   val zoom: Double?,
   @DoNotStrip
   @Keep
-  val enterEditMode: Boolean?
+  val verticalAnchor: FieldFocusVerticalAnchor?,
+  @DoNotStrip
+  @Keep
+  val edgeOffset: Double?,
+  @DoNotStrip
+  @Keep
+  val setInkMode: Boolean?
 ) {
   /* primary constructor */
 
@@ -39,7 +45,9 @@ data class FieldFocusOptions(
     return Objects.deepEquals(this.occurrence, other.occurrence)
       && Objects.deepEquals(this.direction, other.direction)
       && Objects.deepEquals(this.zoom, other.zoom)
-      && Objects.deepEquals(this.enterEditMode, other.enterEditMode)
+      && Objects.deepEquals(this.verticalAnchor, other.verticalAnchor)
+      && Objects.deepEquals(this.edgeOffset, other.edgeOffset)
+      && Objects.deepEquals(this.setInkMode, other.setInkMode)
   }
 
   override fun hashCode(): Int {
@@ -47,7 +55,9 @@ data class FieldFocusOptions(
       occurrence,
       direction,
       zoom,
-      enterEditMode
+      verticalAnchor,
+      edgeOffset,
+      setInkMode
     ).contentDeepHashCode()
   }
 
@@ -59,8 +69,8 @@ data class FieldFocusOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(occurrence: TextKeyOccurrence?, direction: TextDirection?, zoom: Double?, enterEditMode: Boolean?): FieldFocusOptions {
-      return FieldFocusOptions(occurrence, direction, zoom, enterEditMode)
+    private fun fromCpp(occurrence: TextKeyOccurrence?, direction: TextDirection?, zoom: Double?, verticalAnchor: FieldFocusVerticalAnchor?, edgeOffset: Double?, setInkMode: Boolean?): FieldFocusOptions {
+      return FieldFocusOptions(occurrence, direction, zoom, verticalAnchor, edgeOffset, setInkMode)
     }
   }
 }

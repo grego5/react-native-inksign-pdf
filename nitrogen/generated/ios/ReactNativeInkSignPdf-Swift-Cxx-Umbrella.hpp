@@ -20,6 +20,8 @@ namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `FieldFocusOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
@@ -60,6 +62,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "AndroidFallbackFont.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusOptions.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"

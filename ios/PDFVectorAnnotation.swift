@@ -92,7 +92,9 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
         verticalAnchor: coder.decodeInteger(forKey: "inksign.verticalAnchor") == 1
           ? .bottom : .top,
         alignment: coder.containsValue(forKey: "inksign.textAlignment")
-          ? Self.textAlignment(coder.decodeInteger(forKey: "inksign.textAlignment")) : .start)
+          ? Self.textAlignment(coder.decodeInteger(forKey: "inksign.textAlignment")) : .start,
+        layoutRotation: coder.containsValue(forKey: "inksign.layoutRotation")
+          ? coder.decodeInteger(forKey: "inksign.layoutRotation") : 0)
     }
     super.init(coder: coder)
   }
@@ -119,6 +121,7 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
       coder.encode(textValue.verticalAnchor == .bottom ? 1 : 0,
                    forKey: "inksign.verticalAnchor")
       coder.encode(Self.alignmentCode(textValue.alignment), forKey: "inksign.textAlignment")
+      coder.encode(textValue.layoutRotation, forKey: "inksign.layoutRotation")
     }
   }
 
@@ -180,9 +183,10 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
         context.restoreGState()
         return
       }
-      context.concatenate(InkSignPdfTextRenderer.canonicalToPDFTransform(for: mediaBox))
+      let layoutGeometry = PageGeometry(mediaBox: mediaBox, rotation: textValue.layoutRotation)
+      context.concatenate(layoutGeometry.displayToPDFTransform)
       _ = InkSignPdfTextRenderer.drawCanonical([textValue],
-                                               pageSize: mediaBox.size,
+                                               pageSize: layoutGeometry.displaySize,
                                                in: context,
                                                color: annotationColor)
     }

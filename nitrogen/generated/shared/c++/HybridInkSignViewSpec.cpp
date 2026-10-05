@@ -48,6 +48,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("addPages", &HybridInkSignViewSpec::addPages);
       prototype.registerHybridMethod("removePage", &HybridInkSignViewSpec::removePage);
       prototype.registerHybridMethod("movePage", &HybridInkSignViewSpec::movePage);
+      prototype.registerHybridMethod("rotatePage", &HybridInkSignViewSpec::rotatePage);
       prototype.registerHybridMethod("nextPage", &HybridInkSignViewSpec::nextPage);
       prototype.registerHybridMethod("previousPage", &HybridInkSignViewSpec::previousPage);
       prototype.registerHybridMethod("getViewport", &HybridInkSignViewSpec::getViewport);
@@ -57,7 +58,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("undo", &HybridInkSignViewSpec::undo);
       prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
       prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
-      prototype.registerHybridMethod("addTextAnnotation", &HybridInkSignViewSpec::addTextAnnotation);
+      prototype.registerHybridMethod("insertTextAt", &HybridInkSignViewSpec::insertTextAt);
       prototype.registerHybridMethod("insertTextByFieldName", &HybridInkSignViewSpec::insertTextByFieldName);
       prototype.registerHybridMethod("focusPageByFieldName", &HybridInkSignViewSpec::focusPageByFieldName);
       prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);

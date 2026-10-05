@@ -3,6 +3,7 @@
 
 #include <fpdf_edit.h>
 #include <fpdf_save.h>
+#include <fpdf_transformpage.h>
 #include <fpdfview.h>
 
 #include <algorithm>
@@ -164,9 +165,8 @@ struct ShapedSegment final {
 
 struct TextPlacement final {
   int pageIndex;
-  float x;
-  float baselineFromTop;
   float fontSize;
+  FS_MATRIX matrix;
 };
 
 std::string hex16(std::uint16_t value) {
@@ -310,14 +310,15 @@ bool pathMatchesExpected(FPDF_PAGEOBJECT object,
                          int end,
                          const std::vector<jint>& commandTypes,
                          const std::vector<jfloat>& coordinates,
-                         double pageHeight,
+                         double mediaBoxLeft,
+                         double mediaBoxTop,
                          std::string& mismatch) {
   const auto expectedCoordinate = [&](int commandIndex, int slot) {
     const float value = pathCoordinate(coordinates, commandIndex, slot);
     if (slot == 1 || slot == 3 || slot == 5) {
-      return static_cast<float>(pageHeight - value);
+      return static_cast<float>(mediaBoxTop - value);
     }
-    return value;
+    return static_cast<float>(mediaBoxLeft + value);
   };
   struct ExpectedSegment {
     int type;
@@ -406,7 +407,6 @@ bool pathMatchesExpected(FPDF_PAGEOBJECT object,
 
 bool textPlacementMatchesExpected(FPDF_PAGEOBJECT object,
                          const TextPlacement& expected,
-                         double pageHeight,
                          std::string& mismatch) {
   FS_MATRIX matrix{};
   float fontSize = 0;
@@ -414,8 +414,12 @@ bool textPlacementMatchesExpected(FPDF_PAGEOBJECT object,
     mismatch = "saved text transform or font size is unavailable";
     return false;
   }
-  if (!preciseNear(matrix.e, expected.x) ||
-      !preciseNear(matrix.f, pageHeight - expected.baselineFromTop)) {
+  if (!preciseNear(matrix.a, expected.matrix.a) ||
+      !preciseNear(matrix.b, expected.matrix.b) ||
+      !preciseNear(matrix.c, expected.matrix.c) ||
+      !preciseNear(matrix.d, expected.matrix.d) ||
+      !preciseNear(matrix.e, expected.matrix.e) ||
+      !preciseNear(matrix.f, expected.matrix.f)) {
     mismatch = "saved text transform differs from the explicit placement";
     return false;
   }
@@ -445,12 +449,16 @@ std::string exportPdf(
     const std::vector<jint>& textRunFontIndices,
     const std::vector<jfloat>& textRunGeometry,
     const std::vector<jint>& textRunColors,
+    const std::vector<jfloat>& textRunTransforms,
+    const std::vector<jint>& pageRotations,
     const std::vector<std::vector<std::uint8_t>>& fontResources,
     bool maySubsetFonts,
     bool forceSubsetSaveFailureForTesting,
     jint inkColor,
     std::vector<std::uint8_t>& candidateBytes) {
   if (pageIndices.empty() || pageDimensions.size() != pageIndices.size() * 2 ||
+      pageRotations.size() != pageIndices.size() ||
+      textRunTransforms.size() != textRunTexts.size() * 6 ||
       pathCommandOffsets.size() != pathPageIndices.size() + 1 ||
       pathCommandOffsets.empty() ||
       static_cast<std::size_t>(pathCommandOffsets.back()) != pathCommandTypes.size() ||
@@ -480,6 +488,10 @@ std::string exportPdf(
   for (int pageIndex = 0; pageIndex < pageCount; ++pageIndex) {
     if (pageIndices[pageIndex] != pageIndex) return "Export page indices are not ordered";
     auto page = ScopedPage(FPDF_LoadPage(rawDocument, pageIndex));
+    if (page.get() == nullptr || pageRotations[pageIndex] < 0 || pageRotations[pageIndex] > 3) {
+      return "Export page rotation is invalid";
+    }
+    FPDFPage_SetRotation(page.get(), pageRotations[pageIndex]);
     if (page.get() == nullptr ||
         !near(FPDF_GetPageWidthF(page.get()), pageDimensions[pageIndex * 2]) ||
         !near(FPDF_GetPageHeightF(page.get()), pageDimensions[pageIndex * 2 + 1])) {
@@ -825,13 +837,18 @@ std::string exportPdf(
     }
     auto page = pageFor(pageIndex);
     if (page == nullptr) return "PDFium could not load the page for an ink path";
-    const double pageHeight = FPDF_GetPageHeightF(page);
+    float mediaBoxLeft = 0.0f, mediaBoxBottom = 0.0f;
+    float mediaBoxRight = 0.0f, mediaBoxTop = 0.0f;
+    if (!FPDFPage_GetMediaBox(page, &mediaBoxLeft, &mediaBoxBottom,
+                              &mediaBoxRight, &mediaBoxTop)) {
+      return "PDFium could not read the page MediaBox for an ink path";
+    }
     const auto pageCoordinateAt = [&](int commandIndex, int slot) -> float {
       const float value = pathCoordinates[static_cast<std::size_t>(commandIndex) * 6 + slot];
       if (slot == 1 || slot == 3 || slot == 5) {
-        return static_cast<float>(pageHeight - value);
+        return mediaBoxTop - value;
       }
-      return value;
+      return mediaBoxLeft + value;
     };
     if (pathCommandTypes[begin] != 0) return "Path does not begin with a move command";
     ScopedPageObject pathObject(
@@ -876,10 +893,10 @@ std::string exportPdf(
         static_cast<int>(pathIndex));
   }
 
-  auto recordTextPlacement = [&](int pageIndex, float x, float baselineTop, float fontSize) {
+  auto recordTextPlacement = [&](const TextPlacement& placement) {
     const int placementIndex = static_cast<int>(expectedTextPlacements.size());
-    expectedTextPlacements.push_back({pageIndex, x, baselineTop, fontSize});
-    expectedTextIndices[static_cast<std::size_t>(pageIndex)].push_back(placementIndex);
+    expectedTextPlacements.push_back(placement);
+    expectedTextIndices[static_cast<std::size_t>(placement.pageIndex)].push_back(placementIndex);
   };
   auto setTextColor = [](FPDF_PAGEOBJECT object, jint color) {
     return FPDFPageObj_SetFillColor(
@@ -889,11 +906,13 @@ std::string exportPdf(
         static_cast<std::uint32_t>(color) & 0xFF,
         (static_cast<std::uint32_t>(color) >> 24) & 0xFF);
   };
-  auto setTextTransform = [](FPDF_PAGEOBJECT object, float x, float baselineTop,
-                             double pageHeight, float horizontalScale = 1.0f) {
-    const FS_MATRIX matrix{horizontalScale, 0.0f, 0.0f, 1.0f, x,
-                           static_cast<float>(pageHeight - baselineTop)};
-    return FPDFPageObj_TransformF(object, &matrix);
+  auto textMatrix = [&](std::size_t runIndex, float x, float baselineTop,
+                             double mediaBoxLeft, double mediaBoxTop,
+                             float horizontalScale = 1.0f) {
+    const auto* t = textRunTransforms.data() + runIndex * 6;
+    return FS_MATRIX{t[0] * horizontalScale, -t[1] * horizontalScale, -t[2], t[3],
+      static_cast<float>(mediaBoxLeft + t[0] * x + t[2] * baselineTop + t[4]),
+      static_cast<float>(mediaBoxTop - (t[1] * x + t[3] * baselineTop + t[5]))};
   };
 
 
@@ -903,7 +922,12 @@ std::string exportPdf(
     const int pageIndex = lineKey.first;
     auto page = pageFor(pageIndex);
     if (page == nullptr) return "Text run page index is invalid";
-    const double pageHeight = FPDF_GetPageHeightF(page);
+    float mediaBoxLeft = 0.0f, mediaBoxBottom = 0.0f;
+    float mediaBoxRight = 0.0f, mediaBoxTop = 0.0f;
+    if (!FPDFPage_GetMediaBox(page, &mediaBoxLeft, &mediaBoxBottom,
+                              &mediaBoxRight, &mediaBoxTop)) {
+      return "PDFium could not read the page MediaBox for text";
+    }
     auto& segments = shapedLines[lineIndex++];
     std::sort(segments.begin(), segments.end(), [&](const auto& left, const auto& right) {
       return textRunVisualOrder[left.runIndex] < textRunVisualOrder[right.runIndex];
@@ -934,17 +958,18 @@ std::string exportPdf(
               rawDocument, loadedFonts[static_cast<std::size_t>(glyph.fontIndex)]->get(),
               glyph.fontSize));
           const std::uint32_t cid = glyph.cid;
+          const FS_MATRIX matrix = textMatrix(glyph.runIndex, glyph.x, glyph.baselineFromTop,
+                                               mediaBoxLeft, mediaBoxTop, glyph.horizontalScale);
           if (object->get() == nullptr ||
               !FPDFText_SetCharcodes(object->get(), &cid, 1) ||
               !FPDFTextObj_SetTextRenderMode(object->get(), FPDF_TEXTRENDERMODE_FILL) ||
               !setTextColor(object->get(), glyph.color) ||
-              !setTextTransform(object->get(), glyph.x, glyph.baselineFromTop,
-                                pageHeight, glyph.horizontalScale)) {
+              !FPDFPageObj_TransformF(object->get(), &matrix)) {
             canDrawGlyphs = false;
             break;
           }
           segmentPlacements.push_back(
-              {pageIndex, glyph.x, glyph.baselineFromTop, glyph.fontSize});
+              {pageIndex, glyph.fontSize, matrix});
           segmentObjects.push_back(std::move(object));
         }
       }
@@ -967,15 +992,16 @@ std::string exportPdf(
         utf16.push_back(static_cast<FPDF_WCHAR>(character));
       }
       utf16.push_back(0);
+      const FS_MATRIX matrix = textMatrix(segment.runIndex, segment.originX, segment.baselineFromTop,
+                                           mediaBoxLeft, mediaBoxTop);
       if (!FPDFText_SetText(textObject.get(), utf16.data()) ||
           !FPDFTextObj_SetTextRenderMode(textObject.get(), FPDF_TEXTRENDERMODE_FILL) ||
           !setTextColor(textObject.get(), segment.color) ||
-          !setTextTransform(textObject.get(), segment.originX, segment.baselineFromTop,
-                            pageHeight)) {
+          !FPDFPageObj_TransformF(textObject.get(), &matrix)) {
         return "PDFium could not set best-effort text contents or placement";
       }
       placements.push_back(
-          {pageIndex, segment.originX, segment.baselineFromTop, segment.fontSize});
+          {pageIndex, segment.fontSize, matrix});
       lineObjects.push_back(std::make_unique<ScopedPageObject>(textObject.release()));
     }
 
@@ -1010,8 +1036,7 @@ std::string exportPdf(
       }
       object->release();
       const auto& placement = placements[objectIndex];
-      recordTextPlacement(pageIndex, placement.x, placement.baselineFromTop,
-                          placement.fontSize);
+      recordTextPlacement(placement);
     }
   }
 
@@ -1068,10 +1093,17 @@ std::string exportPdf(
     if (page.get() == nullptr ||
         !near(FPDF_GetPageWidthF(page.get()), pageDimensions[pageIndex * 2]) ||
         !near(FPDF_GetPageHeightF(page.get()), pageDimensions[pageIndex * 2 + 1]) ||
+        FPDFPage_GetRotation(page.get()) != pageRotations[pageIndex] ||
         !objectCounts(page.get(), pathCount, textCount) ||
         pathCount != originalPaths[pageIndex] + addedPaths[pageIndex] ||
         textCount != originalTexts[pageIndex] + addedTexts[pageIndex]) {
       return "Saved candidate page metadata or vector object counts do not match";
+    }
+    float mediaBoxLeft = 0.0f, mediaBoxBottom = 0.0f;
+    float mediaBoxRight = 0.0f, mediaBoxTop = 0.0f;
+    if (!FPDFPage_GetMediaBox(page.get(), &mediaBoxLeft, &mediaBoxBottom,
+                              &mediaBoxRight, &mediaBoxTop)) {
+      return "Saved candidate page MediaBox is unavailable";
     }
 
     int seenPaths = 0;
@@ -1090,7 +1122,7 @@ std::string exportPdf(
           const int end = pathCommandOffsets[expectedIndex + 1];
           std::string mismatch;
           if (!pathMatchesExpected(object, begin, end, pathCommandTypes, pathCoordinates,
-                                   FPDF_GetPageHeightF(page.get()), mismatch)) {
+                                   mediaBoxLeft, mediaBoxTop, mismatch)) {
             return "Saved candidate path geometry does not match the export snapshot: " + mismatch;
           }
         }
@@ -1118,7 +1150,7 @@ std::string exportPdf(
         }
         const auto& expected = expectedTextPlacements[static_cast<std::size_t>(expectedIndex)];
         if (textPlacementMatchesExpected(
-                object, expected, FPDF_GetPageHeightF(page.get()), lastMismatch)) {
+                object, expected, lastMismatch)) {
           matchedText[localIndex] = true;
           matched = true;
           break;
@@ -1147,6 +1179,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
     jstring destinationPathValue,
     jintArray pageIndicesValue,
     jdoubleArray pageDimensionsValue,
+    jintArray pageRotationsValue,
     jintArray pathPageIndicesValue,
     jintArray pathCommandOffsetsValue,
     jintArray pathCommandTypesValue,
@@ -1162,6 +1195,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
     jintArray textRunFontIndicesValue,
     jfloatArray textRunGeometryValue,
     jintArray textRunColorsValue,
+    jfloatArray textRunTransformsValue,
     jobjectArray fontResourcesValue,
     jboolean maySubsetFontsValue,
     jboolean forceSubsetSaveFailureForTestingValue,
@@ -1181,6 +1215,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
 
   std::vector<jint> pageIndices;
   std::vector<jdouble> pageDimensions;
+  std::vector<jint> pageRotations;
   std::vector<jint> pathPageIndices;
   std::vector<jint> pathCommandOffsets;
   std::vector<jint> pathCommandTypes;
@@ -1196,6 +1231,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
   std::vector<jint> textRunFontIndices;
   std::vector<jfloat> textRunGeometry;
   std::vector<jint> textRunColors;
+  std::vector<jfloat> textRunTransforms;
   std::vector<std::vector<std::uint8_t>> fontResources;
 
   auto copyStrings = [&](jobjectArray values, std::vector<std::u16string>& result) {
@@ -1239,6 +1275,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
 
   if (!copyArray(env, pageIndicesValue, pageIndices) ||
       !copyArray(env, pageDimensionsValue, pageDimensions) ||
+      !copyArray(env, pageRotationsValue, pageRotations) ||
       !copyArray(env, pathPageIndicesValue, pathPageIndices) ||
       !copyArray(env, pathCommandOffsetsValue, pathCommandOffsets) ||
       !copyArray(env, pathCommandTypesValue, pathCommandTypes) ||
@@ -1254,6 +1291,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
       !copyArray(env, textRunFontIndicesValue, textRunFontIndices) ||
       !copyArray(env, textRunGeometryValue, textRunGeometry) ||
       !copyArray(env, textRunColorsValue, textRunColors) ||
+      !copyArray(env, textRunTransformsValue, textRunTransforms) ||
       !copyFontResources(fontResourcesValue)) {
     if (!env->ExceptionCheck()) {
       throwJava(env, "java/lang/IllegalArgumentException", "PDF export data is invalid");
@@ -1296,7 +1334,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
                       pathCoordinates, textRunPageIndices, textRunLineIds,
                       textRunTexts, textRunSourceRanges, textRunBidiLevels,
                       textRunVisualOrder, textRunBaseDirections, textRunAlignments, textRunFontIndices,
-                      textRunGeometry, textRunColors, fontResources,
+                      textRunGeometry, textRunColors, textRunTransforms, pageRotations, fontResources,
                       maySubsetFontsValue == JNI_TRUE,
                       forceSubsetSaveFailureForTestingValue == JNI_TRUE, inkColor,
                       candidateBytes);

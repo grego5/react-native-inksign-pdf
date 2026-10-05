@@ -573,6 +573,269 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     wait(for: [exported], timeout: 30)
   }
 
+  func testRotatePagePreservesHistoryAndExportsPageRotation() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let document = try XCTUnwrap(view.documentCoordinator.document)
+    let page = document.activePage
+    let pageID = page.id
+
+    let point = PKStrokePoint(location: CGPoint(x: 35, y: 55),
+                              timeOffset: 0,
+                              size: CGSize(width: 5, height: 5),
+                              opacity: 1,
+                              force: 0.5,
+                              azimuth: 0,
+                              altitude: .pi / 2)
+    let stroke = PKStroke(ink: PKInk(.pen, color: .black),
+                          path: PKStrokePath(controlPoints: [point], creationDate: Date()),
+                          transform: .identity,
+                          mask: nil)
+    let text = InkSignPdfTextAnnotation(id: "rotation-text",
+                                        text: "Approved",
+                                        bounds: CGRect(x: 45, y: 95, width: 150, height: 24),
+                                        fontSize: 18,
+                                        textColor: "#008000",
+                                        isRTL: false)
+    XCTAssertTrue(page.history.appendText(text))
+    let beforeInk = page.history.content
+    XCTAssertTrue(page.history.record(type: .ink,
+                                      before: beforeInk,
+                                      after: beforeInk.replacingDrawing(PKDrawing(strokes: [stroke]))))
+    XCTAssertTrue(page.history.undo())
+    let historyStateBefore = page.history.state
+    let contentBefore = page.history.content
+    XCTAssertTrue(historyStateBefore.canUndo)
+    XCTAssertTrue(historyStateBefore.canRedo)
+
+    let workingURLBefore = try XCTUnwrap(view.documentCoordinator.document?.workingURL)
+    let workingBytesBefore = try Data(contentsOf: workingURLBefore)
+    let rotated = expectation(description: "rotate page")
+    var rotatedInfo: PageInfo?
+    var rotationError: Error?
+    let rotation = try view.rotatePage(degrees: 90)
+    rotation.then { rotatedInfo = $0; rotated.fulfill() }
+    rotation.catch { rotationError = $0; rotated.fulfill() }
+    wait(for: [rotated], timeout: 30)
+
+    XCTAssertNil(rotationError)
+    let pageInfo = try XCTUnwrap(rotatedInfo)
+    XCTAssertEqual(pageInfo.width, 400, accuracy: 0.01)
+    XCTAssertEqual(pageInfo.height, 300, accuracy: 0.01)
+    let afterRotation = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(afterRotation.workingURL, workingURLBefore)
+    XCTAssertEqual(try Data(contentsOf: afterRotation.workingURL), workingBytesBefore)
+    XCTAssertEqual(afterRotation.activePage.sourceGeometry.rotation, 0)
+    XCTAssertEqual(afterRotation.pages.map(\.id), [pageID])
+    XCTAssertEqual(afterRotation.activePage.geometry.rotation, 90)
+    XCTAssertEqual(afterRotation.activePage.geometryRevision, 1)
+    XCTAssertEqual(afterRotation.activePage.history.state.canUndo, historyStateBefore.canUndo)
+    XCTAssertEqual(afterRotation.activePage.history.state.canRedo, historyStateBefore.canRedo)
+    XCTAssertTrue(afterRotation.activePage.history.content.equals(contentBefore))
+
+    // Assembly reads the unchanged source, then rebinds pending orientation.
+    _ = try awaitRotationOperation(view.addPages(options: AddPagesOptions(
+      type: .pdf, sources: [workingURLBefore.path], imagePageSize: nil,
+      targetDpi: nil, jpegQuality: nil, activePage: nil)))
+    XCTAssertEqual(view.documentCoordinator.document?.activePageID, pageID)
+    XCTAssertEqual(view.documentCoordinator.document?.activePage.geometry.rotation, 90)
+    _ = try awaitRotationOperation(view.movePage(pageIndex: 1))
+    let afterMove = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(afterMove.pages[1].id, pageID)
+    XCTAssertTrue(afterMove.pages[1].history === page.history)
+    XCTAssertTrue(afterMove.pages[1].history.content.equals(contentBefore))
+    XCTAssertTrue(afterMove.pages[1].history.state.canRedo)
+    // Select the appended page for removal; the rotated page must survive.
+    XCTAssertTrue(view.documentCoordinator.selectPage(at: 0))
+    _ = try awaitRotationOperation(view.removePage())
+    let afterAssembly = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(afterAssembly.pages.map(\.id), [pageID])
+    XCTAssertEqual(afterAssembly.activePage.geometry.rotation, 90)
+    XCTAssertEqual(afterAssembly.activePage.sourceGeometry.rotation, 0)
+    XCTAssertTrue(afterAssembly.activePage.history === page.history)
+    XCTAssertTrue(afterAssembly.activePage.history.content.equals(contentBefore))
+    XCTAssertTrue(afterAssembly.activePage.history.state.canRedo)
+
+    try view.redo()
+    view.defaultTextColor = "#D00000"
+    drainMainQueue()
+    try view.insertTextAt(text: "New text",
+                          bounds: TextAnnotationBounds(x: 60, y: 160, width: 160, height: 24),
+                          options: nil)
+
+    let exported = expectation(description: "export rotated PDF")
+    var outputURL: URL?
+    var exportError: Error?
+    let output = try view.finalize()
+    output.then { path in outputURL = URL(fileURLWithPath: path); exported.fulfill() }
+    output.catch { error in exportError = error; exported.fulfill() }
+    wait(for: [exported], timeout: 30)
+    XCTAssertNil(exportError)
+    let reopenedURL = try XCTUnwrap(outputURL)
+    let reopened = try XCTUnwrap(PDFDocument(url: reopenedURL))
+    XCTAssertEqual(reopened.pageCount, 1)
+    XCTAssertEqual(reopened.page(at: 0)?.rotation, 90)
+    XCTAssertTrue(reopened.page(at: 0)?.annotations.contains { $0.contents == "Approved" } == true)
+    XCTAssertTrue(reopened.page(at: 0)?.annotations.contains { $0.contents == "New text" } == true)
+    let renderedPage = try XCTUnwrap(reopened.page(at: 0))
+    let oldTextPixels = try rotationPixelBounds(in: renderedPage) { red, green, blue in
+      Int(green) > Int(red) + 40 && Int(green) > Int(blue) + 40
+    }
+    XCTAssertTrue(CGRect(x: 279, y: 43, width: 28, height: 154).contains(oldTextPixels),
+                  "Existing text must rotate with its source-page position")
+    let inkPixels = try rotationPixelBounds(in: renderedPage) { red, green, blue in
+      red < 100 && green < 100 && blue < 100
+    }
+    XCTAssertTrue(CGRect(x: 335, y: 25, width: 20, height: 20).contains(inkPixels),
+                  "Committed ink must rotate with the page")
+    let newTextPixels = try rotationPixelBounds(in: renderedPage) { red, green, blue in
+      Int(red) > Int(green) + 60 && Int(red) > Int(blue) + 60
+    }
+    XCTAssertTrue(CGRect(x: 58, y: 158, width: 164, height: 28).contains(newTextPixels),
+                  "New text must remain inside its displayed insertion rectangle")
+    XCTAssertGreaterThan(newTextPixels.width, newTextPixels.height,
+                         "This single-line insertion must remain upright")
+    XCTAssertFalse(try XCTUnwrap(view.documentCoordinator.document).activePage.history.content.drawing.strokes.isEmpty)
+    for _ in 0..<3 {
+      let completed = expectation(description: "compose quarter turn")
+      let next = try view.rotatePage(degrees: 90)
+      next.then { _ in completed.fulfill() }
+      next.catch { error in XCTFail("composed rotation failed: \(error)"); completed.fulfill() }
+      wait(for: [completed], timeout: 30)
+    }
+    let restored = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(restored.activePage.geometry.rotation, 0)
+    XCTAssertEqual(restored.activePage.geometry.displaySize, CGSize(width: 300, height: 400))
+    XCTAssertEqual(restored.activePage.geometryRevision, 4)
+    try? outputURL.map { try FileManager.default.removeItem(at: $0) }
+  }
+
+  func testFieldCommandsUseDisplayedGeometryThroughQuarterTurns() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let view = fixture.view
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("RotatedFields-\(UUID().uuidString).pdf")
+    defer {
+      try? FileManager.default.removeItem(at: url)
+      view.dispose(); fixture.window.isHidden = true
+    }
+    try UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 300, height: 400)).writePDF(to: url) { renderer in
+      renderer.beginPage()
+      NSAttributedString(string: "Name", attributes: [.font: UIFont.systemFont(ofSize: 16)])
+        .draw(at: CGPoint(x: 140, y: 116))
+      renderer.cgContext.setLineWidth(1)
+      for (left, right) in [(20.0, 110.0), (210.0, 280.0)] {
+        renderer.cgContext.move(to: CGPoint(x: left, y: 132))
+        renderer.cgContext.addLine(to: CGPoint(x: right, y: 132))
+        renderer.cgContext.strokePath()
+      }
+    }
+    _ = try awaitRotationOperation(view.open(path: url.path, options: nil))
+    view.defaultTextColor = "#D00000"
+    drainMainQueue()
+    for angle in [0, 90, 180, 270] {
+      if angle != 0 { _ = try awaitRotationOperation(view.rotatePage(degrees: 90)) }
+      let state = try XCTUnwrap(view.documentCoordinator.document)
+      let historyBefore = state.activePage.history.content
+      let modeBefore = view.editMode
+      let insertion = try view.insertTextByFieldName(text: "OK", key: "Name",
+        options: TextInsertionByKeyOptions(occurrence: nil, direction: .ltr,
+                                          maxLines: 2, alignment: nil, verticalAnchor: .bottom))
+      if angle == 90 || angle == 270 {
+        do {
+          _ = try awaitRotationOperation(insertion)
+          XCTFail("A vertical rule must not accept field insertion")
+        } catch { XCTAssertTrue(error.localizedDescription.hasPrefix("text_rule_not_found")) }
+        do {
+          _ = try awaitRotationOperation(view.focusPageByFieldName(key: "Name",
+            options: FieldFocusOptions(occurrence: nil, direction: .ltr, zoom: 5,
+                                       verticalAnchor: .bottom, edgeOffset: 8, setInkMode: true)))
+          XCTFail("A vertical rule must not accept field focus")
+        } catch { XCTAssertTrue(error.localizedDescription.hasPrefix("text_rule_not_found")) }
+        XCTAssertTrue(state.activePage.history.content.equals(historyBefore))
+        XCTAssertEqual(view.editMode, modeBefore)
+        continue
+      }
+      _ = try awaitRotationOperation(insertion)
+      let annotation = try XCTUnwrap(state.activePage.history.content.textAnnotations.last)
+      let ruleY: CGFloat = angle == 0 ? 132 : 268
+      let field = CGRect(x: angle == 0 ? 210 : 190, y: 0,
+                         width: angle == 0 ? 70 : 90, height: ruleY)
+      XCTAssertEqual(annotation.flowBounds, field)
+      XCTAssertEqual(annotation.layoutRotation, angle)
+      XCTAssertLessThanOrEqual(annotation.bounds.maxY, ruleY)
+      for anchor in [FieldFocusVerticalAnchor.top, .bottom] {
+        _ = try awaitRotationOperation(view.focusPageByFieldName(key: "Name",
+          options: FieldFocusOptions(occurrence: nil, direction: .ltr, zoom: 5,
+                                     verticalAnchor: anchor, edgeOffset: 8, setInkMode: false)))
+        view.documentView.layoutIfNeeded()
+        let viewport = view.documentView.bounds
+        let pdfCenter = view.documentView.convert(CGPoint(x: viewport.midX, y: viewport.midY),
+                                                   to: state.activePage.page)
+        let rawCenter = CGPoint(x: pdfCenter.x - state.activePage.geometry.mediaBox.minX,
+                                 y: state.activePage.geometry.mediaBox.maxY - pdfCenter.y)
+        let displayedCenter = state.activePage.geometry.rawToDisplay(rawCenter)
+        let halfHeight = viewport.height / (2 * view.documentView.scaleFactor)
+        let expectedY = anchor == .top ? ruleY + halfHeight - 8 : ruleY - halfHeight + 8
+        let clampedY = min(max(expectedY, halfHeight), 400 - halfHeight)
+        XCTAssertEqual(displayedCenter.y, clampedY, accuracy: 2)
+      }
+      let output = try awaitRotationOperation(view.finalize())
+      defer { try? FileManager.default.removeItem(atPath: output) }
+      let exported = try XCTUnwrap(PDFDocument(url: URL(fileURLWithPath: output)))
+      let pixels = try rotationPixelBounds(in: XCTUnwrap(exported.page(at: 0))) { red, green, blue in
+        Int(red) > Int(green) + 60 && Int(red) > Int(blue) + 60
+      }
+      // Only this insertion remains red in the following iteration.
+      XCTAssertTrue(field.insetBy(dx: -2, dy: -2).contains(pixels))
+      XCTAssertGreaterThan(pixels.width, pixels.height)
+      try view.clear()
+    }
+  }
+
+  private func awaitRotationOperation<T>(_ promise: Promise<T>) throws -> T {
+    let completed = expectation(description: "rotation page assembly settles")
+    var result: T?
+    var failure: Error?
+    promise.then { result = $0; completed.fulfill() }
+    promise.catch { failure = $0; completed.fulfill() }
+    wait(for: [completed], timeout: 30)
+    if let failure { throw failure }
+    return try XCTUnwrap(result)
+  }
+
+  /// Measures all pixels of one fixture color, including any outside its field.
+  private func rotationPixelBounds(in page: PDFPage,
+                                   matches: (UInt8, UInt8, UInt8) -> Bool) throws -> CGRect {
+    let size = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation).displaySize
+    let width = Int(size.width.rounded())
+    let height = Int(size.height.rounded())
+    let image = try XCTUnwrap(page.thumbnail(of: CGSize(width: CGFloat(width), height: CGFloat(height)),
+                                           for: .mediaBox).cgImage)
+    var bytes = [UInt8](repeating: 0, count: width * height * 4)
+    try bytes.withUnsafeMutableBytes { storage in
+      let context = try XCTUnwrap(CGContext(
+        data: storage.baseAddress, width: width, height: height, bitsPerComponent: 8,
+        bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue))
+      context.draw(image, in: CGRect(x: 0, y: 0, width: CGFloat(width), height: CGFloat(height)))
+    }
+    var left = width, top = height, right = -1, bottom = -1
+    for y in 0..<height {
+      for x in 0..<width {
+        let offset = (y * width + x) * 4
+        if bytes[offset + 3] > 0 && matches(bytes[offset], bytes[offset + 1], bytes[offset + 2]) {
+          left = min(left, x); top = min(top, y)
+          right = max(right, x); bottom = max(bottom, y)
+        }
+      }
+    }
+    XCTAssertGreaterThanOrEqual(right, left, "Expected visible fixture pixels")
+    XCTAssertGreaterThanOrEqual(bottom, top, "Expected visible fixture pixels")
+    return CGRect(x: CGFloat(left), y: CGFloat(top), width: CGFloat(max(0, right - left + 1)),
+                  height: CGFloat(max(0, bottom - top + 1)))
+  }
+
   func testStructuralPublicationIsAtomicAndRejectsStaleCandidate() throws {
     let fixture = makeFixture(pageCount: 2)
     let candidateFixture = makeFixture(pageCount: 3, activePageIndex: 2)
@@ -763,6 +1026,127 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(coordinator.document?.pages[1].history.content.textAnnotations.isEmpty == true)
   }
 
+  func testRotationRejectsPendingProductionFieldInsertionAgainstOldGeometry() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let keyPDFURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignRotationFieldLookup-\(UUID().uuidString).pdf")
+    defer {
+      try? FileManager.default.removeItem(at: keyPDFURL)
+      fixture.view.dispose(); fixture.window.isHidden = true
+    }
+    try UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 300, height: 400))
+      .writePDF(to: keyPDFURL) { context in
+        context.beginPage()
+        NSAttributedString(string: "Name", attributes: [.font: UIFont.systemFont(ofSize: 18)])
+          .draw(at: CGPoint(x: 70, y: 120))
+        context.cgContext.setStrokeColor(UIColor.black.cgColor)
+        context.cgContext.setLineWidth(1)
+        context.cgContext.move(to: CGPoint(x: 70, y: 131))
+        context.cgContext.addLine(to: CGPoint(x: 250, y: 131))
+        context.cgContext.strokePath()
+      }
+
+    let view = fixture.view
+    let opened = expectation(description: "rotation lookup fixture opens")
+    var openError: Error?
+    let open = Promise<PageInfo>()
+    open.then { _ in opened.fulfill() }
+    open.catch { error in openError = error; opened.fulfill() }
+    view.beginLoad(keyPDFURL.path, zoom: nil, focus: nil, fitToPage: true, promise: open)
+    wait(for: [opened], timeout: 10)
+    XCTAssertNil(openError)
+    view.documentCoordinator.pdfQueue.sync {}
+
+    let workerHeld = expectation(description: "field worker is held before lookup")
+    let releaseWorker = DispatchSemaphore(value: 0)
+    defer { releaseWorker.signal() }
+    view.documentCoordinator.pdfQueue.async {
+      workerHeld.fulfill()
+      _ = releaseWorker.wait(timeout: .now() + 30)
+    }
+    wait(for: [workerHeld], timeout: 5)
+
+    let inserted = expectation(description: "stale insertion is rejected")
+    let insertion = try view.insertTextByFieldName(text: "filled", key: "Name", options: nil)
+    var insertionError: Error?
+    insertion.then { _ in inserted.fulfill() }
+    insertion.catch { error in insertionError = error; inserted.fulfill() }
+    let rotated = expectation(description: "rotation publishes while lookup is pending")
+    let rotation = try view.rotatePage(degrees: 90)
+    var rotationError: Error?
+    rotation.then { _ in rotated.fulfill() }
+    rotation.catch { error in rotationError = error; rotated.fulfill() }
+    wait(for: [rotated], timeout: 5)
+    releaseWorker.signal()
+    wait(for: [inserted], timeout: 30)
+
+    XCTAssertNil(rotationError)
+    XCTAssertTrue(insertionError?.localizedDescription.hasPrefix("operation_cancelled") == true)
+    let document = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(document.activePage.geometryRevision, 1)
+    XCTAssertTrue(document.activePage.history.content.textAnnotations.isEmpty)
+  }
+
+  func testRotationRejectsPendingProductionFieldFocusAgainstOldGeometry() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let keyPDFURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignRotationFieldFocus-\(UUID().uuidString).pdf")
+    defer {
+      try? FileManager.default.removeItem(at: keyPDFURL)
+      fixture.view.dispose(); fixture.window.isHidden = true
+    }
+    try UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 300, height: 400))
+      .writePDF(to: keyPDFURL) { context in
+        context.beginPage()
+        NSAttributedString(string: "Name", attributes: [.font: UIFont.systemFont(ofSize: 18)])
+          .draw(at: CGPoint(x: 70, y: 120))
+        context.cgContext.setStrokeColor(UIColor.black.cgColor)
+        context.cgContext.setLineWidth(1)
+        context.cgContext.move(to: CGPoint(x: 70, y: 131))
+        context.cgContext.addLine(to: CGPoint(x: 250, y: 131))
+        context.cgContext.strokePath()
+      }
+
+    let view = fixture.view
+    let opened = expectation(description: "rotation focus fixture opens")
+    var openError: Error?
+    let open = Promise<PageInfo>()
+    open.then { _ in opened.fulfill() }
+    open.catch { error in openError = error; opened.fulfill() }
+    view.beginLoad(keyPDFURL.path, zoom: nil, focus: nil, fitToPage: true, promise: open)
+    wait(for: [opened], timeout: 10)
+    XCTAssertNil(openError)
+    view.documentCoordinator.pdfQueue.sync {}
+
+    let workerHeld = expectation(description: "field worker is held before focus lookup")
+    let releaseWorker = DispatchSemaphore(value: 0)
+    defer { releaseWorker.signal() }
+    view.documentCoordinator.pdfQueue.async {
+      workerHeld.fulfill()
+      _ = releaseWorker.wait(timeout: .now() + 30)
+    }
+    wait(for: [workerHeld], timeout: 5)
+
+    let focused = expectation(description: "stale focus is rejected")
+    let focus = try view.focusPageByFieldName(key: "Name", options: nil)
+    var focusError: Error?
+    focus.then { _ in focused.fulfill() }
+    focus.catch { error in focusError = error; focused.fulfill() }
+    let rotated = expectation(description: "rotation publishes while focus lookup is pending")
+    let rotation = try view.rotatePage(degrees: 90)
+    var rotationError: Error?
+    rotation.then { _ in rotated.fulfill() }
+    rotation.catch { error in rotationError = error; rotated.fulfill() }
+    wait(for: [rotated], timeout: 5)
+    releaseWorker.signal()
+    wait(for: [focused], timeout: 30)
+
+    XCTAssertNil(rotationError)
+    XCTAssertTrue(focusError?.localizedDescription.hasPrefix("operation_cancelled") == true)
+    XCTAssertEqual(view.documentCoordinator.document?.activePage.geometryRevision, 1)
+    XCTAssertTrue(view.documentCoordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
+  }
+
   func testManualPlacementSupersedesPendingFieldFocus() throws {
     let fixture = makeFixture(pageCount: 1)
     let keyPDFURL = FileManager.default.temporaryDirectory
@@ -807,7 +1191,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let settled = expectation(description: "superseded field focus settles")
     var focusError: Error?
     let focus = try view.focusPageByFieldName(key: "Name",
-      options: FieldFocusOptions(occurrence: nil, direction: nil, zoom: 3, enterEditMode: true))
+      options: FieldFocusOptions(occurrence: nil, direction: nil, zoom: 3,
+                                 verticalAnchor: nil, edgeOffset: nil, setInkMode: true))
     focus.then { _ in settled.fulfill() }
     focus.catch { error in focusError = error; settled.fulfill() }
 

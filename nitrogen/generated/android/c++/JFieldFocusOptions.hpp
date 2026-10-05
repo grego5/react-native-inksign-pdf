@@ -10,6 +10,8 @@
 #include <fbjni/fbjni.h>
 #include "FieldFocusOptions.hpp"
 
+#include "FieldFocusVerticalAnchor.hpp"
+#include "JFieldFocusVerticalAnchor.hpp"
 #include "JTextDirection.hpp"
 #include "JTextKeyOccurrence.hpp"
 #include "TextDirection.hpp"
@@ -41,13 +43,19 @@ namespace margelo::nitro::inksignpdf {
       jni::local_ref<JTextDirection> direction = this->getFieldValue(fieldDirection);
       static const auto fieldZoom = clazz->getField<jni::JDouble>("zoom");
       jni::local_ref<jni::JDouble> zoom = this->getFieldValue(fieldZoom);
-      static const auto fieldEnterEditMode = clazz->getField<jni::JBoolean>("enterEditMode");
-      jni::local_ref<jni::JBoolean> enterEditMode = this->getFieldValue(fieldEnterEditMode);
+      static const auto fieldVerticalAnchor = clazz->getField<JFieldFocusVerticalAnchor>("verticalAnchor");
+      jni::local_ref<JFieldFocusVerticalAnchor> verticalAnchor = this->getFieldValue(fieldVerticalAnchor);
+      static const auto fieldEdgeOffset = clazz->getField<jni::JDouble>("edgeOffset");
+      jni::local_ref<jni::JDouble> edgeOffset = this->getFieldValue(fieldEdgeOffset);
+      static const auto fieldSetInkMode = clazz->getField<jni::JBoolean>("setInkMode");
+      jni::local_ref<jni::JBoolean> setInkMode = this->getFieldValue(fieldSetInkMode);
       return FieldFocusOptions(
         occurrence != nullptr ? std::make_optional(occurrence->toCpp()) : std::nullopt,
         direction != nullptr ? std::make_optional(direction->toCpp()) : std::nullopt,
         zoom != nullptr ? std::make_optional(zoom->value()) : std::nullopt,
-        enterEditMode != nullptr ? std::make_optional(static_cast<bool>(enterEditMode->value())) : std::nullopt
+        verticalAnchor != nullptr ? std::make_optional(verticalAnchor->toCpp()) : std::nullopt,
+        edgeOffset != nullptr ? std::make_optional(edgeOffset->value()) : std::nullopt,
+        setInkMode != nullptr ? std::make_optional(static_cast<bool>(setInkMode->value())) : std::nullopt
       );
     }
 
@@ -57,7 +65,7 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JFieldFocusOptions::javaobject> fromCpp(const FieldFocusOptions& value) {
-      using JSignature = JFieldFocusOptions(jni::alias_ref<JTextKeyOccurrence>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JBoolean>);
+      using JSignature = JFieldFocusOptions(jni::alias_ref<JTextKeyOccurrence>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JFieldFocusVerticalAnchor>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JBoolean>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -65,7 +73,9 @@ namespace margelo::nitro::inksignpdf {
         value.occurrence.has_value() ? JTextKeyOccurrence::fromCpp(value.occurrence.value()) : nullptr,
         value.direction.has_value() ? JTextDirection::fromCpp(value.direction.value()) : nullptr,
         value.zoom.has_value() ? jni::JDouble::valueOf(value.zoom.value()) : nullptr,
-        value.enterEditMode.has_value() ? jni::JBoolean::valueOf(value.enterEditMode.value()) : nullptr
+        value.verticalAnchor.has_value() ? JFieldFocusVerticalAnchor::fromCpp(value.verticalAnchor.value()) : nullptr,
+        value.edgeOffset.has_value() ? jni::JDouble::valueOf(value.edgeOffset.value()) : nullptr,
+        value.setInkMode.has_value() ? jni::JBoolean::valueOf(value.setInkMode.value()) : nullptr
       );
     }
   };

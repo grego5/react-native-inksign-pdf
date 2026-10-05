@@ -352,6 +352,23 @@ final class InkSignPdfDocumentCoordinator {
     return previous
   }
 
+  /// Publishes presentation orientation without changing the working artifact or history.
+  func rotateActivePage(degrees: Int, operation: OperationToken) -> InkSignPdfDocumentState? {
+    lock.lock()
+    defer { lock.unlock() }
+    guard operation.type == .structural, !isDisposed,
+          generation == operation.generation, activeOperation?.id == operation.id,
+          let document else { return nil }
+    let old = document.activePage
+    let geometry = PageGeometry(mediaBox: old.geometry.mediaBox,
+                                rotation: (old.geometry.rotation + degrees) % 360)
+    document.replaceActivePage(InkSignPdfPageState(
+      id: old.id, page: old.page, geometry: geometry, history: old.history,
+      geometryRevision: old.geometryRevision &+ 1, sourceGeometry: old.sourceGeometry))
+    structuralDirty = true
+    return document
+  }
+
   func publishInitialStructural(_ candidate: InkSignPdfDocumentState,
                                 operation: OperationToken) -> Bool {
     lock.lock()
@@ -484,6 +501,10 @@ final class InkSignPdfDocumentState {
   func index(of pageID: UUID) -> Int? {
     pages.firstIndex { $0.id == pageID }
   }
+
+  fileprivate func replaceActivePage(_ page: InkSignPdfPageState) {
+    pages[activePageIndex] = page
+  }
 }
 
 final class InkSignPdfPageState {
@@ -491,17 +512,23 @@ final class InkSignPdfPageState {
   let page: PDFPage
   let geometry: PageGeometry
   let history: InkSignPdfPageContentHistory
+  let geometryRevision: UInt64
+  let sourceGeometry: PageGeometry
 
   var contentRevision: UInt64 { history.revision }
 
   init(id: UUID = UUID(),
        page: PDFPage,
        geometry: PageGeometry,
-       history: InkSignPdfPageContentHistory = InkSignPdfPageContentHistory()) {
+       history: InkSignPdfPageContentHistory = InkSignPdfPageContentHistory(),
+       geometryRevision: UInt64 = 0,
+       sourceGeometry: PageGeometry? = nil) {
     self.id = id
     self.page = page
     self.geometry = geometry
     self.history = history
+    self.geometryRevision = geometryRevision
+    self.sourceGeometry = sourceGeometry ?? geometry
   }
 }
 

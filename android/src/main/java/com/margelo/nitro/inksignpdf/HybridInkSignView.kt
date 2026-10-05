@@ -390,6 +390,33 @@ class HybridInkSignView internal constructor(
     }
   }
 
+  override fun rotatePage(degrees: Double): Promise<PageInfo> = launchPromise {
+    val rotationDegrees = when (degrees) {
+      90.0 -> 90
+      180.0 -> 180
+      270.0 -> 270
+      else -> throw PdfSessionException(
+        "invalid_page_rotation", "Page rotation must be 90, 180, or 270 degrees clockwise",
+      )
+    }
+    checkMainThread()
+    surface.cancelActiveStroke()
+    val operation = beginStructuralOperation()
+    try {
+      viewportRequestID += 1L
+      val pageId = coordinator.activePageId()
+      val page = checkNotNull(coordinator.pageForId(pageId))
+      val dimensions = PageCoordinates(page.dimensions).withRotation(
+        (page.dimensions.rotation + rotationDegrees / 90) % 4,
+      )
+      val candidate = coordinator.rotatePageCandidate(pageId, dimensions)
+      coordinator.installCandidate(coordinator.sourcePath, candidate.pages, candidate.activePageId)
+      toPublicPageInfo(surface.installStructuralPresentation())
+    } finally {
+      endOperation(operation)
+    }
+  }
+
   override fun nextPage() {
     runOnMainSync { startPageNavigation(1) }
   }
@@ -433,7 +460,7 @@ class HybridInkSignView internal constructor(
     runOnMainSync { runHistoryCommand(surface::clear) }
   }
 
-  override fun addTextAnnotation(
+  override fun insertTextAt(
     text: String,
     bounds: TextAnnotationBounds,
     options: TextAnnotationOptions?,
@@ -459,10 +486,13 @@ class HybridInkSignView internal constructor(
     val pageIndex = presentation.pageIndex
     val pageId = presentation.pageId
     val page = presentation.page
+    val geometryRevision = presentation.geometryRevision
     val directionRtl = textOverlay.resolveDirection(options?.direction)
     val lookup = awaitCapturedDocumentPageLookup(
       awaitLookup = { awaitKeyLookup(generation, pageIndex, key) },
-      isTargetPageCurrent = { isCurrentTextTarget(generation, pageId) },
+      isTargetPageCurrent = {
+        isCurrentTextTarget(generation, pageId, geometryRevision)
+      },
     )
     if (!lookup.hasLiteralMatch) {
       throw PdfSessionException("text_key_not_found", "The requested text key was not found on the captured page")
@@ -494,7 +524,7 @@ class HybridInkSignView internal constructor(
       verticalAnchor = anchor,
     )
     checkMainThread()
-    requireCurrentTextTarget(generation, pageId)
+    requireCurrentTextTarget(generation, pageId, geometryRevision)
     surface.withStateTransaction {
       textOverlay.addTextAnnotation(bounds, text, commitOptions, requireVisibleLine = true,
         resolvedDirectionRtl = directionRtl,
@@ -511,27 +541,35 @@ class HybridInkSignView internal constructor(
       ?: throw PdfSessionException("view_not_ready", "A PDF must be opened before focusing a field")
     val generation = presentation.generation
     val pageId = presentation.pageId
+    val geometryRevision = presentation.geometryRevision
     viewportRequestID += 1L
     val requestID = viewportRequestID
     val directionRtl = textOverlay.resolveDirection(options?.direction)
     val lookup = awaitCapturedDocumentPageLookup(
       awaitLookup = { awaitKeyLookup(generation, presentation.pageIndex, key) },
-      isTargetPageCurrent = { isCurrentTextTarget(generation, pageId) && viewportRequestID == requestID },
+      isTargetPageCurrent = {
+        isCurrentTextTarget(generation, pageId, geometryRevision) && viewportRequestID == requestID
+      },
     )
     if (!lookup.hasLiteralMatch) throw PdfSessionException("text_key_not_found", "Text key was not found")
     val placement = selectPdfiumTextKeyPlacement(lookup.matches, lookup.rules,
       options?.occurrence ?: TextKeyOccurrence.FIRST, directionRtl, presentation.page)
       ?: throw PdfSessionException("text_rule_not_found", "No usable horizontal rule beside the text key")
-    requireCurrentTextTarget(generation, pageId)
+    requireCurrentTextTarget(generation, pageId, geometryRevision)
     textOverlay.finishForLifecycle()
     surface.switchPage(checkNotNull(coordinator.pageIndexForId(pageId)))
-    val request = ViewportRequest.FocusAndZoom(
-      PagePoint((placement.contentLeft + placement.contentRight) / 2.0, placement.rule.y),
-      options?.zoom ?: 2.0,
+    val request = ViewportRequest.FocusRule(
+      x = (placement.contentLeft + placement.contentRight) / 2.0,
+      ruleY = placement.rule.y,
+      zoom = options?.zoom ?: 2.0,
+      verticalAnchor = options?.verticalAnchor ?: FieldFocusVerticalAnchor.CENTER,
+      edgeOffset = options?.edgeOffset ?: 0.0,
     )
     suspendCancellableCoroutine<Unit> { continuation ->
-      surface.focusField(request, options?.enterEditMode == true,
-        isCurrent = { isCurrentTextTarget(generation, pageId) && viewportRequestID == requestID },
+      surface.focusField(request, options?.setInkMode == true,
+        isCurrent = {
+          isCurrentTextTarget(generation, pageId, geometryRevision) && viewportRequestID == requestID
+        },
         completion = { if (continuation.isActive) continuation.resume(Unit) },
         cancelled = { if (continuation.isActive) continuation.resumeWithException(operationCancelled()) })
     }
@@ -551,12 +589,19 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  private fun isCurrentTextTarget(generation: Long, pageId: String): Boolean =
-    !disposed && coordinator.hasDocument && coordinator.generation == generation &&
-      coordinator.pageIndexForId(pageId) != null
+  private fun isCurrentTextTarget(
+    generation: Long,
+    pageId: String,
+    expectedGeometryRevision: Long,
+  ): Boolean = !disposed && coordinator.hasDocument && coordinator.generation == generation &&
+    coordinator.pageForId(pageId)?.geometryRevision == expectedGeometryRevision
 
-  private fun requireCurrentTextTarget(generation: Long, pageId: String) {
-    if (!isCurrentTextTarget(generation, pageId)) throw operationCancelled()
+  private fun requireCurrentTextTarget(
+    generation: Long,
+    pageId: String,
+    expectedGeometryRevision: Long,
+  ) {
+    if (!isCurrentTextTarget(generation, pageId, expectedGeometryRevision)) throw operationCancelled()
   }
 
   private fun runHistoryCommand(command: () -> Unit) {
@@ -791,7 +836,9 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  private fun prepareStructuralMutation(creatingDocument: Boolean = false) {
+  private fun prepareStructuralMutation(
+    creatingDocument: Boolean = false,
+  ) {
     checkMainThread()
     surface.withStateTransaction { textOverlay.finishForLifecycle() }
     surface.requireStructuralMutationReady(creatingDocument)

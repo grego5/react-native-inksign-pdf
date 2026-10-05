@@ -125,6 +125,7 @@ namespace margelo::nitro::inksignpdf {
       virtual std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) = 0;
       virtual std::shared_ptr<Promise<PageInfo>> removePage() = 0;
       virtual std::shared_ptr<Promise<PageInfo>> movePage(double pageIndex) = 0;
+      virtual std::shared_ptr<Promise<PageInfo>> rotatePage(double degrees) = 0;
       virtual void nextPage() = 0;
       virtual void previousPage() = 0;
       virtual Viewport getViewport() = 0;
@@ -134,7 +135,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void undo() = 0;
       virtual void redo() = 0;
       virtual void clear() = 0;
-      virtual void addTextAnnotation(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) = 0;
+      virtual void insertTextAt(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) = 0;
       virtual std::shared_ptr<Promise<void>> insertTextByFieldName(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) = 0;
       virtual std::shared_ptr<Promise<void>> focusPageByFieldName(const std::string& key, const std::optional<FieldFocusOptions>& options) = 0;
       virtual void setTextDirection(TextDirection direction) = 0;

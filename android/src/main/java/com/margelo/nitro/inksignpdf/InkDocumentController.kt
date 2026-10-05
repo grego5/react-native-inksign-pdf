@@ -349,6 +349,10 @@ internal class InkDocumentController(
         request.zoom?.let(currentViewport::setZoomPreservingFocus)
         request.focus?.let(currentViewport::setFocus)
       }
+      is ViewportRequest.FocusRule -> {
+        val target = checkNotNull(currentViewport.targetFor(request))
+        currentViewport.setViewport(target.zoom, target.focus)
+      }
     }
     onViewportChanged?.invoke()
     requestVisibleTiles()
@@ -472,13 +476,23 @@ internal class InkDocumentController(
     val currentPage = pageDimensions ?: return false
     currentViewport.viewToPage(x.toDouble(), y.toDouble(), destination)
     if (!destination.isFinite()) return false
-    return destination.x >= 0.0 && destination.x <= currentPage.width &&
-      destination.y >= 0.0 && destination.y <= currentPage.height
+    val raw = PageCoordinates(currentPage).displayToRaw(PagePoint(destination.x, destination.y))
+    destination.set(raw.x, raw.y)
+    val coordinates = PageCoordinates(currentPage)
+    return destination.isFinite() && destination.x >= 0.0 && destination.x <= coordinates.rawWidth &&
+      destination.y >= 0.0 && destination.y <= coordinates.rawHeight
   }
 
   fun pageToViewTransform(): PageTransform? {
     requireOnUiThread()
     return viewport?.state?.pageToView
+  }
+
+  fun historyToViewTransform(): PageTransform? {
+    requireOnUiThread()
+    val currentViewport = viewport ?: return null
+    val currentPage = pageDimensions ?: return null
+    return PageCoordinates(currentPage).rawToView(currentViewport.state.pageToView)
   }
 
   fun logicalDisplayUnitsPerPageUnit(): Double? {

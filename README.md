@@ -97,7 +97,7 @@ Use `setViewMode()`, `setInkMode()`, or `setTextMode()` to choose an input mode.
 Omit options to preserve the viewport; pass `{}` to fit the page, or
 `{ zoom: 3, x: 200, y: 600 }` to zoom and focus. Text-mode viewport changes
 apply after the placement tap. Text finishes in view mode; switching modes also
-finishes an open text draft. `doubleTap.zoom` controls double taps only.
+finishes an open text draft.
 
 Add local PDF or image pages:
 
@@ -109,33 +109,49 @@ await pdf.current?.addPages({
 });
 ```
 
-Add text directly to a page. Bounds are in PDF points from the page's top-left:
+`addPages()` keeps the current page selected by default. Use `firstAdded` or
+`lastAdded` to select an imported page.
+
+Add text directly to a page. Bounds use PDF points from the displayed page's
+top-left, including its current rotation:
 
 ```ts
-pdf.current?.addTextAnnotation('Approved', { x: 48, y: 72, width: 172, height: 68 });
+pdf.current?.insertTextAt('Approved', { x: 48, y: 72, width: 172, height: 68 });
 ```
 
 Fill a field beside a printed label:
 
 ```ts
-await pdf.current?.insertTextByFieldName('Ada Lovelace', 'Signature', { occurrence: 'first' });
+await pdf.current?.insertTextByFieldName('Ada Lovelace', 'Name');
 ```
 
-It skips labels without an adjacent writing line. Both field methods match
-multiword names as adjacent complete words on one visual row, regardless of
-the PDF's extracted word order.
+Field methods find a printed label with an adjacent writing line. They require
+extractable PDF text; scanned labels need a text layer. Use `occurrence: 'last'`
+to select the last eligible label instead of the first.
 
 Zoom to a signing line without adding text:
 
 ```ts
-await pdf.current?.focusPageByFieldName('Signature', { zoom: 3, enterEditMode: true });
+await pdf.current?.focusPageByFieldName('Signature', {
+  zoom: 3,
+  verticalAnchor: 'bottom',
+  edgeOffset: 24,
+  setInkMode: true,
+});
 ```
 
-Both methods use the first eligible label by default; set `occurrence: 'last'`
-to use the last. Zoom defaults to 2. Set `enterEditMode: true` to enable
-freehand drawing after focusing. Both methods select the line on the resolved
-direction's side: right for LTR, left for RTL. Use `direction: 'auto'` for app
-direction, or explicitly set `'ltr'` or `'rtl'`; omission follows text-placement policy.
+This example leaves room above the line and enables drawing. Use `top` for room
+below, or `center` to center the line. `edgeOffset` is the distance from the
+viewport edge in PDF points. Omitted focus options use zoom 2 and center the line.
+Set `direction: 'ltr'` or `'rtl'` to choose a writing line on the label's right
+or left; `auto` follows the app direction.
+
+Rotate the active page clockwise by 90, 180, or 270 degrees. The exported PDF
+keeps that orientation:
+
+```ts
+await pdf.current?.rotatePage(90);
+```
 
 Use `nextPage()`, `previousPage()`, `undo()`, `redo()`, and `clear()` for
 navigation and editing.

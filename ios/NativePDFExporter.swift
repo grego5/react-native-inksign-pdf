@@ -52,10 +52,11 @@ enum InkSignPdfNativeExporter {
     var moduleAnnotations: [Int: ModuleAnnotationExpectations] = [:]
     for snapshot in pages {
       guard let page = document.page(at: snapshot.pageIndex),
-            sameGeometry(snapshot.geometry, page) else {
+            sameGeometry(snapshot.sourceGeometry ?? snapshot.geometry, page) else {
         throw InkSignPdfNativeExporterError.invalidOutput(
           "source page geometry differs from the captured page state")
       }
+      page.rotation = snapshot.geometry.rotation
       sourceAnnotations[snapshot.pageIndex] = page.annotations
       for text in snapshot.textAnnotations {
         guard let color = InkSignPdfTextRenderer.color(from: text.textColor) else {
@@ -213,7 +214,9 @@ enum InkSignPdfNativeExporter {
 
   private static func pdfBounds(for text: InkSignPdfTextAnnotation,
                                 in mediaBox: CGRect) -> CGRect {
-    pdfBounds(for: text.flowBounds ?? text.bounds, in: mediaBox)
+    let layoutGeometry = PageGeometry(mediaBox: mediaBox, rotation: text.layoutRotation)
+    return pdfBounds(for: layoutGeometry.displayToRaw(text.flowBounds ?? text.bounds),
+                     in: mediaBox)
   }
 
   private static func sameGeometry(_ expected: PageGeometry,

@@ -86,7 +86,7 @@ test('focusPageByFieldName forwards focus options and waits for native completio
     calls.push(args);
     return nativeCompletion;
   });
-  const options = { occurrence: 'last', zoom: 3, enterEditMode: true };
+  const options = { occurrence: 'last', zoom: 3, setInkMode: true };
   const pending = focus('Signature', options);
   assert.deepEqual(calls, [['Signature', options]]);
   assert.equal(pending, nativeCompletion);

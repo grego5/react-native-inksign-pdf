@@ -18,7 +18,7 @@ public extension FieldFocusOptions {
   /**
    * Create a new instance of `FieldFocusOptions`.
    */
-  init(occurrence: TextKeyOccurrence?, direction: TextDirection?, zoom: Double?, enterEditMode: Bool?) {
+  init(occurrence: TextKeyOccurrence?, direction: TextDirection?, zoom: Double?, verticalAnchor: FieldFocusVerticalAnchor?, edgeOffset: Double?, setInkMode: Bool?) {
     self.init({ () -> bridge.std__optional_TextKeyOccurrence_ in
       if let __unwrappedValue = occurrence {
         return bridge.create_std__optional_TextKeyOccurrence_(__unwrappedValue)
@@ -37,8 +37,20 @@ public extension FieldFocusOptions {
       } else {
         return .init()
       }
+    }(), { () -> bridge.std__optional_FieldFocusVerticalAnchor_ in
+      if let __unwrappedValue = verticalAnchor {
+        return bridge.create_std__optional_FieldFocusVerticalAnchor_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_double_ in
+      if let __unwrappedValue = edgeOffset {
+        return bridge.create_std__optional_double_(__unwrappedValue)
+      } else {
+        return .init()
+      }
     }(), { () -> bridge.std__optional_bool_ in
-      if let __unwrappedValue = enterEditMode {
+      if let __unwrappedValue = setInkMode {
         return bridge.create_std__optional_bool_(__unwrappedValue)
       } else {
         return .init()
@@ -69,10 +81,27 @@ public extension FieldFocusOptions {
   }
   
   @inline(__always)
-  var enterEditMode: Bool? {
+  var verticalAnchor: FieldFocusVerticalAnchor? {
+    return self.__verticalAnchor.value
+  }
+  
+  @inline(__always)
+  var edgeOffset: Double? {
+    return { () -> Double? in
+      if bridge.has_value_std__optional_double_(self.__edgeOffset) {
+        let __unwrapped = bridge.get_std__optional_double_(self.__edgeOffset)
+        return __unwrapped
+      } else {
+        return nil
+      }
+    }()
+  }
+  
+  @inline(__always)
+  var setInkMode: Bool? {
     return { () -> Bool? in
-      if bridge.has_value_std__optional_bool_(self.__enterEditMode) {
-        let __unwrapped = bridge.get_std__optional_bool_(self.__enterEditMode)
+      if bridge.has_value_std__optional_bool_(self.__setInkMode) {
+        let __unwrapped = bridge.get_std__optional_bool_(self.__setInkMode)
         return __unwrapped
       } else {
         return nil

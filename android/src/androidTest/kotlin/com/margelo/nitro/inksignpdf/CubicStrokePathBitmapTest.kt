@@ -76,7 +76,7 @@ class CubicStrokePathBitmapTest {
         try {
             val canvas = Canvas(bitmap)
             canvas.drawColor(Color.WHITE)
-            renderer.draw(canvas, 1.0, 0.0, 0.0, Color.BLACK)
+            renderer.draw(canvas, PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0), Color.BLACK)
             assertEquals(Color.BLACK, bitmap.getPixel(20, 20))
         } finally {
             bitmap.recycle()

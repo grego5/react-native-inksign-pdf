@@ -52,6 +52,8 @@ namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `FieldFocusOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 
@@ -80,6 +82,7 @@ namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 #include "TextInsertionByKeyOptions.hpp"
 #include "TextKeyOccurrence.hpp"
 #include "FieldFocusOptions.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
 #include "TextModeOptions.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
@@ -268,6 +271,14 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::shared_ptr<Promise<PageInfo>> rotatePage(double degrees) override {
+      auto __result = _swiftPart.rotatePage(std::forward<decltype(degrees)>(degrees));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline void nextPage() override {
       auto __result = _swiftPart.nextPage();
       if (__result.hasError()) [[unlikely]] {
@@ -326,8 +337,8 @@ namespace margelo::nitro::inksignpdf {
         std::rethrow_exception(__result.error());
       }
     }
-    inline void addTextAnnotation(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) override {
-      auto __result = _swiftPart.addTextAnnotation(text, std::forward<decltype(bounds)>(bounds), options);
+    inline void insertTextAt(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) override {
+      auto __result = _swiftPart.insertTextAt(text, std::forward<decltype(bounds)>(bounds), options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

@@ -20,6 +20,8 @@ namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `FieldFocusOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
@@ -62,6 +64,7 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "AndroidFallbackFont.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusOptions.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
@@ -547,6 +550,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline TextInsertionByKeyOptions get_std__optional_TextInsertionByKeyOptions_(const std::optional<TextInsertionByKeyOptions>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<FieldFocusVerticalAnchor>
+  /**
+   * Specialized version of `std::optional<FieldFocusVerticalAnchor>`.
+   */
+  using std__optional_FieldFocusVerticalAnchor_ = std::optional<FieldFocusVerticalAnchor>;
+  inline std::optional<FieldFocusVerticalAnchor> create_std__optional_FieldFocusVerticalAnchor_(const FieldFocusVerticalAnchor& value) noexcept {
+    return std::optional<FieldFocusVerticalAnchor>(value);
+  }
+  inline bool has_value_std__optional_FieldFocusVerticalAnchor_(const std::optional<FieldFocusVerticalAnchor>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline FieldFocusVerticalAnchor get_std__optional_FieldFocusVerticalAnchor_(const std::optional<FieldFocusVerticalAnchor>& optional) noexcept {
     return optional.value();
   }
   

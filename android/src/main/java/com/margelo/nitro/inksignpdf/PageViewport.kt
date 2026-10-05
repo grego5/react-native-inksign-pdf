@@ -59,6 +59,16 @@ internal data class PageTransform(
   val tx: Double,
   val ty: Double,
 ) {
+  /** Composes this page mapping with a transform from its output space to view space. */
+  fun then(next: PageTransform): PageTransform = PageTransform(
+    a = next.a * a + next.c * b,
+    b = next.b * a + next.d * b,
+    c = next.a * c + next.c * d,
+    d = next.b * c + next.d * d,
+    tx = next.a * tx + next.c * ty + next.tx,
+    ty = next.b * tx + next.d * ty + next.ty,
+  )
+
   fun map(point: PagePoint): ViewPoint {
     return ViewPoint(
       x = a * point.x + c * point.y + tx,
@@ -131,6 +141,13 @@ internal sealed interface ViewportRequest {
   data class FocusAndZoom(
     val focus: PagePoint?,
     val zoom: Double?,
+  ) : ViewportRequest
+  data class FocusRule(
+    val x: Double,
+    val ruleY: Double,
+    val zoom: Double,
+    val verticalAnchor: FieldFocusVerticalAnchor,
+    val edgeOffset: Double,
   ) : ViewportRequest
 }
 
@@ -231,6 +248,20 @@ internal class PageViewport(
         PageViewportTarget(
           zoom = zoom,
           focus = clampedFocus(request.focus ?: focus, zoom),
+        )
+      }
+      is ViewportRequest.FocusRule -> {
+        val zoom = clampZoom(request.zoom)
+        val visibleHeight = usableHeightPx / (zoom * viewportSize.density)
+        val offset = request.edgeOffset.coerceAtMost(visibleHeight / 2.0)
+        val focusY = when (request.verticalAnchor) {
+          FieldFocusVerticalAnchor.TOP -> request.ruleY + visibleHeight / 2.0 - offset
+          FieldFocusVerticalAnchor.BOTTOM -> request.ruleY - visibleHeight / 2.0 + offset
+          FieldFocusVerticalAnchor.CENTER -> request.ruleY
+        }
+        PageViewportTarget(
+          zoom = zoom,
+          focus = clampedFocus(PagePoint(request.x, focusY), zoom),
         )
       }
     }

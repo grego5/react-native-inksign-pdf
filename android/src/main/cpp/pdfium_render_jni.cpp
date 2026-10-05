@@ -276,10 +276,11 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativePageDimensions(
   if (!session->inspectPage(static_cast<std::size_t>(pageIndex), metadata)) {
     return nullptr;
   }
-  const auto dimensions = env->NewDoubleArray(2);
+  const auto dimensions = env->NewDoubleArray(3);
   if (dimensions == nullptr) return nullptr;
-  const jdouble values[] = {metadata.width, metadata.height};
-  env->SetDoubleArrayRegion(dimensions, 0, 2, values);
+  const jdouble values[] = {metadata.width, metadata.height,
+                            static_cast<jdouble>(metadata.rotation)};
+  env->SetDoubleArrayRegion(dimensions, 0, 3, values);
   return dimensions;
 }
 

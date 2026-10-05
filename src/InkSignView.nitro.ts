@@ -67,14 +67,19 @@ export interface FieldFocusOptions {
   direction?: TextDirection
   /** Positive zoom factor; defaults to 2 and is clamped to the native viewport limits. */
   zoom?: number
-  /** Enable freehand drawing after focusing. Omission preserves the current mode. */
-  enterEditMode?: boolean
+  /** Positions the writing rule at the visible top or bottom edge; center ignores edgeOffset. Defaults to center. */
+  verticalAnchor?: FieldFocusVerticalAnchor
+  /** Distance inward from the selected viewport edge, in PDF page points. */
+  edgeOffset?: number
+  /** Enables ink after successful focus. Omission or false preserves the current mode. */
+  setInkMode?: boolean
 }
 
 export type PageType = 'pdf' | 'image'
 export type TextDirection = 'ltr' | 'rtl' | 'auto'
 export type TextAlignment = 'start' | 'end' | 'center'
 export type TextVerticalAnchor = 'top' | 'bottom'
+export type FieldFocusVerticalAnchor = 'top' | 'bottom' | 'center'
 export type TextKeyOccurrence = 'first' | 'last'
 export type AddPagesActivePage = 'current' | 'firstAdded' | 'lastAdded'
 
@@ -178,6 +183,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   addPages(options?: AddPagesOptions): Promise<AddPagesResult>
   removePage(): Promise<PageInfo>
   movePage(pageIndex: number): Promise<PageInfo>
+  /** Rotates the active page clockwise by 90, 180, or 270 degrees and persists the rotation to export. */
+  rotatePage(degrees: number): Promise<PageInfo>
   nextPage(): void
   previousPage(): void
   getViewport(): Viewport
@@ -191,7 +198,7 @@ export interface InkSignViewMethods extends HybridViewMethods {
   redo(): void
   clear(): void
   /** Commits text inside a fixed physical page rectangle, clipping to complete visible lines. */
-  addTextAnnotation(text: string, bounds: TextAnnotationBounds, options?: TextAnnotationOptions): void
+  insertTextAt(text: string, bounds: TextAnnotationBounds, options?: TextAnnotationOptions): void
   /**
    * Finds literal source-text matches on the page selected when called,
    * comparing ASCII letters without case and all other characters exactly.
@@ -206,7 +213,7 @@ export interface InkSignViewMethods extends HybridViewMethods {
    * disposal rejects with `operation_cancelled`.
    */
   insertTextByFieldName(text: string, key: string, options?: TextInsertionByKeyOptions): Promise<void>
-  /** Focuses a label's adjacent writing rule; a newer focus or mode request can cancel it. */
+  /** Focuses a label's adjacent writing rule; anchor offsets use page points and clamp to page bounds. */
   focusPageByFieldName(key: string, options?: FieldFocusOptions): Promise<void>
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void

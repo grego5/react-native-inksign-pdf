@@ -31,6 +31,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult>
   func removePage() throws -> Promise<PageInfo>
   func movePage(pageIndex: Double) throws -> Promise<PageInfo>
+  func rotatePage(degrees: Double) throws -> Promise<PageInfo>
   func nextPage() throws -> Void
   func previousPage() throws -> Void
   func getViewport() throws -> Viewport
@@ -40,7 +41,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func undo() throws -> Void
   func redo() throws -> Void
   func clear() throws -> Void
-  func addTextAnnotation(text: String, bounds: TextAnnotationBounds, options: TextAnnotationOptions?) throws -> Void
+  func insertTextAt(text: String, bounds: TextAnnotationBounds, options: TextAnnotationOptions?) throws -> Void
   func insertTextByFieldName(text: String, key: String, options: TextInsertionByKeyOptions?) throws -> Promise<Void>
   func focusPageByFieldName(key: String, options: FieldFocusOptions?) throws -> Promise<Void>
   func setTextDirection(direction: TextDirection) throws -> Void
