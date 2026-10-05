@@ -30,7 +30,7 @@ internal class StrokeOutline private constructor(
 
 /** Immutable text layout in the captured page orientation, with a top-left origin. */
 internal data class TextAnnotation(
-  val id: String,
+  val id: Long,
   val text: String,
   val bounds: PageRect,
   val fontSize: Double,
@@ -50,7 +50,7 @@ internal data class TextAnnotation(
   val layoutPage: PdfPageDimensions? = null,
 ) {
   init {
-    require(id.isNotBlank()) { "Text annotation ID must not be blank" }
+    require(id > 0L) { "Text annotation ID must be positive" }
     require(text.isNotBlank()) { "Committed text annotation must not be blank" }
     require(fontSize.isFinite() && fontSize > 0.0) {
       "Text annotation font size must be finite and positive"

@@ -38,6 +38,17 @@ internal object PageNavigationPolicy {
   private const val ARM_SCALE_START = 0.72
   private const val ARMED_PRESENTATION_SCALE = 0.96
 
+  fun isFling(gesture: NavigationGesture, deltaX: Double, deltaY: Double,
+              velocityX: Double, minimumTravelPx: Double,
+              minimumVelocityPxPerSecond: Double): Boolean {
+    if (gesture.phase == SwipePhase.CANDIDATE || gesture.physicalDirection == null ||
+      !deltaX.isFinite() || !deltaY.isFinite() || !velocityX.isFinite() ||
+      abs(deltaX) < minimumTravelPx || abs(deltaX) <= abs(deltaY) ||
+      abs(velocityX) < minimumVelocityPxPerSecond
+    ) return false
+    return deltaX * velocityX > 0.0
+  }
+
   fun capture(
     downX: Double,
     downY: Double,

@@ -76,10 +76,14 @@ namespace margelo::nitro::inksignpdf {
     void setDoubleTap(const std::optional<DoubleTapOptions>& doubleTap) override;
     std::optional<bool> getKeyboardAvoidanceEnabled() override;
     void setKeyboardAvoidanceEnabled(std::optional<bool> keyboardAvoidanceEnabled) override;
+    std::optional<PagerDirection> getPagerDirection() override;
+    void setPagerDirection(std::optional<PagerDirection> pagerDirection) override;
     std::optional<std::function<void(const StateChangeEvent& /* event */)>> getOnStateChange() override;
     void setOnStateChange(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& onStateChange) override;
     std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() override;
     void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) override;
+    std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> getOnTextSelectionChange() override;
+    void setOnTextSelectionChange(const std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>& onTextSelectionChange) override;
 
   public:
     // Methods
@@ -92,19 +96,14 @@ namespace margelo::nitro::inksignpdf {
     void previousPage() override;
     Viewport getViewport() override;
     bool hasInk() override;
+    std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) override;
     void setInkMode(const std::optional<ViewportOptions>& viewport) override;
     void setViewMode(const std::optional<ViewportOptions>& viewport) override;
     void undo() override;
     void redo() override;
     void clear() override;
-    void insertTextAt(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) override;
-    std::shared_ptr<Promise<void>> insertTextByFieldName(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) override;
-    std::shared_ptr<Promise<void>> focusPageByFieldName(const std::string& key, const std::optional<FieldFocusOptions>& options) override;
     void setTextDirection(TextDirection direction) override;
     void setTextMode(const std::optional<TextModeOptions>& options) override;
-    double increaseTextSize() override;
-    double decreaseTextSize() override;
-    void removeTextAnnotation() override;
     std::shared_ptr<Promise<std::string>> finalize() override;
     void startDebugRecording() override;
     void stopDebugRecording() override;

@@ -73,52 +73,56 @@ class PdfiumSmokeInstrumentationTest {
   }
 
   @Test
-  fun pdfiumKeyLookupFoldsAsciiSourceTextAndReturnsBounds() {
+  fun preparedAnalysisFoldsAsciiAndReturnsCompleteLabelBounds() {
     PdfiumRenderSession.open(textPdf()).use { session ->
-      val matches = session.textKeyMatches(0, "ab")
-      assertTrue("The source-text key should be found once", matches.size == 1)
-      val match = matches.single()
+      val labels = preparedTextLabels(session.preparePageAnalysis(0))
+      val matches = completeLabelMatches(labels, "ab")
+      assertTrue("The complete source label should match once", matches.size == 1)
+      val match = matches.single().match
       assertTrue(match.left >= 0.0 && match.right > match.left)
       assertTrue(match.top >= 0.0 && match.bottom > match.top)
       assertTrue(match.sourceIndex == 0.0 && match.lineHeight > 0.0)
-      assertTrue(session.textKeyMatches(0, "missing").isEmpty())
-      assertTrue(!session.textKeyLookup(0, "missing").hasLiteralMatch)
+      assertTrue(completeLabelMatches(labels, "missing").isEmpty())
     }
   }
 
   @Test
   fun reopenedDocumentDoesNotReusePreviousPageAnalysis() {
     PdfiumRenderSession.open(textPdf()).use { original ->
-      assertTrue(!original.textKeyLookup(0, "CD").hasLiteralMatch)
-      original.horizontalSnapCandidates(0)
+      assertTrue(completeLabelMatches(
+        preparedTextLabels(original.preparePageAnalysis(0)), "CD",
+      ).isEmpty())
     }
     PdfiumRenderSession.open(multilineTextPdf()).use { replacement ->
-      assertTrue(replacement.textKeyLookup(0, "CD").hasLiteralMatch)
+      assertTrue(completeLabelMatches(
+        preparedTextLabels(replacement.preparePageAnalysis(0)), "CD",
+      ).isNotEmpty())
     }
   }
 
   @Test
-  fun pdfiumKeyLookupRejectsALiteralSpanningVisualLines() {
+  fun preparedLabelsKeepVisualLinesSeparate() {
     PdfiumRenderSession.open(multilineTextPdf()).use { session ->
-      assertTrue(session.textKeyMatches(0, "AB").size == 1)
-      assertTrue(session.textKeyMatches(0, "CD").size == 1)
-      val multilineMatches = session.textKeyMatches(0, "AB\r\nCD")
-      assertTrue(multilineMatches.isEmpty())
+      val labels = preparedTextLabels(session.preparePageAnalysis(0))
+      assertEquals(1, completeLabelMatches(labels, "AB").size)
+      assertEquals(1, completeLabelMatches(labels, "CD").size)
+      assertTrue(completeLabelMatches(labels, "AB CD").isEmpty())
     }
   }
 
   @Test
   fun pdfiumMultiwordKeyKeepsAExtractedSpaceWithoutGlyphGeometry() {
     PdfiumRenderSession.open(separatedWordsTextPdf()).use { session ->
-      val lookup = session.textKeyLookup(0, "Full Name")
-      assertTrue("The PDFium text page should synthesize the space", lookup.hasLiteralMatch)
+      val labels = preparedTextLabels(session.preparePageAnalysis(0))
+      val lookup = completeLabelMatches(labels, "Full Name")
+      assertTrue("Nearby complete words should form one visual label", lookup.isNotEmpty())
       val scans = session.pageAnalysisScanCountsForTesting()
-      assertEquals("lookup=$lookup scans=${scans.toList()}", 1, lookup.matches.size)
-      val match = lookup.matches.single()
+      assertEquals("lookup=$lookup scans=${scans.toList()}", 1, lookup.size)
+      val match = lookup.single().match
       assertTrue(match.lineHeight > 0.0)
       assertTrue(match.lineCenter in match.top..match.bottom)
-      assertEquals(lookup.matches, session.textKeyLookup(0, "Name Full").matches)
-      assertTrue(!session.textKeyLookup(0, "Full Nam").hasLiteralMatch)
+      assertEquals(lookup.map { it.identity }, completeLabelMatches(labels, "Name Full").map { it.identity })
+      assertTrue(completeLabelMatches(labels, "Full Nam").isEmpty())
       assertEquals("The fixture should include a character without geometry", scans[3] - 1, scans[4])
     }
   }
@@ -128,20 +132,20 @@ class PdfiumSmokeInstrumentationTest {
     val content = "BT /F1 12 Tf 1 0 0 1 10 60 Tm (Full) Tj " +
       "1 0 0 1 250 60 Tm (Name) Tj ET\n"
     PdfiumRenderSession.open(textPagePdf(content, pageWidth = 400)).use { session ->
-      assertTrue(session.textKeyLookup(0, "Full").matches.isNotEmpty())
-      assertTrue(session.textKeyLookup(0, "Name").matches.isNotEmpty())
-      assertTrue(session.textKeyLookup(0, "Full Name").matches.isEmpty())
+      val labels = preparedTextLabels(session.preparePageAnalysis(0))
+      assertTrue(completeLabelMatches(labels, "Full").isNotEmpty())
+      assertTrue(completeLabelMatches(labels, "Name").isNotEmpty())
+      assertTrue(completeLabelMatches(labels, "Full Name").isEmpty())
     }
   }
 
   @Test
   fun pdfiumPlacementPathsReusePageTextAndRuleAnalysis() {
     PdfiumRenderSession.open(textPdf()).use { session ->
-      session.horizontalSnapCandidates(0)
-      val lookup = session.textKeyLookup(0, "ab")
-      assertTrue(lookup.matches.size == 1)
-      assertTrue(session.textKeyMatches(0, "AB").size == 1)
-      session.horizontalSnapCandidates(0)
+      val first = session.preparePageAnalysis(0)
+      val second = session.preparePageAnalysis(0)
+      assertEquals(first, second)
+      assertEquals(1, completeLabelMatches(preparedTextLabels(second), "AB").size)
 
       val scans = session.pageAnalysisScanCountsForTesting()
       assertEquals(1, scans[0])

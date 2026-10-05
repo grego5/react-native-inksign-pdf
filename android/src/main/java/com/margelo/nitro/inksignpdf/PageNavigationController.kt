@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import kotlin.math.abs
 import kotlin.math.max
 
@@ -68,6 +69,7 @@ internal data class NavigationDragTransaction(
   val ordinaryNavigationActive: Boolean,
   val selectedPreview: PreparedPagePreview? = null,
   val hapticIssued: Boolean = false,
+  val releaseRequested: Boolean = false,
   val presentation: NavigationPresentation = NavigationPresentation(),
 )
 
@@ -120,11 +122,14 @@ internal class PageNavigationController(
     WorkerPageNavigationPreviewScheduler(sessionWorker),
   private val settlementDriver: PageNavigationSettlementDriver =
     ValueAnimatorPageNavigationSettlementDriver(requestAnimation),
+  private val minimumFlingVelocityPxPerSecond: Double = 400.0,
+  private val maximumFlingVelocityPxPerSecond: Float = 8_000f,
 ) {
   private var state: NavigationState = NavigationState.Idle
   private var transactionToken = 0L
   private var previewEpoch = 0L
   private val slots = HashMap<SwipeDirection, PagePreviewSlot>()
+  private var velocityTracker: VelocityTracker? = null
 
   internal fun state(): NavigationState = state
 
@@ -210,9 +215,17 @@ internal class PageNavigationController(
     requireOnUiThread()
     if (state is NavigationState.Switching) return true
     if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+      clearVelocityTracker()
+      velocityTracker = VelocityTracker.obtain()
+    }
+    velocityTracker?.addMovement(event)
+    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
       if (state is NavigationState.Settling) cancelSettleForNewPull()
       val captured = capture(event)
-      if (captured == null) return false
+      if (captured == null) {
+        clearVelocityTracker()
+        return false
+      }
       val (capturedContext, capturedGesture) = captured
       val needsPreviewRetry = capturedContext.eligibleTargets.any { (direction, targetPageIndex) ->
         (slots[direction] == null || slots[direction] is PagePreviewSlot.Empty) &&
@@ -242,18 +255,20 @@ internal class PageNavigationController(
       event.actionMasked == MotionEvent.ACTION_CANCEL ||
       event.actionMasked == MotionEvent.ACTION_OUTSIDE
     ) {
+      clearVelocityTracker()
       settleToRest()
       return true
     }
     when (event.actionMasked) {
       MotionEvent.ACTION_MOVE -> updatePull(event.x.toDouble(), event.y.toDouble())
-      MotionEvent.ACTION_UP -> finishPull()
+      MotionEvent.ACTION_UP -> finishPull(takeVelocityX())
     }
     return true
   }
 
   internal fun cancel() {
     requireOnUiThread()
+    clearVelocityTracker()
     transactionToken += 1L
     cancelSettlementDriver()
     state = NavigationState.Idle
@@ -287,10 +302,8 @@ internal class PageNavigationController(
     if (current.documentGeneration != generation || current.targetPageIndex != pageIndex ||
       current.pageSwitchId != pageSwitchId
     ) return
-    state = NavigationState.Idle
-    replaceSlot(current.direction, PagePreviewSlot.Empty)
-    onPageNavigationSettled()
-    reconcilePreviews()
+    // A failed/partial tile batch is not presentation readiness. SurfaceView
+    // retries it; retain the exact target preview until visible coverage arrives.
     requestInvalidate()
   }
 
@@ -342,6 +355,7 @@ internal class PageNavigationController(
       event.actionMasked == MotionEvent.ACTION_CANCEL ||
       event.actionMasked == MotionEvent.ACTION_OUTSIDE
     ) {
+      clearVelocityTracker()
       forwardToDocumentNavigation(event)
       discardCandidate()
       return true
@@ -358,7 +372,10 @@ internal class PageNavigationController(
       val deltaY = abs(event.y.toDouble() - transaction.gesture.downY)
       val terminal = event.actionMasked == MotionEvent.ACTION_UP
       val intentResolved = max(deltaX, deltaY) >= transaction.gesture.deadZonePx
-      if (terminal || intentResolved) discardCandidate()
+      if (terminal || intentResolved) {
+        if (terminal) clearVelocityTracker()
+        discardCandidate()
+      }
       else updateOrdinaryCandidate(transaction, event, updated)
       return true
     }
@@ -376,6 +393,7 @@ internal class PageNavigationController(
     forwardToDocumentNavigation(cancel)
     cancel.recycle()
     updatePull(event.x.toDouble(), event.y.toDouble(), updated)
+    if (event.actionMasked == MotionEvent.ACTION_UP) finishPull(takeVelocityX())
     return true
   }
 
@@ -433,17 +451,39 @@ internal class PageNavigationController(
     )
     state = NavigationState.Dragging(nextTransaction)
     requestInvalidate()
+    if (nextTransaction.releaseRequested && preview != null) settleToCommit(nextTransaction)
   }
 
-  private fun finishPull() {
+  private fun takeVelocityX(): Double {
+    val tracker = velocityTracker ?: return 0.0
+    tracker.computeCurrentVelocity(1000, maximumFlingVelocityPxPerSecond)
+    val velocity = tracker.xVelocity.toDouble()
+    clearVelocityTracker()
+    return velocity
+  }
+
+  private fun clearVelocityTracker() {
+    velocityTracker?.recycle()
+    velocityTracker = null
+  }
+
+  private fun finishPull(velocityX: Double) {
     val current = (state as? NavigationState.Dragging)?.transaction ?: return
     if (current.ordinaryNavigationActive) return
-    if (current.gesture.phase == SwipePhase.ARMED &&
-      current.gesture.targetDelta != null &&
-      current.selectedPreview != null
-    ) {
+    val deltaX = current.latestTouchX - current.gesture.downX
+    val deltaY = current.latestTouchY - current.gesture.downY
+    val flick = PageNavigationPolicy.isFling(current.gesture, deltaX, deltaY, velocityX,
+      MIN_FLICK_TRAVEL_DP * current.context.density,
+      minimumFlingVelocityPxPerSecond)
+    if ((current.gesture.phase == SwipePhase.ARMED || flick) && current.gesture.targetDelta != null) {
+      if (current.selectedPreview == null) {
+        state = NavigationState.Dragging(current.copy(releaseRequested = true))
+        reconcilePreviews()
+        return
+      }
       settleToCommit(current)
     } else {
+      clearVelocityTracker()
       settleToRest()
     }
   }
@@ -656,6 +696,7 @@ internal class PageNavigationController(
   }
 
   private companion object {
+    const val MIN_FLICK_TRAVEL_DP = 25.0
     const val REST_DURATION_MS = 140L
     const val COMMIT_DURATION_MS = 180L
   }

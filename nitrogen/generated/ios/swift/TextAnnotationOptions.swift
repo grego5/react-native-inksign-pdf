@@ -18,8 +18,20 @@ public extension TextAnnotationOptions {
   /**
    * Create a new instance of `TextAnnotationOptions`.
    */
-  init(direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?) {
-    self.init({ () -> bridge.std__optional_TextDirection_ in
+  init(fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?) {
+    self.init({ () -> bridge.std__optional_double_ in
+      if let __unwrappedValue = fontSize {
+        return bridge.create_std__optional_double_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_std__string_ in
+      if let __unwrappedValue = color {
+        return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_TextDirection_ in
       if let __unwrappedValue = direction {
         return bridge.create_std__optional_TextDirection_(__unwrappedValue)
       } else {
@@ -46,6 +58,30 @@ public extension TextAnnotationOptions {
     }())
   }
 
+  @inline(__always)
+  var fontSize: Double? {
+    return { () -> Double? in
+      if bridge.has_value_std__optional_double_(self.__fontSize) {
+        let __unwrapped = bridge.get_std__optional_double_(self.__fontSize)
+        return __unwrapped
+      } else {
+        return nil
+      }
+    }()
+  }
+  
+  @inline(__always)
+  var color: String? {
+    return { () -> String? in
+      if bridge.has_value_std__optional_std__string_(self.__color) {
+        let __unwrapped = bridge.get_std__optional_std__string_(self.__color)
+        return String(__unwrapped)
+      } else {
+        return nil
+      }
+    }()
+  }
+  
   @inline(__always)
   var direction: TextDirection? {
     return self.__direction.value

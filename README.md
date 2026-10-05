@@ -112,39 +112,20 @@ await pdf.current?.addPages({
 `addPages()` keeps the current page selected by default. Use `firstAdded` or
 `lastAdded` to select an imported page.
 
-Add text directly to a page. Bounds use PDF points from the displayed page's
-top-left, including its current rotation:
+Fill an empty field by its printed name:
 
 ```ts
-pdf.current?.insertTextAt('Approved', { x: 48, y: 72, width: 172, height: 68 });
+const page = await pdf.current?.getPage();
+if (page) {
+  const id = page.resolveText({ fieldName: 'Name' });
+  if (!page.getTextValue(id)) page.setTextValue(id, 'Ada Lovelace');
+}
 ```
 
-Fill a field beside a printed label:
-
-```ts
-await pdf.current?.insertTextByFieldName('Ada Lovelace', 'Name');
-```
-
-Field methods find a printed label with an adjacent writing line. They require
-extractable PDF text; scanned labels need a text layer. Use `occurrence: 'last'`
-to select the last eligible label instead of the first.
-
-Zoom to a signing line without adding text:
-
-```ts
-await pdf.current?.focusPageByFieldName('Signature', {
-  zoom: 3,
-  verticalAnchor: 'bottom',
-  edgeOffset: 24,
-  setInkMode: true,
-});
-```
-
-This example leaves room above the line and enables drawing. Use `top` for room
-below, or `center` to center the line. `edgeOffset` is the distance from the
-viewport edge in PDF points. Omitted focus options use zoom 2 and center the line.
-Set `direction: 'ltr'` or `'rtl'` to choose a writing line on the label's right
-or left; `auto` follows the app direction.
+Use the full field name; scanned PDFs need a text layer. For free placement,
+pass `bounds: { x, y, width, height }` instead of `fieldName`.
+Set `pagerDirection="rtl"` for right-to-left paging.
+Use `page.adjustTextSize(id, 1)` or `-1` for relative text sizing.
 
 Rotate the active page clockwise by 90, 180, or 270 degrees. The exported PDF
 keeps that orientation:

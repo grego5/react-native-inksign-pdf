@@ -15,20 +15,33 @@ extension InkSignView {
                  "Placement scan must start for the active page")
 
     let source = document.workingURL
-    let mediaBox = document.activePage.geometry.mediaBox
+    let page = document.activePage
+    let mediaBox = page.geometry.mediaBox
+    let sourceGeometry = page.sourceGeometry
+    let geometry = page.geometry
     documentCoordinator.pdfQueue.async { [weak self] in
-      let rules = self?.documentCoordinator.pageAnalysis(sourceURL: source,
-                                                          generation: generation,
-                                                          pageIndex: pageIndex,
-                                                          pageID: pageID,
-                                                          mediaBox: mediaBox)?.rules ?? []
+      let analysis = self?.documentCoordinator.pageAnalysis(sourceURL: source,
+        generation: generation, pageIndex: pageIndex, pageID: pageID, mediaBox: mediaBox)
+      let rules: [InkSignPdfPlacementRule]
+      let labels: [InkSignPdfKeyTextMatch]
+      if let analysis {
+        let matches = analysis.labelCandidates.map(\.match)
+        let displayed = analysis.displayedFieldGeometry(
+          lookup: InkSignPdfTextLookup(hasLiteralMatch: !matches.isEmpty, matches: matches),
+          sourceGeometry: sourceGeometry, geometry: geometry)
+        rules = displayed.rules
+        labels = displayed.matches
+      } else {
+        rules = []
+        labels = []
+      }
       DispatchQueue.main.async {
         guard let self, !self.disposed,
               self.documentCoordinator.generation == generation,
               let activePage = self.documentCoordinator.document?.activePage,
               activePage.id == pageID,
               self.documentCoordinator.document?.activePageIndex == pageIndex else { return }
-        self.textInteractionOverlay.installPlacementRules(rules,
+        self.textInteractionOverlay.installPlacementRules(rules, labels: labels,
                                                           generation: generation,
                                                           pageID: pageID,
                                                           requestID: requestID)

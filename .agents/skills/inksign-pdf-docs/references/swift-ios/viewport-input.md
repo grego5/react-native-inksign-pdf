@@ -32,16 +32,19 @@
 - **Rule candidates:** Solid horizontal writing rules may appear anywhere on a
   page; horizontal strokes crossed by vertical table borders are excluded.
   Rows of evenly spaced dots are also supported.
+- **Manual snapping:** Cached label rows associate nearby rules for taps above
+  them. The admission band uses the displayed label line-height, with the
+  existing screen-space tolerance as a minimum and measured editor line-height
+  when no label is associated. Below-rule tolerance remains unchanged.
 - **Text layout:** TextKit owns live wrapping, caret, and selection geometry.
   Bounded text uses one fixed physical flow rectangle in the editor and
   committed model; RTL changes logical alignment, never edge order. The model
   keeps that rectangle separate from measured visible-text bounds.
-- **Programmatic text:** `insertTextAt()` commits text without opening the
-  editor. `{ x, y, width, height }` is measured in the displayed page
-  orientation and defines a fixed rectangle; x/y stay at its physical top-left
-  in either direction. Alignment positions measured text inside it. Dimensions
-  are hard bounds; `maxLines` caps complete lines without forcing a line count.
-  `verticalAnchor` fixes the top or bottom of the block.
+- **Prepared free text:** `{ x, y, width, height }` is measured in the displayed
+  page orientation and defines a fixed rectangle; x/y stay at its physical
+  top-left in either direction. Alignment positions measured text inside it.
+  Dimensions are hard bounds; `maxLines` caps complete lines without forcing a
+  line count. `verticalAnchor` fixes the top or bottom of the block.
 - **Bounded editing:** `setTextMode(options?)` applies an optional
   physical width and height from the tap toward the right and down, plus
   alignment and line options, to the live editor and committed text. Without
@@ -56,28 +59,22 @@
   also updates an active editor while retaining its fixed rectangle and
   reconciling caret visibility.
 
-## Field commands
+## Prepared page text
+- Prepared labels are complete contiguous visual groups. Lookup compares full
+  token-frequency counts, preserving repeated words while allowing extracted
+  word-order differences. Partial labels and substrings do not match. Rules
+  becoming vertical after rotation are ineligible. Empty targets reserve a
+  coordinator-owned numeric ID; prepared handles retain source analysis and
+  target the captured stable page through navigation. UI-owned slots and history
+  outlive analysis-cache eviction; the overlay owns drafts and selection.
+- Module annotation/draft values take precedence over detected embedded source
+  text. Clearing removes module text only and reveals the source fallback again.
+  See the public API contract and Android input reference for shared semantics.
 
-- Both commands search cached source text and rules on the serial PDF queue.
-  Source geometry is projected into displayed page coordinates before pairing.
-  They choose the first or last eligible label with a horizontal same-row rule
-  on the resolved direction's side, using the text direction policy above.
-  Rules that become vertical after rotation are ineligible.
-- Multiword keys match consecutive complete words regardless of extracted order.
-  Glyphs share a visual row; word gaps are limited to one row height. Whitespace
-  is excluded from row geometry; combined glyph bounds locate the label.
-- Missing keys reject with `text_key_not_found`; labels without a usable rule
-  reject with `text_rule_not_found`. The main queue revalidates document
-  generation, page ID, and geometry revision before applying results.
-  Replacement, disposal, target-page deletion, or rotation cancels stale results
-  with `operation_cancelled`.
-- `insertTextByFieldName()` commits to the captured page after navigation.
-  Insertion bounds and vertical anchors use displayed geometry; new text is upright.
-  Active-page commits cancel live ink and sync the text overlay; inactive-page
-  commits retain current input.
-- `focusPageByFieldName()` returns to the captured page. `verticalAnchor`
-  defaults to `center`; `top` and `bottom` place the rule inward from that
-  viewport edge by `edgeOffset` page points. Offset defaults to zero and caps
-  at half the visible height; displayed page bounds constrain focus. The final
-  focus point converts to PDFKit page coordinates. `setInkMode: true`
-  enables ink after focus. Newer focus or mode actions supersede pending focus.
+## Pager direction
+
+- `pagerDirection` controls PDFKit's page-view-controller layout independently
+  of text direction. Omission and `auto` use the system semantic direction;
+  explicit `ltr`/`rtl` set the PDFView semantic content attribute. PDFKit owns
+  physical page gesture behavior, so exact swipe-side behavior requires runtime
+  validation on supported OS versions.

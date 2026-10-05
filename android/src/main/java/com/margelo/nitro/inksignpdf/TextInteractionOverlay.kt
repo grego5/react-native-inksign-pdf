@@ -32,7 +32,6 @@ import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot
 import kotlin.math.max
-import java.util.UUID
 
 internal const val defaultTextFontSize = 16.0
 internal const val minimumTextFontSize = 8.0
@@ -213,15 +212,20 @@ internal fun nearestTextSnapCandidate(
   transform: PageTransform,
   candidates: List<PdfiumHorizontalSnapCandidate>,
   maximumDistancePx: Double,
+  fallbackLineHeightPx: Double = 0.0,
 ): PdfiumHorizontalSnapCandidate? {
   val touchY = transform.map(pagePoint).y
   return candidates.asSequence()
     .filter { pagePoint.x in it.left..it.right }
     .map { candidate ->
-      candidate to abs(transform.map(PagePoint(pagePoint.x, candidate.y)).y - touchY)
+      val ruleY = transform.map(PagePoint(pagePoint.x, candidate.y)).y
+      val distance = ruleY - touchY
+      val aboveBand = maxOf(maximumDistancePx,
+        candidate.labelLineHeight?.takeIf { it.isFinite() && it > 0.0 } ?: fallbackLineHeightPx)
+      candidate to (abs(distance) to if (distance >= 0.0) aboveBand else maximumDistancePx)
     }
-    .filter { (_, distancePx) -> distancePx <= maximumDistancePx }
-    .minByOrNull { it.second }
+    .filter { (_, distanceAndBand) -> distanceAndBand.first <= distanceAndBand.second }
+    .minByOrNull { it.second.first }
     ?.first
 }
 
@@ -350,19 +354,20 @@ internal class TextInteractionOverlay(
     ) : InteractionState
 
     data class Editing(
-      val id: String,
+      val id: Long,
       val generation: Long,
       val pageIndex: Int,
+      val pageId: String,
       val original: TextAnnotation?,
       var anchorX: Double,
       var directionRtl: Boolean,
       var positionY: Double,
       var fontSize: Double,
-      val textColor: Int,
+      var textColor: Int,
       val flowBounds: PageRect? = original?.flowBounds,
-      val maxLines: Int = original?.maxLines ?: 0,
-      val verticalAnchor: TextVerticalAnchor = original?.verticalAnchor ?: TextVerticalAnchor.TOP,
-      val alignment: TextAlignment = original?.alignment ?: TextAlignment.START,
+      var maxLines: Int = original?.maxLines ?: 0,
+      var verticalAnchor: TextVerticalAnchor = original?.verticalAnchor ?: TextVerticalAnchor.TOP,
+      var alignment: TextAlignment = original?.alignment ?: TextAlignment.START,
       var directionSwitchFrame: PageRect? = null,
     ) : InteractionState
 
@@ -383,7 +388,7 @@ internal class TextInteractionOverlay(
 
   private sealed interface TouchTarget {
     data object OutsideEditor : TouchTarget
-    data class Annotation(val generation: Long, val pageIndex: Int, val id: String) : TouchTarget
+    data class Annotation(val generation: Long, val pageIndex: Int, val id: Long) : TouchTarget
   }
 
   private data class PendingTouch(
@@ -419,6 +424,8 @@ internal class TextInteractionOverlay(
     (pendingTouch?.target as? TouchTarget.Annotation)?.let(::beginDragging)
   }
   private var interactionState: InteractionState = InteractionState.Idle
+  internal var onTextSelectionChange: ((TextSelection?) -> Unit)? = null
+  private var emittedSelection: TextSelection? = null
   private var editor: TextEntryView? = null
   private var defaultFontSize = defaultTextFontSize
   private var defaultTextColor = Color.BLACK
@@ -596,6 +603,7 @@ internal class TextInteractionOverlay(
     requireVisibleLine: Boolean = false,
     resolvedDirectionRtl: Boolean? = null,
     capturedPage: CapturedTextPage? = null,
+    targetId: Long? = null,
   ) {
     val presentation = if (capturedPage == null) {
       surface.textPresentationSnapshot() ?: throw PdfSessionException(
@@ -613,14 +621,23 @@ internal class TextInteractionOverlay(
     }
     val page = capturedPage?.dimensions ?: checkNotNull(presentation).page
     val flowBounds = programmaticTextFlowBounds(bounds, page)
+    val pageId = capturedPage?.pageId ?: checkNotNull(presentation).pageId
+    val slot = targetId?.let(surface.documentCoordinator::textTarget) ?:
+      surface.documentCoordinator.reserveTextTarget(
+        pageId = pageId,
+        sourceIdentity = null,
+        fieldName = null,
+        bounds = flowBounds,
+        options = options,
+      )
     val verticalAnchor = options?.verticalAnchor ?: TextVerticalAnchor.TOP
     val alignment = options?.alignment ?: TextAlignment.START
     val boundedAnnotation = TextAnnotation(
-      id = "text-${UUID.randomUUID()}",
+      id = slot.id,
       text = text,
       bounds = flowBounds,
-      fontSize = defaultFontSize,
-      textColor = defaultTextColor,
+      fontSize = options?.fontSize ?: defaultFontSize,
+      textColor = parseTextColor(options?.color, defaultTextColor),
       directionRtl = directionRtl,
       flowBounds = flowBounds,
       maxLines = options?.maxLines?.toInt() ?: 0,
@@ -721,7 +738,6 @@ internal class TextInteractionOverlay(
     presentation: TextPresentationSnapshot,
     placement: InteractionState.Placing,
   ) {
-    val id = "text-${UUID.randomUUID()}"
     val isRtl = placement.directionRtl
     val options = placement.options
     val viewportRequest = ViewportRequestParser.parseTextMode(options)
@@ -743,10 +759,16 @@ internal class TextInteractionOverlay(
         return
       }
     }
+    val pageId = surface.documentCoordinator.page(presentation.pageIndex).id
+    val initialBounds = flowBounds ?: PageRect(pagePoint.x, pagePoint.y, pagePoint.x, pagePoint.y)
+    val id = surface.documentCoordinator.reserveTextTarget(
+      pageId, null, null, initialBounds, null,
+    ).id
     val state = InteractionState.Editing(
       id = id,
       generation = presentation.generation,
       pageIndex = presentation.pageIndex,
+      pageId = pageId,
       original = null,
       anchorX = pagePoint.x,
       directionRtl = isRtl,
@@ -784,6 +806,8 @@ internal class TextInteractionOverlay(
       presentation.transform,
       presentation.snapCandidates,
       dp(12).toDouble(),
+      editor?.lineHeight?.toDouble()?.takeIf { it > 0.0 }
+        ?: defaultFontSize * density * 1.2,
     )
     val placementPoint = snap?.let {
       PagePoint(pagePoint.x, it.y - dp(3) / scale - verticalPadding)
@@ -832,12 +856,75 @@ internal class TextInteractionOverlay(
     lastPresentation = null
     clearPlacementForLifecycle()
     onInteractionModeChanged = null
+    onTextSelectionChange = null
   }
 
-  internal fun editingAnnotationId(): String? = when (val state = interactionState) {
+  internal fun editingAnnotationId(): Long? = when (val state = interactionState) {
     is InteractionState.Editing -> state.id
     is InteractionState.Dragging -> state.original.id
     else -> null
+  }
+
+  internal fun draftText(id: Long): String? =
+    (interactionState as? InteractionState.Editing)?.takeIf { it.id == id }?.let {
+      editor?.text?.toString() ?: ""
+    }
+
+  internal fun setPreparedDraftText(id: Long, value: String): Boolean {
+    val state = interactionState as? InteractionState.Editing ?: return false
+    if (state.id != id) return false
+    val entry = editor ?: return false
+    val current = materializedEditorText(entry)
+    if (current == value) return true
+    val fits = state.flowBounds?.let { flow ->
+      TextLayoutSpec.fitsFlow(value, state.fontSize, state.textColor, flow,
+        state.maxLines, state.directionRtl, state.alignment)
+    } ?: TextLayoutSpec.fitsMaxLines(value, state.fontSize, state.textColor,
+      state.maxLines, state.directionRtl, state.alignment)
+    if (!fits) throw PdfSessionException(
+      "text_does_not_fit", "The supplied value does not fit in the text target",
+    )
+    entry.setText(value)
+    entry.setSelection(value.length)
+    invalidate()
+    return true
+  }
+
+  internal fun cancelPreparedDraft(id: Long): Boolean {
+    when (val state = interactionState) {
+      is InteractionState.Editing -> if (state.id == id) cancelEditing() else return false
+      is InteractionState.Selected -> if (state.annotation.id == id) clearSelection() else return false
+      is InteractionState.Dragging -> if (state.original.id == id) clearSelection() else return false
+      else -> return false
+    }
+    return true
+  }
+
+  internal fun preparedDraftFontSize(id: Long): Double? =
+    (interactionState as? InteractionState.Editing)?.takeIf { it.id == id }?.fontSize
+
+  internal fun preparedDefaultFontSize(): Double = defaultFontSize
+
+  internal fun setPreparedDraftOptions(id: Long, options: TextAnnotationOptions): Boolean {
+    val state = interactionState as? InteractionState.Editing ?: return false
+    if (state.id != id) return false
+    val entry = editor ?: return false
+    val directionRtl = when (options.direction) {
+      TextDirection.LTR -> false
+      TextDirection.RTL -> true
+      TextDirection.AUTO -> appLayoutIsRtl()
+      null -> state.directionRtl
+    }
+    state.fontSize = options.fontSize ?: state.fontSize
+    state.textColor = parseTextColor(options.color, state.textColor)
+    state.maxLines = options.maxLines?.toInt() ?: state.maxLines
+    state.alignment = options.alignment ?: state.alignment
+    state.verticalAnchor = options.verticalAnchor ?: state.verticalAnchor
+    state.directionRtl = directionRtl
+    configureEditorPreservingSelection(entry, displayFontSize(state.fontSize), directionRtl,
+      state.textColor, state.alignment)
+    invalidate()
+    return true
   }
 
   internal fun interactionMode(): InteractionMode = when {
@@ -1268,13 +1355,14 @@ internal class TextInteractionOverlay(
     return entry
   }
 
-  private fun beginEditing(id: String) {
+  private fun beginEditing(id: Long) {
     val annotation = currentAnnotations().firstOrNull { it.id == id } ?: return
     val presentation = checkNotNull(lastPresentation).forAnnotation(annotation)
     val state = InteractionState.Editing(
       id = annotation.id,
       generation = presentation.generation,
       pageIndex = presentation.pageIndex,
+      pageId = presentation.pageId,
       original = annotation,
       anchorX = if (annotation.directionRtl) {
         (annotation.flowBounds ?: annotation.bounds).right
@@ -1555,6 +1643,9 @@ internal class TextInteractionOverlay(
       alignment = state.alignment,
       layoutPage = state.original?.layoutPage ?: if (state.original == null) presentation.page else null,
     )
+    surface.documentCoordinator.updateTextTargetBounds(
+      state.id, state.pageId, flowBounds ?: bounds,
+    )
     return if (flowBounds == null) updated else updated.copy(
       bounds = TextLayoutSpec.visibleBounds(updated, flowBounds),
     )
@@ -1605,13 +1696,13 @@ internal class TextInteractionOverlay(
   private fun currentAnnotations(): List<TextAnnotation> =
     surface.textPresentationSnapshot()?.annotations ?: emptyList()
 
-  private fun editingCommandAnnotationId(): String? = when (val state = interactionState) {
+  private fun editingCommandAnnotationId(): Long? = when (val state = interactionState) {
     is InteractionState.Editing -> state.id
     is InteractionState.Selected -> state.annotation.id
     else -> null
   }
 
-  private fun hitTest(viewX: Float, viewY: Float): String? {
+  private fun hitTest(viewX: Float, viewY: Float): Long? {
     val presentation = lastPresentation ?: return null
     val pageScale = hypot(presentation.transform.a, presentation.transform.b)
     return presentation.annotations.asReversed().firstOrNull { annotation ->
@@ -1980,6 +2071,20 @@ internal class TextInteractionOverlay(
 
   private fun transitionTo(next: InteractionState) {
     interactionState = next
+    val selection = when (next) {
+      is InteractionState.Editing -> TextSelection(next.id.toDouble(), next.pageId)
+      is InteractionState.Selected -> TextSelection(
+        next.annotation.id.toDouble(), surface.documentCoordinator.page(next.pageIndex).id,
+      )
+      is InteractionState.Dragging -> TextSelection(
+        next.original.id.toDouble(), surface.documentCoordinator.page(next.pageIndex).id,
+      )
+      else -> null
+    }
+    if (selection != emittedSelection) {
+      emittedSelection = selection
+      onTextSelectionChange?.invoke(selection)
+    }
   }
 
   private class TextEntryView(context: Context) : EditText(context) {

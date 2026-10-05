@@ -9,7 +9,8 @@ and export.
 
 - The public contract lives in
   [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts). JavaScript
-  receives coarse state and page events, not PDF data or per-frame geometry.
+  receives coarse state/page events plus prepared-page text metadata and text
+  selection IDs, not PDF data or per-frame geometry.
 - [`src/index.ts`](../../../../src/index.ts) validates public arguments before
   native dispatch. Platforms check document-dependent bounds when admitting a
   command; loaders validate PDF, image, and OS data at ingress.
@@ -44,6 +45,15 @@ and export.
 - Page order and active-page identity are document state. Ink and text are
   committed per-page content; active gestures, predictions, editor drafts, and
   selection are temporary presentation state.
+- Prepared page handles retain immutable source analysis and a stable page ID.
+  The coordinator owns numeric text IDs, target metadata, and committed history;
+  the native overlay owns live drafts and selection. IDs are scoped to one view
+  and remain monotonic across document opens. Prepared operations are synchronous
+  after asynchronous page preparation and continue to address the captured page.
+  Module text takes precedence over embedded source text; clearing module text
+  leaves the PDF source intact. Field lookup matches complete labels by token
+  frequency, so word order may vary while partial labels and repeated-word
+  mismatches do not match.
 - Stored geometry uses canonical page coordinates: media-box-relative with a
   top-left origin. Viewport transforms are presentation-only.
 - Opens and page mutations prepare detached candidates. Failed or cancelled

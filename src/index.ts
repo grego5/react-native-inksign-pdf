@@ -4,20 +4,28 @@ import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConf
 import {
   argumentError,
   validateAddPagesOptions,
-  validateTextAnnotationBounds,
+  validateFieldFocusOptions,
+  validatePageIndex,
+  validatePagerDirection,
+  validateResolveTextOptions,
+  validateTextId,
   validateTextAnnotationOptions,
   validateTextModeOptions,
   validateViewportOptions,
 } from './publicArguments';
-import { createFieldFocusCommand, createTextKeyInsertionCommand } from './textKeyInsertion';
-
 import type {
+  AnalyzedPage,
+  ResolveTextOptions,
+  TextEntry,
+  TextId,
+  TextSelection,
+  TextValueSource,
+  PagerDirection,
   FieldFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
   TextAnnotationBounds,
   TextAnnotationOptions,
-  TextInsertionByKeyOptions,
   TextKeyOccurrence,
   TextModeOptions,
   PageType,
@@ -38,16 +46,17 @@ import type {
   StateChangeEvent,
   InteractionMode,
   InkSignView as InkSignViewNativeHandle,
+  AnalyzedPage as AnalyzedPageNativeHandle,
   InkSignViewMethods,
 } from './InkSignView.nitro';
 
 export type {
+  AnalyzedPage,
   FieldFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
   TextAnnotationBounds,
   TextAnnotationOptions,
-  TextInsertionByKeyOptions,
   TextKeyOccurrence,
   TextModeOptions,
   PageType,
@@ -67,6 +76,12 @@ export type {
   InkSignViewProps,
   StateChangeEvent,
   InteractionMode,
+  ResolveTextOptions,
+  TextEntry,
+  TextId,
+  TextSelection,
+  TextValueSource,
+  PagerDirection,
   InkSignViewMethods,
 };
 
@@ -79,9 +94,10 @@ const NativeInkSignView = getHostComponent<InkSignViewProps, InkSignViewMethods>
 );
 
 type NativeInkSignViewProps = React.ComponentProps<typeof NativeInkSignView>;
-type InkSignViewComponentProps = Omit<NativeInkSignViewProps, 'hybridRef' | 'onStateChange' | 'onPageChange'> & {
+type InkSignViewComponentProps = Omit<NativeInkSignViewProps, 'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange'> & {
   onStateChange?: InkSignViewProps['onStateChange'];
   onPageChange?: InkSignViewProps['onPageChange'];
+  onTextSelectionChange?: InkSignViewProps['onTextSelectionChange'];
 };
 
 function callAsync<T>(validate: () => void, invoke: () => Promise<T>): Promise<T> {
@@ -94,6 +110,53 @@ function callAsync<T>(validate: () => void, invoke: () => Promise<T>): Promise<T
 }
 
 const nativeHandles = new WeakMap<object, InkSignViewNativeHandle>();
+
+function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): AnalyzedPage {
+  return {
+    __type: native.__type,
+    name: native.name,
+    toString: () => native.toString(),
+    equals: (other) => native.equals(other),
+    dispose: () => native.dispose(),
+    resolveText(options) {
+      validateResolveTextOptions(options);
+      return native.resolveText(options);
+    },
+    getTextValue(id) {
+      validateTextId(id);
+      return native.getTextValue(id);
+    },
+    setTextValue(id, text) {
+      validateTextId(id);
+      if (typeof text !== 'string') throw argumentError('invalid_text', 'Text must be a string');
+      native.setTextValue(id, text);
+    },
+    clearText(id) {
+      validateTextId(id);
+      native.clearText(id);
+    },
+    setTextOptions(id, options) {
+      validateTextId(id);
+      if (options === undefined) throw argumentError('invalid_text_options', 'Text options are required');
+      validateTextAnnotationOptions(options);
+      native.setTextOptions(id, options);
+    },
+    getTextEntry(id) {
+      validateTextId(id);
+      return native.getTextEntry(id);
+    },
+    adjustTextSize(id, delta) {
+      validateTextId(id);
+      if (!Number.isFinite(delta)) throw argumentError('invalid_text_size_delta', 'Text size delta must be finite');
+      return native.adjustTextSize(id, delta);
+    },
+    getTextEntries: () => native.getTextEntries(),
+    focusText(id, options) {
+      validateTextId(id);
+      return callAsync(() => validateFieldFocusOptions(options), () => native.focusText(id, options));
+    },
+  };
+}
 
 function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHandle {
   const handle = {
@@ -134,6 +197,10 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
     previousPage: () => native.previousPage(),
     getViewport: () => native.getViewport(),
     hasInk: () => native.hasInk(),
+    getPage(pageIndex) {
+      return callAsync(() => validatePageIndex(pageIndex), async () =>
+        createValidatedAnalyzedPage(await native.getPage(pageIndex)));
+    },
     setInkMode(viewport) {
       validateViewportOptions(viewport);
       native.setInkMode(viewport);
@@ -145,20 +212,6 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
     undo: () => native.undo(),
     redo: () => native.redo(),
     clear: () => native.clear(),
-    insertTextAt(text, bounds, options) {
-      if (typeof text !== 'string' || text.trim() === '') {
-        throw argumentError('invalid_text', 'Text must not be empty');
-      }
-      validateTextAnnotationBounds(bounds);
-      validateTextAnnotationOptions(options);
-      native.insertTextAt(text, bounds, options);
-    },
-    insertTextByFieldName: createTextKeyInsertionCommand(
-      (text, key, options) => native.insertTextByFieldName(text, key, options),
-    ),
-    focusPageByFieldName: createFieldFocusCommand(
-      (key, options) => native.focusPageByFieldName(key, options),
-    ),
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
         throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');
@@ -169,9 +222,6 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
       validateTextModeOptions(options);
       native.setTextMode(options);
     },
-    increaseTextSize: () => native.increaseTextSize(),
-    decreaseTextSize: () => native.decreaseTextSize(),
-    removeTextAnnotation: () => native.removeTextAnnotation(),
     finalize: () => callAsync(() => {}, () => native.finalize()),
     startDebugRecording: () => native.startDebugRecording(),
     stopDebugRecording: () => native.stopDebugRecording(),
@@ -183,7 +233,8 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
 
 export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewComponentProps>(
   (props, ref) => {
-    const { onStateChange, onPageChange, ...nativeProps } = props;
+    validatePagerDirection(props.pagerDirection);
+    const { onStateChange, onPageChange, onTextSelectionChange, ...nativeProps } = props;
     const wrappedHybridRef = useMemo(
       () =>
         callback((value: InkSignViewNativeHandle | null) => {
@@ -198,12 +249,14 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewCompon
     );
     const wrappedStateChange = useMemo(() => callback(onStateChange), [onStateChange]);
     const wrappedPageChange = useMemo(() => callback(onPageChange), [onPageChange]);
+    const wrappedTextSelectionChange = useMemo(() => callback(onTextSelectionChange), [onTextSelectionChange]);
 
     return React.createElement(NativeInkSignView, {
       ...nativeProps,
       hybridRef: wrappedHybridRef,
       onStateChange: wrappedStateChange,
       onPageChange: wrappedPageChange,
+      onTextSelectionChange: wrappedTextSelectionChange,
     });
   },
 );

@@ -14,6 +14,18 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
+internal data class TextTargetSlot(
+  val id: Long,
+  val pageId: String,
+  var sourceIdentity: String?,
+  var fieldName: String?,
+  var bounds: PageRect,
+  var options: TextAnnotationOptions?,
+  var embeddedValue: String = "",
+  var layoutPage: PdfPageDimensions? = null,
+  var writingRule: PdfiumHorizontalSnapCandidate? = null,
+)
+
 /** UI-thread-owned coordinator for one published mutable PDF document. */
 internal class MutableDocumentCoordinator(
   sourcePath: String = "",
@@ -36,6 +48,8 @@ internal class MutableDocumentCoordinator(
   private var activeOperation: Long? = null
   private val workingFiles = LinkedHashSet<java.io.File>()
   private var disposed = false
+  private var nextTextId = 1L
+  private val textTargets = LinkedHashMap<Long, TextTargetSlot>()
   var fallbackFont: PdfFallbackFont? = null
   var structuralDirty: Boolean = false
     private set
@@ -91,6 +105,8 @@ internal class MutableDocumentCoordinator(
     sourcePath = candidatePath
     mutablePages.clear()
     mutablePages.addAll(candidatePages)
+    val retainedPageIds = candidatePages.mapTo(HashSet()) { it.id }
+    textTargets.entries.removeAll { it.value.pageId !in retainedPageIds }
     activePageId = candidateActivePageId
     structuralDirty = true
   }
@@ -186,6 +202,86 @@ internal class MutableDocumentCoordinator(
     mutablePages.indexOfFirst { it.id == pageId }.takeIf { it >= 0 }
 
   fun pageForId(pageId: String): InkPageState? = mutablePages.firstOrNull { it.id == pageId }
+
+  fun reserveTextTarget(
+    pageId: String,
+    sourceIdentity: String?,
+    fieldName: String?,
+    bounds: PageRect,
+    options: TextAnnotationOptions?,
+    embeddedValue: String = "",
+  ): TextTargetSlot {
+    if (pageForId(pageId) == null) throw PdfSessionException(
+      "operation_cancelled", "The target page no longer exists",
+    )
+    val existing = textTargets.values.firstOrNull { slot ->
+      slot.pageId == pageId && if (sourceIdentity != null) {
+        slot.sourceIdentity == sourceIdentity
+      } else {
+        slot.sourceIdentity == null && slot.bounds == bounds
+      }
+    }
+    if (existing != null) return existing
+    if (nextTextId > MAX_SAFE_TEXT_ID) throw PdfSessionException(
+      "text_id_exhausted", "The view has exhausted its numeric text IDs",
+    )
+    val slot = TextTargetSlot(nextTextId++, pageId, sourceIdentity, fieldName, bounds, options, embeddedValue)
+    textTargets[slot.id] = slot
+    return slot
+  }
+
+  fun textTarget(id: Long): TextTargetSlot = textTargets[id]
+    ?: throw PdfSessionException("text_not_found", "The text ID does not belong to this view")
+
+  fun textTargetsForPage(pageId: String): List<TextTargetSlot> =
+    textTargets.values.filter { it.pageId == pageId }
+
+  fun adoptTextTarget(
+    id: Long,
+    pageId: String,
+    sourceIdentity: String?,
+    fieldName: String?,
+    bounds: PageRect,
+    options: TextAnnotationOptions?,
+    embeddedValue: String,
+  ): TextTargetSlot {
+    val slot = textTarget(id)
+    if (slot.pageId != pageId) throw PdfSessionException(
+      "text_not_found", "The text ID belongs to another page",
+    )
+    val conflict = textTargets.values.firstOrNull {
+      it.id != id && it.pageId == pageId && if (sourceIdentity != null) {
+        it.sourceIdentity == sourceIdentity
+      } else {
+        it.sourceIdentity == null && it.bounds == bounds
+      }
+    }
+    if (conflict != null) throw PdfSessionException(
+      "text_target_ambiguous", "The resolved field already has another text target",
+    )
+    slot.sourceIdentity = sourceIdentity
+    slot.fieldName = fieldName
+    slot.bounds = bounds
+    // Resolution associates geometry; explicit styling owns option changes.
+    slot.embeddedValue = embeddedValue
+    return slot
+  }
+
+  fun updateTextTargetBounds(id: Long, pageId: String, bounds: PageRect) {
+    val target = textTarget(id)
+    if (target.pageId != pageId) throw PdfSessionException(
+      "text_not_found", "The text ID belongs to another page",
+    )
+    target.bounds = bounds
+  }
+
+  fun removeTextTargetsForPage(pageId: String) {
+    textTargets.entries.removeAll { it.value.pageId == pageId }
+  }
+
+  fun clearTextTargets() {
+    textTargets.clear()
+  }
 
   fun pageHistoryRevision(index: Int): Long = page(index).history.revision
   fun activeHistoryRevision(): Long = activeHistory().revision
@@ -561,29 +657,18 @@ internal class MutableDocumentCoordinator(
     }
   }
 
-  fun lookupTextKey(
+  fun preparePageAnalysis(
     generation: Long,
     pageIndex: Int,
-    key: String,
-    completion: (Result<PdfiumKeyLookupPage>) -> Unit,
+    completion: (Result<PdfiumPreparedPageAnalysis>) -> Unit,
   ) {
-    val page = page(pageIndex)
-    val transform = PageCoordinates(page.dimensions).layoutToDisplay(page.sourceDimensions)
-    sessionWorker.lookupTextKey(generation, pageIndex, key) { result ->
-      completion(result.map { lookup ->
-        lookup.copy(
-          matches = lookup.matches.map { match ->
-            val bounds = textAnnotationOuterBounds(
-              PageRect(match.left, match.top, match.right, match.bottom), transform, 0.0, 0.0,
-            )
-            match.copy(left = bounds.left, top = bounds.top, right = bounds.right,
-              bottom = bounds.bottom,
-              lineCenter = transform.map(PagePoint(match.left, match.lineCenter)).y)
-          },
-          rules = transformRules(lookup.rules, transform),
-        )
-      })
+    if (generation != generationValue || pageIndex !in mutablePages.indices) {
+      completion(Result.failure(PdfSessionException(
+        "operation_cancelled", "The target page is no longer available",
+      )))
+      return
     }
+    sessionWorker.preparePageAnalysis(generation, pageIndex, completion)
   }
 
   private fun transformRules(
@@ -593,7 +678,11 @@ internal class MutableDocumentCoordinator(
     val start = transform.map(PagePoint(rule.left, rule.y))
     val end = transform.map(PagePoint(rule.right, rule.y))
     if (kotlin.math.abs(start.y - end.y) > 0.001) null else {
-      PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y)
+      val verticalScale = kotlin.math.abs(
+        transform.map(PagePoint(rule.left, rule.y + 1.0)).y - transform.map(PagePoint(rule.left, rule.y)).y,
+      )
+      PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y,
+        rule.labelLineHeight?.times(verticalScale))
     }
   }
 
@@ -712,3 +801,5 @@ internal class MutableDocumentCoordinator(
     "PDF view was disposed or the open was superseded",
   )
 }
+
+private const val MAX_SAFE_TEXT_ID = 9_007_199_254_740_991L

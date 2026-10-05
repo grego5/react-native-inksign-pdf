@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.os.Looper
 import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.HapticFeedbackConstants
 import kotlin.math.max
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -67,6 +68,7 @@ internal class SurfaceView(
   internal val inkRenderer = InkRenderer()
   internal val sessionWorker: PdfSessionWorker = documentCoordinator.sessionWorker
   private var pageSwitchRequestId = 0L
+  private var pagerDirectionOverride: PagerDirection? = null
   internal val currentPageSwitchId: Long get() = pageSwitchRequestId
   internal val documentController = InkDocumentController(
     context = context,
@@ -110,6 +112,9 @@ internal class SurfaceView(
       performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
     },
     onPageNavigationSettled = { invalidate() },
+    minimumFlingVelocityPxPerSecond = 400.0 * resources.displayMetrics.density.toDouble(),
+    maximumFlingVelocityPxPerSecond = ViewConfiguration.get(context)
+      .scaledMaximumFlingVelocity.toFloat(),
     previewScheduler = pageNavigationPreviewScheduler ?: WorkerPageNavigationPreviewScheduler(sessionWorker),
     settlementDriver = pageNavigationSettlementDriver ?:
       ValueAnimatorPageNavigationSettlementDriver { postInvalidateOnAnimation() },
@@ -176,7 +181,7 @@ internal class SurfaceView(
   internal var stateNotificationsSuspended = 0
   internal var stateNotificationPending = false
   internal var committedTextLayer = TextRenderLayer.empty()
-  var textAnnotationBeingEdited: (() -> String?)? = null
+  var textAnnotationBeingEdited: (() -> Long?)? = null
   var onStateChange: ((InkState) -> Unit)? = null
   var onPageChange: ((PdfPageInfo) -> Unit)? = null
   var onTextContentChanged: (() -> Unit)? = null
@@ -615,7 +620,11 @@ internal class SurfaceView(
     val document = documentCoordinator.takeIf { it.hasDocument } ?: return null
     if (editMode || width <= 0 || height <= 0) return null
     val viewport = documentController.viewportSnapshot() ?: return null
-    val rtl = layoutDirection == android.view.View.LAYOUT_DIRECTION_RTL
+    val rtl = when (pagerDirectionOverride) {
+      PagerDirection.LTR -> false
+      PagerDirection.RTL -> true
+      PagerDirection.AUTO, null -> layoutDirection == android.view.View.LAYOUT_DIRECTION_RTL
+    }
     val eligibleTargets = buildMap<SwipeDirection, Int>(2) {
       if (document.activePageIndex > 0) {
         put(if (rtl) SwipeDirection.LEFT else SwipeDirection.RIGHT, document.activePageIndex - 1)
@@ -632,10 +641,19 @@ internal class SurfaceView(
       viewportWidthPx = width,
       viewportHeightPx = height,
       density = resources.displayMetrics.density.toDouble(),
-      layoutDirection = layoutDirection,
+      layoutDirection = if (rtl) android.view.View.LAYOUT_DIRECTION_RTL else android.view.View.LAYOUT_DIRECTION_LTR,
       eligibleTargets = eligibleTargets,
       targetContentRevisions = eligibleTargets.values.associateWith(document::pageHistoryRevision),
     )
+  }
+
+  internal fun setPagerDirection(direction: PagerDirection?) {
+    requireOnUiThread()
+    if (pagerDirectionOverride == direction) return
+    pagerDirectionOverride = direction
+    pageNavigationController.cancel()
+    pageNavigationController.reconcilePreviews()
+    invalidate()
   }
 
   internal fun pageNavigationState(): PageNavigationController.PageNavigationDiagnostics {
@@ -827,6 +845,39 @@ internal class SurfaceView(
     notifyStateChange()
     invalidate()
     onTextContentChanged?.invoke()
+  }
+
+  internal fun replaceTextAnnotationForPage(
+    generation: Long,
+    pageId: String,
+    before: TextAnnotation,
+    after: TextAnnotation,
+  ) {
+    val targetPage = resolveTextMutationPage(generation, pageId)
+    targetPage.history.replaceText(before, after)
+    val targetIsActive = documentCoordinator.activePageId() == targetPage.id
+    if (targetIsActive) rebuildCommittedTextLayer()
+    notifyStateChange()
+    if (targetIsActive) {
+      invalidate()
+      onTextContentChanged?.invoke()
+    }
+  }
+
+  internal fun removeTextAnnotationForPage(
+    generation: Long,
+    pageId: String,
+    annotation: TextAnnotation,
+  ) {
+    val targetPage = resolveTextMutationPage(generation, pageId)
+    targetPage.history.removeTextAnnotation(annotation)
+    val targetIsActive = documentCoordinator.activePageId() == targetPage.id
+    if (targetIsActive) rebuildCommittedTextLayer()
+    notifyStateChange()
+    if (targetIsActive) {
+      invalidate()
+      onTextContentChanged?.invoke()
+    }
   }
 
   fun currentViewportState(): PageViewportState {

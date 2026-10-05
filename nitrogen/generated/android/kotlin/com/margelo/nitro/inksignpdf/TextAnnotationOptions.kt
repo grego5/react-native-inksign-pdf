@@ -20,6 +20,12 @@ import java.util.Objects
 data class TextAnnotationOptions(
   @DoNotStrip
   @Keep
+  val fontSize: Double?,
+  @DoNotStrip
+  @Keep
+  val color: String?,
+  @DoNotStrip
+  @Keep
   val direction: TextDirection?,
   @DoNotStrip
   @Keep
@@ -36,7 +42,9 @@ data class TextAnnotationOptions(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is TextAnnotationOptions) return false
-    return Objects.deepEquals(this.direction, other.direction)
+    return Objects.deepEquals(this.fontSize, other.fontSize)
+      && Objects.deepEquals(this.color, other.color)
+      && Objects.deepEquals(this.direction, other.direction)
       && Objects.deepEquals(this.maxLines, other.maxLines)
       && Objects.deepEquals(this.alignment, other.alignment)
       && Objects.deepEquals(this.verticalAnchor, other.verticalAnchor)
@@ -44,6 +52,8 @@ data class TextAnnotationOptions(
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
+      fontSize,
+      color,
       direction,
       maxLines,
       alignment,
@@ -59,8 +69,8 @@ data class TextAnnotationOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?): TextAnnotationOptions {
-      return TextAnnotationOptions(direction, maxLines, alignment, verticalAnchor)
+    private fun fromCpp(fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?): TextAnnotationOptions {
+      return TextAnnotationOptions(fontSize, color, direction, maxLines, alignment, verticalAnchor)
     }
   }
 }

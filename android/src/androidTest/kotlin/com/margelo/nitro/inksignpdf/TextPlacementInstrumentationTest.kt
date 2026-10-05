@@ -117,17 +117,26 @@ internal class TextPlacementInstrumentationTest {
           overlay.addTextAnnotation(
             bounds,
             "short",
-            TextAnnotationOptions(direction, null, alignment, null),
+            TextAnnotationOptions(
+              fontSize = null,
+              color = null,
+              direction = direction,
+              maxLines = null,
+              alignment = alignment,
+              verticalAnchor = null,
+            ),
           )
         }
         overlay.addTextAnnotation(
           bounds,
           "short",
           TextAnnotationOptions(
-            TextDirection.RTL,
-            null,
-            TextAlignment.START,
-            TextVerticalAnchor.BOTTOM,
+            fontSize = null,
+            color = null,
+            direction = TextDirection.RTL,
+            maxLines = null,
+            alignment = TextAlignment.START,
+            verticalAnchor = TextVerticalAnchor.BOTTOM,
           ),
         )
         val annotations = checkNotNull(harness.surface.textPresentationSnapshot()).annotations
@@ -204,7 +213,14 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           box,
           "one\ntwo",
-          TextAnnotationOptions(TextDirection.LTR, 2.0, TextAlignment.START, null),
+          TextAnnotationOptions(
+            fontSize = null,
+            color = null,
+            direction = TextDirection.LTR,
+            maxLines = 2.0,
+            alignment = TextAlignment.START,
+            verticalAnchor = null,
+          ),
         )
         val annotation = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         val layout = TextLayoutSpec.createLayout(annotation)
@@ -272,18 +288,39 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           TextAnnotationBounds(50.0, 40.0, 42.0, 42.0),
           "one two three four five six seven eight nine ten",
-          TextAnnotationOptions(TextDirection.LTR, null, TextAlignment.START, null),
+          TextAnnotationOptions(
+            fontSize = null,
+            color = null,
+            direction = TextDirection.LTR,
+            maxLines = null,
+            alignment = TextAlignment.START,
+            verticalAnchor = null,
+          ),
         )
         overlay.addTextAnnotation(
           TextAnnotationBounds(208.0, 40.0, 42.0, 42.0),
           "RTL text wraps near the left edge",
-          TextAnnotationOptions(TextDirection.RTL, null, TextAlignment.START, null),
+          TextAnnotationOptions(
+            fontSize = null,
+            color = null,
+            direction = TextDirection.RTL,
+            maxLines = null,
+            alignment = TextAlignment.START,
+            verticalAnchor = null,
+          ),
         )
         harness.surface.layoutDirection = View.LAYOUT_DIRECTION_RTL
         overlay.addTextAnnotation(
           TextAnnotationBounds(208.0, 100.0, 42.0, 50.0),
           "Auto follows app layout",
-          TextAnnotationOptions(TextDirection.AUTO, null, TextAlignment.START, null),
+          TextAnnotationOptions(
+            fontSize = null,
+            color = null,
+            direction = TextDirection.AUTO,
+            maxLines = null,
+            alignment = TextAlignment.START,
+            verticalAnchor = null,
+          ),
         )
 
         val annotation = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -353,6 +390,8 @@ internal class TextPlacementInstrumentationTest {
           TextAnnotationBounds(20.0, 180.0, 260.0, 80.0),
           "one\ntwo\nthree\nfour",
           TextAnnotationOptions(
+            fontSize = null,
+            color = null,
             direction = TextDirection.LTR,
             alignment = TextAlignment.START,
             maxLines = 2.0,
@@ -363,6 +402,8 @@ internal class TextPlacementInstrumentationTest {
           TextAnnotationBounds(20.0, 230.0, 260.0, 30.0),
           "one\ntwo\nthree",
           TextAnnotationOptions(
+            fontSize = null,
+            color = null,
             direction = TextDirection.LTR,
             alignment = TextAlignment.START,
             maxLines = 3.0,
@@ -1191,12 +1232,12 @@ internal class TextPlacementInstrumentationTest {
     harness.runOnMain {
       val overlay = harness.createOverlay()
       val original = TextAnnotation(
-        id = "text-existing",
+        id = 1L,
         text = "Hello",
         bounds = PageRect(80.0, 80.0, 120.0, 98.0),
         fontSize = 16.0,
       )
-      harness.surface.appendTextAnnotation(1L, 0, original)
+      appendTestText(original)
       overlay.syncContent()
       val point = checkNotNull(harness.surface.textPresentationSnapshot())
         .transform.map(original.position)
@@ -1238,12 +1279,12 @@ internal class TextPlacementInstrumentationTest {
     harness.runOnMain {
       overlay = harness.createOverlay()
       val annotation = TextAnnotation(
-        id = "text-retained-selection",
+        id = 1L,
         text = "Hello",
         bounds = PageRect(80.0, 80.0, 140.0, 100.0),
         fontSize = 16.0,
       )
-      harness.surface.appendTextAnnotation(1L, 0, annotation)
+      appendTestText(annotation)
       overlay.syncContent()
       revisionBeforeHold = harness.activeHistoryRevision()
       val point = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -1280,13 +1321,13 @@ internal class TextPlacementInstrumentationTest {
     harness.runOnMain {
       overlay = harness.createOverlay()
       val created = TextAnnotation(
-        id = "text-drag-selection",
+        id = 1L,
         text = "Hello",
         bounds = PageRect(80.0, 80.0, 140.0, 100.0),
         fontSize = 16.0,
       )
       original = created
-      harness.surface.appendTextAnnotation(1L, 0, original)
+      appendTestText(original)
       overlay.syncContent()
       point = checkNotNull(harness.surface.textPresentationSnapshot()).transform.map(original.position)
       dispatch(overlay, MotionEvent.ACTION_DOWN, point.x.toFloat(), point.y.toFloat(), 3_900L)
@@ -1322,7 +1363,7 @@ internal class TextPlacementInstrumentationTest {
   fun selectedTextDragsFromItsPaddedOutlineAndAStationaryTapEdits() {
     for (isRtl in listOf(false, true)) {
       lateinit var overlay: TextInteractionOverlay
-      val annotationId = if (isRtl) "text-selected-rtl" else "text-selected-ltr"
+      val annotationId = if (isRtl) 2L else 1L
       harness.runOnMain {
         overlay = harness.createOverlay()
         val annotation = TextAnnotation(
@@ -1332,7 +1373,7 @@ internal class TextPlacementInstrumentationTest {
           fontSize = 16.0,
           directionRtl = isRtl,
         )
-        harness.surface.appendTextAnnotation(1L, 0, annotation)
+        appendTestText(annotation)
         overlay.syncContent()
         val transform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
         val point = transform.map(annotation.position)
@@ -1424,7 +1465,7 @@ internal class TextPlacementInstrumentationTest {
   fun bottomAnchoredDragPreviewStaysAlignedWithItsFlowBox() {
     lateinit var overlay: TextInteractionOverlay
     val annotation = TextAnnotation(
-      id = "bottom-anchored-drag-preview",
+      id = 1L,
       text = "One line",
       bounds = PageRect(80.0, 100.0, 150.0, 120.0),
       fontSize = 16.0,
@@ -1440,7 +1481,7 @@ internal class TextPlacementInstrumentationTest {
     try {
       harness.runOnMain {
         overlay = harness.createOverlay()
-        harness.surface.appendTextAnnotation(1L, 0, annotation)
+        appendTestText(annotation)
         overlay.syncContent()
         presentation = checkNotNull(harness.surface.textPresentationSnapshot())
         matrix = Matrix().apply {
@@ -1825,7 +1866,14 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           TextAnnotationBounds(80.0, 70.0, 160.0, 90.0),
           "Programmatic flow text",
-          TextAnnotationOptions(TextDirection.LTR, null, TextAlignment.START, null),
+          TextAnnotationOptions(
+            fontSize = null,
+            color = null,
+            direction = TextDirection.LTR,
+            maxLines = null,
+            alignment = TextAlignment.START,
+            verticalAnchor = null,
+          ),
         )
         val original = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         val initialPresentation = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -2118,12 +2166,12 @@ internal class TextPlacementInstrumentationTest {
       harness.setDocument(harness.info, zoom = 3.0, focus = PagePoint(80.0, 80.0), fitToPage = false)
       val overlay = harness.createOverlay()
       val annotation = TextAnnotation(
-        id = "text-moved-touch",
+        id = 1L,
         text = "Hello",
         bounds = PageRect(80.0, 80.0, 140.0, 100.0),
         fontSize = 16.0,
       )
-      harness.surface.appendTextAnnotation(1L, 0, annotation)
+      appendTestText(annotation)
       overlay.syncContent()
       val point = checkNotNull(harness.surface.textPresentationSnapshot())
         .transform.map(annotation.position)
@@ -2320,6 +2368,22 @@ internal class TextPlacementInstrumentationTest {
       layout.getPrimaryHorizontal(offset).toInt() - editor.scrollX
     val caretTop = editor.top + editor.paddingTop + layout.getLineTop(line) - editor.scrollY
     return caretX to caretTop
+  }
+
+  private fun appendTestText(annotation: TextAnnotation): TextAnnotation {
+    val coordinator = harness.surface.documentCoordinator
+    val page = coordinator.page(0)
+    val slot = coordinator.reserveTextTarget(
+      page.id,
+      sourceIdentity = null,
+      fieldName = null,
+      bounds = annotation.bounds,
+      options = null,
+    )
+    assertEquals(annotation.id, slot.id)
+    val registered = annotation.copy(id = slot.id)
+    harness.surface.appendTextAnnotation(coordinator.generation, 0, registered)
+    return registered
   }
 
   private inner class TextSurfaceHarness {

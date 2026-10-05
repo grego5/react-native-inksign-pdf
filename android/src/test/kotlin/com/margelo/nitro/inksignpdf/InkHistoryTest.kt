@@ -52,7 +52,7 @@ class InkHistoryTest {
   fun interleavedInkAndTextUseOneOrderedHistory() {
     val history = InkHistory()
     val first = outline(0f)
-    val text = text("text-1", "Hello\nworld", 24.0, 40.0)
+    val text = text(1L, "Hello\nworld", 24.0, 40.0)
     val second = outline(20f)
 
     history.append(first)
@@ -80,8 +80,8 @@ class InkHistoryTest {
   @Test
   fun textEditFontAndDeleteEachHaveIndependentHistoryActions() {
     val history = InkHistory()
-    val before = text("text-1", "Hello", 10.0, 20.0)
-    val after = text("text-1", "Hello\nworld", 10.0, 20.0, width = 48.0, height = 32.0, fontSize = 18.0)
+    val before = text(1L, "Hello", 10.0, 20.0)
+    val after = text(1L, "Hello\nworld", 10.0, 20.0, width = 48.0, height = 32.0, fontSize = 18.0)
 
     history.appendText(before)
     history.replaceText(before, after)
@@ -99,7 +99,7 @@ class InkHistoryTest {
   fun clearAndUndoRestoreInkAndTextTogether() {
     val history = InkHistory()
     val first = outline(0f)
-    val text = text("text-1", "Signed", 12.0, 18.0)
+    val text = text(1L, "Signed", 12.0, 18.0)
     history.append(first)
     history.appendText(text)
 
@@ -115,7 +115,7 @@ class InkHistoryTest {
   @Test
   fun textSnapshotKeepsCanonicalBoundsAndDoesNotExposeHistoryStorage() {
     val history = InkHistory()
-    val annotation = text("text-1", "A\nlongest", 14.0, 22.0, width = 64.0, height = 30.0)
+    val annotation = text(1L, "A\nlongest", 14.0, 22.0, width = 64.0, height = 30.0)
     history.appendText(annotation)
 
     val snapshot = history.contentSnapshot()
@@ -169,7 +169,7 @@ class InkHistoryTest {
   ), 0L, 1L, true)
 
   private fun text(
-    id: String,
+    id: Long,
     value: String,
     left: Double,
     top: Double,

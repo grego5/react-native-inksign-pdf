@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.FrameLayout
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.core.Promise
+import com.margelo.nitro.core.NullType
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
@@ -130,15 +131,27 @@ class HybridInkSignView internal constructor(
       surface.setKeyboardAvoidanceEnabled(value != false)
       textOverlay.refreshKeyboardAvoidance()
     }
+  override var pagerDirection: PagerDirection? = null
+    set(value) {
+      field = value
+      surface.setPagerDirection(value)
+    }
   override var onStateChange: ((StateChangeEvent) -> Unit)? = null
     set(value) {
       field = value
     }
   override var onPageChange: ((PageInfo) -> Unit)? = null
+  override var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Unit)? = null
     set(value) {
       field = value
     }
   init {
+    textOverlay.onTextSelectionChange = { selection ->
+      onTextSelectionChange?.invoke(
+        if (selection == null) Variant_NullType_TextSelection.create(NullType.NULL)
+        else Variant_NullType_TextSelection.create(selection),
+      )
+    }
     container.setBackgroundColor(Color.TRANSPARENT)
     container.addView(
       surface,
@@ -460,148 +473,375 @@ class HybridInkSignView internal constructor(
     runOnMainSync { runHistoryCommand(surface::clear) }
   }
 
-  override fun insertTextAt(
-    text: String,
-    bounds: TextAnnotationBounds,
-    options: TextAnnotationOptions?,
+  override fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec> = launchPromise {
+    checkMainThread()
+    if (disposed) throw operationCancelled()
+    if (!coordinator.hasDocument) throw PdfSessionException(
+      "document_not_open", "A document must be open before acquiring a prepared page",
+    )
+    val index = if (pageIndex == null) coordinator.activePageIndex else {
+      if (!pageIndex.isFinite() || pageIndex < 0.0 || pageIndex % 1.0 != 0.0) {
+        throw PdfSessionException("invalid_page_index", "The page index must be a non-negative integer")
+      }
+      if (pageIndex > Int.MAX_VALUE.toDouble()) throw PdfSessionException(
+        "page_not_found", "The requested page index is outside the document",
+      )
+      pageIndex.toInt()
+    }
+    if (index !in 0 until coordinator.pageCount) throw PdfSessionException(
+      "page_not_found", "The requested page index is outside the document",
+    )
+    val generation = coordinator.generation
+    val page = coordinator.page(index)
+    val context = PreparedPageContext(
+      generation, page.id, page.geometryRevision, index,
+      awaitWorkerResult { completion -> coordinator.preparePageAnalysis(generation, index, completion) },
+    )
+    checkMainThread()
+    if (disposed || coordinator.generation != generation || coordinator.pageForId(page.id) == null) {
+      throw operationCancelled()
+    }
+    HybridAnalyzedPage(this, context)
+  }
+
+  internal fun resolvePreparedText(context: PreparedPageContext, options: ResolveTextOptions): Double =
+    withPreparedPage(context) { page ->
+      var selectedWritingRule: PdfiumHorizontalSnapCandidate? = null
+      val selected = if (options.fieldName == null) {
+        val bounds = options.bounds ?: throw PdfSessionException(
+          "invalid_text_bounds", "Free text resolution requires bounds",
+        )
+        val rect = programmaticTextFlowBounds(bounds, page.dimensions)
+        val reserved = coordinator.textTargetsForPage(page.id).firstOrNull { it.sourceIdentity == null && displayedTargetBounds(it, page) == rect }
+        val existing = moduleAnnotations(page.id).filter {
+          displayedAnnotationBounds(it, page).intersectsTarget(rect)
+        }.also { if (it.size > 1) throw PdfSessionException("text_target_ambiguous", "Multiple annotations occupy the target") }.singleOrNull()
+        val embedded = detectEmbeddedText(context.analysis, PageCoordinates(page.dimensions).layoutToDisplay(page.sourceDimensions), rect)
+        if (reserved != null) reserved else if (existing != null) coordinator.adoptTextTarget(
+          existing.id, page.id, null, null, rect, options.toAnnotationOptions(), embedded,
+        ) else coordinator.reserveTextTarget(
+          page.id, null, null, rect, options.toAnnotationOptions(), embedded,
+        )
+      } else {
+        val directionRtl = textOverlay.resolveDirection(options.direction)
+        val transform = PageCoordinates(page.dimensions).layoutToDisplay(page.sourceDimensions)
+        val candidates = completeLabelMatches(context.labels, options.fieldName)
+          .filter { label ->
+            val matchBounds = projectMatchBounds(label.match, transform)
+            options.bounds?.let { region ->
+              val left = region.x
+              val top = region.y
+              val right = left + region.width
+              val bottom = top + region.height
+              matchBounds.left >= left && matchBounds.top >= top &&
+                matchBounds.right <= right && matchBounds.bottom <= bottom
+            } ?: true
+          }
+        if (candidates.isEmpty()) throw PdfSessionException(
+          "text_key_not_found", "The complete field label was not found on the captured page",
+        )
+        val projectedRules = context.analysis.rules.mapNotNull { rule ->
+          val start = transform.map(PagePoint(rule.left, rule.y))
+          val end = transform.map(PagePoint(rule.right, rule.y))
+          if (kotlin.math.abs(start.y - end.y) > 0.001) null else
+            PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y)
+        }
+        val projectedMatches = candidates.map { projectMatch(label = it, transform = transform) }
+        val placement = selectPdfiumTextKeyPlacement(
+          projectedMatches, projectedRules,
+          options.occurrence ?: TextKeyOccurrence.FIRST, directionRtl, page.dimensions,
+        ) ?: throw PdfSessionException(
+          "text_rule_not_found", "The complete field label has no usable adjacent rule",
+        )
+        val label = candidates.firstOrNull {
+          projectMatch(it, transform).sourceIndex == placement.match.sourceIndex
+        } ?: throw IllegalStateException("Resolved prepared label is missing")
+        val anchor = options.verticalAnchor ?: TextVerticalAnchor.BOTTOM
+        if (placement.rule.y <= 0.0 || placement.rule.y >= page.dimensions.height) {
+          throw PdfSessionException("text_rule_not_found", "The selected rule leaves no target area")
+        }
+        val fieldBounds = if (anchor == TextVerticalAnchor.BOTTOM) {
+          PageRect(placement.contentLeft, 0.0, placement.contentRight, placement.rule.y)
+        } else {
+          PageRect(placement.contentLeft, placement.rule.y, placement.contentRight, page.dimensions.height)
+        }
+        val band = valueBand(placement, anchor)
+        val matchingAnnotation = moduleAnnotations(page.id).filter { displayedAnnotationBounds(it, page).intersectsTarget(band) }
+        if (matchingAnnotation.size > 1) throw PdfSessionException("text_target_ambiguous", "Multiple annotations occupy the field")
+        val sourceRule = context.analysis.rules.first { rule ->
+          val start = transform.map(PagePoint(rule.left, rule.y))
+          val end = transform.map(PagePoint(rule.right, rule.y))
+          minOf(start.x, end.x) == placement.rule.left && maxOf(start.x, end.x) == placement.rule.right && start.y == placement.rule.y
+        }
+        val identity = "${label.identity}|${sourceRule.left}:${sourceRule.right}:${sourceRule.y}"
+        val embeddedValue = detectEmbeddedText(context.analysis, transform, band, label.sourceStart until label.sourceEnd)
+        selectedWritingRule = placement.rule
+        coordinator.textTargetsForPage(page.id).firstOrNull { it.sourceIdentity == identity } ?: matchingAnnotation.singleOrNull()?.let { annotation ->
+          coordinator.adoptTextTarget(
+            annotation.id, page.id, identity, options.fieldName, fieldBounds,
+            options.toAnnotationOptions(), embeddedValue,
+          )
+        } ?: coordinator.reserveTextTarget(
+          page.id, identity, options.fieldName, fieldBounds, options.toAnnotationOptions(), embeddedValue,
+        )
+      }
+      if (selected.layoutPage == null) {
+        selected.layoutPage = page.dimensions
+        selected.writingRule = selectedWritingRule
+      }
+      selected.id.toDouble()
+    }
+
+  internal fun readPreparedTextValue(context: PreparedPageContext, rawId: Double): String =
+    withPreparedPage(context) { page ->
+      val slot = requireTextTarget(context, rawId)
+      textOverlay.draftText(slot.id) ?: moduleAnnotations(page.id)
+        .firstOrNull { it.id == slot.id }?.text ?: slot.embeddedValue
+    }
+
+  internal fun setPreparedTextValue(context: PreparedPageContext, rawId: Double, text: String) {
+    withPreparedPage(context) { page ->
+      val slot = requireTextTarget(context, rawId)
+      if (text.isEmpty()) {
+        clearPreparedTextOnPage(slot, page, context.generation)
+        return@withPreparedPage
+      }
+      if (textOverlay.setPreparedDraftText(slot.id, text)) return@withPreparedPage
+      val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
+      if (current == null) {
+        val bounds = displayedTargetBounds(slot, page).toPublicBounds()
+        requireHorizontalRule(slot, page)
+        textOverlay.addTextAnnotation(
+          bounds, text, slot.options, capturedPage = CapturedTextPage(context.generation, page.id, page.dimensions),
+          targetId = slot.id,
+        )
+        return@withPreparedPage
+      }
+      if (current.text == text) return@withPreparedPage
+      val candidate = current.copy(text = text)
+      val updated = current.flowBounds?.let { flow ->
+        candidate.copy(bounds = TextLayoutSpec.visibleBounds(candidate, flow))
+      } ?: run {
+        val size = textEditorIntrinsicSize(text, current.fontSize)
+        val position = clampTextAnnotationPosition(current.position, size, current.layoutPage ?: page.dimensions)
+        candidate.copy(bounds = PageRect(position.x, position.y, position.x + size.width, position.y + size.height))
+      }
+      surface.replaceTextAnnotationForPage(context.generation, page.id, current, updated)
+    }
+  }
+
+  internal fun clearPreparedText(context: PreparedPageContext, rawId: Double) {
+    withPreparedPage(context) { page ->
+      val slot = requireTextTarget(context, rawId)
+      clearPreparedTextOnPage(slot, page, context.generation)
+    }
+  }
+
+  private fun clearPreparedTextOnPage(slot: TextTargetSlot, page: InkPageState, generation: Long) {
+    textOverlay.cancelPreparedDraft(slot.id)
+    val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id } ?: return
+    surface.removeTextAnnotationForPage(generation, page.id, annotation)
+  }
+
+  internal fun setPreparedTextOptions(
+    context: PreparedPageContext,
+    rawId: Double,
+    options: TextAnnotationOptions,
   ) {
-    runOnMainSync {
-      checkMainThread()
-      if (disposed) throw operationCancelled()
-      textOverlay.addTextAnnotation(bounds, text, options)
+    withPreparedPage(context) { page ->
+      val slot = requireTextTarget(context, rawId)
+      val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
+      val previous = slot.options
+      slot.options = TextAnnotationOptions(
+        options.fontSize ?: previous?.fontSize, options.color ?: previous?.color,
+        options.direction ?: previous?.direction, options.maxLines ?: previous?.maxLines,
+        options.alignment ?: previous?.alignment, options.verticalAnchor ?: previous?.verticalAnchor,
+      )
+      if (textOverlay.setPreparedDraftOptions(slot.id, options)) return@withPreparedPage
+      if (current == null) return@withPreparedPage
+      val fontSize = options.fontSize ?: current.fontSize
+      val color = parseTextColor(options.color, current.textColor)
+      val directionRtl = options.direction?.let(textOverlay::resolveDirection) ?: current.directionRtl
+      val flow = current.flowBounds
+      val candidate = current.copy(
+        fontSize = fontSize,
+        textColor = color,
+        directionRtl = directionRtl,
+        maxLines = options.maxLines?.toInt() ?: current.maxLines,
+        alignment = options.alignment ?: current.alignment,
+        verticalAnchor = options.verticalAnchor ?: current.verticalAnchor,
+      )
+      val updated = if (flow != null) candidate.copy(bounds = TextLayoutSpec.visibleBounds(candidate, flow)) else {
+        val size = textEditorIntrinsicSize(candidate.text, candidate.fontSize)
+        val position = clampTextAnnotationPosition(current.position, size, current.layoutPage ?: page.dimensions)
+        candidate.copy(bounds = PageRect(position.x, position.y, position.x + size.width, position.y + size.height))
+      }
+      if (current != updated) surface.replaceTextAnnotationForPage(context.generation, page.id, current, updated)
     }
   }
 
-  override fun insertTextByFieldName(
-    text: String,
-    key: String,
-    options: TextInsertionByKeyOptions?,
+  internal fun adjustPreparedTextSize(context: PreparedPageContext, rawId: Double, delta: Double): Double =
+    withPreparedPage(context) { page ->
+      val slot = requireTextTarget(context, rawId)
+      val size = textOverlay.preparedDraftFontSize(slot.id)
+        ?: moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.fontSize
+        ?: slot.options?.fontSize ?: textOverlay.preparedDefaultFontSize()
+      val adjusted = (size + delta).coerceIn(minimumTextFontSize, maximumTextFontSize)
+      if (adjusted != size) {
+        val options = TextAnnotationOptions(adjusted, null, null, null, null, null)
+        setPreparedTextOptions(context, rawId, options)
+      }
+      adjusted
+    }
+
+  internal fun preparedTextEntry(context: PreparedPageContext, rawId: Double): TextEntry =
+    withPreparedPage(context) { page ->
+      val slot = requireTextTarget(context, rawId)
+      val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
+      val draft = textOverlay.draftText(slot.id)
+      val value = draft ?: annotation?.text ?: slot.embeddedValue
+      val source = when {
+        draft != null || annotation != null -> TextValueSource.ANNOTATION
+        slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
+        else -> TextValueSource.EMPTY
+      }
+      TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), value.isNotEmpty(), source)
+    }
+
+  internal fun preparedTextEntries(context: PreparedPageContext): Array<TextEntry> =
+    withPreparedPage(context) { page ->
+      coordinator.textTargetsForPage(page.id).map { slot ->
+        val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
+        val draft = textOverlay.draftText(slot.id)
+        val value = draft ?: annotation?.text ?: slot.embeddedValue
+        val source = when {
+          draft != null || annotation != null -> TextValueSource.ANNOTATION
+          slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
+          else -> TextValueSource.EMPTY
+        }
+        TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), value.isNotEmpty(), source)
+      }.toTypedArray()
+    }
+
+  internal fun focusPreparedText(
+    context: PreparedPageContext,
+    rawId: Double,
+    options: FieldFocusOptions?,
   ): Promise<Unit> = launchPromise {
-    checkMainThread()
-    if (disposed) throw operationCancelled()
-    val presentation = surface.textPresentationSnapshot() ?: throw PdfSessionException(
-      "view_not_ready", "A published PDF page is required for key-based text insertion",
-    )
-    val generation = presentation.generation
-    val pageIndex = presentation.pageIndex
-    val pageId = presentation.pageId
-    val page = presentation.page
-    val geometryRevision = presentation.geometryRevision
-    val directionRtl = textOverlay.resolveDirection(options?.direction)
-    val lookup = awaitCapturedDocumentPageLookup(
-      awaitLookup = { awaitKeyLookup(generation, pageIndex, key) },
-      isTargetPageCurrent = {
-        isCurrentTextTarget(generation, pageId, geometryRevision)
-      },
-    )
-    if (!lookup.hasLiteralMatch) {
-      throw PdfSessionException("text_key_not_found", "The requested text key was not found on the captured page")
+    val target = withPreparedPage(context) { page ->
+      val slot = requireTextTarget(context, rawId)
+      page to slot
     }
-    val placement = selectPdfiumTextKeyPlacement(
-      lookup.matches,
-      lookup.rules,
-      options?.occurrence ?: TextKeyOccurrence.FIRST,
-      directionRtl,
-      page,
-    ) ?: throw PdfSessionException(
-      "text_rule_not_found", "The selected text key has no usable adjacent rule",
-    )
-    val rule = placement.rule
-    val anchor = options?.verticalAnchor ?: TextVerticalAnchor.BOTTOM
-    if (rule.y <= 0.0 || rule.y >= page.height) {
-      throw PdfSessionException("text_rule_not_found", "The selected rule leaves no page area for text")
-    }
-    val bounds = if (anchor == TextVerticalAnchor.BOTTOM) {
-      TextAnnotationBounds(placement.contentLeft, 0.0, placement.contentRight - placement.contentLeft, rule.y)
-    } else {
-      TextAnnotationBounds(placement.contentLeft, rule.y,
-        placement.contentRight - placement.contentLeft, page.height - rule.y)
-    }
-    val commitOptions = TextAnnotationOptions(
-      direction = if (directionRtl) TextDirection.RTL else TextDirection.LTR,
-      maxLines = options?.maxLines,
-      alignment = options?.alignment ?: TextAlignment.START,
-      verticalAnchor = anchor,
-    )
-    checkMainThread()
-    requireCurrentTextTarget(generation, pageId, geometryRevision)
-    surface.withStateTransaction {
-      textOverlay.addTextAnnotation(bounds, text, commitOptions, requireVisibleLine = true,
-        resolvedDirectionRtl = directionRtl,
-        capturedPage = CapturedTextPage(generation, pageId, page))
-    }
-    Unit
-  }
-
-  override fun focusPageByFieldName(key: String, options: FieldFocusOptions?): Promise<Unit> = launchPromise {
-    checkMainThread()
-    if (disposed) throw operationCancelled()
     surface.requireModeTransitionReady()
-    val presentation = surface.textPresentationSnapshot()
-      ?: throw PdfSessionException("view_not_ready", "A PDF must be opened before focusing a field")
-    val generation = presentation.generation
-    val pageId = presentation.pageId
-    val geometryRevision = presentation.geometryRevision
+    val (page, slot) = target
     viewportRequestID += 1L
-    val requestID = viewportRequestID
-    val directionRtl = textOverlay.resolveDirection(options?.direction)
-    val lookup = awaitCapturedDocumentPageLookup(
-      awaitLookup = { awaitKeyLookup(generation, presentation.pageIndex, key) },
-      isTargetPageCurrent = {
-        isCurrentTextTarget(generation, pageId, geometryRevision) && viewportRequestID == requestID
-      },
-    )
-    if (!lookup.hasLiteralMatch) throw PdfSessionException("text_key_not_found", "Text key was not found")
-    val placement = selectPdfiumTextKeyPlacement(lookup.matches, lookup.rules,
-      options?.occurrence ?: TextKeyOccurrence.FIRST, directionRtl, presentation.page)
-      ?: throw PdfSessionException("text_rule_not_found", "No usable horizontal rule beside the text key")
-    requireCurrentTextTarget(generation, pageId, geometryRevision)
+    val requestId = viewportRequestID
     textOverlay.finishForLifecycle()
-    surface.switchPage(checkNotNull(coordinator.pageIndexForId(pageId)))
+    surface.switchPage(checkNotNull(coordinator.pageIndexForId(page.id)))
+    val rule = requireHorizontalRule(slot, page)
+    val bounds = displayedTargetBounds(slot, page)
+    val center = rule?.let { (it.left + it.right) / 2.0 } ?: (bounds.left + bounds.right) / 2.0
     val request = ViewportRequest.FocusRule(
-      x = (placement.contentLeft + placement.contentRight) / 2.0,
-      ruleY = placement.rule.y,
+      x = center,
+      ruleY = rule?.y ?: (bounds.top + bounds.bottom) / 2.0,
       zoom = options?.zoom ?: 2.0,
       verticalAnchor = options?.verticalAnchor ?: FieldFocusVerticalAnchor.CENTER,
       edgeOffset = options?.edgeOffset ?: 0.0,
     )
     suspendCancellableCoroutine<Unit> { continuation ->
       surface.focusField(request, options?.setInkMode == true,
-        isCurrent = {
-          isCurrentTextTarget(generation, pageId, geometryRevision) && viewportRequestID == requestID
-        },
+        isCurrent = { !disposed && coordinator.generation == context.generation &&
+          coordinator.pageForId(context.pageId) != null && viewportRequestID == requestId },
         completion = { if (continuation.isActive) continuation.resume(Unit) },
         cancelled = { if (continuation.isActive) continuation.resumeWithException(operationCancelled()) })
     }
-    Unit
   }
 
-  private suspend fun awaitKeyLookup(
-    generation: Long,
-    pageIndex: Int,
-    key: String,
-  ): PdfiumKeyLookupPage = suspendCancellableCoroutine { continuation ->
-    coordinator.lookupTextKey(generation, pageIndex, key) { result ->
-      result.fold(
-        onSuccess = { value -> continuation.resume(value) },
-        onFailure = { error -> continuation.resumeWithException(error) },
-      )
+  private fun <T> withPreparedPage(context: PreparedPageContext, action: (InkPageState) -> T): T =
+    runOnMainSync {
+      checkMainThread()
+      if (disposed || coordinator.generation != context.generation) throw operationCancelled()
+      val page = coordinator.pageForId(context.pageId) ?: throw operationCancelled()
+      action(page)
     }
+
+  private fun requireTextTarget(context: PreparedPageContext, rawId: Double): TextTargetSlot {
+    if (!rawId.isFinite() || rawId <= 0.0 || rawId % 1.0 != 0.0 ||
+      rawId > 9_007_199_254_740_991.0) {
+      throw PdfSessionException("invalid_text_id", "Text IDs must be positive safe integers")
+    }
+    val slot = coordinator.textTarget(rawId.toLong())
+    if (slot.pageId != context.pageId) throw PdfSessionException(
+      "text_not_found", "The text ID belongs to another page",
+    )
+    return slot
   }
 
-  private fun isCurrentTextTarget(
-    generation: Long,
-    pageId: String,
-    expectedGeometryRevision: Long,
-  ): Boolean = !disposed && coordinator.hasDocument && coordinator.generation == generation &&
-    coordinator.pageForId(pageId)?.geometryRevision == expectedGeometryRevision
+  private fun moduleAnnotations(pageId: String): List<TextAnnotation> =
+    coordinator.pageForId(pageId)?.history?.contentSnapshot()?.mapNotNull { it.textAnnotationOrNull() }.orEmpty()
 
-  private fun requireCurrentTextTarget(
-    generation: Long,
-    pageId: String,
-    expectedGeometryRevision: Long,
-  ) {
-    if (!isCurrentTextTarget(generation, pageId, expectedGeometryRevision)) throw operationCancelled()
+  private fun projectMatchBounds(match: PdfiumTextKeyMatch, transform: PageTransform): PageRect =
+    textAnnotationOuterBounds(PageRect(match.left, match.top, match.right, match.bottom), transform, 0.0, 0.0)
+
+  private fun projectMatch(label: PreparedTextLabel, transform: PageTransform): PdfiumTextKeyMatch {
+    val bounds = projectMatchBounds(label.match, transform)
+    val lineCenter = transform.map(PagePoint(label.match.left, label.match.lineCenter)).y
+    return label.match.copy(left = bounds.left, top = bounds.top, right = bounds.right,
+      bottom = bounds.bottom, lineCenter = lineCenter, lineHeight = bounds.bottom - bounds.top)
+  }
+
+  private fun PageRect.intersectsTarget(other: PageRect) = left < other.right && right > other.left && top < other.bottom && bottom > other.top
+
+  private fun displayedAnnotationBounds(annotation: TextAnnotation, page: InkPageState): PageRect =
+    textAnnotationOuterBounds(annotation.bounds, PageCoordinates(page.dimensions).layoutToDisplay(annotation.layoutPage), 0.0, 0.0)
+
+  private fun displayedTargetBounds(slot: TextTargetSlot, page: InkPageState): PageRect {
+    val transform = PageCoordinates(page.dimensions).layoutToDisplay(slot.layoutPage)
+    slot.writingRule?.let { rule ->
+      val start = transform.map(PagePoint(rule.left, rule.y))
+      val end = transform.map(PagePoint(rule.right, rule.y))
+      if (kotlin.math.abs(start.y - end.y) <= 0.001) {
+        val bottom = (slot.options?.verticalAnchor ?: TextVerticalAnchor.BOTTOM) == TextVerticalAnchor.BOTTOM
+        val flow = textAnnotationOuterBounds(slot.bounds, transform, 0.0, 0.0)
+        return PageRect(flow.left, if (bottom) 0.0 else start.y,
+          flow.right, if (bottom) start.y else page.dimensions.height)
+      }
+    }
+    return textAnnotationOuterBounds(slot.bounds, transform, 0.0, 0.0)
+  }
+
+  private fun requireHorizontalRule(slot: TextTargetSlot, page: InkPageState): PdfiumHorizontalSnapCandidate? {
+    val rule = slot.writingRule ?: return null
+    val transform = PageCoordinates(page.dimensions).layoutToDisplay(slot.layoutPage)
+    val start = transform.map(PagePoint(rule.left, rule.y))
+    val end = transform.map(PagePoint(rule.right, rule.y))
+    if (kotlin.math.abs(start.y - end.y) > 0.001) throw PdfSessionException("text_rule_not_found", "The writing rule is vertical")
+    return PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y)
+  }
+
+  private fun valueBand(placement: PdfiumTextKeyPlacement, anchor: TextVerticalAnchor): PageRect =
+    PageRect(placement.rule.left,
+      if (anchor == TextVerticalAnchor.BOTTOM) placement.rule.y - placement.match.lineHeight else placement.rule.y,
+      placement.rule.right,
+      if (anchor == TextVerticalAnchor.BOTTOM) placement.rule.y else placement.rule.y + placement.match.lineHeight)
+
+  private fun detectEmbeddedText(analysis: PdfiumPreparedPageAnalysis, transform: PageTransform,
+    region: PageRect, excluded: IntRange = IntRange.EMPTY): String {
+    val selected = analysis.glyphs.mapIndexedNotNull { index, glyph ->
+      val box = glyph.bounds ?: return@mapIndexedNotNull null
+      val rect = projectMatchBounds(box, transform)
+      if (index in excluded || !rect.intersectsTarget(region) || Character.isWhitespace(glyph.codepoint)) null else index
+    }
+    return buildString {
+      var previous: Int? = null
+      for (index in selected) {
+        previous?.let { prior ->
+          if ((prior + 1 until index).any { Character.isWhitespace(analysis.glyphs[it].codepoint) }) append(' ')
+        }
+        appendCodePoint(analysis.glyphs[index].codepoint)
+        previous = index
+      }
+    }
   }
 
   private fun runHistoryCommand(command: () -> Unit) {
@@ -651,18 +891,6 @@ class HybridInkSignView internal constructor(
       if (disposed) throw operationCancelled()
       textOverlay.setTextDirection(direction)
     }
-  }
-
-  override fun increaseTextSize(): Double = runTextCommand {
-    textOverlay.increaseTextSize()
-  }
-
-  override fun decreaseTextSize(): Double = runTextCommand {
-    textOverlay.decreaseTextSize()
-  }
-
-  override fun removeTextAnnotation() = runTextCommand {
-    textOverlay.removeTextAnnotation()
   }
 
   private fun startPageNavigation(delta: Int) {
@@ -1029,20 +1257,4 @@ class HybridInkSignView internal constructor(
     )
   }
 
-}
-
-internal suspend fun <T> awaitCapturedDocumentPageLookup(
-  awaitLookup: suspend () -> T,
-  isTargetPageCurrent: () -> Boolean,
-): T {
-  val result = try {
-    Result.success(awaitLookup())
-  } catch (error: Throwable) {
-    Result.failure(error)
-  }
-  if (!isTargetPageCurrent()) throw PdfSessionException(
-    "operation_cancelled",
-    "The document or captured page changed during text lookup",
-  )
-  return result.getOrThrow()
 }

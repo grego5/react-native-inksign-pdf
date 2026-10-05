@@ -5,8 +5,11 @@ const {
   validateTextAnnotationBounds,
   validateTextAnnotationOptions,
   validateTextModeOptions,
+  validateResolveTextOptions,
+  validateTextId,
+  validateFieldFocusOptions,
+  validatePagerDirection,
 } = require('../lib/commonjs/publicArguments.js');
-const { createFieldFocusCommand, createTextKeyInsertionCommand } = require('../lib/commonjs/textKeyInsertion.js');
 
 test('addPages accepts positive finite DPI and JPEG quality endpoints', () => {
   assert.doesNotThrow(() => validateAddPagesOptions({ targetDpi: Number.MIN_VALUE, jpegQuality: 0 }));
@@ -61,35 +64,29 @@ test('text options validate alignment and physical placement dimensions', () => 
   }
 });
 
-test('insertTextByFieldName forwards values through the public handle and rejects invalid options', async () => {
-  const calls = [];
-  const native = {
-    insertTextByFieldName: (...args) => { calls.push(args); return Promise.resolve(); },
-  };
-  const insertTextByFieldName = createTextKeyInsertionCommand(
-    (text, key, options) => native.insertTextByFieldName(text, key, options),
-  );
-  const options = { occurrence: 'last', direction: 'rtl', maxLines: 2, verticalAnchor: 'top' };
-  await insertTextByFieldName('Ada', 'Signer', options);
-  assert.deepEqual(calls, [['Ada', 'Signer', options]]);
-  await assert.rejects(insertTextByFieldName('Ada', 'Signer', { occurrence: 'nearest' }), {
-    message: /^invalid_text_key_options:/,
-  });
-  assert.equal(calls.length, 1);
+test('prepared text options require a named label or bounded free target and safe numeric IDs', () => {
+  assert.doesNotThrow(() => validateResolveTextOptions({ fieldName: 'Signer' }));
+  assert.doesNotThrow(() => validateResolveTextOptions({
+    bounds: { x: 10, y: 20, width: 100, height: 40 }, fontSize: 18,
+  }));
+  for (const options of [{}, { fieldName: '' }, { fieldName: 'Signer', occurrence: 'nearest' }]) {
+    assert.throws(() => validateResolveTextOptions(options));
+  }
+  for (const id of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.throws(() => validateTextId(id), { message: /^invalid_text_id:/ });
+  }
+  assert.doesNotThrow(() => validateTextId(Number.MAX_SAFE_INTEGER));
 });
 
-test('focusPageByFieldName forwards focus options and waits for native completion', async () => {
-  const calls = [];
-  let complete;
-  const nativeCompletion = new Promise(resolve => { complete = resolve; });
-  const focus = createFieldFocusCommand((...args) => {
-    calls.push(args);
-    return nativeCompletion;
+test('focus and pager direction validate their supported values', () => {
+  assert.doesNotThrow(() => validateFieldFocusOptions({ occurrence: 'last', zoom: 3, setInkMode: true }));
+  assert.throws(() => validateFieldFocusOptions({ verticalAnchor: 'middle' }), {
+    message: /^invalid_field_focus_options:/,
   });
-  const options = { occurrence: 'last', zoom: 3, setInkMode: true };
-  const pending = focus('Signature', options);
-  assert.deepEqual(calls, [['Signature', options]]);
-  assert.equal(pending, nativeCompletion);
-  complete();
-  await pending;
+  for (const direction of [undefined, 'auto', 'ltr', 'rtl']) {
+    assert.doesNotThrow(() => validatePagerDirection(direction));
+  }
+  assert.throws(() => validatePagerDirection('sideways'), {
+    message: /^invalid_pager_direction:/,
+  });
 });

@@ -28,6 +28,7 @@ internal data class PdfiumHorizontalSnapCandidate(
   val left: Double,
   val right: Double,
   val y: Double,
+  val labelLineHeight: Double? = null,
 )
 
 internal data class PdfiumTextKeyMatch(
@@ -40,9 +41,17 @@ internal data class PdfiumTextKeyMatch(
   val lineHeight: Double,
 )
 
-internal data class PdfiumTextKeyLookup(
-  val hasLiteralMatch: Boolean,
-  val matches: List<PdfiumTextKeyMatch>,
+internal data class PdfiumPreparedGlyph(
+  val codepoint: Int,
+  val bounds: PdfiumTextKeyMatch?,
+  val visualRow: Int,
+)
+
+internal data class PdfiumPreparedPageAnalysis(
+  val width: Double,
+  val height: Double,
+  val glyphs: List<PdfiumPreparedGlyph>,
+  val rules: List<PdfiumHorizontalSnapCandidate>,
 )
 
 /** Worker-owned bridge to one detached PDFium document session. */
@@ -64,24 +73,32 @@ internal class PdfiumRenderSession private constructor(
     }
   }
 
-  fun textKeyMatches(pageIndex: Int, key: String): List<PdfiumTextKeyMatch> {
-    return textKeyLookup(pageIndex, key).matches
-  }
-
-  fun textKeyLookup(pageIndex: Int, key: String): PdfiumTextKeyLookup {
+  fun preparePageAnalysis(pageIndex: Int): PdfiumPreparedPageAnalysis {
     check(pageIndex in 0 until pageCount) { "Invalid PDFium page index: $pageIndex" }
     val handle = nativeHandle
     if (handle == 0L) throw PdfSessionException("pdfium_closed", "The PDFium render session is closed")
-    val values = nativeTextKeyMatches(handle, pageIndex, key) ?: DoubleArray(0)
-    check(values.isNotEmpty() && (values.size - 1) % 7 == 0) {
-      "PDFium returned incomplete text key lookup data"
+    val values = nativePreparedPageAnalysis(handle, pageIndex)
+      ?: throw PdfSessionException("pdfium_page_analysis_failed", "PDFium could not prepare page analysis")
+    check(values.size >= 4) { "PDFium returned incomplete prepared page analysis" }
+    val glyphCount = values[2].toInt()
+    val ruleCount = values[3].toInt()
+    check(glyphCount >= 0 && ruleCount >= 0 && values.size == 4 + glyphCount * 10 + ruleCount * 3) {
+      "PDFium returned inconsistent prepared page analysis"
     }
-    val matches = List((values.size - 1) / 7) { index ->
-      val offset = 1 + index * 7
-      PdfiumTextKeyMatch(values[offset], values[offset + 1], values[offset + 2],
-        values[offset + 3], values[offset + 4], values[offset + 5], values[offset + 6])
+    val glyphs = List(glyphCount) { index ->
+      val offset = 4 + index * 10
+      val bounds = if (values[offset + 1] == 1.0) PdfiumTextKeyMatch(
+        values[offset + 2], values[offset + 3], values[offset + 4], values[offset + 5],
+        values[offset + 6], values[offset + 7], values[offset + 8],
+      ) else null
+      PdfiumPreparedGlyph(values[offset].toInt(), bounds, values[offset + 9].toInt())
     }
-    return PdfiumTextKeyLookup(values[0] == 1.0, matches)
+    val rulesStart = 4 + glyphCount * 10
+    val rules = List(ruleCount) { index ->
+      val offset = rulesStart + index * 3
+      PdfiumHorizontalSnapCandidate(values[offset], values[offset + 1], values[offset + 2])
+    }
+    return PdfiumPreparedPageAnalysis(values[0], values[1], glyphs, rules)
   }
 
   internal fun pageAnalysisScanCountsForTesting(): LongArray {
@@ -203,11 +220,7 @@ internal class PdfiumRenderSession private constructor(
     ): DoubleArray?
 
     @JvmStatic
-    private external fun nativeTextKeyMatches(
-      handle: Long,
-      pageIndex: Int,
-      key: String,
-    ): DoubleArray?
+    private external fun nativePreparedPageAnalysis(handle: Long, pageIndex: Int): DoubleArray?
 
     @JvmStatic
     private external fun nativePageAnalysisScanCountsForTesting(handle: Long): LongArray?

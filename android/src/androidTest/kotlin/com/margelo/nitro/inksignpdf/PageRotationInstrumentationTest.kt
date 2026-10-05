@@ -14,7 +14,6 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.margelo.nitro.core.Promise
 import java.io.File
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
@@ -41,15 +40,17 @@ class PageRotationInstrumentationTest {
         view.view.layout(0, 0, 480, 480)
       }
       await(instrumentation, viewRef.get().open(source.absolutePath, null))
+      val initialPage = awaitPreparedPage(instrumentation, viewRef.get())
       val before = AtomicReference<TextAnnotation>()
       val workingPath = AtomicReference<String>()
       instrumentation.runOnMainSync {
         val view = viewRef.get()
         workingPath.set(view.coordinator.sourcePath)
-        view.insertTextAt("Original", TextAnnotationBounds(40.0, 50.0, 180.0, 24.0), null)
+        setPreparedText(initialPage, TextAnnotationBounds(40.0, 50.0, 180.0, 24.0), "Original")
         before.set(view.coordinator.pageSnapshot(0).content.single().textAnnotationOrNull())
       }
       await(instrumentation, viewRef.get().rotatePage(90.0))
+      val rotatedPage = awaitPreparedPage(instrumentation, viewRef.get())
       instrumentation.runOnMainSync {
         val view = viewRef.get()
         assertEquals(workingPath.get(), view.coordinator.sourcePath)
@@ -77,7 +78,7 @@ class PageRotationInstrumentationTest {
         assertEquals(annotation.layoutPage, edited.layoutPage)
 
         view.defaultTextColor = "#D00000"
-        view.insertTextAt("New text", TextAnnotationBounds(60.0, 160.0, 160.0, 24.0), null)
+        setPreparedText(rotatedPage, TextAnnotationBounds(60.0, 160.0, 160.0, 24.0), "New text")
         val newText = checkNotNull(view.coordinator.pageSnapshot(0).content.last().textAnnotationOrNull())
         assertEquals(PdfPageDimensions(240.0, 320.0, 1), newText.layoutPage)
         val actual = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
@@ -99,10 +100,9 @@ class PageRotationInstrumentationTest {
         val exported = PdfiumRenderSession.open(File(output).readBytes())
         try {
           assertEquals(PdfiumPageSize(240.0, 320.0, 1), exported.pageSize(0))
-          assertTrue(
-            "Export should retain the literal text even when lookup finds no usable row geometry",
-            exported.textKeyLookup(0, "New text").hasLiteralMatch,
-          )
+          assertTrue(completeLabelMatches(
+            preparedTextLabels(exported.preparePageAnalysis(0)), "New text",
+          ).isNotEmpty())
           val rendered = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
           try {
             assertTrue(exported.renderPageIntoBitmap(
@@ -130,9 +130,48 @@ class PageRotationInstrumentationTest {
   }
 
   @Test
-  fun committedRotationRejectsPendingInsertionAndFocusResults() {
-    assertStaleFieldCommandCancelledByRotation(focus = false)
-    assertStaleFieldCommandCancelledByRotation(focus = true)
+  fun preparedPageRetainsIdentityAndUsesCurrentGeometryAfterRotation() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val source = File.createTempFile("prepared-rotation-", ".pdf", context.cacheDir)
+    val viewRef = AtomicReference<HybridInkSignView>()
+    try {
+      source.writeBytes(sourcePdf(300, 400, fieldRules = true))
+      instrumentation.runOnMainSync {
+        val view = HybridInkSignView(context)
+        viewRef.set(view)
+        val size = View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY)
+        view.view.measure(size, size)
+        view.view.layout(0, 0, 480, 480)
+      }
+      await(instrumentation, viewRef.get().open(source.absolutePath, null))
+      val capturedPage = awaitPreparedPage(instrumentation, viewRef.get())
+      await(instrumentation, viewRef.get().rotatePage(90.0))
+      await(instrumentation, viewRef.get().rotatePage(90.0))
+
+      val id = capturedPage.resolveText(fieldResolutionOptions())
+      capturedPage.setTextValue(id, "OK")
+      val currentPage = awaitPreparedPage(instrumentation, viewRef.get())
+      assertEquals(id, currentPage.resolveText(fieldResolutionOptions()), 0.0)
+      await(instrumentation, currentPage.focusText(id, FieldFocusOptions(
+        occurrence = TextKeyOccurrence.FIRST,
+        direction = TextDirection.LTR,
+        zoom = 5.0,
+        verticalAnchor = FieldFocusVerticalAnchor.BOTTOM,
+        edgeOffset = 8.0,
+        setInkMode = false,
+      )))
+      instrumentation.runOnMainSync {
+        val annotation = checkNotNull(
+          viewRef.get().coordinator.pageSnapshot(0).content.single().textAnnotationOrNull(),
+        )
+        assertEquals("OK", annotation.text)
+        assertEquals(2, annotation.layoutPage?.rotation)
+      }
+    } finally {
+      instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
+      source.delete()
+    }
   }
 
   @Test
@@ -152,24 +191,30 @@ class PageRotationInstrumentationTest {
         view.defaultTextColor = "#D00000"
       }
       await(instrumentation, viewRef.get().open(source.absolutePath, null))
+      var stableId: Double? = null
       for (angle in listOf(0, 90, 180, 270)) {
         val view = viewRef.get()
         if (angle != 0) await(instrumentation, view.rotatePage(90.0))
-        val insertion = view.insertTextByFieldName("OK", "Name", TextInsertionByKeyOptions(
-          occurrence = null, direction = TextDirection.LTR, maxLines = 2.0,
-          alignment = null, verticalAnchor = TextVerticalAnchor.BOTTOM,
-        ))
+        val page = awaitPreparedPage(instrumentation, view)
         if (angle == 90 || angle == 270) {
-          for (command in listOf(insertion, view.focusPageByFieldName("Name", FieldFocusOptions(
-            occurrence = null, direction = TextDirection.LTR, zoom = 5.0,
-            verticalAnchor = FieldFocusVerticalAnchor.BOTTOM, edgeOffset = 8.0, setInkMode = true,
-          )))) {
-            try {
-              await(instrumentation, command)
-              throw AssertionError("A vertical rule must not accept a field command")
-            } catch (error: AssertionError) {
-              assertEquals("text_rule_not_found", (error.cause as? PdfSessionException)?.code)
-            }
+          try {
+            page.resolveText(fieldResolutionOptions())
+            throw AssertionError("A vertical rule must not resolve as a field")
+          } catch (error: PdfSessionException) {
+            assertEquals("text_rule_not_found", error.code)
+          }
+          try {
+            await(instrumentation, page.focusText(checkNotNull(stableId), FieldFocusOptions(
+              occurrence = TextKeyOccurrence.FIRST,
+              direction = TextDirection.LTR,
+              zoom = 5.0,
+              verticalAnchor = FieldFocusVerticalAnchor.BOTTOM,
+              edgeOffset = 8.0,
+              setInkMode = true,
+            )))
+            throw AssertionError("A vertical rule must not accept focus")
+          } catch (error: AssertionError) {
+            assertEquals("text_rule_not_found", (error.cause as? PdfSessionException)?.code)
           }
           instrumentation.runOnMainSync {
             assertTrue(view.coordinator.pageSnapshot(0).content.isEmpty())
@@ -178,7 +223,9 @@ class PageRotationInstrumentationTest {
           }
           continue
         }
-        await(instrumentation, insertion)
+        val id = page.resolveText(fieldResolutionOptions())
+        stableId?.let { assertEquals(it, id, 0.0) } ?: run { stableId = id }
+        page.setTextValue(id, "OK")
         val ruleY = if (angle == 0) 132.0 else 268.0
         val field = PageRect(if (angle == 0) 210.0 else 190.0, 0.0, 280.0, ruleY)
         instrumentation.runOnMainSync {
@@ -187,9 +234,13 @@ class PageRotationInstrumentationTest {
           assertEquals(angle / 90, annotation.layoutPage?.rotation)
         }
         for (anchor in listOf(FieldFocusVerticalAnchor.TOP, FieldFocusVerticalAnchor.BOTTOM)) {
-          await(instrumentation, view.focusPageByFieldName("Name", FieldFocusOptions(
-            occurrence = null, direction = TextDirection.LTR, zoom = 5.0,
-            verticalAnchor = anchor, edgeOffset = 8.0, setInkMode = false,
+          await(instrumentation, page.focusText(id, FieldFocusOptions(
+            occurrence = TextKeyOccurrence.FIRST,
+            direction = TextDirection.LTR,
+            zoom = 5.0,
+            verticalAnchor = anchor,
+            edgeOffset = 8.0,
+            setInkMode = false,
           )))
           instrumentation.runOnMainSync {
             val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
@@ -204,7 +255,9 @@ class PageRotationInstrumentationTest {
           val exported = PdfiumRenderSession.open(File(output).readBytes())
           val bitmap = Bitmap.createBitmap(300, 400, Bitmap.Config.ARGB_8888)
           try {
-            assertTrue(exported.textKeyLookup(0, "OK").hasLiteralMatch)
+            assertTrue(completeLabelMatches(
+              preparedTextLabels(exported.preparePageAnalysis(0)), "OK",
+            ).isNotEmpty())
             assertTrue(exported.renderPageIntoBitmap(0, bitmap,
               PdfiumAffineMatrix(1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
               PdfiumRect(0.0, 0.0, 300.0, 400.0), flags = pdfiumAndroidDisplayFlags))
@@ -253,6 +306,7 @@ class PageRotationInstrumentationTest {
         view.view.layout(0, 0, 480, 480)
       }
       await(instrumentation, viewRef.get().open(source.absolutePath, null))
+      val preparedPage = awaitPreparedPage(instrumentation, viewRef.get())
 
       val originalPageId = AtomicReference<String>()
       val contentBeforeRotation = AtomicReference<List<PageContent>>()
@@ -263,11 +317,7 @@ class PageRotationInstrumentationTest {
       instrumentation.runOnMainSync {
         val view = viewRef.get()
         originalPageId.set(view.coordinator.page(0).id)
-        view.insertTextAt(
-          "Approved",
-          TextAnnotationBounds(20.0, 90.0, 180.0, 30.0),
-          null,
-        )
+        setPreparedText(preparedPage, TextAnnotationBounds(20.0, 90.0, 180.0, 30.0), "Approved")
         view.coordinator.appendActiveInk(originalInk)
         val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
         surface.inkRenderer.addCompletedOutline(originalInk)
@@ -340,7 +390,9 @@ class PageRotationInstrumentationTest {
       val exported = PdfiumRenderSession.open(File(outputPath).readBytes())
       try {
         assertEquals(PdfiumPageSize(240.0, 320.0, rotation = 1), exported.pageSize(0))
-        assertTrue("Export should retain committed text", exported.textKeyLookup(0, "Approved").hasLiteralMatch)
+        assertTrue("Export should retain committed text", completeLabelMatches(
+          preparedTextLabels(exported.preparePageAnalysis(0)), "Approved",
+        ).isNotEmpty())
       } finally {
         exported.close()
         File(outputPath).delete()
@@ -373,86 +425,17 @@ class PageRotationInstrumentationTest {
     return checkNotNull(result.get())
   }
 
-  private fun assertStaleFieldCommandCancelledByRotation(focus: Boolean) {
-    NativeTestRuntime.initialize()
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    val context = instrumentation.targetContext
-    val source = File.createTempFile("stale-rotation-field-", ".pdf", context.cacheDir)
-    val lookupStarted = CountDownLatch(1)
-    val releaseLookup = CountDownLatch(1)
-    val executor = Executors.newFixedThreadPool(2)
-    val worker = PdfSessionWorker(
-      opener = PdfSessionOpener { path, generation ->
-        BlockingRotationLookupResource(
-          PdfSession.open(path, generation),
-          lookupStarted,
-          releaseLookup,
-        )
-      },
-      executorOverride = executor,
-    )
-    val viewRef = AtomicReference<HybridInkSignView>()
-    try {
-      source.writeBytes(sourcePdf(width = 320, height = 240))
-      instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context, worker)
-        viewRef.set(view)
-        val exactSize = View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY)
-        view.view.measure(exactSize, exactSize)
-        view.view.layout(0, 0, 480, 480)
-      }
-      val opened = await(instrumentation, viewRef.get().open(source.absolutePath, null))
-      assertEquals(1.0, opened.pageCount, 0.0)
-
-      val lookupError = AtomicReference<Throwable>()
-      val lookupSettled = CountDownLatch(1)
-      val command = AtomicReference<Promise<Unit>>()
-      instrumentation.runOnMainSync {
-        val view = viewRef.get()
-        command.set(if (focus) {
-          view.focusPageByFieldName("Name", null)
-        } else {
-          view.insertTextByFieldName("filled", "Name", null)
-        })
-      }
-      command.get().then { lookupSettled.countDown() }
-        .catch { error -> lookupError.set(error); lookupSettled.countDown() }
-      assertTrue("field command did not reach the blocked worker", lookupStarted.await(10L, TimeUnit.SECONDS))
-
-      await(instrumentation, viewRef.get().rotatePage(90.0))
-      instrumentation.runOnMainSync {
-        assertEquals(1L, viewRef.get().coordinator.page(0).geometryRevision)
-      }
-      releaseLookup.countDown()
-      assertTrue("stale field command did not settle", lookupSettled.await(10L, TimeUnit.SECONDS))
-      assertEquals("operation_cancelled", (lookupError.get() as? PdfSessionException)?.code)
-      instrumentation.runOnMainSync {
-        assertTrue(viewRef.get().coordinator.pageSnapshot(0).content.isEmpty())
-      }
-    } finally {
-      releaseLookup.countDown()
-      instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
-      executor.shutdownNow()
-      source.delete()
-    }
-  }
-
-  private class BlockingRotationLookupResource(
-    private val delegate: PdfSessionResource,
-    private val lookupStarted: CountDownLatch,
-    private val releaseLookup: CountDownLatch,
-  ) : PdfSessionResource by delegate {
-    override fun lookupTextKey(pageIndex: Int, key: String): PdfiumKeyLookupPage {
-      val result = PdfiumKeyLookupPage(
-        hasLiteralMatch = true,
-        matches = listOf(PdfiumTextKeyMatch(80.0, 100.0, 120.0, 112.0, 0.0, 106.0, 12.0)),
-        rules = listOf(PdfiumHorizontalSnapCandidate(20.0, 250.0, 118.0)),
-      )
-      lookupStarted.countDown()
-      check(releaseLookup.await(15L, TimeUnit.SECONDS)) { "test did not release the blocked lookup" }
-      return result
-    }
-  }
+  private fun fieldResolutionOptions() = ResolveTextOptions(
+    fieldName = "Name",
+    bounds = null,
+    occurrence = TextKeyOccurrence.FIRST,
+    fontSize = null,
+    color = null,
+    direction = TextDirection.LTR,
+    maxLines = 2.0,
+    alignment = null,
+    verticalAnchor = TextVerticalAnchor.BOTTOM,
+  )
 
   private fun sourcePdf(width: Int, height: Int, fieldRules: Boolean = false): ByteArray {
     val content = if (fieldRules) {

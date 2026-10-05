@@ -42,12 +42,6 @@ internal data class PdfSessionInfo(
 
 }
 
-internal data class PdfiumKeyLookupPage(
-  val hasLiteralMatch: Boolean,
-  val matches: List<PdfiumTextKeyMatch>,
-  val rules: List<PdfiumHorizontalSnapCandidate>,
-)
-
 /** Stable open failures at the Android PDF boundary. */
 internal class PdfSessionException(
   val code: String,
@@ -63,8 +57,8 @@ internal interface PdfSessionResource : AutoCloseable {
   val info: PdfSessionInfo
 
   fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> = emptyList()
-  fun lookupTextKey(pageIndex: Int, key: String): PdfiumKeyLookupPage =
-    PdfiumKeyLookupPage(false, emptyList(), horizontalSnapCandidates(pageIndex))
+  fun preparePageAnalysis(pageIndex: Int): PdfiumPreparedPageAnalysis =
+    throw UnsupportedOperationException("Prepared page analysis is unavailable for this PDF session")
 
   /** Transfers the returned bitmaps to the caller; the worker no longer owns them. */
   fun renderTiles(
@@ -126,13 +120,22 @@ internal class PdfSession private constructor(
   }
 
   override fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> =
-    pdfiumSession.horizontalSnapCandidates(pageIndex)
+    pdfiumSession.preparePageAnalysis(pageIndex).let { analysis ->
+      val labels = preparedTextLabels(analysis)
+      analysis.rules.map { rule ->
+        val labelHeight = labels.mapNotNull { label ->
+          val match = label.match
+          val adjacent = rule.left >= match.right || rule.right <= match.left
+          match.lineHeight.takeIf {
+            adjacent && rule.y >= match.top && kotlin.math.abs(rule.y - match.lineCenter) <= match.lineHeight
+          }
+        }.maxOrNull()
+        rule.copy(labelLineHeight = labelHeight)
+      }
+    }
 
-  override fun lookupTextKey(pageIndex: Int, key: String): PdfiumKeyLookupPage {
-    val textLookup = pdfiumSession.textKeyLookup(pageIndex, key)
-    return PdfiumKeyLookupPage(textLookup.hasLiteralMatch, textLookup.matches,
-      pdfiumSession.horizontalSnapCandidates(pageIndex))
-  }
+  override fun preparePageAnalysis(pageIndex: Int): PdfiumPreparedPageAnalysis =
+    pdfiumSession.preparePageAnalysis(pageIndex)
 
   override fun renderTiles(
     requests: List<PdfTileRequest>,
@@ -603,11 +606,10 @@ internal class PdfSessionWorker(
     }
   }
 
-  fun lookupTextKey(
+  fun preparePageAnalysis(
     generation: Long,
     pageIndex: Int,
-    key: String,
-    completion: (Result<PdfiumKeyLookupPage>) -> Unit,
+    completion: (Result<PdfiumPreparedPageAnalysis>) -> Unit,
   ) {
     if (closed) {
       completion(Result.failure(cancelled(generation)))
@@ -618,7 +620,7 @@ internal class PdfSessionWorker(
         val result = runCatching {
           val session = current ?: throw cancelled(generation)
           if (session.info.generation != generation) throw cancelled(generation)
-          session.lookupTextKey(pageIndex, key)
+          session.preparePageAnalysis(pageIndex)
         }
         completion(result)
       }

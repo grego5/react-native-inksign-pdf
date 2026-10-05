@@ -17,8 +17,10 @@
     "selectedBackgroundColor": true,
     "doubleTap": true,
     "keyboardAvoidanceEnabled": true,
+    "pagerDirection": true,
     "onStateChange": true,
     "onPageChange": true,
+    "onTextSelectionChange": true,
     "hybridRef": true
   }
 }

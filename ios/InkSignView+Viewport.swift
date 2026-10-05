@@ -60,6 +60,30 @@ enum InkSignPdfTextViewportGeometry {
 }
 
 extension InkSignView {
+  func applyPagerDirection() {
+    performOnMain { [weak self] in self?.applyPagerDirectionNow() }
+  }
+
+  func applyPagerDirectionNow() {
+    guard Thread.isMainThread else { return }
+    cancelPendingPageSwitch()
+    let currentPage = documentView.currentPage
+    let currentDestination = documentView.currentDestination
+    let currentScale = documentView.scaleFactor
+    switch pagerDirection {
+    case .ltr: documentView.semanticContentAttribute = .forceLeftToRight
+    case .rtl: documentView.semanticContentAttribute = .forceRightToLeft
+    case .auto, .none: documentView.semanticContentAttribute = .unspecified
+    }
+    if let currentDestination {
+      documentView.go(to: currentDestination)
+      documentView.scaleFactor = currentScale
+    } else if let currentPage {
+      documentView.go(to: currentPage)
+      documentView.scaleFactor = currentScale
+    }
+  }
+
   @discardableResult
   func applyViewport(target: ViewportTarget) -> Bool {
     guard let state = documentCoordinator.document,

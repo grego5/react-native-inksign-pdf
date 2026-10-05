@@ -119,6 +119,11 @@ void JHybridInkSignViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass>
     hybridView->setKeyboardAvoidanceEnabled(newProps->keyboardAvoidanceEnabled.get());
   }
   if (oldProps == nullptr
+        ? newProps->pagerDirection.isProvided()
+        : !newProps->pagerDirection.hasSameValue(oldProps->pagerDirection)) {
+    hybridView->setPagerDirection(newProps->pagerDirection.get());
+  }
+  if (oldProps == nullptr
         ? newProps->onStateChange.isProvided()
         : !newProps->onStateChange.hasSameValue(oldProps->onStateChange)) {
     hybridView->setOnStateChange(newProps->onStateChange.get());
@@ -127,6 +132,11 @@ void JHybridInkSignViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass>
         ? newProps->onPageChange.isProvided()
         : !newProps->onPageChange.hasSameValue(oldProps->onPageChange)) {
     hybridView->setOnPageChange(newProps->onPageChange.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->onTextSelectionChange.isProvided()
+        : !newProps->onTextSelectionChange.hasSameValue(oldProps->onTextSelectionChange)) {
+    hybridView->setOnTextSelectionChange(newProps->onTextSelectionChange.get());
   }
 
   // Update hybridRef if it changed

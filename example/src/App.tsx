@@ -9,6 +9,7 @@ import {
   type StateChangeEvent,
   type ViewportOptions,
   type InkSignViewHandle,
+  type TextSelection,
 } from '@grego5/react-native-inksign-pdf';
 import { ensureFallbackFont, fallbackFontPath } from './fallbackFont';
 import { DebugRecorder } from './DebugRecorder';
@@ -20,6 +21,7 @@ export default function App() {
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
   const modeRef = useRef<StateChangeEvent['mode']>('view');
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
+  const [textSelection, setTextSelection] = useState<TextSelection | null>(null);
 
   const [state, setState] = useState<StateChangeEvent>({
     canUndo: false,
@@ -92,15 +94,22 @@ export default function App() {
     }
   }
 
-  async function runTextCommand(command: () => unknown | Promise<unknown>, name: string) {
+  async function updateSelectedText(delta: number | null) {
     const inkSignView = inkSignViewRef.current;
-    if (inkSignView === null || pageInfo === null) return;
-
+    const selection = textSelection;
+    if (inkSignView === null || selection === null) return;
     try {
-      await command();
+      const page = await inkSignView.getPage();
+      if (delta === null) page.clearText(selection.textId);
+      else page.adjustTextSize(selection.textId, delta);
     } catch (error) {
-      Alert.alert(`${name} failed`, String(error));
+      Alert.alert('Update text failed', String(error));
     }
+  }
+
+  function handlePageChange(next: PageInfo) {
+    setPageInfo(next);
+    setTextSelection(null);
   }
 
   function navigatePage(direction: 'next' | 'previous') {
@@ -169,7 +178,8 @@ export default function App() {
             strokeSmoothing={0.4}
             defaultTextFontSize={16}
             onStateChange={handleStateChange}
-            onPageChange={setPageInfo}
+            onPageChange={handlePageChange}
+            onTextSelectionChange={setTextSelection}
           />
         </View>
 
@@ -257,38 +267,23 @@ export default function App() {
             <Action
               label="Text −"
               disabled={
-                pageInfo === null || (state.mode !== 'textEditing' && state.mode !== 'textSelected')
+                pageInfo === null || textSelection === null
               }
-              onPress={() =>
-                void runTextCommand(
-                  () => inkSignViewRef.current!.removeTextAnnotation(),
-                  'Remove text',
-                )
-              }
+              onPress={() => void updateSelectedText(null)}
             />
             <Action
               label="Size +"
               disabled={
-                pageInfo === null || (state.mode !== 'textEditing' && state.mode !== 'textSelected')
+                pageInfo === null || textSelection === null
               }
-              onPress={() =>
-                void runTextCommand(
-                  () => inkSignViewRef.current!.increaseTextSize(),
-                  'Increase text size',
-                )
-              }
+              onPress={() => void updateSelectedText(1)}
             />
             <Action
               label="Size −"
               disabled={
-                pageInfo === null || (state.mode !== 'textEditing' && state.mode !== 'textSelected')
+                pageInfo === null || textSelection === null
               }
-              onPress={() =>
-                void runTextCommand(
-                  () => inkSignViewRef.current!.decreaseTextSize(),
-                  'Decrease text size',
-                )
-              }
+              onPress={() => void updateSelectedText(-1)}
             />
           </View>
 

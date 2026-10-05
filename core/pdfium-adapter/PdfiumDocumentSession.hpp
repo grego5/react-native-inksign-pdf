@@ -106,6 +106,18 @@ struct PdfiumTextKeyMatch final {
   double lineHeight = 0.0;
 };
 
+/** Owned, pointer-free source geometry retained by prepared-page handles. */
+struct PdfiumPageAnalysisSnapshot final {
+  double pageWidth = 0.0;
+  double pageHeight = 0.0;
+  std::vector<unsigned long> text;
+  std::vector<std::optional<PdfiumTextKeyMatch>> characterBounds;
+  std::vector<int> visualRows;
+  std::vector<double> visualRowTops;
+  std::vector<double> visualRowBottoms;
+  std::vector<PdfiumHorizontalSnapCandidate> rules;
+};
+
 /** Internal counters exposed to instrumentation tests for cache reuse checks. */
 struct PdfiumPageAnalysisScanCounts final {
   std::uint64_t textExtractions = 0;
@@ -166,11 +178,9 @@ class PdfiumDocumentSession final {
       std::size_t pageIndex,
       std::vector<PdfiumHorizontalSnapCandidate>& candidates,
       bool copyCandidates = true) const;
-  PdfiumError inspectTextKeyMatches(
+  PdfiumError preparePageAnalysis(
       std::size_t pageIndex,
-      std::u16string_view key,
-      bool& hasLiteralMatch,
-      std::vector<PdfiumTextKeyMatch>& matches) const;
+      PdfiumPageAnalysisSnapshot& snapshot) const;
   PdfiumPageAnalysisScanCounts pageAnalysisScanCountsForTesting() const;
   PdfiumError renderPage(const PdfiumPageRenderRequest& request) const;
   PdfiumError close() noexcept;

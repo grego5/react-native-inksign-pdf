@@ -8,7 +8,7 @@ class PdfiumPageAssemblerTest {
   @Test
   fun decodesOrderedPageMetadataTriples() {
     assertEquals(
-      listOf(PdfPageDimensions(100.0, 200.0), PdfPageDimensions(300.0, 400.0)),
+      listOf(PdfPageDimensions(100.0, 200.0), PdfPageDimensions(300.0, 400.0, rotation = 1)),
       PdfiumPageAssembler.decodePageDimensions(
         doubleArrayOf(100.0, 200.0, 0.0, 300.0, 400.0, 1.0),
       ),

@@ -176,6 +176,12 @@ using namespace margelo::nitro::inksignpdf::views;
           : !newViewProps.keyboardAvoidanceEnabled.hasSameValue(oldViewProps->keyboardAvoidanceEnabled)) {
       swiftPart.setKeyboardAvoidanceEnabled(newViewProps.keyboardAvoidanceEnabled.get());
     }
+    // pagerDirection: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.pagerDirection.isProvided()
+          : !newViewProps.pagerDirection.hasSameValue(oldViewProps->pagerDirection)) {
+      swiftPart.setPagerDirection(newViewProps.pagerDirection.get());
+    }
     // onStateChange: optional
     if (oldViewProps == nullptr
           ? newViewProps.onStateChange.isProvided()
@@ -187,6 +193,12 @@ using namespace margelo::nitro::inksignpdf::views;
           ? newViewProps.onPageChange.isProvided()
           : !newViewProps.onPageChange.hasSameValue(oldViewProps->onPageChange)) {
       swiftPart.setOnPageChange(newViewProps.onPageChange.get());
+    }
+    // onTextSelectionChange: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.onTextSelectionChange.isProvided()
+          : !newViewProps.onTextSelectionChange.hasSameValue(oldViewProps->onTextSelectionChange)) {
+      swiftPart.setOnTextSelectionChange(newViewProps.onTextSelectionChange.get());
     }
 
     // Update hybridRef if it changed

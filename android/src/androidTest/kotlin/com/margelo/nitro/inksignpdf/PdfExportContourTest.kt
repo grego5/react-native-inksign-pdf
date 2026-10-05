@@ -51,7 +51,7 @@ internal class PdfExportContourTest {
             writeBlankPdf(source, listOf(300 to 300))
             val flowBounds = PageRect(40.0, 40.0, 82.0, 60.0)
             val annotation = TextAnnotation(
-                id = "bounded-text",
+                id = 1L,
                 text = "Alpha beta gamma delta epsilon",
                 bounds = flowBounds,
                 fontSize = 16.0,
@@ -319,7 +319,7 @@ internal class PdfExportContourTest {
         try {
             writeBlankPdf(source, listOf(240 to 160))
             val annotation = TextAnnotation(
-                id = "text-1",
+                id = 1L,
                 text = "Latin\n\nשלום العربية\nMixed Latin שלום العربية\nनमस्ते दुनिया",
                 bounds = PageRect(24.0, 32.0, 216.0, 84.0),
                 fontSize = 14.0,
@@ -382,7 +382,7 @@ internal class PdfExportContourTest {
         try {
             writeBlankPdf(source, listOf(240 to 120))
             val annotation = TextAnnotation(
-                id = "legacy-text-1",
+                id = 1L,
                 text = "abc שלום العربية",
                 bounds = PageRect(24.0, 28.0, 216.0, 72.0),
                 fontSize = 14.0,
@@ -538,7 +538,7 @@ internal class PdfExportContourTest {
                         strokes = emptyList(),
                         textAnnotations = listOf(
                             TextAnnotation(
-                                id = "selected-font",
+                                id = 1L,
                                 text = "שלום עולם",
                                 bounds = PageRect(20.0, 28.0, 220.0, 62.0),
                                 fontSize = 18.0,
@@ -594,7 +594,7 @@ internal class PdfExportContourTest {
                     strokes = emptyList(),
                     textAnnotations = listOf(
                         TextAnnotation(
-                            id = "subset-$pageIndex",
+                            id = pageIndex.toLong() + 1L,
                             text = logicalText,
                             bounds = PageRect(20.0, 28.0, 580.0, 62.0),
                             fontSize = 18.0,
@@ -794,7 +794,7 @@ internal class PdfExportContourTest {
                         strokes = emptyList(),
                         textAnnotations = listOf(
                             TextAnnotation(
-                                id = "arabic-lam-alef",
+                                id = 1L,
                                 text = text,
                                 bounds = PageRect(20.0, 28.0, 220.0, 62.0),
                                 fontSize = 18.0,
@@ -877,7 +877,7 @@ internal class PdfExportContourTest {
             writePdfWithTextObject(source, 240, 160, "Source")
             assertEquals("Source", extractTextWithPdfBox(source).trim())
             val annotation = TextAnnotation(
-                id = "text-1",
+                id = 1L,
                 text = "Added",
                 bounds = PageRect(24.0, 32.0, 90.0, 52.0),
                 fontSize = 14.0,

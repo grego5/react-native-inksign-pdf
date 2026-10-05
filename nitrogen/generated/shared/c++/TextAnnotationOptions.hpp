@@ -35,8 +35,9 @@ namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 
-#include "TextDirection.hpp"
 #include <optional>
+#include <string>
+#include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
 
@@ -47,6 +48,8 @@ namespace margelo::nitro::inksignpdf {
    */
   struct TextAnnotationOptions final {
   public:
+    std::optional<double> fontSize     SWIFT_PRIVATE;
+    std::optional<std::string> color     SWIFT_PRIVATE;
     std::optional<TextDirection> direction     SWIFT_PRIVATE;
     std::optional<double> maxLines     SWIFT_PRIVATE;
     std::optional<TextAlignment> alignment     SWIFT_PRIVATE;
@@ -54,7 +57,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     TextAnnotationOptions() = default;
-    explicit TextAnnotationOptions(std::optional<TextDirection> direction, std::optional<double> maxLines, std::optional<TextAlignment> alignment, std::optional<TextVerticalAnchor> verticalAnchor): direction(direction), maxLines(maxLines), alignment(alignment), verticalAnchor(verticalAnchor) {}
+    explicit TextAnnotationOptions(std::optional<double> fontSize, std::optional<std::string> color, std::optional<TextDirection> direction, std::optional<double> maxLines, std::optional<TextAlignment> alignment, std::optional<TextVerticalAnchor> verticalAnchor): fontSize(fontSize), color(color), direction(direction), maxLines(maxLines), alignment(alignment), verticalAnchor(verticalAnchor) {}
 
   public:
     friend bool operator==(const TextAnnotationOptions& lhs, const TextAnnotationOptions& rhs) = default;
@@ -70,6 +73,8 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::TextAnnotationOptions fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::TextAnnotationOptions(
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontSize"))),
+        JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "color"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "maxLines"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAlignment>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "alignment"))),
@@ -78,6 +83,8 @@ namespace margelo::nitro {
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::TextAnnotationOptions& arg) {
       jsi::Object obj(runtime);
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "fontSize"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.fontSize));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "color"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.color));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "direction"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::toJSI(runtime, arg.direction));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "maxLines"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.maxLines));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "alignment"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAlignment>>::toJSI(runtime, arg.alignment));
@@ -92,6 +99,8 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
+      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontSize")))) return false;
+      if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "color")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "maxLines")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAlignment>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "alignment")))) return false;
