@@ -98,7 +98,11 @@ internal object PdfiumPageAssembler {
     }
     return List(flattened.size / 3) { index ->
       val offset = index * 3
-      PdfPageDimensions(flattened[offset], flattened[offset + 1])
+      val rotation = flattened[offset + 2]
+      require(rotation.isFinite() && rotation in 0.0..3.0 && rotation % 1.0 == 0.0) {
+        "PDFium returned invalid page rotation metadata"
+      }
+      PdfPageDimensions(flattened[offset], flattened[offset + 1], rotation.toInt())
     }
   }
 

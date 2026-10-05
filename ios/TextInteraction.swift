@@ -1,6 +1,11 @@
 import CoreGraphics
 import UIKit
 
+enum InkSignPdfTextCoordinateSpace: Equatable {
+  case raw
+  case displayed
+}
+
 private let defaultTextFontSize: CGFloat = 16
 private let minimumTextFontSize: CGFloat = 8
 private let maximumTextFontSize: CGFloat = 72
@@ -313,7 +318,9 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                          options: TextAnnotationOptions?,
                          resolvedDirectionRtl: Bool? = nil,
                          requireVisibleLine: Bool = false,
-                         capturedPage: (generation: UInt64, pageID: UUID, pageSize: CGSize)? = nil) throws {
+                         capturedPage: (generation: UInt64, pageID: UUID,
+                                        pageSize: CGSize, layoutRotation: Int)? = nil,
+                         coordinateSpace: InkSignPdfTextCoordinateSpace = .raw) throws {
     guard let owner else { throw InkSignView.TextError.notReady }
     let context: (generation: UInt64, pageIndex: Int?, pageID: UUID?, pageSize: CGSize)
     if let capturedPage {
@@ -327,7 +334,19 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       throw InkSignView.TextError.invalidText
     }
     let isRTL = resolvedDirectionRtl ?? resolvedDirection(options?.direction)
-    let pageSize = context.pageSize
+    let layoutRotation: Int
+    let pageSize: CGSize
+    if coordinateSpace == .displayed, let capturedPage {
+      layoutRotation = capturedPage.layoutRotation
+      pageSize = capturedPage.pageSize
+    } else if coordinateSpace == .displayed,
+              let page = owner.documentCoordinator.document?.activePage {
+      layoutRotation = page.geometry.rotation
+      pageSize = page.geometry.displaySize
+    } else {
+      layoutRotation = 0
+      pageSize = context.pageSize
+    }
     guard let flowBounds = makeFlowBounds(bounds: bounds, pageSize: pageSize) else {
       throw InkSignView.TextError.invalidBounds
     }
@@ -351,7 +370,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       flowBounds: flowBounds,
       maxLines: maxLines,
       verticalAnchor: verticalAnchor,
-      alignment: alignment)
+      alignment: alignment,
+      layoutRotation: layoutRotation)
     if requireVisibleLine && (annotation.bounds.isNull || annotation.bounds.isEmpty) {
       throw InkSignView.TextError.ruleNotFound
     }
@@ -642,13 +662,17 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
           let owner else { return }
     let pageSize = owner.activePageSize()
     guard pageSize.width > 0, pageSize.height > 0 else { return }
-    var annotations = owner.activeTextAnnotations()
+    let mediaBox = owner.documentCoordinator.document?.activePage.geometry.mediaBox ??
+      CGRect(origin: .zero, size: pageSize)
+    var annotations = owner.activeTextAnnotations().map {
+      $0.convertedToRawCoordinates(mediaBox: mediaBox)
+    }
     let excludedID = editingID ?? draggingID
     annotations.removeAll { $0.id == excludedID }
     if case .dragging(let drag) = interactionState {
       annotations.append(drag.original.moving(to: drag.position, pageSize: pageSize))
     }
-    let selection = selectedAnnotation()
+    let selection = selectedAnnotation()?.convertedToRawCoordinates(mediaBox: mediaBox)
     let shouldDrawSelectedBackground: Bool = {
       switch interactionState {
       case .selected, .dragging: return editor == nil
@@ -1130,11 +1154,18 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func settledAnnotation(state: EditingState, text: String,
                                  pageSize: CGSize) -> InkSignPdfTextAnnotation {
+    let currentGeometry = owner?.documentCoordinator.document?.activePage.geometry ??
+      PageGeometry(mediaBox: CGRect(origin: .zero, size: pageSize), rotation: 0)
+    let storesDisplayedLayout = state.original == nil
+    let layoutRotation = storesDisplayedLayout
+      ? currentGeometry.rotation : (state.original?.layoutRotation ?? 0)
     if let flowBounds = state.flowBounds {
+      let layoutBounds = storesDisplayedLayout
+        ? currentGeometry.rawToDisplay(flowBounds) : flowBounds
       let bounds = InkSignPdfTextRenderer.visibleBounds(for: text,
                                                         fontSize: state.fontSize,
                                                         isRTL: state.isRTL,
-                                                        flowBounds: flowBounds,
+                                                        flowBounds: layoutBounds,
                                                         maxLines: state.maxLines,
                                                         verticalAnchor: state.verticalAnchor,
                                                         alignment: state.alignment)
@@ -1143,20 +1174,25 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                       fontSize: state.fontSize,
                                       textColor: state.textColor,
                                       isRTL: state.isRTL,
-                                      flowBounds: flowBounds,
+                                      flowBounds: layoutBounds,
                                       maxLines: state.maxLines,
                                       verticalAnchor: state.verticalAnchor,
-                                      alignment: state.alignment)
+                                      alignment: state.alignment,
+                                      layoutRotation: layoutRotation)
     }
     let size = lastEditorContentSize
+    let rawBounds = CGRect(origin: state.position, size: size)
+    let bounds = storesDisplayedLayout
+      ? currentGeometry.rawToDisplay(rawBounds) : rawBounds
     return InkSignPdfTextAnnotation(id: state.id, text: text,
-                                    bounds: CGRect(origin: state.position, size: size),
+                                    bounds: bounds,
                                     fontSize: state.fontSize,
                                     textColor: state.textColor,
                                     isRTL: state.isRTL,
                                     maxLines: state.maxLines,
                                     verticalAnchor: state.verticalAnchor,
-                                    alignment: state.alignment)
+                                    alignment: state.alignment,
+                                    layoutRotation: layoutRotation)
   }
 
   private func changeSelectedFont(by delta: CGFloat) throws -> Double {

@@ -97,7 +97,8 @@ extension InkSignView {
                          pageID: page.id,
                          geometry: page.geometry,
                          drawingData: page.history.content.drawing.dataRepresentation(),
-                         textAnnotations: page.history.content.textAnnotations)
+                         textAnnotations: page.history.content.textAnnotations,
+                         sourceGeometry: page.sourceGeometry)
     }
     let artifacts: (source: URL, output: URL)
     do {
@@ -162,6 +163,7 @@ struct ExportPageSnapshot {
   let geometry: PageGeometry
   let drawingData: Data
   let textAnnotations: [InkSignPdfTextAnnotation]
+  var sourceGeometry: PageGeometry? = nil
 }
 
 struct ExportSnapshot {

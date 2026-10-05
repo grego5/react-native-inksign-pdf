@@ -32,10 +32,13 @@
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 
 #include "TextKeyOccurrence.hpp"
 #include <optional>
 #include "TextDirection.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -47,11 +50,13 @@ namespace margelo::nitro::inksignpdf {
     std::optional<TextKeyOccurrence> occurrence     SWIFT_PRIVATE;
     std::optional<TextDirection> direction     SWIFT_PRIVATE;
     std::optional<double> zoom     SWIFT_PRIVATE;
-    std::optional<bool> enterEditMode     SWIFT_PRIVATE;
+    std::optional<FieldFocusVerticalAnchor> verticalAnchor     SWIFT_PRIVATE;
+    std::optional<double> edgeOffset     SWIFT_PRIVATE;
+    std::optional<bool> setInkMode     SWIFT_PRIVATE;
 
   public:
     FieldFocusOptions() = default;
-    explicit FieldFocusOptions(std::optional<TextKeyOccurrence> occurrence, std::optional<TextDirection> direction, std::optional<double> zoom, std::optional<bool> enterEditMode): occurrence(occurrence), direction(direction), zoom(zoom), enterEditMode(enterEditMode) {}
+    explicit FieldFocusOptions(std::optional<TextKeyOccurrence> occurrence, std::optional<TextDirection> direction, std::optional<double> zoom, std::optional<FieldFocusVerticalAnchor> verticalAnchor, std::optional<double> edgeOffset, std::optional<bool> setInkMode): occurrence(occurrence), direction(direction), zoom(zoom), verticalAnchor(verticalAnchor), edgeOffset(edgeOffset), setInkMode(setInkMode) {}
 
   public:
     friend bool operator==(const FieldFocusOptions& lhs, const FieldFocusOptions& rhs) = default;
@@ -70,7 +75,9 @@ namespace margelo::nitro {
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextKeyOccurrence>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "occurrence"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "zoom"))),
-        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "enterEditMode")))
+        JSIConverter<std::optional<margelo::nitro::inksignpdf::FieldFocusVerticalAnchor>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "verticalAnchor"))),
+        JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "edgeOffset"))),
+        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "setInkMode")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::FieldFocusOptions& arg) {
@@ -78,7 +85,9 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "occurrence"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextKeyOccurrence>>::toJSI(runtime, arg.occurrence));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "direction"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::toJSI(runtime, arg.direction));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "zoom"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.zoom));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "enterEditMode"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.enterEditMode));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "verticalAnchor"), JSIConverter<std::optional<margelo::nitro::inksignpdf::FieldFocusVerticalAnchor>>::toJSI(runtime, arg.verticalAnchor));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "edgeOffset"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.edgeOffset));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "setInkMode"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.setInkMode));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -92,7 +101,9 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextKeyOccurrence>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "occurrence")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "zoom")))) return false;
-      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "enterEditMode")))) return false;
+      if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::FieldFocusVerticalAnchor>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "verticalAnchor")))) return false;
+      if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "edgeOffset")))) return false;
+      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "setInkMode")))) return false;
       return true;
     }
   };

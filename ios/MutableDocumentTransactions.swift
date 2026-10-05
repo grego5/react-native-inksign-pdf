@@ -3,7 +3,11 @@ import NitroModules
 import PDFKit
 
 extension InkSignPdfDocumentCoordinator {
-  enum StructuralCommand { case append(activePage: AddPagesActivePage), remove, move(to: Int) }
+  enum StructuralCommand {
+    case append(activePage: AddPagesActivePage)
+    case remove
+    case move(to: Int)
+  }
 
   struct StructuralInput {
     let operation: OperationToken
@@ -119,6 +123,7 @@ extension InkSignPdfDocumentCoordinator {
         order = try Self.pageOrder(current: input.pages,
                                    activePageID: input.activePageID,
                                    mutation: .moveActive(to: destination))
+
       }
 
       var wroteCandidate = false

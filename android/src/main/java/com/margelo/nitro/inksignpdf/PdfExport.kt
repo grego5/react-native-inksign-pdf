@@ -102,6 +102,7 @@ internal data class PdfiumTextRunEntry(
   val fontSize: Float,
   val estimatedAdvance: Float,
   val color: Int,
+  val layoutToRaw: PageTransform = PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
 )
 
 internal data class PdfiumFontResource(
@@ -148,6 +149,7 @@ internal object PdfExportTextResolver {
 
     snapshot.pages.forEach { page ->
       page.textAnnotations.forEach { annotation ->
+        val firstRun = runs.size
         val paint = TextLayoutSpec.createPaint(annotation.fontSize)
         val metrics = paint.fontMetrics
         val lineHeight = metrics.descent - metrics.ascent
@@ -230,6 +232,10 @@ internal object PdfExportTextResolver {
               color = annotation.textColor,
             )
           }
+        }
+        annotation.layoutPage?.let { layoutPage ->
+          val transform = PageCoordinates(layoutPage).displayToRawTransform()
+          for (index in firstRun until runs.size) runs[index] = runs[index].copy(layoutToRaw = transform)
         }
       }
     }

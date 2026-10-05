@@ -79,6 +79,44 @@ extension InkSignView {
     return true
   }
 
+  func fieldFocusTarget(ruleY: CGFloat,
+                        horizontalFocus: CGFloat,
+                        zoom: Double,
+                        verticalAnchor: FieldFocusVerticalAnchor,
+                        edgeOffset: Double) -> ViewportTarget? {
+    guard let state = documentCoordinator.document,
+          documentView.currentPage === state.activePage.page,
+          documentView.bounds.height > 0,
+          zoom.isFinite, edgeOffset.isFinite else { return nil }
+    let targetZoom = min(max(CGFloat(zoom), documentView.minScaleFactor), documentView.maxScaleFactor)
+    guard targetZoom.isFinite, targetZoom > 0 else { return nil }
+    let keyboardOcclusion = min(max(textKeyboardOcclusion, 0), documentView.bounds.height)
+    let usableHeight = documentView.bounds.height - keyboardOcclusion
+    let visibleHeight = usableHeight / targetZoom
+    let offset = min(CGFloat(edgeOffset), visibleHeight / 2)
+    let keyboardCenterShift = keyboardOcclusion / (2 * targetZoom)
+    let focusY: CGFloat
+    switch verticalAnchor {
+    case .top:
+      focusY = ruleY + visibleHeight / 2 - offset + keyboardCenterShift
+    case .bottom:
+      focusY = ruleY - visibleHeight / 2 + offset + keyboardCenterShift
+    case .center:
+      focusY = ruleY + keyboardCenterShift
+    }
+    let geometry = state.activePage.geometry
+    let pageHeight = geometry.displaySize.height
+    let fullVisibleHeight = documentView.bounds.height / targetZoom
+    let constrainedY: CGFloat
+    if fullVisibleHeight >= pageHeight {
+      constrainedY = pageHeight / 2
+    } else {
+      constrainedY = min(max(focusY, fullVisibleHeight / 2), pageHeight - fullVisibleHeight / 2)
+    }
+    return ViewportTarget(zoom: targetZoom,
+                          focus: geometry.displayToRaw(CGPoint(x: horizontalFocus, y: constrainedY)))
+  }
+
   func applyModeTransition(toEditing: Bool, request: ViewportRequest) throws {
     try requireViewportReady(request: request)
     fieldFocusRequestID &+= 1
@@ -195,7 +233,7 @@ extension InkSignView {
     )
   }
 
-  private func applyViewport(request: ViewportRequest) {
+  func applyViewport(request: ViewportRequest) {
     guard let pageID = documentCoordinator.document?.activePage.id else { return }
     documentView.autoScales = false
     switch request {

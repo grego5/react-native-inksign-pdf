@@ -21,6 +21,7 @@ internal data class PdfiumAffineMatrix(
 internal data class PdfiumPageSize(
   val width: Double,
   val height: Double,
+  val rotation: Int,
 )
 
 internal data class PdfiumHorizontalSnapCandidate(
@@ -101,11 +102,12 @@ internal class PdfiumRenderSession private constructor(
         "pdfium_page_info_failed",
         "PDFium could not read page dimensions",
       )
-    require(dimensions.size == 2 && dimensions[0].isFinite() && dimensions[0] > 0.0 &&
-      dimensions[1].isFinite() && dimensions[1] > 0.0) {
+    require(dimensions.size == 3 && dimensions[0].isFinite() && dimensions[0] > 0.0 &&
+      dimensions[1].isFinite() && dimensions[1] > 0.0 && dimensions[2] in 0.0..3.0 &&
+      dimensions[2] % 1.0 == 0.0) {
       "PDFium returned invalid page dimensions"
     }
-    return PdfiumPageSize(dimensions[0], dimensions[1])
+    return PdfiumPageSize(dimensions[0], dimensions[1], dimensions[2].toInt())
   }
 
   fun renderPageIntoBitmap(

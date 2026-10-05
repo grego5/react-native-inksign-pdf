@@ -34,9 +34,12 @@ enum InkSignPdfDocumentCandidateLoader {
 
   static func rebinding(_ oldPage: InkSignPdfPageState,
                         to candidatePage: InkSignPdfPageState) -> InkSignPdfPageState {
-    InkSignPdfPageState(id: oldPage.id,
+    candidatePage.page.rotation = oldPage.geometry.rotation
+    return InkSignPdfPageState(id: oldPage.id,
                         page: candidatePage.page,
-                        geometry: candidatePage.geometry,
-                        history: oldPage.history)
+                        geometry: oldPage.geometry,
+                        history: oldPage.history,
+                        geometryRevision: oldPage.geometryRevision,
+                        sourceGeometry: candidatePage.sourceGeometry)
   }
 }

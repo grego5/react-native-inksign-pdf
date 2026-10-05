@@ -14,8 +14,11 @@ export function createFieldFocusCommand(
         (options.occurrence !== undefined && options.occurrence !== 'first' && options.occurrence !== 'last') ||
         (options.direction !== undefined && options.direction !== 'auto' && options.direction !== 'ltr' && options.direction !== 'rtl') ||
         (options.zoom !== undefined && (!Number.isFinite(options.zoom) || options.zoom <= 0)) ||
-        (options.enterEditMode !== undefined && typeof options.enterEditMode !== 'boolean'))) {
-        throw argumentError('invalid_field_focus_options', 'Expected first/last occurrence, auto/ltr/rtl direction, positive zoom and optional edit-mode flag');
+        (options.verticalAnchor !== undefined && options.verticalAnchor !== 'top' &&
+          options.verticalAnchor !== 'bottom' && options.verticalAnchor !== 'center') ||
+        (options.edgeOffset !== undefined && (!Number.isFinite(options.edgeOffset) || options.edgeOffset < 0)) ||
+        (options.setInkMode !== undefined && typeof options.setInkMode !== 'boolean'))) {
+        throw argumentError('invalid_field_focus_options', 'Expected first/last occurrence, auto/ltr/rtl direction, positive zoom, a valid anchor, nonnegative edge offset, and optional ink-mode flag');
       }
       return invoke(key, options);
     } catch (error) {

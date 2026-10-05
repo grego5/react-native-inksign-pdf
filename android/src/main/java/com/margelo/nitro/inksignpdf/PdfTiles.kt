@@ -39,6 +39,7 @@ internal data class PdfTileRequest(
   val rasterTopPx: Int = topPx,
   val rasterWidthPx: Int = widthPx,
   val rasterHeightPx: Int = heightPx,
+  val pageRotation: Int? = null,
 )
 
 internal data class PdfTile(
@@ -97,6 +98,7 @@ internal data class PdfTileWindow(
   val lastVisibleColumn: Int,
   val firstVisibleRow: Int,
   val lastVisibleRow: Int,
+  val pageRotation: Int = 0,
 ) {
   fun contains(key: PdfTileKey): Boolean {
     return key.generation == generation && key.pageSwitchId == pageSwitchId &&
@@ -205,6 +207,7 @@ internal object PdfTileGrid {
       return previous
     }
     return PdfTileWindow(
+      pageRotation = page.rotation,
       generation = generation,
       pageSwitchId = pageSwitchId,
       pageIndex = pageIndex,
@@ -246,6 +249,7 @@ internal object PdfTileGrid {
           topPx.toLong() + heightPx + androidPdfTileBleedPx,
         ).toInt()
         requests += PdfTileRequest(
+          pageRotation = window.pageRotation,
           key = PdfTileKey(
             generation = window.generation,
             pageSwitchId = window.pageSwitchId,

@@ -95,7 +95,7 @@ enum InkSignPdfTextBoxGeometry {
   }
 }
 
-/// Immutable committed text in canonical, media-box-relative page coordinates.
+/// Immutable committed text in the page orientation captured when it was laid out.
 /// UIKit editor state, selection, and viewport transforms are intentionally absent.
 struct InkSignPdfTextAnnotation: Equatable {
   let id: String
@@ -106,7 +106,7 @@ struct InkSignPdfTextAnnotation: Equatable {
   let isRTL: Bool
   /// Canonical opaque RGB color captured with the annotation for export/rendering.
   let textColor: String
-  /// Fixed physical flow rectangle in canonical page coordinates. Its edges
+  /// Fixed physical flow rectangle in saved layout coordinates. Its edges
   /// stay left-to-right and top-to-bottom regardless of writing direction.
   let flowBounds: CGRect?
   /// Maximum number of complete source-order lines, or zero for no line-count limit.
@@ -114,13 +114,16 @@ struct InkSignPdfTextAnnotation: Equatable {
   let verticalAnchor: InkSignPdfTextVerticalAnchor
   /// Logical alignment resolved inside `flowBounds` using the saved direction.
   let alignment: InkSignPdfTextAlignment
+  /// Orientation whose displayed coordinates define this text layout.
+  let layoutRotation: Int
 
   init(id: String, text: String, bounds: CGRect, fontSize: CGFloat,
        textColor: String = "#000000", isRTL: Bool = false,
        flowBounds: CGRect? = nil,
        maxLines: Int = 0,
        verticalAnchor: InkSignPdfTextVerticalAnchor = .top,
-       alignment: InkSignPdfTextAlignment = .start) {
+       alignment: InkSignPdfTextAlignment = .start,
+       layoutRotation: Int = 0) {
     precondition(!id.isEmpty, "Text annotation ID must not be empty")
     precondition(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                  "Committed text annotation must not be blank")
@@ -140,6 +143,7 @@ struct InkSignPdfTextAnnotation: Equatable {
     self.maxLines = maxLines
     self.verticalAnchor = verticalAnchor
     self.alignment = alignment
+    self.layoutRotation = PageGeometry.normalizedRotation(layoutRotation)
   }
 
   var position: CGPoint { bounds.origin }
@@ -158,7 +162,7 @@ struct InkSignPdfTextAnnotation: Equatable {
                                       fontSize: fontSize, textColor: textColor,
                                       isRTL: isRTL, flowBounds: flowBounds,
                                       maxLines: maxLines, verticalAnchor: verticalAnchor,
-                                      alignment: alignment)
+                                      alignment: alignment, layoutRotation: layoutRotation)
     }
     let size = Self.intrinsicSize(of: text, fontSize: fontSize,
                                   isRTL: isRTL, maximumWidth: pageSize.width)
@@ -171,7 +175,8 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     fontSize: fontSize,
                                     textColor: textColor,
                                     isRTL: isRTL,
-                                    alignment: alignment)
+                                    alignment: alignment,
+                                    layoutRotation: layoutRotation)
   }
 
   func moving(to position: CGPoint, pageSize: CGSize) -> InkSignPdfTextAnnotation {
@@ -198,7 +203,8 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     flowBounds: movedFlowBounds,
                                     maxLines: maxLines,
                                     verticalAnchor: verticalAnchor,
-                                    alignment: alignment)
+                                    alignment: alignment,
+                                    layoutRotation: layoutRotation)
   }
 
   func changingFontSize(to fontSize: CGFloat, pageSize: CGSize) -> InkSignPdfTextAnnotation {
@@ -214,7 +220,7 @@ struct InkSignPdfTextAnnotation: Equatable {
                                       fontSize: fontSize, textColor: textColor,
                                       isRTL: isRTL, flowBounds: flowBounds,
                                       maxLines: maxLines, verticalAnchor: verticalAnchor,
-                                      alignment: alignment)
+                                      alignment: alignment, layoutRotation: layoutRotation)
     }
     let size = Self.intrinsicSize(of: text, fontSize: fontSize,
                                   isRTL: isRTL, maximumWidth: pageSize.width)
@@ -226,7 +232,25 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     fontSize: fontSize,
                                     textColor: textColor,
                                     isRTL: isRTL,
-                                    alignment: alignment)
+                                    alignment: alignment,
+                                    layoutRotation: layoutRotation)
+  }
+
+  func convertedToRawCoordinates(mediaBox: CGRect) -> InkSignPdfTextAnnotation {
+    guard layoutRotation != 0 else { return self }
+    let layoutGeometry = PageGeometry(mediaBox: mediaBox, rotation: layoutRotation)
+    return InkSignPdfTextAnnotation(
+      id: id,
+      text: text,
+      bounds: layoutGeometry.displayToRaw(bounds),
+      fontSize: fontSize,
+      textColor: textColor,
+      isRTL: isRTL,
+      flowBounds: flowBounds.map(layoutGeometry.displayToRaw),
+      maxLines: maxLines,
+      verticalAnchor: verticalAnchor,
+      alignment: alignment,
+      layoutRotation: 0)
   }
 
   static func intrinsicSize(of text: String,

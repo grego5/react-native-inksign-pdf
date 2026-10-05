@@ -69,9 +69,9 @@ internal class HybridInkSignViewTextKeyTest {
       instrumentation.runOnMainSync {
         val view = viewRef.get()
         val surface = surfaceRef.get()
-        view.addTextAnnotation("page zero", TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), null)
+        view.insertTextAt("page zero", TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), null)
         surface.switchPage(1)
-        view.addTextAnnotation("page one", TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), null)
+        view.insertTextAt("page one", TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), null)
         surface.switchPage(0)
       }
 

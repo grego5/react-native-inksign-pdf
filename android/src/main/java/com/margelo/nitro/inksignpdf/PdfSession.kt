@@ -16,7 +16,13 @@ internal data class PdfFallbackFont(val path: String, val collectionIndex: Doubl
 internal data class PdfPageDimensions(
   val width: Double,
   val height: Double,
-)
+  val rotation: Int = 0,
+) {
+  init {
+    require(width.isFinite() && width > 0.0 && height.isFinite() && height > 0.0)
+    require(rotation in 0..3)
+  }
+}
 
 /** Metadata transferred from the PDF worker to the view owner. */
 internal data class PdfSessionInfo(
@@ -172,14 +178,14 @@ internal class PdfSession private constructor(
   private fun renderPdfiumTile(request: PdfTileRequest, bitmap: Bitmap): Boolean {
     val scale = request.scale
     require(scale.isFinite() && scale > 0.0)
-    val matrix = PdfiumAffineMatrix(
-      a = scale,
-      b = 0.0,
-      c = 0.0,
-      d = scale,
-      e = -request.rasterLeftPx.toDouble(),
-      f = -request.rasterTopPx.toDouble(),
-    )
+    val sourcePage = info.pages[request.key.pageIndex]
+    val targetPage = PageCoordinates(sourcePage).withRotation(request.pageRotation ?: sourcePage.rotation)
+    val sourceToDisplay = PageCoordinates(targetPage).layoutToDisplay(sourcePage)
+    val target = sourceToDisplay.then(PageTransform(
+      scale, 0.0, 0.0, scale,
+      -request.rasterLeftPx.toDouble(), -request.rasterTopPx.toDouble(),
+    ))
+    val matrix = PdfiumAffineMatrix(target.a, target.b, target.c, target.d, target.tx, target.ty)
     return pdfiumSession.renderPageIntoBitmap(
       pageIndex = request.key.pageIndex,
       bitmap = bitmap,
@@ -258,7 +264,7 @@ internal class PdfSession private constructor(
         val pages = ArrayList<PdfPageDimensions>(openedSession.pageCount)
         (0 until openedSession.pageCount).forEach { pageIndex ->
           val size = openedSession.pageSize(pageIndex)
-          pages += PdfPageDimensions(size.width, size.height)
+          pages += PdfPageDimensions(size.width, size.height, size.rotation)
         }
         return PdfSession(
           info = PdfSessionInfo(source.path, pages, generation),

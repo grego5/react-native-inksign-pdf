@@ -337,10 +337,11 @@ extension InkSignView {
   }
 
   func toPublicPageInfo(_ info: InkSignPdfNativePageInfo) -> PageInfo {
-    PageInfo(pageIndex: Double(info.pageIndex),
+    let displaySize = info.geometry.displaySize
+    return PageInfo(pageIndex: Double(info.pageIndex),
                        pageCount: Double(info.pageCount),
-                       width: Double(info.geometry.mediaBox.width),
-                       height: Double(info.geometry.mediaBox.height))
+                       width: Double(displaySize.width),
+                       height: Double(displaySize.height))
   }
 
   /// Changes the coordinator-owned active page while keeping one PDF overlay

@@ -20,7 +20,7 @@ internal fun SurfaceView.submitFrontBufferUpdate(): Boolean {
     perfetto.marker("InkSign/front-buffer presenter unavailable during gesture")
     return false
   }
-  val pageToView = documentController.pageToViewTransform() ?: return false
+  val pageToView = documentController.historyToViewTransform() ?: return false
   val viewWidth = width
   val viewHeight = height
   presentationSequence += 1L

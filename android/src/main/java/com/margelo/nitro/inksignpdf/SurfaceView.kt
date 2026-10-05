@@ -720,6 +720,7 @@ internal class SurfaceView(
       pageIndex = state.activePageIndex,
       pageId = page.id,
       page = page.dimensions,
+      geometryRevision = state.page(state.activePageIndex).geometryRevision,
       transform = transform,
       annotations = page.content.mapNotNull { it.textAnnotationOrNull() },
       snapCandidates = snapCandidateMeasurement
@@ -785,7 +786,10 @@ internal class SurfaceView(
     annotation: TextAnnotation,
   ) {
     val targetPage = resolveTextMutationPage(generation, pageId)
-    documentCoordinator.appendText(targetPage, annotation)
+    documentCoordinator.appendText(
+      targetPage,
+      annotation,
+    )
     val targetIsActive = documentCoordinator.activePageId() == targetPage.id
     if (targetIsActive) rebuildCommittedTextLayer()
     notifyStateChange()
@@ -802,7 +806,10 @@ internal class SurfaceView(
     after: TextAnnotation,
   ) {
     validateTextMutation(generation, pageIndex)
-    documentCoordinator.replaceActiveText(before, after)
+    documentCoordinator.replaceActiveText(
+      before,
+      after,
+    )
     rebuildCommittedTextLayer()
     notifyStateChange()
     invalidate()
@@ -972,9 +979,7 @@ internal class SurfaceView(
       )
       inkRenderer.draw(
         canvas,
-        drawState.viewScale,
-        drawState.viewOffsetX,
-        drawState.viewOffsetY,
+        checkNotNull(documentController.historyToViewTransform()),
         pen.color,
       )
       canvas.restore()
@@ -988,8 +993,7 @@ internal class SurfaceView(
         (width / 2f),
         (height / 2f),
       )
-      canvas.translate(drawState.viewOffsetX.toFloat(), drawState.viewOffsetY.toFloat())
-      canvas.scale(drawState.viewScale.toFloat(), drawState.viewScale.toFloat())
+      canvas.concat(checkNotNull(documentController.historyToViewTransform()).toCanvasMatrix())
       committedTextLayer.draw(canvas, textAnnotationBeingEdited?.invoke())
       canvas.restore()
     }
@@ -1016,12 +1020,12 @@ internal class SurfaceView(
     )
     pagePreviewInkPaint.color = pen.color
     pagePreviewMatrix.setValues(floatArrayOf(
-      preview.request.targetTransform.a.toFloat(),
-      preview.request.targetTransform.c.toFloat(),
-      preview.request.targetTransform.tx.toFloat(),
-      preview.request.targetTransform.b.toFloat(),
-      preview.request.targetTransform.d.toFloat(),
-      preview.request.targetTransform.ty.toFloat(),
+      preview.request.historyTransform.a.toFloat(),
+      preview.request.historyTransform.c.toFloat(),
+      preview.request.historyTransform.tx.toFloat(),
+      preview.request.historyTransform.b.toFloat(),
+      preview.request.historyTransform.d.toFloat(),
+      preview.request.historyTransform.ty.toFloat(),
       0f, 0f, 1f,
     ))
     canvas.concat(pagePreviewMatrix)

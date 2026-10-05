@@ -13,6 +13,7 @@ import { createFieldFocusCommand, createTextKeyInsertionCommand } from './textKe
 
 import type {
   FieldFocusOptions,
+  FieldFocusVerticalAnchor,
   PageInfo,
   TextAnnotationBounds,
   TextAnnotationOptions,
@@ -42,6 +43,7 @@ import type {
 
 export type {
   FieldFocusOptions,
+  FieldFocusVerticalAnchor,
   PageInfo,
   TextAnnotationBounds,
   TextAnnotationOptions,
@@ -121,6 +123,13 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
         }
       }, () => native.movePage(pageIndex));
     },
+    rotatePage(degrees) {
+      return callAsync(() => {
+        if (degrees !== 90 && degrees !== 180 && degrees !== 270) {
+          throw argumentError('invalid_page_rotation', 'Page rotation must be 90, 180, or 270 degrees clockwise');
+        }
+      }, () => native.rotatePage(degrees));
+    },
     nextPage: () => native.nextPage(),
     previousPage: () => native.previousPage(),
     getViewport: () => native.getViewport(),
@@ -136,13 +145,13 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
     undo: () => native.undo(),
     redo: () => native.redo(),
     clear: () => native.clear(),
-    addTextAnnotation(text, bounds, options) {
+    insertTextAt(text, bounds, options) {
       if (typeof text !== 'string' || text.trim() === '') {
         throw argumentError('invalid_text', 'Text must not be empty');
       }
       validateTextAnnotationBounds(bounds);
       validateTextAnnotationOptions(options);
-      native.addTextAnnotation(text, bounds, options);
+      native.insertTextAt(text, bounds, options);
     },
     insertTextByFieldName: createTextKeyInsertionCommand(
       (text, key, options) => native.insertTextByFieldName(text, key, options),

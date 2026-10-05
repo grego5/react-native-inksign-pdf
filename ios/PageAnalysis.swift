@@ -32,6 +32,11 @@ struct InkSignPdfTextLookup {
   let matches: [InkSignPdfKeyTextMatch]
 }
 
+struct InkSignPdfDisplayedFieldGeometry {
+  let matches: [InkSignPdfKeyTextMatch]
+  let rules: [InkSignPdfPlacementRule]
+}
+
 struct InkSignPdfPageAnalysis {
   let generation: UInt64
   let pageID: UUID
@@ -43,6 +48,40 @@ struct InkSignPdfPageAnalysis {
   let visualRows: [InkSignPdfVisualRow]
   let rules: [InkSignPdfPlacementRule]
   let estimatedMemoryBytes: Int
+
+  /// Cached drawing geometry uses the source orientation fitted to `pageSize`.
+  /// Undo that fit before applying the current page orientation.
+  func displayedFieldGeometry(lookup: InkSignPdfTextLookup,
+                              sourceGeometry: PageGeometry,
+                              geometry: PageGeometry) -> InkSignPdfDisplayedFieldGeometry {
+    func project(_ point: CGPoint) -> CGPoint {
+      let sourceDisplay = CGPoint(x: point.x * sourceGeometry.displaySize.width / pageSize.width,
+                                   y: point.y * sourceGeometry.displaySize.height / pageSize.height)
+      return geometry.rawToDisplay(sourceGeometry.displayToRaw(sourceDisplay))
+    }
+    let matches = lookup.matches.map { match in
+      let points = [CGPoint(x: match.bounds.minX, y: match.bounds.minY),
+                    CGPoint(x: match.bounds.maxX, y: match.bounds.minY),
+                    CGPoint(x: match.bounds.minX, y: match.bounds.maxY),
+                    CGPoint(x: match.bounds.maxX, y: match.bounds.maxY)].map(project)
+      let xs = points.map(\.x), ys = points.map(\.y)
+      let bounds = CGRect(x: xs.min()!, y: ys.min()!,
+                          width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+      let center = match.lineCenterY ?? match.bounds.midY
+      let rowTop = project(CGPoint(x: match.bounds.midX, y: center - match.lineHeight / 2))
+      let rowBottom = project(CGPoint(x: match.bounds.midX, y: center + match.lineHeight / 2))
+      return InkSignPdfKeyTextMatch(bounds: bounds, sourceIndex: match.sourceIndex,
+                                    lineHeight: abs(rowBottom.y - rowTop.y),
+                                    lineCenterY: (rowTop.y + rowBottom.y) / 2)
+    }
+    let rules = self.rules.compactMap { rule -> InkSignPdfPlacementRule? in
+      let start = project(CGPoint(x: rule.minX, y: rule.y))
+      let end = project(CGPoint(x: rule.maxX, y: rule.y))
+      guard abs(start.y - end.y) <= 0.001 else { return nil }
+      return InkSignPdfPlacementRule(minX: min(start.x, end.x), maxX: max(start.x, end.x), y: start.y)
+    }
+    return InkSignPdfDisplayedFieldGeometry(matches: matches, rules: rules)
+  }
 
   static func build(generation: UInt64,
                     pageID: UUID,

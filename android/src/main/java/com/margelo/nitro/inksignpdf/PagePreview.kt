@@ -21,6 +21,7 @@ internal data class PagePreviewRequest(
   val key: PagePreviewKey,
   val request: PdfTileRequest,
   val targetTransform: PageTransform,
+  val historyTransform: PageTransform,
   val targetPage: PdfPageDimensions,
   val bitmapLeftPx: Double,
   val bitmapTopPx: Double,
@@ -81,6 +82,7 @@ internal fun pagePreviewRequest(
     density = density,
   )
   val request = PdfTileRequest(
+    pageRotation = targetPage.rotation,
     key = PdfTileKey(
       generation = generation,
       pageSwitchId = pageSwitchId,
@@ -100,6 +102,7 @@ internal fun pagePreviewRequest(
     key = key,
     request = request,
     targetTransform = state.pageToView,
+    historyTransform = PageCoordinates(targetPage).rawToView(state.pageToView),
     targetPage = targetPage,
     bitmapLeftPx = viewOffsetX + leftPx,
     bitmapTopPx = viewOffsetY + topPx,

@@ -7,8 +7,7 @@
   dirty state, operation session, pending operation cancellation, and module-created files.
 - `PdfSessionWorker` serializes PDFium sessions and document work. `SurfaceView` owns
   presentation and input; the text overlay owns draft and editor state.
-- Android stages files and owns display surfaces. PDFium parses, assembles, renders,
-  and exports PDFs.
+- PDFium parses, assembles, renders, and exports staged PDFs.
 - The app owns the `androidFallbackFont.uri` cache file. Android validates and
   reuses it before opening PDFium; when absent or invalid, it downloads the
   configured URL to a temporary sibling, validates it, and publishes it
@@ -41,17 +40,21 @@
 
 - Page identities and histories travel with pages through structural edits. Structural
   dirty state is document-level; undo and redo history is page-local.
+- `rotatePage()` updates presentation orientation and geometry revision while
+  retaining source geometry, working bytes, page identity, and undo/redo. Page
+  assembly retains pending orientation; [export](export.md) writes it to PDF
+  metadata. Cached source analysis is projected into presentation coordinates.
 - `hasInk()` reads committed ink entries on the active page, so navigation,
   undo, redo, and clear are reflected directly by history.
-- Reopen assembled candidates before publication and validate page count, order,
-  dimensions, and rotation. Compare image-page dimensions at PDFium's serialization
-  precision; use reopened metadata as the published dimensions.
+- Reopen assembled candidates and validate page count, order, and source geometry
+  before publication. Image pages use reopened metadata at PDFium's serialization
+  precision; existing pages retain their presentation orientation.
 - `addPages()` chooses the active page inside its detached candidate: omission or
   `current` retains the existing active page, `firstAdded` and `lastAdded` select
   the corresponding page imported by that call, and `current` selects the first
   imported page when creating a document. Empty imports do not publish a candidate.
-- Clearing a page is one undoable action. Dirty state reflects remaining ink and
-  document structure; clearing the last ink in an otherwise clean document leaves it clean.
+- Clearing a page is one undoable action. Dirty state reflects committed page
+  content and structural changes.
 - Disposal uses the shared operation cancellation and cleanup rules; PDFium
   reader and file release remains serialized with worker access.
 

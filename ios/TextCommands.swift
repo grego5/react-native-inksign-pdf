@@ -126,7 +126,7 @@ extension InkSignView {
     }
   }
 
-  func addTextAnnotation(
+  func insertTextAt(
     text: String,
     bounds: TextAnnotationBounds,
     options: TextAnnotationOptions?
@@ -135,14 +135,16 @@ extension InkSignView {
       guard !self.disposed else { throw TextError.cancelled }
       try self.textInteractionOverlay.addTextAnnotation(text: text,
                                                          bounds: bounds,
-                                                         options: options)
+                                                         options: options,
+                                                         coordinateSpace: .displayed)
     }
   }
 
   func insertTextByFieldName(text: String,
                        key: String,
                        options: TextInsertionByKeyOptions?) throws -> Promise<Void> {
-    let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect, CGSize, Bool) in
+    let captured = try performOnMainSync {
+      () throws -> (URL, UInt64, Int, UUID, UInt64, CGRect, CGSize, Bool, Int, PageGeometry) in
       guard !self.disposed else { throw TextError.cancelled }
       guard let document = self.documentCoordinator.document,
             document.activePageIndex >= 0,
@@ -152,14 +154,17 @@ extension InkSignView {
               self.documentCoordinator.generation,
               document.activePageIndex,
               page.id,
+              page.geometryRevision,
               page.geometry.mediaBox,
-              page.geometry.mediaBox.size,
-              self.textInteractionOverlay.resolvedDirection(options?.direction))
+              page.geometry.displaySize,
+              self.textInteractionOverlay.resolvedDirection(options?.direction),
+              page.geometry.rotation,
+              page.sourceGeometry)
     }
     let coordinator = documentCoordinator
     let occurrence = options?.occurrence ?? .first
     let anchor = options?.verticalAnchor ?? .bottom
-    let direction = captured.6 ? TextDirection.rtl : TextDirection.ltr
+    let direction = captured.7 ? TextDirection.rtl : TextDirection.ltr
     let commitOptions = TextAnnotationOptions(direction: direction,
                                               maxLines: options?.maxLines,
                                               alignment: options?.alignment ?? .start,
@@ -178,22 +183,26 @@ extension InkSignView {
                                                     generation: captured.1,
                                                     pageIndex: captured.2,
                                                     pageID: captured.3,
-                                                    mediaBox: captured.4) else {
+                                                    mediaBox: captured.5) else {
         throw InkSignView.TextError.keyNotFound
       }
       let textLookup = analysis.lookup(key: key)
       guard textLookup.hasLiteralMatch else { throw InkSignView.TextError.keyNotFound }
-      let rtl = captured.6
-      guard let placement = InkSignPdfKeyRuleSelector.select(matches: textLookup.matches,
-                                                              rules: analysis.rules,
+      let rtl = captured.7
+      let geometry = PageGeometry(mediaBox: captured.5, rotation: captured.8)
+      let displayed = analysis.displayedFieldGeometry(lookup: textLookup,
+                                                      sourceGeometry: captured.9,
+                                                      geometry: geometry)
+      guard let placement = InkSignPdfKeyRuleSelector.select(matches: displayed.matches,
+                                                              rules: displayed.rules,
                                                               occurrence: occurrence,
                                                               directionRtl: rtl,
-                                                              pageSize: captured.5) else {
+                                                              pageSize: captured.6) else {
         throw InkSignView.TextError.ruleNotFound
       }
       let selectedRule = placement.rule
       guard
-            selectedRule.y > 0, selectedRule.y < captured.5.height,
+            selectedRule.y > 0, selectedRule.y < captured.6.height,
             selectedRule.maxX > selectedRule.minX else { throw InkSignView.TextError.ruleNotFound }
       let bounds: TextAnnotationBounds
       switch anchor {
@@ -204,7 +213,7 @@ extension InkSignView {
       case .top:
         bounds = TextAnnotationBounds(x: placement.contentMinX, y: selectedRule.y,
                                       width: placement.contentMaxX - placement.contentMinX,
-                                      height: captured.5.height - selectedRule.y)
+                                      height: captured.6.height - selectedRule.y)
       }
       result = .success(bounds)
       } catch {
@@ -215,18 +224,23 @@ extension InkSignView {
         guard !self.disposed,
               coordinator.generation == captured.1,
               let current = coordinator.document,
-              current.index(of: captured.3) != nil else {
+              let targetIndex = current.index(of: captured.3),
+              current.pages[targetIndex].geometryRevision == captured.4 else {
           settlement.reject(InkSignView.TextError.cancelled)
           return
         }
         do {
           let bounds = try result.get()
+          let targetGeometry = PageGeometry(mediaBox: captured.5, rotation: captured.8)
           try self.textInteractionOverlay.addTextAnnotation(text: text,
                                                              bounds: bounds,
                                                              options: commitOptions,
-                                                             resolvedDirectionRtl: captured.6,
+                                                             resolvedDirectionRtl: captured.7,
                                                              requireVisibleLine: true,
-                                                             capturedPage: (captured.1, captured.3, captured.5))
+                                                             capturedPage: (captured.1, captured.3,
+                                                                            targetGeometry.displaySize,
+                                                                            targetGeometry.rotation),
+                                                             coordinateSpace: .displayed)
           settlement.resolve(())
         } catch {
           settlement.reject(error)
@@ -237,14 +251,17 @@ extension InkSignView {
   }
 
   func focusPageByFieldName(key: String, options: FieldFocusOptions?) throws -> Promise<Void> {
-    let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect, UInt64, Bool) in
+    let captured = try performOnMainSync {
+      () throws -> (URL, UInt64, Int, UUID, UInt64, CGRect, UInt64, Bool, PageGeometry, PageGeometry) in
       guard !self.disposed else { throw TextError.cancelled }
       try self.requireViewportReady(request: .preserve)
       guard let document = self.documentCoordinator.document else { throw TextError.notReady }
       self.fieldFocusRequestID &+= 1
       return (document.workingURL, self.documentCoordinator.generation,
-              document.activePageIndex, document.activePage.id, document.activePage.geometry.mediaBox,
-              self.fieldFocusRequestID, self.textInteractionOverlay.resolvedDirection(options?.direction))
+              document.activePageIndex, document.activePage.id, document.activePage.geometryRevision,
+              document.activePage.geometry.mediaBox, self.fieldFocusRequestID,
+              self.textInteractionOverlay.resolvedDirection(options?.direction),
+              document.activePage.geometry, document.activePage.sourceGeometry)
     }
     let coordinator = documentCoordinator
     let settlement = InkSignPdfOperationPromise<Void>()
@@ -259,20 +276,25 @@ extension InkSignView {
       let result: Result<InkSignPdfKeyRulePlacement, Error>
       do {
         guard let analysis = coordinator.pageAnalysis(sourceURL: captured.0, generation: captured.1,
-          pageIndex: captured.2, pageID: captured.3, mediaBox: captured.4) else {
+          pageIndex: captured.2, pageID: captured.3, mediaBox: captured.5) else {
           throw InkSignView.TextError.keyNotFound
         }
         let lookup = analysis.lookup(key: key)
         guard lookup.hasLiteralMatch else { throw InkSignView.TextError.keyNotFound }
-        guard let placement = InkSignPdfKeyRuleSelector.select(matches: lookup.matches, rules: analysis.rules,
-          occurrence: occurrence, directionRtl: captured.6, pageSize: captured.4.size) else {
+        let displayed = analysis.displayedFieldGeometry(lookup: lookup,
+                                                        sourceGeometry: captured.9,
+                                                        geometry: captured.8)
+        guard let placement = InkSignPdfKeyRuleSelector.select(matches: displayed.matches, rules: displayed.rules,
+          occurrence: occurrence, directionRtl: captured.7, pageSize: captured.8.displaySize) else {
           throw InkSignView.TextError.ruleNotFound
         }
         result = .success(placement)
       } catch { result = .failure(error) }
       DispatchQueue.main.async {
-        guard !self.disposed, coordinator.generation == captured.1, self.fieldFocusRequestID == captured.5,
-              let document = coordinator.document, let pageIndex = document.index(of: captured.3) else {
+        guard !self.disposed, coordinator.generation == captured.1, self.fieldFocusRequestID == captured.6,
+              let document = coordinator.document,
+              let pageIndex = document.index(of: captured.3),
+              document.pages[pageIndex].geometryRevision == captured.4 else {
           if coordinator.completePending(pendingID) { settlement.reject(InkSignView.TextError.cancelled) }
           return
         }
@@ -288,17 +310,22 @@ extension InkSignView {
           self.textInteractionOverlay.finishForLifecycle()
           let focus = {
             guard !self.disposed, coordinator.generation == captured.1,
-                  self.fieldFocusRequestID == captured.5,
+                  self.fieldFocusRequestID == captured.6,
+                  coordinator.document?.pages.first(where: { $0.id == captured.3 })?.geometryRevision == captured.4,
                   coordinator.document?.activePage.id == captured.3 else {
               finish(.failure(InkSignView.TextError.cancelled)); return
             }
             self.cancelActiveStroke()
-            guard self.applyViewport(target: ViewportTarget(zoom: CGFloat(options?.zoom ?? 2),
-              focus: CGPoint(x: (placement.contentMinX + placement.contentMaxX) / 2,
-                             y: placement.rule.y))) else {
+            guard let target = self.fieldFocusTarget(
+              ruleY: placement.rule.y,
+              horizontalFocus: (placement.contentMinX + placement.contentMaxX) / 2,
+              zoom: options?.zoom ?? 2,
+              verticalAnchor: options?.verticalAnchor ?? .center,
+              edgeOffset: options?.edgeOffset ?? 0),
+              self.applyViewport(target: target) else {
               finish(.failure(InkSignView.TextError.notReady)); return
             }
-            if options?.enterEditMode == true { self.setInteractionMode(editing: true) }
+            if options?.setInkMode == true { self.setInteractionMode(editing: true) }
             finish(.success(()))
           }
           if pageIndex == document.activePageIndex {

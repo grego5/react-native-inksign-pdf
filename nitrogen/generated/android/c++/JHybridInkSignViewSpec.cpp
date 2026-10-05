@@ -47,6 +47,8 @@ namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `FieldFocusOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 
@@ -100,6 +102,8 @@ namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 #include "JTextKeyOccurrence.hpp"
 #include "FieldFocusOptions.hpp"
 #include "JFieldFocusOptions.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
+#include "JFieldFocusVerticalAnchor.hpp"
 #include "TextModeOptions.hpp"
 #include "JTextModeOptions.hpp"
 
@@ -350,6 +354,22 @@ namespace margelo::nitro::inksignpdf {
       return __promise;
     }();
   }
+  std::shared_ptr<Promise<PageInfo>> JHybridInkSignViewSpec::rotatePage(double degrees) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(double /* degrees */)>("rotatePage");
+    auto __result = method(_javaPart, degrees);
+    return [&]() {
+      auto __promise = Promise<PageInfo>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<JPageInfo>(__boxedResult);
+        __promise->resolve(__result->toCpp());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
   void JHybridInkSignViewSpec::nextPage() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("nextPage");
     method(_javaPart);
@@ -388,8 +408,8 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clear");
     method(_javaPart);
   }
-  void JHybridInkSignViewSpec::addTextAnnotation(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<JTextAnnotationBounds> /* bounds */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("addTextAnnotation");
+  void JHybridInkSignViewSpec::insertTextAt(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<JTextAnnotationBounds> /* bounds */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("insertTextAt");
     method(_javaPart, jni::make_jstring(text), JTextAnnotationBounds::fromCpp(bounds), options.has_value() ? JTextAnnotationOptions::fromCpp(options.value()) : nullptr);
   }
   std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::insertTextByFieldName(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) {

@@ -112,6 +112,38 @@ class MutableDocumentCoordinatorTest {
   }
 
   @Test
+  fun committedRotationAdvancesOnlyTargetGeometryRevisionAndRetainsHistory() {
+    val coordinator = coordinator()
+    val target = coordinator.page(1)
+    val neighboringPage = coordinator.page(0)
+    val outline = StrokeOutline.fromCommands(listOf(
+      InkPathCommand(InkPathCommand.MOVE, 10f, 20f),
+      InkPathCommand(InkPathCommand.LINE, 30f, 40f),
+    ))
+    target.history.append(outline)
+    target.history.undoMutation()
+    val expectedHistoryState = target.history.state()
+
+    val candidate = coordinator.rotatePageCandidate(
+      target.id,
+      PdfPageDimensions(200.0, 100.0, rotation = 1),
+    )
+
+    assertEquals("Candidate preparation must not mutate published geometry", 0L, target.geometryRevision)
+    assertEquals(0L, neighboringPage.geometryRevision)
+    assertEquals(target.id, candidate.pages[1].id)
+    assertEquals(1L, candidate.pages[1].geometryRevision)
+    assertTrue(candidate.pages[1].history === target.history)
+    assertEquals(expectedHistoryState, candidate.pages[1].history.state())
+
+    coordinator.installCandidate("rotated.pdf", candidate.pages, candidate.activePageId)
+
+    assertEquals(1L, coordinator.pageForId(target.id)?.geometryRevision)
+    assertEquals(0L, coordinator.pageForId(neighboringPage.id)?.geometryRevision)
+    assertTrue(coordinator.pageForId(target.id)?.history === target.history)
+  }
+
+  @Test
   fun removeCandidateRejectsTheSolePage() {
     val coordinator = MutableDocumentCoordinator(
       sourcePath = "working.pdf",

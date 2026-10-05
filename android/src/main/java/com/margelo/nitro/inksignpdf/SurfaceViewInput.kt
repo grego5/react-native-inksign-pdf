@@ -181,7 +181,7 @@ private fun SurfaceView.endStroke(event: MotionEvent) {
     inkRenderer.addCompletedOutline(outline)
     notifyStateChange()
     if (shouldHandoff) {
-      val pageToView = documentController.pageToViewTransform()
+      val pageToView = documentController.historyToViewTransform()
       if (pageToView != null) {
         finalSnapshot = LowLatencyInkFinalSnapshot(
           generation = handoffGeneration,

@@ -321,13 +321,20 @@ internal class TextRenderLayer private constructor(
     val selection: VisibleTextLineSelection?,
   )
 
-  fun draw(canvas: android.graphics.Canvas, excludedAnnotationId: String? = null) {
+  fun draw(
+    canvas: android.graphics.Canvas,
+    excludedAnnotationId: String? = null,
+    inLayoutSpace: Boolean = false,
+  ) {
     entries.forEach { entry ->
       if (entry.annotation.id == excludedAnnotationId) return@forEach
       val flowBounds = entry.flowBounds
       val selection = entry.selection
       if (flowBounds != null && selection != null && selection.lineCount == 0) return@forEach
       canvas.save()
+      if (!inLayoutSpace) entry.annotation.layoutPage?.let {
+        canvas.concat(PageCoordinates(it).displayToRawTransform().toCanvasMatrix())
+      }
       if (flowBounds == null) {
         canvas.translate(entry.annotation.bounds.left.toFloat(), entry.annotation.bounds.top.toFloat())
         val maxLines = entry.annotation.maxLines

@@ -28,7 +28,7 @@ internal class StrokeOutline private constructor(
   }
 }
 
-/** Immutable committed text annotation in canonical top-left page coordinates. */
+/** Immutable text layout in the captured page orientation, with a top-left origin. */
 internal data class TextAnnotation(
   val id: String,
   val text: String,
@@ -46,6 +46,8 @@ internal data class TextAnnotation(
   val verticalAnchor: TextVerticalAnchor = TextVerticalAnchor.TOP,
   /** Logical paragraph alignment within the fixed flow region. */
   val alignment: TextAlignment = TextAlignment.START,
+  /** Page orientation in which layout coordinates were captured; null means raw content space. */
+  val layoutPage: PdfPageDimensions? = null,
 ) {
   init {
     require(id.isNotBlank()) { "Text annotation ID must not be blank" }
@@ -61,7 +63,7 @@ internal data class TextAnnotation(
     ) { "Text annotation bounds must be finite and non-inverted" }
   }
 
-  /** Canonical top-left position; zoom and view transforms are not stored. */
+  /** Top-left layout position; presentation zoom is not stored. */
   val position: PagePoint
     get() = PagePoint(bounds.left, bounds.top)
 

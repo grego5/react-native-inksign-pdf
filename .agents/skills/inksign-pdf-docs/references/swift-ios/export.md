@@ -5,6 +5,9 @@
   included.
 - Export writes a separate output; source and working documents retain their
   current state.
+- Export applies pending page rotation to a detached PDF after verifying source
+  geometry. Existing text and PencilKit ink rotate with the page. Text added
+  after rotation keeps the displayed orientation captured at insertion.
 
 - PDFKit carries source pages into the output; Quartz draws annotations and
   CoreText shapes committed text.

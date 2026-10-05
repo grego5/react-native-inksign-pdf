@@ -153,6 +153,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun rotatePage(degrees: Double): Promise<PageInfo>
+  
+  @DoNotStrip
+  @Keep
   abstract fun nextPage(): Unit
   
   @DoNotStrip
@@ -189,7 +193,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun addTextAnnotation(text: String, bounds: TextAnnotationBounds, options: TextAnnotationOptions?): Unit
+  abstract fun insertTextAt(text: String, bounds: TextAnnotationBounds, options: TextAnnotationOptions?): Unit
   
   @DoNotStrip
   @Keep

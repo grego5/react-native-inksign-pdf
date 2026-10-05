@@ -206,15 +206,15 @@ internal class InkRenderer {
 
     fun draw(
         canvas: Canvas,
-        viewScale: Double,
-        viewOffsetX: Double,
-        viewOffsetY: Double,
+        pageToView: PageTransform,
         currentColor: Int,
     ) {
-        pageMatrixValues[0] = viewScale.toFloat()
-        pageMatrixValues[2] = viewOffsetX.toFloat()
-        pageMatrixValues[4] = viewScale.toFloat()
-        pageMatrixValues[5] = viewOffsetY.toFloat()
+        pageMatrixValues[0] = pageToView.a.toFloat()
+        pageMatrixValues[1] = pageToView.c.toFloat()
+        pageMatrixValues[2] = pageToView.tx.toFloat()
+        pageMatrixValues[3] = pageToView.b.toFloat()
+        pageMatrixValues[4] = pageToView.d.toFloat()
+        pageMatrixValues[5] = pageToView.ty.toFloat()
         pageMatrix.setValues(pageMatrixValues)
         canvas.save()
         canvas.concat(pageMatrix)
