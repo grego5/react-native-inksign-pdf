@@ -11,6 +11,7 @@ import androidx.annotation.Keep
 import com.facebook.jni.HybridData
 import com.facebook.proguard.annotations.DoNotStrip
 import dalvik.annotation.optimization.FastNative
+import com.margelo.nitro.core.NullType
 import com.margelo.nitro.core.Promise
 import com.margelo.nitro.core.HybridObject
 import com.margelo.nitro.views.HybridView
@@ -106,6 +107,12 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @set:Keep
   abstract var keyboardAvoidanceEnabled: Boolean?
   
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var pagerDirection: PagerDirection?
+  
   abstract var onStateChange: ((event: StateChangeEvent) -> Unit)?
   
   private var onStateChange_cxx: Func_void_StateChangeEvent?
@@ -132,6 +139,20 @@ abstract class HybridInkSignViewSpec: HybridView() {
     @DoNotStrip
     set(value) {
       onPageChange = value?.let { it }
+    }
+  
+  abstract var onTextSelectionChange: ((selection: Variant_NullType_TextSelection?) -> Unit)?
+  
+  private var onTextSelectionChange_cxx: Func_void_std__optional_std__variant_nitro__NullType__TextSelection__?
+    @Keep
+    @DoNotStrip
+    get() {
+      return onTextSelectionChange?.let { Func_void_std__optional_std__variant_nitro__NullType__TextSelection___java(it) }
+    }
+    @Keep
+    @DoNotStrip
+    set(value) {
+      onTextSelectionChange = value?.let { it }
     }
 
   // Methods
@@ -173,6 +194,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec>
+  
+  @DoNotStrip
+  @Keep
   abstract fun setInkMode(viewport: ViewportOptions?): Unit
   
   @DoNotStrip
@@ -193,35 +218,11 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun insertTextAt(text: String, bounds: TextAnnotationBounds, options: TextAnnotationOptions?): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun insertTextByFieldName(text: String, key: String, options: TextInsertionByKeyOptions?): Promise<Unit>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun focusPageByFieldName(key: String, options: FieldFocusOptions?): Promise<Unit>
-  
-  @DoNotStrip
-  @Keep
   abstract fun setTextDirection(direction: TextDirection): Unit
   
   @DoNotStrip
   @Keep
   abstract fun setTextMode(options: TextModeOptions?): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun increaseTextSize(): Double
-  
-  @DoNotStrip
-  @Keep
-  abstract fun decreaseTextSize(): Double
-  
-  @DoNotStrip
-  @Keep
-  abstract fun removeTextAnnotation(): Unit
   
   @DoNotStrip
   @Keep

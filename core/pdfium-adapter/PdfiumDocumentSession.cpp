@@ -745,158 +745,38 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
   return {};
 }
 
-PdfiumError PdfiumDocumentSession::inspectTextKeyMatches(
+PdfiumError PdfiumDocumentSession::preparePageAnalysis(
     std::size_t pageIndex,
-    std::u16string_view key,
-    bool& hasLiteralMatch,
-    std::vector<PdfiumTextKeyMatch>& matches) const {
-  matches.clear();
-  hasLiteralMatch = false;
+    PdfiumPageAnalysisSnapshot& snapshot) const {
+  snapshot = {};
   if (!impl_) return {PdfiumErrorCode::Closed, "PDFium document session is closed"};
   if (pageIndex >= impl_->pageCount) {
-    return {PdfiumErrorCode::InvalidPageIndex, "PDFium page index is outside the document"};
+    return {PdfiumErrorCode::InvalidPageIndex,
+            "PDFium page index is outside the document"};
   }
-  if (key.empty()) return {PdfiumErrorCode::InvalidInput, "Text key is empty"};
-
-  // The page analysis producer extracts text geometry and drawing rules from
-  // one loaded page. Its cache hit is cheap and keeps every key on that data.
   std::vector<PdfiumHorizontalSnapCandidate> unusedCandidates;
-  if (const auto error = inspectHorizontalSnapCandidates(pageIndex, unusedCandidates, false);
+  if (const auto error = inspectHorizontalSnapCandidates(pageIndex, unusedCandidates, true);
       !error) {
     return error;
   }
-
   auto& state = pdfiumLibraryState();
   std::lock_guard apiLock(state.apiMutex);
-  auto& analysis = impl_->analysisFor(pageIndex);
-  const double pageWidth = analysis.pageWidth;
-  const double pageHeight = analysis.pageHeight;
-  const auto fold = [](unsigned long value) -> unsigned long {
-    if (value >= 'A' && value <= 'Z') return value + ('a' - 'A');
-    return value;
-  };
-  std::vector<unsigned long> keyCharacters;
-  keyCharacters.reserve(key.size());
-  for (std::size_t index = 0; index < key.size(); ++index) {
-    const auto unit = static_cast<std::uint16_t>(key[index]);
-    if (unit >= 0xD800 && unit <= 0xDBFF && index + 1 < key.size()) {
-      const auto low = static_cast<std::uint16_t>(key[index + 1]);
-      if (low >= 0xDC00 && low <= 0xDFFF) {
-        keyCharacters.push_back(0x10000UL +
-            ((static_cast<unsigned long>(unit) - 0xD800UL) << 10) +
-            (static_cast<unsigned long>(low) - 0xDC00UL));
-        ++index;
-        continue;
-      }
-    }
-    keyCharacters.push_back(unit);
+  const auto found = std::find_if(impl_->pageAnalyses.begin(), impl_->pageAnalyses.end(),
+      [pageIndex](const Impl::PageAnalysis& analysis) {
+        return analysis.pageIndex == pageIndex && analysis.hasText && analysis.hasRules;
+      });
+  if (found == impl_->pageAnalyses.end()) {
+    return {PdfiumErrorCode::PageOpenFailed,
+            "PDFium page analysis was evicted before it could be retained"};
   }
-  const auto keyLength = keyCharacters.size();
-  const auto words = [&](const auto& text) {
-    struct Word { std::size_t start, end; std::vector<unsigned long> value; };
-    std::vector<Word> result;
-    for (std::size_t index = 0; index < text.size();) {
-      if (isTextWhitespace(text[index])) { ++index; continue; }
-      const auto start = index;
-      std::vector<unsigned long> value;
-      while (index < text.size() && !isTextWhitespace(text[index])) value.push_back(fold(text[index++]));
-      result.push_back({start, index, std::move(value)});
-    }
-    return result;
-  };
-  const auto keyWords = words(keyCharacters);
-  const bool multiword = keyWords.size() > 1;
-  std::vector<std::pair<std::size_t, std::size_t>> occurrences;
-  if (multiword) {
-    const auto sourceWords = words(analysis.text);
-    for (std::size_t index = 0; index + keyWords.size() <= sourceWords.size(); ++index) {
-      if (!std::is_permutation(keyWords.begin(), keyWords.end(),
-          sourceWords.begin() + index, sourceWords.begin() + index + keyWords.size(),
-          [](const auto& left, const auto& right) { return left.value == right.value; })) continue;
-      const auto start = sourceWords[index].start;
-      const auto& last = sourceWords[index + keyWords.size() - 1];
-      occurrences.emplace_back(start, last.end - start);
-    }
-  } else {
-    for (std::size_t start = 0; start + keyLength <= analysis.text.size(); ++start) {
-      bool found = true;
-      for (std::size_t offset = 0; offset < keyLength; ++offset) {
-        if (fold(analysis.text[start + offset]) != fold(keyCharacters[offset])) { found = false; break; }
-      }
-      if (found) occurrences.emplace_back(start, keyLength);
-    }
-  }
-  const auto isLineBreak = [](unsigned long value) {
-    return value == 0x0AUL || value == 0x0DUL || value == 0x0BUL ||
-        value == 0x0CUL || value == 0x85UL || value == 0x2028UL ||
-        value == 0x2029UL;
-  };
-  for (const auto& [start, matchLength] : occurrences) {
-    hasLiteralMatch = true;
-    PdfiumTextKeyMatch match;
-    match.left = match.top = std::numeric_limits<double>::infinity();
-    match.right = match.bottom = -std::numeric_limits<double>::infinity();
-    match.sourceIndex = static_cast<double>(start);
-    bool hasBounds = false;
-    match.lineCenter = std::numeric_limits<double>::quiet_NaN();
-    int visualRow = -1;
-    bool isSingleVisualRow = true;
-    std::vector<std::pair<double, double>> wordEdges;
-    double wordLeft = std::numeric_limits<double>::infinity();
-    double wordRight = -std::numeric_limits<double>::infinity();
-    const auto finishWord = [&] {
-      if (wordRight > wordLeft) wordEdges.emplace_back(wordLeft, wordRight);
-      wordLeft = std::numeric_limits<double>::infinity();
-      wordRight = -std::numeric_limits<double>::infinity();
-    };
-    for (std::size_t offset = 0; offset < matchLength; ++offset) {
-      const auto characterIndex = start + offset;
-      if (isLineBreak(analysis.text[characterIndex])) isSingleVisualRow = false;
-      if (isTextWhitespace(analysis.text[characterIndex])) { finishWord(); continue; }
-      const auto& box = analysis.characterBounds[start + offset];
-      if (!box) continue;
-      const int characterRow = analysis.visualRows[characterIndex];
-      if (characterRow < 0) {
-        isSingleVisualRow = false;
-      } else if (visualRow < 0) {
-        visualRow = characterRow;
-      } else if (characterRow != visualRow) {
-        isSingleVisualRow = false;
-      }
-      match.left = std::min(match.left, box->left);
-      match.top = std::min(match.top, box->top);
-      match.right = std::max(match.right, box->right);
-      match.bottom = std::max(match.bottom, box->bottom);
-      wordLeft = std::min(wordLeft, box->left);
-      wordRight = std::max(wordRight, box->right);
-      hasBounds = true;
-    }
-    finishWord();
-    const bool isSingleVisualLine = hasBounds && visualRow >= 0 && isSingleVisualRow;
-    if (isSingleVisualLine) {
-      const auto rowIndex = static_cast<std::size_t>(visualRow);
-      match.lineCenter = (analysis.visualRowTops[rowIndex] + analysis.visualRowBottoms[rowIndex]) / 2.0;
-      match.lineHeight = analysis.visualRowBottoms[rowIndex] - analysis.visualRowTops[rowIndex];
-    } else if (hasBounds) {
-      match.lineCenter = (match.top + match.bottom) / 2.0;
-    }
-    if (multiword) {
-      if (!isSingleVisualLine || wordEdges.size() != keyWords.size()) continue;
-      std::sort(wordEdges.begin(), wordEdges.end());
-      bool adjacent = true;
-      for (std::size_t index = 1; index < wordEdges.size(); ++index) {
-        if (wordEdges[index].first - wordEdges[index - 1].second > match.lineHeight) adjacent = false;
-      }
-      if (!adjacent) continue;
-    }
-    if (hasBounds && match.right > match.left && match.bottom > match.top &&
-        match.left >= 0.0 && match.top >= 0.0 && match.right <= pageWidth &&
-        match.bottom <= pageHeight) {
-      if (!isSingleVisualLine) match.lineHeight = 0.0;
-      matches.push_back(match);
-    }
-  }
-  impl_->trimPageAnalyses();
+  snapshot.pageWidth = found->pageWidth;
+  snapshot.pageHeight = found->pageHeight;
+  snapshot.text = found->text;
+  snapshot.characterBounds = found->characterBounds;
+  snapshot.visualRows = found->visualRows;
+  snapshot.visualRowTops = found->visualRowTops;
+  snapshot.visualRowBottoms = found->visualRowBottoms;
+  snapshot.rules = found->rules;
   return {};
 }
 
@@ -905,9 +785,13 @@ PdfiumDocumentSession::pageAnalysisScanCountsForTesting() const {
   if (!impl_) return {};
   auto& state = pdfiumLibraryState();
   std::lock_guard apiLock(state.apiMutex);
-  return {impl_->textExtractionCount, impl_->ruleInspectionCount,
-          impl_->pageAnalysisLoadCount, impl_->textCharacterCount,
-          impl_->characterGeometryCount};
+  return {
+      impl_->textExtractionCount,
+      impl_->ruleInspectionCount,
+      impl_->pageAnalysisLoadCount,
+      impl_->textCharacterCount,
+      impl_->characterGeometryCount,
+  };
 }
 
 PdfiumError PdfiumDocumentSession::renderPage(

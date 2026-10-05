@@ -98,7 +98,7 @@ enum InkSignPdfTextBoxGeometry {
 /// Immutable committed text in the page orientation captured when it was laid out.
 /// UIKit editor state, selection, and viewport transforms are intentionally absent.
 struct InkSignPdfTextAnnotation: Equatable {
-  let id: String
+  let id: UInt64
   let text: String
   /// Measured visible text bounds used for selection and auto-sized placement.
   let bounds: CGRect
@@ -117,14 +117,14 @@ struct InkSignPdfTextAnnotation: Equatable {
   /// Orientation whose displayed coordinates define this text layout.
   let layoutRotation: Int
 
-  init(id: String, text: String, bounds: CGRect, fontSize: CGFloat,
+  init(id: UInt64, text: String, bounds: CGRect, fontSize: CGFloat,
        textColor: String = "#000000", isRTL: Bool = false,
        flowBounds: CGRect? = nil,
        maxLines: Int = 0,
        verticalAnchor: InkSignPdfTextVerticalAnchor = .top,
        alignment: InkSignPdfTextAlignment = .start,
        layoutRotation: Int = 0) {
-    precondition(!id.isEmpty, "Text annotation ID must not be empty")
+    precondition(id > 0, "Text annotation ID must be positive")
     precondition(!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                  "Committed text annotation must not be blank")
     precondition(bounds.minX.isFinite && bounds.minY.isFinite &&

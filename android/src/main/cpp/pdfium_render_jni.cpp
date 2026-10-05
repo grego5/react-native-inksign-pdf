@@ -314,33 +314,37 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeHorizontalSnapCandid
 }
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
-Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeTextKeyMatches(
-    JNIEnv* env, jclass, jlong handle, jint pageIndex, jstring key) {
+Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativePreparedPageAnalysis(
+    JNIEnv* env, jclass, jlong handle, jint pageIndex) {
   const auto* session = reinterpret_cast<const PdfiumDocumentSession*>(handle);
-  if (session == nullptr || pageIndex < 0 || key == nullptr) return nullptr;
-  const jchar* chars = env->GetStringChars(key, nullptr);
-  if (chars == nullptr) return nullptr;
-  const auto length = env->GetStringLength(key);
-  std::u16string keyText(reinterpret_cast<const char16_t*>(chars),
-                         static_cast<std::size_t>(length));
-  env->ReleaseStringChars(key, chars);
-  std::vector<margelo::nitro::inksignpdf::pdfium::PdfiumTextKeyMatch> matches;
-  bool hasLiteralMatch = false;
-  if (!session->inspectTextKeyMatches(static_cast<std::size_t>(pageIndex), keyText,
-                                      hasLiteralMatch, matches)) {
+  if (session == nullptr || pageIndex < 0) return nullptr;
+  margelo::nitro::inksignpdf::pdfium::PdfiumPageAnalysisSnapshot snapshot;
+  if (!session->preparePageAnalysis(static_cast<std::size_t>(pageIndex), snapshot)) {
     return nullptr;
   }
-  if (matches.size() > static_cast<std::size_t>(((std::numeric_limits<jsize>::max)() - 1) / 7)) {
-    return nullptr;
-  }
-  auto values = env->NewDoubleArray(static_cast<jsize>(matches.size() * 7 + 1));
+  constexpr std::size_t kGlyphWidth = 10;
+  const auto count = 4 + snapshot.text.size() * kGlyphWidth + snapshot.rules.size() * 3;
+  if (count > static_cast<std::size_t>((std::numeric_limits<jsize>::max)())) return nullptr;
+  auto values = env->NewDoubleArray(static_cast<jsize>(count));
   if (values == nullptr) return nullptr;
   std::vector<jdouble> flattened;
-  flattened.reserve(matches.size() * 7 + 1);
-  flattened.push_back(hasLiteralMatch ? 1.0 : 0.0);
-  for (const auto& match : matches) {
-    flattened.insert(flattened.end(), {match.left, match.top, match.right,
-        match.bottom, match.sourceIndex, match.lineCenter, match.lineHeight});
+  flattened.reserve(count);
+  flattened.insert(flattened.end(), {snapshot.pageWidth, snapshot.pageHeight,
+      static_cast<jdouble>(snapshot.text.size()), static_cast<jdouble>(snapshot.rules.size())});
+  for (std::size_t index = 0; index < snapshot.text.size(); ++index) {
+    flattened.push_back(static_cast<jdouble>(snapshot.text[index]));
+    const auto& bounds = snapshot.characterBounds[index];
+    flattened.push_back(bounds ? 1.0 : 0.0);
+    if (bounds) {
+      flattened.insert(flattened.end(), {bounds->left, bounds->top, bounds->right,
+          bounds->bottom, bounds->sourceIndex, bounds->lineCenter, bounds->lineHeight});
+    } else {
+      flattened.insert(flattened.end(), {0.0, 0.0, 0.0, 0.0, static_cast<jdouble>(index), 0.0, 0.0});
+    }
+    flattened.push_back(static_cast<jdouble>(snapshot.visualRows[index]));
+  }
+  for (const auto& rule : snapshot.rules) {
+    flattened.insert(flattened.end(), {rule.left, rule.right, rule.y});
   }
   env->SetDoubleArrayRegion(values, 0, static_cast<jsize>(flattened.size()), flattened.data());
   return values;

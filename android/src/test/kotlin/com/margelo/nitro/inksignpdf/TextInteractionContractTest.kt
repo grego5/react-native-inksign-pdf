@@ -20,7 +20,7 @@ class TextInteractionContractTest {
   @Test
   fun multilineTextKeepsExplicitNewlinesAndCanonicalPlacement() {
     val annotation = TextAnnotation(
-      id = "text-1",
+      id = 1L,
       text = "first\nlongest line",
       bounds = PageRect(42.0, 18.0, 130.0, 54.0),
       fontSize = 16.0,
@@ -35,8 +35,8 @@ class TextInteractionContractTest {
   @Test
   fun dragOrEditReplacementIsOneUndoableHistoryAction() {
     val history = InkHistory()
-    val before = text("text-1", "Hello", 24.0, 30.0)
-    val after = text("text-1", "Hello\nworld", 60.0, 48.0, 18.0)
+    val before = text(1L, "Hello", 24.0, 30.0)
+    val after = text(1L, "Hello\nworld", 60.0, 48.0, 18.0)
 
     history.appendText(before)
     history.replaceText(before, after)
@@ -51,7 +51,7 @@ class TextInteractionContractTest {
   fun blankCommittedTextCannotSurviveDismissal() {
     val history = InkHistory()
     val rejected = runCatching {
-      history.appendText(text("text-1", "", 0.0, 0.0))
+      history.appendText(text(1L, "", 0.0, 0.0))
     }
 
     assertTrue(rejected.isFailure)
@@ -61,7 +61,7 @@ class TextInteractionContractTest {
   @Test
   fun unchangedExistingTextDismissalDoesNotCreateAHistoryMutation() {
     val history = InkHistory()
-    val annotation = text("text-1", "Hello", 24.0, 30.0)
+    val annotation = text(1L, "Hello", 24.0, 30.0)
     history.appendText(annotation)
 
     assertEquals(
@@ -74,8 +74,8 @@ class TextInteractionContractTest {
 
   @Test
   fun textEditingSettlementClassifiesAppendReplaceRemoveAndNoOp() {
-    val before = text("text-1", "Hello", 24.0, 30.0)
-    val after = text("text-1", "Updated", 24.0, 30.0)
+    val before = text(1L, "Hello", 24.0, 30.0)
+    val after = text(1L, "Updated", 24.0, 30.0)
 
     assertEquals(TextEditingMutation.Append(after), settleTextEditing(null, after))
     assertEquals(TextEditingMutation.Replace(before, after), settleTextEditing(before, after))
@@ -447,7 +447,7 @@ class TextInteractionContractTest {
   }
 
   private fun text(
-    id: String,
+    id: Long,
     value: String,
     left: Double,
     top: Double,

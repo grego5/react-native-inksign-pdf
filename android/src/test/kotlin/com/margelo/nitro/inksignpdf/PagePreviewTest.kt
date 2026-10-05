@@ -81,7 +81,7 @@ class PagePreviewTest {
   @Test
   fun intentCarriesImmutableCommittedTextAlongsideContentRevision() {
     val text = TextAnnotation(
-      id = "text-1",
+      id = 1L,
       text = "שלום\nArabic العربية",
       bounds = PageRect(10.0, 20.0, 180.0, 60.0),
       fontSize = 16.0,

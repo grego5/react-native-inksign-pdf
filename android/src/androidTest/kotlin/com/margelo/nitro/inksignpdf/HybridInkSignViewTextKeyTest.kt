@@ -9,6 +9,7 @@ import com.margelo.nitro.core.Promise
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertEquals
@@ -19,25 +20,27 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 internal class HybridInkSignViewTextKeyTest {
   @Test
-  fun keyInsertionCompletesOnCapturedPageAfterNavigation() {
+  fun preparedPageWriteCompletesOnCapturedPageAfterNavigation() {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    val source = File.createTempFile("stale-key-lookup-", ".pdf", context.cacheDir)
+    val source = File.createTempFile("captured-prepared-page-", ".pdf", context.cacheDir)
       .apply { writeText("controlled test source") }
-    val lookupStarted = CountDownLatch(1)
-    val releaseLookup = CountDownLatch(1)
-    val resourceRef = AtomicReference<BlockingKeyLookupResource>()
+    val analysisStarted = CountDownLatch(1)
+    val releaseAnalysis = CountDownLatch(1)
+    val blockAnalysis = AtomicBoolean(false)
+    val resourceRef = AtomicReference<BlockingAnalysisResource>()
     val worker = PdfSessionWorker(
       opener = PdfSessionOpener { path, generation ->
-        BlockingKeyLookupResource(
+        BlockingAnalysisResource(
           PdfSessionInfo(
             sourcePath = path,
             pages = listOf(PdfPageDimensions(300.0, 300.0), PdfPageDimensions(300.0, 300.0)),
             generation = generation,
           ),
-          lookupStarted,
-          releaseLookup,
+          analysisStarted,
+          releaseAnalysis,
+          blockAnalysis,
         ).also(resourceRef::set)
       },
     )
@@ -66,13 +69,15 @@ internal class HybridInkSignViewTextKeyTest {
         }
       }
 
+      val pageZero = awaitPreparedPage(instrumentation, viewRef.get(), 0.0)
       instrumentation.runOnMainSync {
-        val view = viewRef.get()
-        val surface = surfaceRef.get()
-        view.insertTextAt("page zero", TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), null)
-        surface.switchPage(1)
-        view.insertTextAt("page one", TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), null)
-        surface.switchPage(0)
+        setPreparedText(pageZero, TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), "page zero")
+        surfaceRef.get().switchPage(1)
+      }
+      val pageOne = awaitPreparedPage(instrumentation, viewRef.get(), 1.0)
+      instrumentation.runOnMainSync {
+        setPreparedText(pageOne, TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), "page one")
+        surfaceRef.get().switchPage(0)
       }
 
       val before = AtomicReference<List<PageHistoryState>>()
@@ -82,20 +87,23 @@ internal class HybridInkSignViewTextKeyTest {
 
       val settled = CountDownLatch(1)
       val failure = AtomicReference<Throwable>()
-      val insertion = AtomicReference<Promise<Unit>>()
+      val prepared = AtomicReference<Promise<HybridAnalyzedPageSpec>>()
+      blockAnalysis.set(true)
       instrumentation.runOnMainSync {
-        insertion.set(viewRef.get().insertTextByFieldName("new value", "Missing", null))
+        prepared.set(viewRef.get().getPage(0.0))
       }
-      insertion.get().then { settled.countDown() }
-        .catch { error -> failure.set(error); settled.countDown() }
+      prepared.get().then { page ->
+        setPreparedText(page, TextAnnotationBounds(20.0, 60.0, 120.0, 30.0), "new value")
+        settled.countDown()
+      }.catch { error -> failure.set(error); settled.countDown() }
 
-      assertTrue("production key lookup did not reach the worker", lookupStarted.await(10L, TimeUnit.SECONDS))
+      assertTrue("prepared page analysis did not reach the worker", analysisStarted.await(10L, TimeUnit.SECONDS))
       instrumentation.runOnMainSync { surfaceRef.get().switchPage(1) }
       val changesBeforeCommit = AtomicInteger()
       instrumentation.runOnMainSync { changesBeforeCommit.set(textContentChanges.get()) }
-      releaseLookup.countDown()
-      assertTrue("insertTextByFieldName did not settle", settled.await(10L, TimeUnit.SECONDS))
-      assertTrue("key insertion failed after navigation: ${failure.get()}", failure.get() == null)
+      releaseAnalysis.countDown()
+      assertTrue("prepared page command did not settle", settled.await(10L, TimeUnit.SECONDS))
+      assertTrue("captured-page write failed after navigation: ${failure.get()}", failure.get() == null)
       assertEquals("an inactive-page commit must not sync the active overlay",
         changesBeforeCommit.get(), textContentChanges.get())
 
@@ -114,33 +122,35 @@ internal class HybridInkSignViewTextKeyTest {
       )
       assertTrue("the controlled PDF session was not opened", resourceRef.get() != null)
     } finally {
-      releaseLookup.countDown()
+      releaseAnalysis.countDown()
       instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
       source.delete()
     }
   }
 
   @Test
-  fun replacementCancelsPendingProductionKeyLookupAndInstallsOnlyNewDocument() {
+  fun replacementCancelsPendingPreparedPageAndInstallsOnlyNewDocument() {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    val sourceA = File.createTempFile("replace-key-lookup-a-", ".pdf", context.cacheDir)
+    val sourceA = File.createTempFile("replace-prepared-page-a-", ".pdf", context.cacheDir)
       .apply { writeText("controlled source A") }
-    val sourceB = File.createTempFile("replace-key-lookup-b-", ".pdf", context.cacheDir)
+    val sourceB = File.createTempFile("replace-prepared-page-b-", ".pdf", context.cacheDir)
       .apply { writeText("controlled source B") }
-    val lookupStarted = CountDownLatch(1)
-    val releaseLookup = CountDownLatch(1)
+    val analysisStarted = CountDownLatch(1)
+    val releaseAnalysis = CountDownLatch(1)
+    val blockAnalysis = AtomicBoolean(false)
     val worker = PdfSessionWorker(
       opener = PdfSessionOpener { path, generation ->
-        BlockingKeyLookupResource(
+        BlockingAnalysisResource(
           PdfSessionInfo(
             sourcePath = path,
             pages = listOf(PdfPageDimensions(300.0, 300.0)),
             generation = generation,
           ),
-          lookupStarted,
-          releaseLookup,
+          analysisStarted,
+          releaseAnalysis,
+          blockAnalysis,
         )
       },
     )
@@ -159,13 +169,14 @@ internal class HybridInkSignViewTextKeyTest {
       val lookupSettled = CountDownLatch(1)
       val rejectionCount = AtomicInteger()
       val lookupError = AtomicReference<Throwable>()
-      val lookup = AtomicReference<Promise<Unit>>()
+      val lookup = AtomicReference<Promise<HybridAnalyzedPageSpec>>()
+      blockAnalysis.set(true)
       instrumentation.runOnMainSync {
-        lookup.set(viewRef.get().insertTextByFieldName("value", "Missing", null))
+        lookup.set(viewRef.get().getPage(0.0))
       }
       lookup.get().then { lookupSettled.countDown() }
         .catch { error -> lookupError.set(error); rejectionCount.incrementAndGet(); lookupSettled.countDown() }
-      assertTrue("production key lookup did not reach the worker", lookupStarted.await(10L, TimeUnit.SECONDS))
+      assertTrue("prepared page analysis did not reach the worker", analysisStarted.await(10L, TimeUnit.SECONDS))
 
       val openSettled = CountDownLatch(1)
       val replacementInfo = AtomicReference<PageInfo>()
@@ -181,7 +192,7 @@ internal class HybridInkSignViewTextKeyTest {
       assertTrue("stale key lookup did not cancel promptly", lookupSettled.await(5L, TimeUnit.SECONDS))
       assertEquals("operation_cancelled", (lookupError.get() as? PdfSessionException)?.code)
       assertEquals(1, rejectionCount.get())
-      releaseLookup.countDown()
+      releaseAnalysis.countDown()
       assertTrue("replacement open did not settle", openSettled.await(10L, TimeUnit.SECONDS))
       replacementError.get()?.let { throw AssertionError("replacement open failed", it) }
       assertEquals(1.0, replacementInfo.get().pageCount, 0.0)
@@ -190,7 +201,7 @@ internal class HybridInkSignViewTextKeyTest {
         assertTrue(viewRef.get().coordinator.pageSnapshot(0).content.isEmpty())
       }
     } finally {
-      releaseLookup.countDown()
+      releaseAnalysis.countDown()
       instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
       sourceA.delete()
       sourceB.delete()
@@ -228,19 +239,18 @@ internal class HybridInkSignViewTextKeyTest {
     val revision: Long,
   )
 
-  private class BlockingKeyLookupResource(
+  private class BlockingAnalysisResource(
     override val info: PdfSessionInfo,
-    private val lookupStarted: CountDownLatch,
-    private val releaseLookup: CountDownLatch,
+    private val analysisStarted: CountDownLatch,
+    private val releaseAnalysis: CountDownLatch,
+    private val blockAnalysis: AtomicBoolean,
   ) : PdfSessionResource {
-    override fun lookupTextKey(pageIndex: Int, key: String): PdfiumKeyLookupPage {
-      lookupStarted.countDown()
-      check(releaseLookup.await(10L, TimeUnit.SECONDS)) { "test did not release the blocked lookup" }
-      return PdfiumKeyLookupPage(
-        hasLiteralMatch = true,
-        matches = listOf(PdfiumTextKeyMatch(80.0, 100.0, 120.0, 112.0, 0.0, 106.0, 12.0)),
-        rules = listOf(PdfiumHorizontalSnapCandidate(20.0, 250.0, 118.0)),
-      )
+    override fun preparePageAnalysis(pageIndex: Int): PdfiumPreparedPageAnalysis {
+      if (blockAnalysis.get()) {
+        analysisStarted.countDown()
+        check(releaseAnalysis.await(10L, TimeUnit.SECONDS)) { "test did not release prepared analysis" }
+      }
+      return PdfiumPreparedPageAnalysis(300.0, 300.0, emptyList(), emptyList())
     }
 
     override fun renderTiles(requests: List<PdfTileRequest>, beforeEach: () -> Unit): List<PdfTile> {

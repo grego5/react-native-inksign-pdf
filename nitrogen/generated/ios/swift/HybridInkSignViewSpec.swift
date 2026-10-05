@@ -23,8 +23,10 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   var selectedBackgroundColor: String? { get set }
   var doubleTap: DoubleTapOptions? { get set }
   var keyboardAvoidanceEnabled: Bool? { get set }
+  var pagerDirection: PagerDirection? { get set }
   var onStateChange: ((_ event: StateChangeEvent) -> Void)? { get set }
   var onPageChange: ((_ event: PageInfo) -> Void)? { get set }
+  var onTextSelectionChange: ((_ selection: Variant_NullType_TextSelection?) -> Void)? { get set }
 
   // Methods
   func open(path: String, options: ViewportOptions?) throws -> Promise<PageInfo>
@@ -36,19 +38,14 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func previousPage() throws -> Void
   func getViewport() throws -> Viewport
   func hasInk() throws -> Bool
+  func getPage(pageIndex: Double?) throws -> Promise<(any HybridAnalyzedPageSpec)>
   func setInkMode(viewport: ViewportOptions?) throws -> Void
   func setViewMode(viewport: ViewportOptions?) throws -> Void
   func undo() throws -> Void
   func redo() throws -> Void
   func clear() throws -> Void
-  func insertTextAt(text: String, bounds: TextAnnotationBounds, options: TextAnnotationOptions?) throws -> Void
-  func insertTextByFieldName(text: String, key: String, options: TextInsertionByKeyOptions?) throws -> Promise<Void>
-  func focusPageByFieldName(key: String, options: FieldFocusOptions?) throws -> Promise<Void>
   func setTextDirection(direction: TextDirection) throws -> Void
   func setTextMode(options: TextModeOptions?) throws -> Void
-  func increaseTextSize() throws -> Double
-  func decreaseTextSize() throws -> Double
-  func removeTextAnnotation() throws -> Void
   func finalize() throws -> Promise<String>
   func startDebugRecording() throws -> Void
   func stopDebugRecording() throws -> Void

@@ -419,6 +419,23 @@ open class HybridInkSignViewSpec_cxx {
     }
   }
   
+  public final var pagerDirection: bridge.std__optional_PagerDirection_ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_PagerDirection_ in
+        if let __unwrappedValue = self.__implementation.pagerDirection {
+          return bridge.create_std__optional_PagerDirection_(__unwrappedValue)
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.pagerDirection = newValue.value
+    }
+  }
+  
   public final var onStateChange: bridge.std__optional_std__function_void_const_StateChangeEvent_____event______ {
     @inline(__always)
     get {
@@ -474,6 +491,51 @@ open class HybridInkSignViewSpec_cxx {
             let __wrappedFunction = bridge.wrap_Func_void_PageInfo(__unwrapped)
             return { (__event: PageInfo) -> Void in
               __wrappedFunction.call(__event)
+            }
+          }()
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
+  public final var onTextSelectionChange: bridge.std__optional_std__function_void_const_std__optional_std__variant_nitro__NullType__TextSelection_______selection______ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__function_void_const_std__optional_std__variant_nitro__NullType__TextSelection_______selection______ in
+        if let __unwrappedValue = self.__implementation.onTextSelectionChange {
+          return bridge.create_std__optional_std__function_void_const_std__optional_std__variant_nitro__NullType__TextSelection_______selection______({ () -> bridge.Func_void_std__optional_std__variant_nitro__NullType__TextSelection__ in
+            let __closureWrapper = Func_void_std__optional_std__variant_nitro__NullType__TextSelection__(__unwrappedValue)
+            return bridge.create_Func_void_std__optional_std__variant_nitro__NullType__TextSelection__(__closureWrapper.toUnsafe())
+          }())
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.onTextSelectionChange = { () -> ((_ selection: Variant_NullType_TextSelection?) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_const_std__optional_std__variant_nitro__NullType__TextSelection_______selection______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_const_std__optional_std__variant_nitro__NullType__TextSelection_______selection______(newValue)
+          return { () -> (Variant_NullType_TextSelection?) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_std__optional_std__variant_nitro__NullType__TextSelection__(__unwrapped)
+            return { (__selection: Variant_NullType_TextSelection?) -> Void in
+              __wrappedFunction.call({ () -> bridge.std__optional_std__variant_nitro__NullType__TextSelection__ in
+                if let __unwrappedValue = __selection {
+                  return bridge.create_std__optional_std__variant_nitro__NullType__TextSelection__({ () -> bridge.std__variant_nitro__NullType__TextSelection_ in
+                    switch __unwrappedValue {
+                      case .first(let __value):
+                        return bridge.create_std__variant_nitro__NullType__TextSelection_(margelo.nitro.NullType.null)
+                      case .second(let __value):
+                        return bridge.create_std__variant_nitro__NullType__TextSelection_(__value)
+                    }
+                  }().variant)
+                } else {
+                  return .init()
+                }
+              }())
             }
           }()
         } else {
@@ -626,6 +688,35 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
+  public final func getPage(pageIndex: bridge.std__optional_double_) -> bridge.Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____ {
+    do {
+      let __result = try self.__implementation.getPage(pageIndex: { () -> Double? in
+        if bridge.has_value_std__optional_double_(pageIndex) {
+          let __unwrapped = bridge.get_std__optional_double_(pageIndex)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }())
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec___(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__shared_ptr_HybridAnalyzedPageSpec_ in
+              let __cxxWrapped = __result.getCxxWrapper()
+              return __cxxWrapped.getCxxPart()
+            }()) })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func setInkMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_void_ {
     do {
       try self.__implementation.setInkMode(viewport: viewport.value)
@@ -681,55 +772,6 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func insertTextAt(text: std.string, bounds: TextAnnotationBounds, options: bridge.std__optional_TextAnnotationOptions_) -> bridge.Result_void_ {
-    do {
-      try self.__implementation.insertTextAt(text: String(text), bounds: bounds, options: options.value)
-      return bridge.create_Result_void_()
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func insertTextByFieldName(text: std.string, key: std.string, options: bridge.std__optional_TextInsertionByKeyOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
-    do {
-      let __result = try self.__implementation.insertTextByFieldName(text: String(text), key: String(key), options: options.value)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
-        let __promise = bridge.create_std__shared_ptr_Promise_void__()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
-        __result
-          .then({ __result in __promiseHolder.resolve() })
-          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
-        return __promise
-      }()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func focusPageByFieldName(key: std.string, options: bridge.std__optional_FieldFocusOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
-    do {
-      let __result = try self.__implementation.focusPageByFieldName(key: String(key), options: options.value)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
-        let __promise = bridge.create_std__shared_ptr_Promise_void__()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
-        __result
-          .then({ __result in __promiseHolder.resolve() })
-          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
-        return __promise
-      }()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
   public final func setTextDirection(direction: Int32) -> bridge.Result_void_ {
     do {
       try self.__implementation.setTextDirection(direction: margelo.nitro.inksignpdf.TextDirection(rawValue: direction)!)
@@ -744,41 +786,6 @@ open class HybridInkSignViewSpec_cxx {
   public final func setTextMode(options: bridge.std__optional_TextModeOptions_) -> bridge.Result_void_ {
     do {
       try self.__implementation.setTextMode(options: options.value)
-      return bridge.create_Result_void_()
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func increaseTextSize() -> bridge.Result_double_ {
-    do {
-      let __result = try self.__implementation.increaseTextSize()
-      let __resultCpp = __result
-      return bridge.create_Result_double_(__resultCpp)
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_double_(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func decreaseTextSize() -> bridge.Result_double_ {
-    do {
-      let __result = try self.__implementation.decreaseTextSize()
-      let __resultCpp = __result
-      return bridge.create_Result_double_(__resultCpp)
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_double_(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func removeTextAnnotation() -> bridge.Result_void_ {
-    do {
-      try self.__implementation.removeTextAnnotation()
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()

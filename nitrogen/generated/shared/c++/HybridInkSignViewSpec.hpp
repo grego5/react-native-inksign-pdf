@@ -17,10 +17,14 @@
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
+// Forward declaration of `PagerDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
 // Forward declaration of `StateChangeEvent` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
+// Forward declaration of `TextSelection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextSelection; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
@@ -29,14 +33,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
-// Forward declaration of `TextAnnotationBounds` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
-// Forward declaration of `TextAnnotationOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
-// Forward declaration of `TextInsertionByKeyOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextInsertionByKeyOptions; }
-// Forward declaration of `FieldFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
+// Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
@@ -46,18 +44,20 @@ namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
+#include "PagerDirection.hpp"
 #include "StateChangeEvent.hpp"
 #include <functional>
 #include "PageInfo.hpp"
+#include <NitroModules/Null.hpp>
+#include "TextSelection.hpp"
+#include <variant>
 #include <NitroModules/Promise.hpp>
 #include "ViewportOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
 #include "Viewport.hpp"
-#include "TextAnnotationBounds.hpp"
-#include "TextAnnotationOptions.hpp"
-#include "TextInsertionByKeyOptions.hpp"
-#include "FieldFocusOptions.hpp"
+#include <memory>
+#include "HybridAnalyzedPageSpec.hpp"
 #include "TextDirection.hpp"
 #include "TextModeOptions.hpp"
 
@@ -114,10 +114,14 @@ namespace margelo::nitro::inksignpdf {
       virtual void setDoubleTap(const std::optional<DoubleTapOptions>& doubleTap) = 0;
       virtual std::optional<bool> getKeyboardAvoidanceEnabled() = 0;
       virtual void setKeyboardAvoidanceEnabled(std::optional<bool> keyboardAvoidanceEnabled) = 0;
+      virtual std::optional<PagerDirection> getPagerDirection() = 0;
+      virtual void setPagerDirection(std::optional<PagerDirection> pagerDirection) = 0;
       virtual std::optional<std::function<void(const StateChangeEvent& /* event */)>> getOnStateChange() = 0;
       virtual void setOnStateChange(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& onStateChange) = 0;
       virtual std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() = 0;
       virtual void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) = 0;
+      virtual std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> getOnTextSelectionChange() = 0;
+      virtual void setOnTextSelectionChange(const std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>& onTextSelectionChange) = 0;
 
     public:
       // Methods
@@ -130,19 +134,14 @@ namespace margelo::nitro::inksignpdf {
       virtual void previousPage() = 0;
       virtual Viewport getViewport() = 0;
       virtual bool hasInk() = 0;
+      virtual std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) = 0;
       virtual void setInkMode(const std::optional<ViewportOptions>& viewport) = 0;
       virtual void setViewMode(const std::optional<ViewportOptions>& viewport) = 0;
       virtual void undo() = 0;
       virtual void redo() = 0;
       virtual void clear() = 0;
-      virtual void insertTextAt(const std::string& text, const TextAnnotationBounds& bounds, const std::optional<TextAnnotationOptions>& options) = 0;
-      virtual std::shared_ptr<Promise<void>> insertTextByFieldName(const std::string& text, const std::string& key, const std::optional<TextInsertionByKeyOptions>& options) = 0;
-      virtual std::shared_ptr<Promise<void>> focusPageByFieldName(const std::string& key, const std::optional<FieldFocusOptions>& options) = 0;
       virtual void setTextDirection(TextDirection direction) = 0;
       virtual void setTextMode(const std::optional<TextModeOptions>& options) = 0;
-      virtual double increaseTextSize() = 0;
-      virtual double decreaseTextSize() = 0;
-      virtual void removeTextAnnotation() = 0;
       virtual std::shared_ptr<Promise<std::string>> finalize() = 0;
       virtual void startDebugRecording() = 0;
       virtual void stopDebugRecording() = 0;

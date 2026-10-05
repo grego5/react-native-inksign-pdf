@@ -18,6 +18,16 @@
         "language": "kotlin",
         "implementationClassName": "HybridInkSignView"
       }
+    },
+    "AnalyzedPage": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "HybridAnalyzedPage"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridAnalyzedPage"
+      }
     }
   },
   "ignorePaths": ["**/node_modules", "lib"]

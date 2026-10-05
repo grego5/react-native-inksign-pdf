@@ -105,7 +105,6 @@ final class InkSignView: HybridInkSignViewSpec {
   var endedDrawingPageToOverlayTransform: CGAffineTransform?
   var endedDrawingTransactionID: UInt64?
   var nextDrawingTransactionID: UInt64 = 0
-  var nextTextAnnotationID: UInt64 = 0
   var lastChange: (Bool, Bool, Bool, String)?
   var backgroundObserver: NSObjectProtocol?
   var pdfPageObserver: NSObjectProtocol?
@@ -162,9 +161,13 @@ final class InkSignView: HybridInkSignViewSpec {
   var keyboardAvoidanceEnabled: Bool? {
     didSet { enqueueNativeConfiguration(.keyboardAvoidanceEnabled(keyboardAvoidanceEnabled != false)) }
   }
+  var pagerDirection: PagerDirection? {
+    didSet { applyPagerDirection() }
+  }
 
   var onStateChange: ((StateChangeEvent) -> Void)?
   var onPageChange: ((PageInfo) -> Void)?
+  var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Void)?
 
   var canvasView: InkCanvasView { overlayProvider.canvasView }
 
@@ -186,6 +189,7 @@ final class InkSignView: HybridInkSignViewSpec {
     documentView.displayMode = .singlePage
     documentView.displayDirection = .horizontal
     documentView.usePageViewController(true, withViewOptions: nil)
+    applyPagerDirectionNow()
     documentView.displayBox = .mediaBox
     documentView.displaysPageBreaks = false
     documentView.minScaleFactor = 0.1
@@ -208,6 +212,11 @@ final class InkSignView: HybridInkSignViewSpec {
     textInteractionOverlay.owner = self
     textInteractionOverlay.onInteractionModeChanged = { [weak self] in
       self?.emitChange()
+    }
+    textInteractionOverlay.onTextSelectionChange = { [weak self] selection in
+      guard let self else { return }
+      self.onTextSelectionChange?(selection.map(Variant_NullType_TextSelection.second) ??
+        .first(NullType.null))
     }
 
     canvasView.delegate = canvasViewDelegate
@@ -355,6 +364,11 @@ final class InkSignView: HybridInkSignViewSpec {
     case cancelled
     case keyNotFound
     case ruleNotFound
+    case documentNotOpen
+    case pageNotFound
+    case textNotFound
+    case targetAmbiguous
+    case textDoesNotFit
 
     var errorDescription: String? {
       switch self {
@@ -372,6 +386,16 @@ final class InkSignView: HybridInkSignViewSpec {
         return "text_key_not_found: The requested text key was not found on the active page"
       case .ruleNotFound:
         return "text_rule_not_found: The selected text key has no usable rule or visible line"
+      case .documentNotOpen:
+        return "document_not_open: A document must be open before acquiring a prepared page"
+      case .pageNotFound:
+        return "page_not_found: The requested page index is outside the document"
+      case .textNotFound:
+        return "text_not_found: The text ID does not belong to this page"
+      case .targetAmbiguous:
+        return "text_target_ambiguous: The source text target is ambiguous"
+      case .textDoesNotFit:
+        return "text_does_not_fit: The supplied value does not fit in the text target"
       }
     }
   }

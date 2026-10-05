@@ -156,6 +156,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
       characterVisualRows: characterVisualRows,
       visualRows: analysis.visualRows,
       rules: analysis.rules,
+      labelCandidates: analysis.labelCandidates,
       estimatedMemoryBytes: analysis.estimatedMemoryBytes)
     let geometrySparseLookup = geometrySparseAnalysis.lookup(key: "Full Name")
     XCTAssertTrue(geometrySparseLookup.hasLiteralMatch)

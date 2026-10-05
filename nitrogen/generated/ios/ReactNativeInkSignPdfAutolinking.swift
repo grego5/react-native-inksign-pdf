@@ -23,4 +23,16 @@ public final class ReactNativeInkSignPdfAutolinking {
   public static func isInkSignViewRecyclable() -> Bool {
     return InkSignView.self is any RecyclableView.Type
   }
+  
+  public static func createAnalyzedPage() -> bridge.std__shared_ptr_HybridAnalyzedPageSpec_ {
+    let hybridObject = HybridAnalyzedPage()
+    return { () -> bridge.std__shared_ptr_HybridAnalyzedPageSpec_ in
+      let __cxxWrapped = hybridObject.getCxxWrapper()
+      return __cxxWrapped.getCxxPart()
+    }()
+  }
+  
+  public static func isAnalyzedPageRecyclable() -> Bool {
+    return HybridAnalyzedPage.self is any RecyclableView.Type
+  }
 }

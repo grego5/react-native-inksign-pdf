@@ -46,7 +46,7 @@ enum InkSignPdfTextDragPhase: Equatable {
 final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                              UIGestureRecognizerDelegate {
   private struct EditingState {
-    let id: String
+    let id: UInt64
     let generation: UInt64
     let pageIndex: Int
     let original: InkSignPdfTextAnnotation?
@@ -54,7 +54,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     var placementAnchor: InkSignPdfTextBoxGeometry.PlacementAnchor?
     var fontSize: CGFloat
     var isRTL: Bool
-    let textColor: String
+    var textColor: String
     var flowBounds: CGRect?
     var maxLines: Int
     var verticalAnchor: InkSignPdfTextVerticalAnchor
@@ -86,7 +86,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     case placing(PlacementState)
     case editing(EditingState)
     case dragging(DragState)
-    case selected(id: String)
+    case selected(id: UInt64)
   }
 
   weak var owner: InkSignView?
@@ -104,6 +104,16 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       let isPlacing: Bool
       if case .placing = interactionState { isPlacing = true } else { isPlacing = false }
       if wasPlacing != isPlacing { placementTapRecognizer.isEnabled = isPlacing }
+      let selection = selectedAnnotationID.flatMap { id -> TextSelection? in
+        guard let owner, let document = owner.documentCoordinator.document,
+              document.pages.indices.contains(document.activePageIndex) else { return nil }
+        return TextSelection(textId: Double(id), pageId: document.activePage.id.uuidString)
+      }
+      let identity = selection.map { "\($0.textId):\($0.pageId)" }
+      if identity != lastEmittedSelectionIdentity {
+        lastEmittedSelectionIdentity = identity
+        onTextSelectionChange?(selection)
+      }
     }
   }
   private var editor: UITextView?
@@ -117,12 +127,12 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private var keyboardHideObserver: NSObjectProtocol?
   private enum PlacementRuleCache {
     case scanning(generation: UInt64, pageID: UUID, requestID: UInt64)
-    case ready(generation: UInt64, pageID: UUID, rules: [InkSignPdfPlacementRule])
+    case ready(generation: UInt64, pageID: UUID, rules: [InkSignPdfPlacementRule], labels: [InkSignPdfKeyTextMatch])
 
     func matches(generation: UInt64, pageID: UUID) -> Bool {
       switch self {
       case .scanning(let cachedGeneration, let cachedPageID, _),
-           .ready(let cachedGeneration, let cachedPageID, _):
+           .ready(let cachedGeneration, let cachedPageID, _, _):
         return cachedGeneration == generation && cachedPageID == pageID
       }
     }
@@ -132,6 +142,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private let outlineStrokeWidth: CGFloat = 2
 
   var onInteractionModeChanged: (() -> Void)?
+  var onTextSelectionChange: ((TextSelection?) -> Void)?
+  private var lastEmittedSelectionIdentity: String?
 
   private lazy var tapRecognizer: UITapGestureRecognizer = {
     let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
@@ -318,6 +330,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                          options: TextAnnotationOptions?,
                          resolvedDirectionRtl: Bool? = nil,
                          requireVisibleLine: Bool = false,
+                         targetID: UInt64? = nil,
                          capturedPage: (generation: UInt64, pageID: UUID,
                                         pageSize: CGSize, layoutRotation: Int)? = nil,
                          coordinateSpace: InkSignPdfTextCoordinateSpace = .raw) throws {
@@ -353,7 +366,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     let verticalAnchor = InkSignPdfTextVerticalAnchor(options?.verticalAnchor)
     let alignment = InkSignPdfTextAlignment(options?.alignment)
     let maxLines = lineLimit(options?.maxLines)
-    let id = owner.allocateTextAnnotationID()
+    let id: UInt64
+    if let targetID { id = targetID } else { id = try owner.allocateTextAnnotationID() }
     let annotation = InkSignPdfTextAnnotation(
       id: id,
       text: text,
@@ -364,8 +378,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                                    maxLines: maxLines,
                                                    verticalAnchor: verticalAnchor,
                                                    alignment: alignment),
-      fontSize: defaultFontSize,
-      textColor: defaultTextColor,
+      fontSize: CGFloat(options?.fontSize ?? Double(defaultFontSize)),
+      textColor: options?.color ?? defaultTextColor,
       isRTL: isRTL,
       flowBounds: flowBounds,
       maxLines: maxLines,
@@ -386,6 +400,62 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     } else {
       throw InkSignView.TextError.cancelled
     }
+  }
+
+  func preparedDraftText(id: UInt64, pageID: UUID) -> String? {
+    guard owner?.documentCoordinator.document?.activePage.id == pageID,
+          case .editing(let state) = interactionState, state.id == id,
+          state.generation == owner?.documentCoordinator.generation else { return nil }
+    return editor?.text
+  }
+
+  @discardableResult
+  func setPreparedDraftText(id: UInt64, pageID: UUID, text: String) throws -> Bool {
+    guard owner?.documentCoordinator.document?.activePage.id == pageID,
+          case .editing(let state) = interactionState, state.id == id,
+          let editor else { return false }
+    if editor.text == text { return true }
+    let fullRange = NSRange(location: 0, length: (editor.text as NSString).length)
+    guard admitsTextChange(in: fullRange, replacementText: text, in: editor) else {
+      throw InkSignView.TextError.textDoesNotFit
+    }
+    editor.text = text
+    textViewDidChange(editor)
+    return true
+  }
+
+  func clearPreparedDraft(id: UInt64, pageID: UUID) {
+    guard owner?.documentCoordinator.document?.activePage.id == pageID,
+          selectedAnnotationID == id else { return }
+    closeEditor()
+    interactionState = .idle
+    syncPresentation()
+  }
+
+  func setPreparedDraftOptions(id: UInt64, pageID: UUID, options: TextAnnotationOptions) -> Bool {
+    guard owner?.documentCoordinator.document?.activePage.id == pageID,
+          case .editing(var state) = interactionState, state.id == id else { return false }
+    state.fontSize = CGFloat(options.fontSize ?? Double(state.fontSize))
+    state.textColor = options.color ?? state.textColor
+    if let direction = options.direction { state.isRTL = resolvedDirection(direction) }
+    if let maxLines = options.maxLines { state.maxLines = Int(maxLines) }
+    if let alignment = options.alignment { state.alignment = InkSignPdfTextAlignment(alignment) }
+    if let anchor = options.verticalAnchor { state.verticalAnchor = InkSignPdfTextVerticalAnchor(anchor) }
+    interactionState = .editing(state)
+    if let editor { applyTextStyle(to: editor, state: state); layoutEditor() }
+    return true
+  }
+
+  func preparedFontSize(id: UInt64, pageID: UUID) -> Double? {
+    guard owner?.documentCoordinator.document?.activePage.id == pageID,
+          case .editing(let state) = interactionState, state.id == id else { return nil }
+    return Double(state.fontSize)
+  }
+
+  var preparedDefaultFontSize: Double { Double(defaultFontSize) }
+
+  func adjustedFontSize(_ size: Double, delta: Double) -> Double {
+    min(max(size + delta, Double(minimumTextFontSize)), Double(maximumTextFontSize))
   }
 
   private func appLayoutIsRTL() -> Bool {
@@ -507,6 +577,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     closeEditor()
     interactionState = .idle
     onInteractionModeChanged = nil
+    onTextSelectionChange = nil
     setNeedsDisplay()
   }
 
@@ -608,7 +679,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     }
     cancelPendingPlacement()
     let rule = placement.options?.width == nil
-      ? placementRule(at: pagePoint, viewPoint: point, pageID: presentation.pageID)
+      ? placementRule(at: pagePoint, viewPoint: point, pageID: presentation.pageID,
+                      isRTL: placement.isRTL)
       : nil
     placeTextAt(pagePoint,
                 rule: rule,
@@ -638,6 +710,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   func installPlacementRules(_ rules: [InkSignPdfPlacementRule],
+                             labels: [InkSignPdfKeyTextMatch] = [],
                              generation: UInt64,
                              pageID: UUID,
                              requestID: UInt64) {
@@ -649,7 +722,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
           owner?.documentCoordinator.document?.activePage.id == pageID else {
       return
     }
-    placementRuleCache = .ready(generation: generation, pageID: pageID, rules: rules)
+    placementRuleCache = .ready(generation: generation, pageID: pageID, rules: rules, labels: labels)
   }
 
   func clearPlacementRules() {
@@ -848,8 +921,14 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     verticalAnchor: InkSignPdfTextVerticalAnchor = .top,
     alignment: InkSignPdfTextAlignment = .start
   ) {
-    let id = owner?.allocateTextAnnotationID() ?? ""
-    guard !id.isEmpty else { return }
+    guard let owner else { return }
+    let id: UInt64
+    do {
+      id = try owner.allocateTextAnnotationID()
+    } catch {
+      assertionFailure("Unable to allocate text identity: \(error)")
+      return
+    }
     interactionState = .editing(EditingState(id: id,
                                               generation: presentation.generation,
                                               pageIndex: presentation.pageIndex,
@@ -902,10 +981,11 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func placementRule(at point: CGPoint,
                              viewPoint: CGPoint,
-                             pageID: UUID) -> InkSignPdfPlacementRule? {
+                             pageID: UUID,
+                             isRTL: Bool) -> InkSignPdfPlacementRule? {
     guard let owner,
           let transform = owner.pageToOverlayTransform,
-          case .ready(let generation, let cachedPageID, let rules) = placementRuleCache,
+          case .ready(let generation, let cachedPageID, let rules, let labels) = placementRuleCache,
           generation == owner.documentCoordinator.generation,
           cachedPageID == pageID else { return nil }
     var nearest: InkSignPdfPlacementRule?
@@ -914,6 +994,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       guard rule.minX <= point.x, point.x <= rule.maxX else { continue }
       let start = CGPoint(x: rule.minX, y: rule.y).applying(transform)
       let end = CGPoint(x: rule.maxX, y: rule.y).applying(transform)
+      guard abs(end.y - start.y) <= 0.001 else { continue }
       let segment = CGPoint(x: end.x - start.x, y: end.y - start.y)
       let lengthSquared = segment.x * segment.x + segment.y * segment.y
       let projection = ((viewPoint.x - start.x) * segment.x +
@@ -921,8 +1002,25 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       let fraction = min(max(projection, 0), 1)
       let closest = CGPoint(x: start.x + fraction * segment.x,
                             y: start.y + fraction * segment.y)
-      let distance = hypot(viewPoint.x - closest.x, viewPoint.y - closest.y)
-      guard distance <= placementRuleSnapTolerance,
+      let deltaY = closest.y - viewPoint.y
+      let distance = hypot(viewPoint.x - closest.x, deltaY)
+      let label = labels.first { candidate in
+        InkSignPdfKeyRuleSelector.select(matches: [candidate], rules: [rule], occurrence: .first,
+          directionRtl: isRTL, pageSize: owner.activePageSize())?.rule == rule
+      }
+      let lineHeight: CGFloat
+      if let label {
+        let centerY = label.lineCenterY ?? label.bounds.midY
+        let top = CGPoint(x: point.x, y: centerY - label.lineHeight / 2)
+        let bottom = CGPoint(x: point.x, y: centerY + label.lineHeight / 2)
+        lineHeight = hypot(bottom.applying(transform).x - top.applying(transform).x,
+                           bottom.applying(transform).y - top.applying(transform).y)
+      } else {
+        lineHeight = editor?.font?.lineHeight ?? defaultFontSize * 1.2
+      }
+      let band = max(placementRuleSnapTolerance, lineHeight)
+      let allowedDistance = deltaY >= 0 ? band : placementRuleSnapTolerance
+      guard distance <= allowedDistance,
             distance < nearestDistance else { continue }
       nearest = rule
       nearestDistance = distance
@@ -1028,7 +1126,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     finishForLifecycle()
   }
 
-  private func selectAndEdit(_ id: String) {
+  private func selectAndEdit(_ id: UInt64) {
     if editor != nil { finishForLifecycle() }
     guard let presentation = presentation(),
           let annotation = presentation.annotations.first(where: { $0.id == id }) else { return }
@@ -1049,7 +1147,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     syncPresentation()
   }
 
-  private func selectForDrag(_ id: String, startPoint: CGPoint) -> Bool {
+  private func selectForDrag(_ id: UInt64, startPoint: CGPoint) -> Bool {
     if editor != nil { finishEditing() }
     guard let presentation = presentation(),
           let annotation = presentation.annotations.first(where: { $0.id == id }) else { return false }
@@ -1123,7 +1221,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     guard case .editing(let state) = interactionState else { return }
     let text = textView.text ?? ""
     let original = state.original
-    var finishedID: String?
+    var finishedID: UInt64?
     if let original {
       if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
         owner?.removeTextAnnotation(original,
@@ -1411,7 +1509,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
             state.activePage.history.content.textAnnotations)
   }
 
-  private var selectedAnnotationID: String? {
+  private var selectedAnnotationID: UInt64? {
     switch interactionState {
     case .idle, .placing: return nil
     case .editing(let state): return state.id
@@ -1420,7 +1518,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     }
   }
 
-  private var editingID: String? {
+  private var editingID: UInt64? {
     guard case .editing(let state) = interactionState else { return nil }
     return state.id
   }
@@ -1430,7 +1528,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     return editor != nil && state.original == nil
   }
 
-  private var draggingID: String? {
+  private var draggingID: UInt64? {
     guard case .dragging(let state) = interactionState else { return nil }
     return state.original.id
   }

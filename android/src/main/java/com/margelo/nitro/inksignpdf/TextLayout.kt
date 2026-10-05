@@ -323,7 +323,7 @@ internal class TextRenderLayer private constructor(
 
   fun draw(
     canvas: android.graphics.Canvas,
-    excludedAnnotationId: String? = null,
+    excludedAnnotationId: Long? = null,
     inLayoutSpace: Boolean = false,
   ) {
     entries.forEach { entry ->

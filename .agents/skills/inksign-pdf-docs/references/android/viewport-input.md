@@ -25,7 +25,7 @@
   the current displayed orientation. See [export](export.md) for persistence.
 - `TextInteractionOverlay` owns text placement, hit testing, editing, dragging,
   and keyboard avoidance. Text gestures do not enter ink or page navigation.
-- `insertTextAt()` uses `{ x, y, width, height }` in displayed page coordinates;
+- Prepared free targets use `{ x, y, width, height }` in displayed page coordinates;
   x/y stay at the physical
   top-left in either direction, and vertical anchoring moves only visible text.
 - `setTextMode(options?)` arms placement and reports `textPlacement`.
@@ -41,11 +41,14 @@
   remains possible after reflow. A shorter composing replacement can reduce
   overflow, while an overflowing extension preserves the existing composition.
   Direction and font-size changes retain entered text. `verticalAnchor` changes
-  placement, not fit. Direct `insertTextAt()` clips supplied text.
+  placement, not fit. Programmatic values use the same committed text layout.
 - Without box dimensions, placement centers the box horizontally and aligns its
   inner bottom to the tap, subject to page clamping, rule snapping, and `maxLines`.
-  The active presentation loads snap candidates lazily from shared page analysis;
-  see [document ownership and caching](view-lifecycle.md).
+  The active presentation loads snap candidates lazily from shared page analysis.
+  The above-rule snap band uses the associated label line-height, with the
+  existing screen-space tolerance as a minimum and measured editor line-height
+  when no label is associated. Below-rule tolerance remains unchanged; see
+  [document ownership and caching](view-lifecycle.md).
 - `setTextDirection()` updates future placement and an active editor immediately.
   Switching keeps the fixed flow rectangle in place; subsequent text edits
   reflow inside it, and caret following uses that direction.
@@ -55,34 +58,27 @@
 - Editing or dragging an existing annotation does not apply placement snapping.
   Text selection, outlines, and editing share the same page-to-view geometry.
 
-## Field commands
-
-- Both field commands use cached text and rule geometry on the document worker.
-  They pair labels and horizontal rules in displayed page coordinates; rules
-  that become vertical after rotation are ineligible. They choose the first or
-  last eligible label with a same-row rule on the
-  resolved direction's side, using the text direction policy above.
-- Multiword keys match consecutive complete words regardless of extracted order.
-  Glyphs must share a visual row; word gaps are limited to one row height.
-  Whitespace is excluded from row geometry; the combined glyph bounds locate the label.
-- Missing keys reject with `text_key_not_found`; labels without a usable rule
-  reject with `text_rule_not_found`. Requests capture page identity and document
-  generation plus geometry revision; replacement, target-page removal, disposal,
-  or rotation of the target page cancels stale lookup results with
-  `operation_cancelled`. Navigation alone leaves insertion valid.
-- `insertTextByFieldName()` commits to the captured page even after navigation.
-  The UI thread revalidates identity before mutation. Inactive-page commits
-  update history and dirty state without refreshing the active presentation.
-- `focusPageByFieldName()` returns to the captured page and aligns the selected
-  rule within the visible viewport. `verticalAnchor` defaults to `center`; `top`
-  and `bottom` place the rule inward from that edge by `edgeOffset` page points,
-  which defaults to zero and caps at half the visible page height. Page bounds
-  constrain the focus. `setInkMode: true` enables ink after successful focus.
-  Newer focus or mode requests supersede pending focus.
+## Prepared page text
+- Prepared labels are complete contiguous visual groups. Lookup compares full
+  token-frequency counts, preserving repeated words while allowing extracted
+  word-order differences. Partial labels and substrings do not match. Rules
+  becoming vertical after rotation are ineligible. Empty targets reserve a
+  coordinator-owned numeric ID; prepared handles retain source analysis and
+  target the captured stable page through navigation. UI-owned slots and history
+  outlive analysis-cache eviction; the overlay owns drafts and selection.
+- Module annotation/draft values take precedence over detected embedded source
+  text. Clearing removes module text only and reveals the source fallback again.
+  See the public API contract and iOS input reference for shared semantics.
 
 ## Ink and navigation
 
-- View mode owns page navigation; pan and pinch remain viewport input. RTL
-  reverses page mapping.
+- View mode owns page navigation; pan and pinch remain viewport input. The
+  `pagerDirection` prop controls physical next/previous mapping independently
+  of text direction; `auto` follows app layout direction.
+- A slow horizontal drag keeps the existing distance threshold. A quick flick
+  may commit after 25 dp travel at 400 dp/s when displacement and velocity agree.
+  Velocity is clamped to the platform maximum; multi-touch, cancellation,
+  vertical-dominant movement, and unavailable neighbors do not commit. If a
+  target preview is still rendering at release, the intent waits for that preview.
 - Edit mode accepts a single finger or stylus stroke using the transform and
   pen settings captured at stroke start.

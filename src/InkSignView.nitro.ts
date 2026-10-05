@@ -1,4 +1,5 @@
 import type {
+  HybridObject,
   HybridView,
   HybridViewMethods,
   HybridViewProps,
@@ -28,6 +29,10 @@ export interface TextAnnotationBounds {
 
 /** Text presentation options used by direct insertion and dimensioned placement. */
 export interface TextAnnotationOptions {
+  /** Canonical page-unit font size for this text target. */
+  fontSize?: number
+  /** Opaque RGB color saved with this text target. */
+  color?: TextColor
   /** Base writing direction. `auto` follows the app's resolved layout direction. */
   direction?: TextDirection
   /** Retains at most this many complete lines; zero or omission keeps the full flow region. */
@@ -48,18 +53,6 @@ export interface TextModeOptions extends ViewportOptions {
   verticalAnchor?: TextVerticalAnchor
 }
 
-/**
- * Options for searching extractable source text on the page selected when the
- * command is called and inserting beside a matching key and horizontal rule.
- * Matches without a usable same-row rule on the resolved direction's side are
- * skipped; if the key exists but no eligible match remains, the command rejects
- * with `text_rule_not_found`.
- */
-export interface TextInsertionByKeyOptions extends TextAnnotationOptions {
-  /** Selects the first (default) or last eligible key match in page order. */
-  occurrence?: TextKeyOccurrence
-}
-
 /** Focus a page on a matching label's adjacent rule without creating an annotation. */
 export interface FieldFocusOptions {
   occurrence?: TextKeyOccurrence
@@ -73,6 +66,50 @@ export interface FieldFocusOptions {
   edgeOffset?: number
   /** Enables ink after successful focus. Omission or false preserves the current mode. */
   setInkMode?: boolean
+}
+
+/** Options used to resolve a named field or reserve a free text placement. */
+export interface ResolveTextOptions extends TextAnnotationOptions {
+  /** Complete detected label. Partial labels and substrings do not match. */
+  fieldName?: string
+  /** Restricts named lookup, or defines placement when fieldName is omitted. */
+  bounds?: TextAnnotationBounds
+  occurrence?: TextKeyOccurrence
+}
+
+export type TextId = number
+export type TextValueSource = 'empty' | 'annotation' | 'embedded'
+/** Physical pager direction; auto follows the app's layout direction. */
+export type PagerDirection = 'auto' | 'ltr' | 'rtl'
+
+/** Current value and target metadata retained by an analyzed page. */
+export interface TextEntry {
+  id: TextId
+  value: string
+  fieldName?: string
+  bounds?: TextAnnotationBounds
+  hasValue: boolean
+  valueSource: TextValueSource
+}
+
+/** Stable native page identity associated with current text selection. */
+export interface TextSelection {
+  textId: TextId
+  pageId: string
+}
+
+/** Prepared source analysis and synchronous text operations for one stable page. */
+export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
+  resolveText(options: ResolveTextOptions): TextId
+  getTextValue(id: TextId): string
+  setTextValue(id: TextId, text: string): void
+  clearText(id: TextId): void
+  setTextOptions(id: TextId, options: TextAnnotationOptions): void
+  /** Adjusts the native font size by page points and returns the resulting size. */
+  adjustTextSize(id: TextId, delta: number): number
+  getTextEntry(id: TextId): TextEntry
+  getTextEntries(): TextEntry[]
+  focusText(id: TextId, options?: FieldFocusOptions): Promise<void>
 }
 
 export type PageType = 'pdf' | 'image'
@@ -174,8 +211,11 @@ export interface InkSignViewProps extends HybridViewProps {
   doubleTap?: DoubleTapOptions
   /** Keep the active text editor visible above the native keyboard. Defaults to true. */
   keyboardAvoidanceEnabled?: boolean
+  /** Controls which physical side contains the logical next page. Defaults to app direction. */
+  pagerDirection?: PagerDirection
   onStateChange?: (event: StateChangeEvent) => void
   onPageChange?: (event: PageInfo) => void
+  onTextSelectionChange?: (selection: TextSelection | null) => void
 }
 
 export interface InkSignViewMethods extends HybridViewMethods {
@@ -190,6 +230,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   getViewport(): Viewport
   /** Returns whether the active page has committed ink; undo, redo, clear, and page changes are reflected. */
   hasInk(): boolean
+  /** Prepares source analysis for the captured or explicitly indexed page without navigating. */
+  getPage(pageIndex?: number): Promise<AnalyzedPage>
   /** Ends text interaction and enables ink. Omission preserves the viewport; an empty object fits. */
   setInkMode(viewport?: ViewportOptions): void
   /** Ends text/ink interaction. Omission preserves the viewport; an empty object fits. */
@@ -197,31 +239,10 @@ export interface InkSignViewMethods extends HybridViewMethods {
   undo(): void
   redo(): void
   clear(): void
-  /** Commits text inside a fixed physical page rectangle, clipping to complete visible lines. */
-  insertTextAt(text: string, bounds: TextAnnotationBounds, options?: TextAnnotationOptions): void
-  /**
-   * Finds literal source-text matches on the page selected when called,
-   * comparing ASCII letters without case and all other characters exactly.
-   * Multiword keys match adjacent complete words on one visual row, regardless
-   * of extracted word order. The combined label bounds select the writing rule.
-   * Skips matches without a usable same-row horizontal rule on the resolved
-   * direction's side, then uses the first (default) or last eligible match.
-   * Bottom anchoring grows text upward from the rule; top anchoring places it
-   * below. The search does not OCR image pages. A missing key rejects with
-   * `text_key_not_found`; matches without a usable rule reject with
-   * `text_rule_not_found`. Document replacement, target-page deletion, or
-   * disposal rejects with `operation_cancelled`.
-   */
-  insertTextByFieldName(text: string, key: string, options?: TextInsertionByKeyOptions): Promise<void>
-  /** Focuses a label's adjacent writing rule; anchor offsets use page points and clamp to page bounds. */
-  focusPageByFieldName(key: string, options?: FieldFocusOptions): Promise<void>
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
   /** Arms one-shot text placement; omission preserves the viewport, an empty object fits after the tap. */
   setTextMode(options?: TextModeOptions): void
-  increaseTextSize(): number
-  decreaseTextSize(): number
-  removeTextAnnotation(): void
   finalize(): Promise<string>
   /** Android debug builds only. Clears the bounded native trace and starts recording. */
   startDebugRecording(): void

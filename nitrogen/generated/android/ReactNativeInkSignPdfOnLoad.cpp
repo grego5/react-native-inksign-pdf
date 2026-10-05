@@ -15,9 +15,11 @@
 #include <fbjni/fbjni.h>
 #include <NitroModules/HybridObjectRegistry.hpp>
 
+#include "JHybridAnalyzedPageSpec.hpp"
 #include "JHybridInkSignViewSpec.hpp"
 #include "JFunc_void_StateChangeEvent.hpp"
 #include "JFunc_void_PageInfo.hpp"
+#include "JFunc_void_std__optional_std__variant_nitro__NullType__TextSelection__.hpp"
 #include "views/JHybridInkSignViewStateUpdater.hpp"
 #include <NitroModules/DefaultConstructableObject.hpp>
 
@@ -37,15 +39,25 @@ struct JHybridInkSignViewSpecImpl: public jni::JavaClass<JHybridInkSignViewSpecI
     return javaPart->getJHybridInkSignViewSpec();
   }
 };
+struct JHybridAnalyzedPageSpecImpl: public jni::JavaClass<JHybridAnalyzedPageSpecImpl, JHybridAnalyzedPageSpec::JavaPart> {
+  static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/inksignpdf/HybridAnalyzedPage;";
+  static std::shared_ptr<JHybridAnalyzedPageSpec> create() {
+    static const auto constructorFn = javaClassStatic()->getConstructor<JHybridAnalyzedPageSpecImpl::javaobject()>();
+    jni::local_ref<JHybridAnalyzedPageSpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
+    return javaPart->getJHybridAnalyzedPageSpec();
+  }
+};
 
 void registerAllNatives() {
   using namespace margelo::nitro;
   using namespace margelo::nitro::inksignpdf;
 
   // Register native JNI methods
+  margelo::nitro::inksignpdf::JHybridAnalyzedPageSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridInkSignViewSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JFunc_void_StateChangeEvent_cxx::registerNatives();
   margelo::nitro::inksignpdf::JFunc_void_PageInfo_cxx::registerNatives();
+  margelo::nitro::inksignpdf::JFunc_void_std__optional_std__variant_nitro__NullType__TextSelection___cxx::registerNatives();
   margelo::nitro::inksignpdf::views::JHybridInkSignViewStateUpdater::registerNatives();
 
   // Register Nitro Hybrid Objects
@@ -53,6 +65,12 @@ void registerAllNatives() {
     "InkSignView",
     []() -> std::shared_ptr<HybridObject> {
       return JHybridInkSignViewSpecImpl::create();
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "AnalyzedPage",
+    []() -> std::shared_ptr<HybridObject> {
+      return JHybridAnalyzedPageSpecImpl::create();
     }
   );
 }

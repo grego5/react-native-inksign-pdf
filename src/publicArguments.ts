@@ -58,6 +58,10 @@ export function validateTextAnnotationBounds(value: unknown): void {
 export function validateTextAnnotationOptions(value: unknown): void {
   if (value === undefined) return;
   if (!isRecord(value) ||
+    (value.fontSize !== undefined &&
+      (typeof value.fontSize !== 'number' || !Number.isFinite(value.fontSize) || value.fontSize <= 0)) ||
+    (value.color !== undefined &&
+      (typeof value.color !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value.color))) ||
     (value.direction !== undefined && value.direction !== 'ltr' &&
       value.direction !== 'rtl' && value.direction !== 'auto') ||
     (value.maxLines !== undefined &&
@@ -71,6 +75,54 @@ export function validateTextAnnotationOptions(value: unknown): void {
       'Text options must contain a valid direction, alignment, line count, and vertical anchor',
     );
   }
+}
+
+export function validatePageIndex(value: unknown): void {
+  if (value !== undefined &&
+    (typeof value !== 'number' || !Number.isInteger(value) || value < 0)) {
+    throw argumentError('invalid_page_index', 'The page index must be a non-negative integer');
+  }
+}
+
+export function validateTextId(value: unknown): void {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw argumentError('invalid_text_id', 'Text IDs must be positive safe integers');
+  }
+}
+
+export function validateFieldFocusOptions(value: unknown): void {
+  if (value === undefined) return;
+  if (!isRecord(value) ||
+    (value.occurrence !== undefined && value.occurrence !== 'first' && value.occurrence !== 'last') ||
+    (value.direction !== undefined && value.direction !== 'ltr' &&
+      value.direction !== 'rtl' && value.direction !== 'auto') ||
+    (value.zoom !== undefined &&
+      (typeof value.zoom !== 'number' || !Number.isFinite(value.zoom) || value.zoom <= 0)) ||
+    (value.verticalAnchor !== undefined && value.verticalAnchor !== 'top' &&
+      value.verticalAnchor !== 'bottom' && value.verticalAnchor !== 'center') ||
+    (value.edgeOffset !== undefined &&
+      (typeof value.edgeOffset !== 'number' || !Number.isFinite(value.edgeOffset) || value.edgeOffset < 0)) ||
+    (value.setInkMode !== undefined && typeof value.setInkMode !== 'boolean')) {
+    throw argumentError('invalid_field_focus_options', 'Field focus options are invalid');
+  }
+}
+
+export function validateResolveTextOptions(value: unknown): void {
+  if (!isRecord(value)) {
+    throw argumentError('invalid_text_resolution', 'Text resolution options must be an object');
+  }
+  const fieldName = value.fieldName;
+  if (fieldName !== undefined && (typeof fieldName !== 'string' || fieldName.trim() === '')) {
+    throw argumentError('invalid_text_field_name', 'Field names must be non-empty strings');
+  }
+  if (fieldName === undefined && value.bounds === undefined) {
+    throw argumentError('invalid_text_bounds', 'Free text resolution requires bounds');
+  }
+  if (value.bounds !== undefined) validateTextAnnotationBounds(value.bounds);
+  if (value.occurrence !== undefined && value.occurrence !== 'first' && value.occurrence !== 'last') {
+    throw argumentError('invalid_text_key_options', 'Occurrence must be first or last');
+  }
+  validateTextAnnotationOptions(value);
 }
 
 export function validateTextModeOptions(value: unknown): void {
@@ -90,15 +142,6 @@ export function validateTextModeOptions(value: unknown): void {
       'Manual box width and height must be supplied together as finite positive page points',
     );
   }
-}
-
-export function validateTextInsertionByKeyOptions(value: unknown): void {
-  if (value === undefined) return;
-  if (!isRecord(value) ||
-    (value.occurrence !== undefined && value.occurrence !== 'first' && value.occurrence !== 'last')) {
-    throw argumentError('invalid_text_key_options', 'Occurrence must be first or last');
-  }
-  validateTextAnnotationOptions(value);
 }
 
 export function validateViewportOptions(value: unknown): void {
@@ -122,5 +165,11 @@ export function validateViewportOptions(value: unknown): void {
   if (zoom !== undefined &&
     (typeof zoom !== 'number' || !Number.isFinite(zoom) || zoom <= 0)) {
     throw argumentError('invalid_viewport', 'Viewport zoom must be finite and positive');
+  }
+}
+
+export function validatePagerDirection(value: unknown): void {
+  if (value !== undefined && value !== 'auto' && value !== 'ltr' && value !== 'rtl') {
+    throw argumentError('invalid_pager_direction', 'Pager direction must be auto, ltr, or rtl');
   }
 }

@@ -1,5 +1,46 @@
 import Foundation
 import PDFKit
+
+struct InkSignPdfTextTargetOptions {
+  var fontSize: Double?
+  var color: String?
+  var direction: TextDirection?
+  var maxLines: Int?
+  var alignment: TextAlignment?
+  var verticalAnchor: TextVerticalAnchor?
+
+  init(_ value: TextAnnotationOptions?) {
+    fontSize = value?.fontSize
+    color = value?.color
+    direction = value?.direction
+    maxLines = value?.maxLines.map(Int.init)
+    alignment = value?.alignment
+    verticalAnchor = value?.verticalAnchor
+  }
+
+  var publicOptions: TextAnnotationOptions {
+    TextAnnotationOptions(fontSize: fontSize, color: color, direction: direction,
+      maxLines: maxLines.map(Double.init), alignment: alignment, verticalAnchor: verticalAnchor)
+  }
+}
+
+struct InkSignPdfTextTarget {
+  let id: UInt64
+  let pageID: UUID
+  var sourceIdentity: String?
+  var fieldName: String?
+  var bounds: CGRect
+  var options: InkSignPdfTextTargetOptions
+  var embeddedValue: String
+  var layoutGeometry: PageGeometry? = nil
+  var writingRule: InkSignPdfPlacementRule? = nil
+
+  var annotationOptions: TextAnnotationOptions { options.publicOptions }
+  var publicBounds: TextAnnotationBounds {
+    TextAnnotationBounds(x: Double(bounds.minX), y: Double(bounds.minY),
+      width: Double(bounds.width), height: Double(bounds.height))
+  }
+}
 import NitroModules
 
 /// Serializes cancellation and worker completion onto the promise's owning
@@ -86,10 +127,88 @@ final class InkSignPdfDocumentCoordinator {
   private var operationPublishedDocument = false
   private var pendingArtifacts = Set<URL>()
   private var ownedOutputs = Set<URL>()
+  private var nextTextID: UInt64 = 0
+  private var textTargets: [UInt64: InkSignPdfTextTarget] = [:]
   private var pageAnalysisGeneration: UInt64?
   private var pageAnalysisCache: [PageAnalysisKey: InkSignPdfPageAnalysis] = [:]
   private var pageAnalysisLRU: [PageAnalysisKey] = []
   private(set) var pageAnalysisBuildCountForTesting = 0
+
+  func allocateTextID() throws -> UInt64 {
+    let maximum = UInt64(9_007_199_254_740_991)
+    guard nextTextID < maximum else {
+      throw NSError(domain: "InkSignPdfText", code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "text_id_exhausted: The view has exhausted its numeric text IDs"])
+    }
+    nextTextID += 1
+    return nextTextID
+  }
+
+  func reserveTextTarget(pageID: UUID,
+                         sourceIdentity: String?,
+                         fieldName: String?,
+                         bounds: CGRect,
+                         options: TextAnnotationOptions?,
+                         embeddedValue: String = "") throws -> InkSignPdfTextTarget {
+    guard document?.pages.contains(where: { $0.id == pageID }) == true else {
+      throw InkSignView.TextError.cancelled
+    }
+    let normalized = bounds.standardized
+    if let existing = textTargets.values.first(where: { target in
+      guard target.pageID == pageID else { return false }
+      if let sourceIdentity { return target.sourceIdentity == sourceIdentity }
+      return target.sourceIdentity == nil && target.bounds == normalized
+    }) { return existing }
+    let id = try allocateTextID()
+    let target = InkSignPdfTextTarget(id: id, pageID: pageID,
+      sourceIdentity: sourceIdentity, fieldName: fieldName, bounds: normalized,
+      options: InkSignPdfTextTargetOptions(options), embeddedValue: embeddedValue)
+    textTargets[id] = target
+    return target
+  }
+
+  func adoptTextTarget(id: UInt64, pageID: UUID, sourceIdentity: String?,
+                       fieldName: String?, bounds: CGRect,
+                       options: TextAnnotationOptions?, embeddedValue: String) throws -> InkSignPdfTextTarget {
+    guard document?.pages.contains(where: { $0.id == pageID }) == true else {
+      throw InkSignView.TextError.cancelled
+    }
+    var target = textTargets[id] ?? InkSignPdfTextTarget(
+      id: id, pageID: pageID, sourceIdentity: sourceIdentity, fieldName: fieldName,
+      bounds: bounds.standardized, options: InkSignPdfTextTargetOptions(options),
+      embeddedValue: embeddedValue)
+    guard target.pageID == pageID else { throw InkSignView.TextError.textNotFound }
+    target.sourceIdentity = sourceIdentity ?? target.sourceIdentity
+    target.fieldName = fieldName ?? target.fieldName
+    target.bounds = bounds.standardized
+    // Re-resolution preserves formatting; setTextOptions changes it explicitly.
+    target.embeddedValue = embeddedValue
+    textTargets[id] = target
+    return target
+  }
+
+  func textTarget(_ id: UInt64, pageID: UUID) throws -> InkSignPdfTextTarget {
+    guard let target = textTargets[id], target.pageID == pageID else {
+      throw InkSignView.TextError.textNotFound
+    }
+    return target
+  }
+
+  func textTargets(for pageID: UUID) -> [InkSignPdfTextTarget] {
+    textTargets.values.filter { $0.pageID == pageID }
+  }
+
+  func updateTextTarget(_ id: UInt64, pageID: UUID, mutate: (inout InkSignPdfTextTarget) -> Void) throws {
+    guard var target = textTargets[id], target.pageID == pageID else {
+      throw InkSignView.TextError.textNotFound
+    }
+    mutate(&target)
+    textTargets[id] = target
+  }
+
+  func removeTextTargets(for pageID: UUID) {
+    textTargets = textTargets.filter { $0.value.pageID != pageID }
+  }
 
   var isDirty: Bool {
     structuralDirty || document?.pages.contains { !$0.history.content.isEmpty } == true
@@ -169,6 +288,7 @@ final class InkSignPdfDocumentCoordinator {
       supersededRollback = rollbackDocument
       replacedDocument = document
       document = nil
+      textTargets.removeAll(keepingCapacity: false)
       structuralDirty = false
       rollbackDocument = nil
       rollbackStructuralDirty = nil
@@ -346,6 +466,8 @@ final class InkSignPdfDocumentCoordinator {
           generation == operation.generation, activeOperation?.id == operation.id,
           let previous = document else { return nil }
     document = candidate
+    let retainedPageIDs = Set(candidate.pages.map(\.id))
+    textTargets = textTargets.filter { retainedPageIDs.contains($0.value.pageID) }
     generation &+= 1
     pendingArtifacts.remove(candidate.workingURL)
     structuralDirty = true
@@ -388,6 +510,7 @@ final class InkSignPdfDocumentCoordinator {
       pdfQueue.async { [artifactPolicy = self.artifactPolicy] in artifactPolicy.deleteExact(workingURL) }
     }
     document = nil
+    textTargets.removeAll(keepingCapacity: false)
     structuralDirty = false
   }
 
@@ -443,6 +566,7 @@ final class InkSignPdfDocumentCoordinator {
     lock.lock()
     guard !isDisposed else { lock.unlock(); return }
     isDisposed = true
+    textTargets.removeAll(keepingCapacity: false)
     generation &+= 1
     activeOperation = nil
     let cancellationHandlers = Array(pendingCancellations.values)
