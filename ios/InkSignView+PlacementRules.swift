@@ -17,7 +17,6 @@ extension InkSignView {
     let source = document.workingURL
     let page = document.activePage
     let mediaBox = page.geometry.mediaBox
-    let sourceGeometry = page.sourceGeometry
     let geometry = page.geometry
     documentCoordinator.pdfQueue.async { [weak self] in
       let analysis = self?.documentCoordinator.pageAnalysis(sourceURL: source,
@@ -28,7 +27,7 @@ extension InkSignView {
         let matches = analysis.labelCandidates.map(\.match)
         let displayed = analysis.displayedFieldGeometry(
           lookup: InkSignPdfTextLookup(hasLiteralMatch: !matches.isEmpty, matches: matches),
-          sourceGeometry: sourceGeometry, geometry: geometry)
+          geometry: geometry)
         rules = displayed.rules
         labels = displayed.matches
       } else {

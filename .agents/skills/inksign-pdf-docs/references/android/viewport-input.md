@@ -19,10 +19,12 @@
 
 ## Text
 
-- An annotation retains its layout-page orientation and flow rectangle. The
-  editor and committed rendering use its layout-to-presentation transform;
-  rotation changes presentation without reflowing stored text. New text uses
-  the current displayed orientation. See [export](export.md) for persistence.
+- An annotation retains its local layout orientation and flow rectangle.
+  `PageCoordinates` derives layout-to-display through layout-to-canonical;
+  the editor, committed rendering, selection, and drag use that mapping.
+  New text captures the current displayed orientation. Accepted placement is
+  converted once at the coordinator boundary. See the shared
+  [document model](../architecture.md#document-model) and [export](export.md).
 - `TextInteractionOverlay` owns text placement, hit testing, editing, dragging,
   and keyboard avoidance. Text gestures do not enter ink or page navigation.
 - Prepared free targets use `{ x, y, width, height }` in displayed page coordinates;
@@ -59,16 +61,23 @@
   Text selection, outlines, and editing share the same page-to-view geometry.
 
 ## Prepared page text
-- Prepared labels are complete contiguous visual groups. Lookup compares full
+- Prepared labels are complete visual groups with exact source glyph ranges. Lookup compares full
   token-frequency counts, preserving repeated words while allowing extracted
   word-order differences. Partial labels and substrings do not match. Rules
-  becoming vertical after rotation are ineligible. Empty targets reserve a
+  are selected after canonical source geometry is projected into current display.
+  A vertical writing rule rejects new field insertion and focus; existing module
+  text remains editable and clearable. Named focus uses the rule; free focus
+  uses the target center. Empty targets reserve a
   coordinator-owned numeric ID; prepared handles retain source analysis and
   target the captured stable page through navigation. UI-owned slots and history
   outlive analysis-cache eviction; the overlay owns drafts and selection.
 - Module annotation/draft values take precedence over detected embedded source
   text. Clearing removes module text only and reveals the source fallback again.
-  See the public API contract and iOS input reference for shared semantics.
+  Detection and adoption use the selected rule-width/label-height band on the
+  chosen side; only the selected label glyph ranges are excluded. Free targets
+  use their canonical placement region. Competing annotations reject adoption.
+  Re-resolution preserves formatting; explicit formatting is finalized before
+  measuring visible bounds. See the [document model](../architecture.md#document-model).
 
 ## Ink and navigation
 

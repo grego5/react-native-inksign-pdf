@@ -196,17 +196,18 @@ enum InkSignPdfPlacementRuleDetector {
     guard mediaBox.width > 0, mediaBox.height > 0,
           let table = CGPDFOperatorTableCreate() else { return [] }
     let stream = CGPDFContentStreamCreateWithPage(page)
-    let pageBounds = CGRect(origin: .zero, size: mediaBox.size)
+    let sourceDisplaySize = PageGeometry(mediaBox: mediaBox, rotation: Int(page.rotationAngle)).displaySize
+    let pageBounds = CGRect(origin: .zero, size: sourceDisplaySize)
     let pdfToPageTransform = page.getDrawingTransform(.mediaBox,
                                                       rect: pageBounds,
                                                       rotate: 0,
                                                       preserveAspectRatio: false)
-    let state = ScanState(pageSize: mediaBox.size,
+    let state = ScanState(pageSize: sourceDisplaySize,
                           pdfToPageTransform: pdfToPageTransform,
                           operatorTable: table)
     registerCallbacks(on: table)
     state.scan(stream)
-    return state.rules(pageSize: mediaBox.size)
+    return state.rules(pageSize: sourceDisplaySize)
   }
 
   private static func registerCallbacks(on table: CGPDFOperatorTableRef) {

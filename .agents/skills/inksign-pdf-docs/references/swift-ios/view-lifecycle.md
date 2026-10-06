@@ -8,8 +8,15 @@
   module-created artifacts.
 - The serial PDF queue caches source text geometry and writing rules for both
   placement paths. The least-recently-used cache is bounded to eight pages and
-  8 MiB estimated storage. Page navigation does not invalidate entries; a new
-  generation or disposal clears them.
+  8 MiB estimated storage. Preparation normalizes source glyphs and rules into
+  canonical geometry once; label rows are grouped once. Navigation, reordering,
+  and presentation rotation retain analysis for stable pages. Replacement and
+  disposal clear the source cache.
+- Prepared handles retain immutable analysis independently of the cache. The
+  coordinator retains source analysis for resolved targets to refresh free-target
+  fallback after accepted placement. Page deletion releases that target state;
+  replacement and disposal invalidate all handles and targets. Structural
+  publication retains the document session for surviving pages.
 - `PDFView` owns page presentation, viewport gestures, and overlay lifecycle.
 - The page overlay provider supplies page-scoped ink canvases. The text overlay
   owns temporary editing state.
@@ -35,7 +42,7 @@
   Main-thread code applies it to the in-memory PDFKit page and rebuilds overlays.
   Working bytes, source geometry, page identity, and undo/redo are retained.
   Page assembly rebinds pending orientation; [export](export.md) writes it to PDF
-  metadata.
+  metadata. Canonical target geometry and annotation local layout remain unchanged.
 - Structural changes and page-content history are tracked separately.
 - PDF inputs contribute pages in requested order; image inputs become PDF pages.
 

@@ -854,7 +854,7 @@ internal class SurfaceView(
     after: TextAnnotation,
   ) {
     val targetPage = resolveTextMutationPage(generation, pageId)
-    targetPage.history.replaceText(before, after)
+    documentCoordinator.replaceText(targetPage, before, after)
     val targetIsActive = documentCoordinator.activePageId() == targetPage.id
     if (targetIsActive) rebuildCommittedTextLayer()
     notifyStateChange()

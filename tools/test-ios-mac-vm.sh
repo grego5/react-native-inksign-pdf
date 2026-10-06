@@ -238,6 +238,7 @@ test_selection=(
   -only-testing:"$scheme/InkSignViewLifecycleTests"
   -only-testing:"$scheme/InkSignViewPDFNavigationTests"
   -only-testing:"$scheme/PlacementRuleDetectorTests"
+  -only-testing:"$scheme/SignatureExportTests"
 )
 if [[ -n "${IOS_TEST_ONLY:-}" ]]; then
   test_identifier="$IOS_TEST_ONLY"

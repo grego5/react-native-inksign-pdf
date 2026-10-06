@@ -78,7 +78,7 @@ internal object PdfiumNativePdfExporter {
     }
     val textRunColors = IntArray(textRuns.size) { textRuns[it].color }
     val textRunTransforms = FloatArray(textRuns.size * 6) { index ->
-      val transform = textRuns[index / 6].layoutToRaw
+      val transform = textRuns[index / 6].layoutToCanonical
       when (index % 6) {
         0 -> transform.a.toFloat()
         1 -> transform.b.toFloat()

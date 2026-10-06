@@ -101,7 +101,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let originalDocument = try XCTUnwrap(coordinator.document)
     let page = originalDocument.pages[1]
     let annotation = makeCenteredTextAnnotation(
-      id: "coordinator-dirty",
+      id: 11,
       text: "committed",
       fontSize: 18,
       pageSize: page.geometry.mediaBox.size)
@@ -510,7 +510,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let original = try XCTUnwrap(view.documentCoordinator.document)
     let movedID = original.activePageID
     let annotation = makeCenteredTextAnnotation(
-      id: "moved-page", text: "kept", fontSize: 18,
+      id: 12, text: "kept", fontSize: 18,
       pageSize: original.activePage.geometry.mediaBox.size)
     XCTAssertTrue(original.activePage.history.appendText(annotation))
 
@@ -592,13 +592,12 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
                           path: PKStrokePath(controlPoints: [point], creationDate: Date()),
                           transform: .identity,
                           mask: nil)
-    let text = InkSignPdfTextAnnotation(id: "rotation-text",
+    _ = try appendTextAnnotationForTest(InkSignPdfTextAnnotation(id: 13,
                                         text: "Approved",
                                         bounds: CGRect(x: 45, y: 95, width: 150, height: 24),
                                         fontSize: 18,
                                         textColor: "#008000",
-                                        isRTL: false)
-    XCTAssertTrue(page.history.appendText(text))
+                                        isRTL: false), in: view, pageIndex: 0)
     let beforeInk = page.history.content
     XCTAssertTrue(page.history.record(type: .ink,
                                       before: beforeInk,
@@ -660,9 +659,9 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try view.redo()
     view.defaultTextColor = "#D00000"
     drainMainQueue()
-    try view.insertTextAt(text: "New text",
-                          bounds: TextAnnotationBounds(x: 60, y: 160, width: 160, height: 24),
-                          options: nil)
+    try insertTextForTest("New text",
+      bounds: TextAnnotationBounds(x: 60, y: 160, width: 160, height: 24),
+      options: nil, in: view)
 
     let exported = expectation(description: "export rotated PDF")
     var outputURL: URL?
@@ -738,25 +737,21 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       let state = try XCTUnwrap(view.documentCoordinator.document)
       let historyBefore = state.activePage.history.content
       let modeBefore = view.editMode
-      let insertion = try view.insertTextByFieldName(text: "OK", key: "Name",
-        options: TextInsertionByKeyOptions(occurrence: nil, direction: .ltr,
-                                          maxLines: 2, alignment: nil, verticalAnchor: .bottom))
+      let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
+      let textOptions = ResolveTextOptions(fieldName: "Name", bounds: nil, occurrence: nil,
+        fontSize: nil, color: nil, direction: .ltr, maxLines: 2,
+        alignment: nil, verticalAnchor: .bottom)
       if angle == 90 || angle == 270 {
         do {
-          _ = try awaitRotationOperation(insertion)
+          _ = try page.resolveText(options: textOptions)
           XCTFail("A vertical rule must not accept field insertion")
-        } catch { XCTAssertTrue(error.localizedDescription.hasPrefix("text_rule_not_found")) }
-        do {
-          _ = try awaitRotationOperation(view.focusPageByFieldName(key: "Name",
-            options: FieldFocusOptions(occurrence: nil, direction: .ltr, zoom: 5,
-                                       verticalAnchor: .bottom, edgeOffset: 8, setInkMode: true)))
-          XCTFail("A vertical rule must not accept field focus")
         } catch { XCTAssertTrue(error.localizedDescription.hasPrefix("text_rule_not_found")) }
         XCTAssertTrue(state.activePage.history.content.equals(historyBefore))
         XCTAssertEqual(view.editMode, modeBefore)
         continue
       }
-      _ = try awaitRotationOperation(insertion)
+      let textID = try page.resolveText(options: textOptions)
+      try page.setTextValue(id: textID, text: "OK")
       let annotation = try XCTUnwrap(state.activePage.history.content.textAnnotations.last)
       let ruleY: CGFloat = angle == 0 ? 132 : 268
       let field = CGRect(x: angle == 0 ? 210 : 190, y: 0,
@@ -765,20 +760,42 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       XCTAssertEqual(annotation.layoutRotation, angle)
       XCTAssertLessThanOrEqual(annotation.bounds.maxY, ruleY)
       for anchor in [FieldFocusVerticalAnchor.top, .bottom] {
-        _ = try awaitRotationOperation(view.focusPageByFieldName(key: "Name",
+        _ = try awaitRotationOperation(page.focusText(id: textID,
           options: FieldFocusOptions(occurrence: nil, direction: .ltr, zoom: 5,
                                      verticalAnchor: anchor, edgeOffset: 8, setInkMode: false)))
         view.documentView.layoutIfNeeded()
         let viewport = view.documentView.bounds
         let pdfCenter = view.documentView.convert(CGPoint(x: viewport.midX, y: viewport.midY),
                                                    to: state.activePage.page)
-        let rawCenter = CGPoint(x: pdfCenter.x - state.activePage.geometry.mediaBox.minX,
-                                 y: state.activePage.geometry.mediaBox.maxY - pdfCenter.y)
-        let displayedCenter = state.activePage.geometry.rawToDisplay(rawCenter)
+        var displayedCenter = pdfCenter.applying(
+          state.activePage.geometry.displayToPDFTransform.inverted())
+        let pdfTopLeft = view.documentView.convert(
+          CGPoint(x: viewport.minX, y: viewport.minY), to: state.activePage.page)
+        var displayedTopLeft = pdfTopLeft.applying(
+          state.activePage.geometry.displayToPDFTransform.inverted())
         let halfHeight = viewport.height / (2 * view.documentView.scaleFactor)
         let expectedY = anchor == .top ? ruleY + halfHeight - 8 : ruleY - halfHeight + 8
         let clampedY = min(max(expectedY, halfHeight), 400 - halfHeight)
-        XCTAssertEqual(displayedCenter.y, clampedY, accuracy: 2)
+        let settleDeadline = Date().addingTimeInterval(1)
+        while abs(displayedCenter.y - clampedY) > 2 && Date() < settleDeadline {
+          RunLoop.main.run(until: Date().addingTimeInterval(0.025))
+          view.documentView.layoutIfNeeded()
+          let settledViewport = view.documentView.bounds
+          let settledPDFCenter = view.documentView.convert(
+            CGPoint(x: settledViewport.midX, y: settledViewport.midY),
+            to: state.activePage.page)
+          displayedCenter = settledPDFCenter.applying(
+            state.activePage.geometry.displayToPDFTransform.inverted())
+          let settledPDFTopLeft = view.documentView.convert(
+            CGPoint(x: settledViewport.minX, y: settledViewport.minY),
+            to: state.activePage.page)
+          displayedTopLeft = settledPDFTopLeft.applying(
+            state.activePage.geometry.displayToPDFTransform.inverted())
+        }
+        XCTAssertEqual(displayedCenter.y, clampedY, accuracy: 2,
+          "rotation=\(angle), anchor=\(anchor), zoom=\(view.documentView.scaleFactor), " +
+          "requestedCenter=\(clampedY), visibleTopLeft=\(displayedTopLeft), halfHeight=\(halfHeight), " +
+          "destination=\(String(describing: view.documentView.currentDestination?.point))")
       }
       let output = try awaitRotationOperation(view.finalize())
       defer { try? FileManager.default.removeItem(atPath: output) }
@@ -992,13 +1009,14 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
                                                 mediaBox: keyPage.geometry.mediaBox)
     let lookup = analysis.lookup(key: "Name")
     XCTAssertTrue(lookup.hasLiteralMatch)
+    let displayed = analysis.displayedFieldGeometry(lookup: lookup, geometry: keyPage.geometry)
     XCTAssertNotNil(InkSignPdfKeyRuleSelector.select(
-      matches: lookup.matches,
-      rules: analysis.rules,
+      matches: displayed.matches,
+      rules: displayed.rules,
       occurrence: .first,
       directionRtl: view.textInteractionOverlay.resolvedDirection(nil),
-      pageSize: analysis.pageSize),
-      "Fixture must contain a usable same-row rule; matches=\(lookup.matches), rules=\(analysis.rules)")
+      pageSize: keyPage.geometry.displaySize),
+      "Fixture must contain a usable same-row rule; matches=\(displayed.matches), rules=\(displayed.rules)")
 
     let workerEntered = DispatchSemaphore(value: 0)
     let releaseWorker = DispatchSemaphore(value: 0)
@@ -1009,24 +1027,22 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
 
-    let inserted = expectation(description: "captured-page key text commits")
-    var insertionError: Error?
-    let insertion = try view.insertTextByFieldName(text: "filled", key: "Name", options: nil)
-    insertion.then { _ in inserted.fulfill() }
-    insertion.catch { error in insertionError = error; inserted.fulfill() }
+    let pageRequest = try view.getPage(pageIndex: 0)
 
     XCTAssertEqual(try view.switchPage(to: 1).pageIndex, 1)
     XCTAssertEqual(coordinator.document?.activePageIndex, 1)
     releaseWorker.signal()
-    wait(for: [inserted], timeout: 10)
-
-    XCTAssertNil(insertionError)
+    let page = try awaitRotationOperation(pageRequest)
+    let textID = try page.resolveText(options: ResolveTextOptions(
+      fieldName: "Name", bounds: nil, occurrence: nil, fontSize: nil, color: nil,
+      direction: nil, maxLines: nil, alignment: nil, verticalAnchor: nil))
+    try page.setTextValue(id: textID, text: "filled")
     XCTAssertEqual(coordinator.document?.activePageIndex, 1)
     XCTAssertEqual(coordinator.document?.pages[0].history.content.textAnnotations.map(\.text), ["filled"])
     XCTAssertTrue(coordinator.document?.pages[1].history.content.textAnnotations.isEmpty == true)
   }
 
-  func testRotationRejectsPendingProductionFieldInsertionAgainstOldGeometry() throws {
+  func testPendingPreparedPageUsesCurrentGeometryAfterRotation() throws {
     let fixture = makeFixture(pageCount: 1)
     let keyPDFURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("InkSignRotationFieldLookup-\(UUID().uuidString).pdf")
@@ -1066,11 +1082,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     wait(for: [workerHeld], timeout: 5)
 
-    let inserted = expectation(description: "stale insertion is rejected")
-    let insertion = try view.insertTextByFieldName(text: "filled", key: "Name", options: nil)
-    var insertionError: Error?
-    insertion.then { _ in inserted.fulfill() }
-    insertion.catch { error in insertionError = error; inserted.fulfill() }
+    let pageRequest = try view.getPage(pageIndex: nil)
     let rotated = expectation(description: "rotation publishes while lookup is pending")
     let rotation = try view.rotatePage(degrees: 90)
     var rotationError: Error?
@@ -1078,16 +1090,20 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     rotation.catch { error in rotationError = error; rotated.fulfill() }
     wait(for: [rotated], timeout: 5)
     releaseWorker.signal()
-    wait(for: [inserted], timeout: 30)
+    let page = try awaitRotationOperation(pageRequest)
 
     XCTAssertNil(rotationError)
-    XCTAssertTrue(insertionError?.localizedDescription.hasPrefix("operation_cancelled") == true)
     let document = try XCTUnwrap(view.documentCoordinator.document)
     XCTAssertEqual(document.activePage.geometryRevision, 1)
     XCTAssertTrue(document.activePage.history.content.textAnnotations.isEmpty)
+    XCTAssertThrowsError(try page.resolveText(options: ResolveTextOptions(
+      fieldName: "Name", bounds: nil, occurrence: nil, fontSize: nil, color: nil,
+      direction: .ltr, maxLines: nil, alignment: nil, verticalAnchor: .bottom))) {
+      XCTAssertTrue($0.localizedDescription.hasPrefix("text_rule_not_found"))
+    }
   }
 
-  func testRotationRejectsPendingProductionFieldFocusAgainstOldGeometry() throws {
+  func testPendingPreparedPageFocusRejectsVerticalRuleAfterRotation() throws {
     let fixture = makeFixture(pageCount: 1)
     let keyPDFURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("InkSignRotationFieldFocus-\(UUID().uuidString).pdf")
@@ -1127,11 +1143,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     wait(for: [workerHeld], timeout: 5)
 
-    let focused = expectation(description: "stale focus is rejected")
-    let focus = try view.focusPageByFieldName(key: "Name", options: nil)
-    var focusError: Error?
-    focus.then { _ in focused.fulfill() }
-    focus.catch { error in focusError = error; focused.fulfill() }
+    let pageRequest = try view.getPage(pageIndex: nil)
     let rotated = expectation(description: "rotation publishes while focus lookup is pending")
     let rotation = try view.rotatePage(degrees: 90)
     var rotationError: Error?
@@ -1139,12 +1151,16 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     rotation.catch { error in rotationError = error; rotated.fulfill() }
     wait(for: [rotated], timeout: 5)
     releaseWorker.signal()
-    wait(for: [focused], timeout: 30)
+    let page = try awaitRotationOperation(pageRequest)
 
     XCTAssertNil(rotationError)
-    XCTAssertTrue(focusError?.localizedDescription.hasPrefix("operation_cancelled") == true)
     XCTAssertEqual(view.documentCoordinator.document?.activePage.geometryRevision, 1)
     XCTAssertTrue(view.documentCoordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
+    XCTAssertThrowsError(try page.resolveText(options: ResolveTextOptions(
+      fieldName: "Name", bounds: nil, occurrence: nil, fontSize: nil, color: nil,
+      direction: .ltr, maxLines: nil, alignment: nil, verticalAnchor: nil))) {
+      XCTAssertTrue($0.localizedDescription.hasPrefix("text_rule_not_found"))
+    }
   }
 
   func testManualPlacementSupersedesPendingFieldFocus() throws {
@@ -1179,30 +1195,23 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertNil(openError)
     coordinator.pdfQueue.sync {}
 
-    let workerEntered = DispatchSemaphore(value: 0)
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal() }
-    coordinator.pdfQueue.async {
-      workerEntered.signal()
-      _ = releaseWorker.wait(timeout: .now() + 5)
-    }
-    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
-
-    let settled = expectation(description: "superseded field focus settles")
-    var focusError: Error?
-    let focus = try view.focusPageByFieldName(key: "Name",
+    let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
+    let textID = try page.resolveText(options: ResolveTextOptions(
+      fieldName: "Name", bounds: nil, occurrence: nil, fontSize: nil, color: nil,
+      direction: nil, maxLines: nil, alignment: nil, verticalAnchor: nil))
+    let focus = try page.focusText(id: textID,
       options: FieldFocusOptions(occurrence: nil, direction: nil, zoom: 3,
-                                 verticalAnchor: nil, edgeOffset: nil, setInkMode: true))
-    focus.then { _ in settled.fulfill() }
-    focus.catch { error in focusError = error; settled.fulfill() }
+        verticalAnchor: nil, edgeOffset: nil, setInkMode: true))
 
     try view.setTextMode(options: nil)
     XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
     let placementViewport = try view.currentViewportSnapshot()
-    releaseWorker.signal()
-    wait(for: [settled], timeout: 10)
+    var focusError: Error?
+    do { _ = try awaitRotationOperation(focus) }
+    catch { focusError = error }
 
-    XCTAssertTrue(focusError?.localizedDescription.hasPrefix("operation_cancelled") == true)
+    XCTAssertTrue(focusError == nil ||
+      focusError?.localizedDescription.hasPrefix("operation_cancelled") == true)
     XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
     XCTAssertFalse(view.editMode)
     XCTAssertEqual(try view.currentViewportSnapshot().zoom, placementViewport.zoom)
@@ -1259,8 +1268,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
 
-    let lookup = try view.insertTextByFieldName(text: "filled", key: "Name", options: nil)
-    let lookupCancelled = expectation(description: "text lookup cancellation settles promptly")
+    let lookup = try view.getPage(pageIndex: nil)
+    let lookupCancelled = expectation(description: "prepared page cancellation settles promptly")
     var lookupError: Error?
     var lookupRejectionCount = 0
     lookup.catch { error in

@@ -21,5 +21,5 @@ text's local layout and wrapping through its layout-to-canonical transform.
 4. [Document contracts](Tasks/04-document-contracts.md)
 5. [Verification](Tasks/05-verification.md)
 
-All tasks are planned. This plan makes no claim that runtime defects are fixed.
-
+Tasks 01–04 are implemented. Task 05 remains planned; tests, builds, and runtime
+verification for this refactor remain pending.

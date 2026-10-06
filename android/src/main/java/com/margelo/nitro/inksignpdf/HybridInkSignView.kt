@@ -496,35 +496,41 @@ class HybridInkSignView internal constructor(
     val context = PreparedPageContext(
       generation, page.id, page.geometryRevision, index,
       awaitWorkerResult { completion -> coordinator.preparePageAnalysis(generation, index, completion) },
+      page.sourceDimensions,
     )
     checkMainThread()
     if (disposed || coordinator.generation != generation || coordinator.pageForId(page.id) == null) {
       throw operationCancelled()
+    }
+    if (coordinator.textTargetsForPage(page.id).isNotEmpty()) {
+      coordinator.retainTextSourceGlyphs(page.id, context.analysis.glyphs)
     }
     HybridAnalyzedPage(this, context)
   }
 
   internal fun resolvePreparedText(context: PreparedPageContext, options: ResolveTextOptions): Double =
     withPreparedPage(context) { page ->
-      var selectedWritingRule: PdfiumHorizontalSnapCandidate? = null
+      coordinator.retainTextSourceGlyphs(page.id, context.analysis.glyphs)
+      val coordinates = PageCoordinates(page.dimensions)
+      val transform = coordinates.canonicalToDisplayTransform()
       val selected = if (options.fieldName == null) {
         val bounds = options.bounds ?: throw PdfSessionException(
           "invalid_text_bounds", "Free text resolution requires bounds",
         )
         val rect = programmaticTextFlowBounds(bounds, page.dimensions)
-        val reserved = coordinator.textTargetsForPage(page.id).firstOrNull { it.sourceIdentity == null && displayedTargetBounds(it, page) == rect }
+        val canonicalBounds = coordinates.displayToCanonical(rect)
+        val reserved = coordinator.findTextTarget(page.id, null, canonicalBounds)
         val existing = moduleAnnotations(page.id).filter {
           displayedAnnotationBounds(it, page).intersectsTarget(rect)
         }.also { if (it.size > 1) throw PdfSessionException("text_target_ambiguous", "Multiple annotations occupy the target") }.singleOrNull()
-        val embedded = detectEmbeddedText(context.analysis, PageCoordinates(page.dimensions).layoutToDisplay(page.sourceDimensions), rect)
+        val embedded = embeddedTextInCanonicalRegion(context.analysis.glyphs, canonicalBounds)
         if (reserved != null) reserved else if (existing != null) coordinator.adoptTextTarget(
-          existing.id, page.id, null, null, rect, options.toAnnotationOptions(), embedded,
+          existing.id, page.id, null, null, canonicalBounds, embedded,
         ) else coordinator.reserveTextTarget(
-          page.id, null, null, rect, options.toAnnotationOptions(), embedded,
+          page.id, null, null, canonicalBounds, options.toAnnotationOptions(), embedded,
         )
       } else {
         val directionRtl = textOverlay.resolveDirection(options.direction)
-        val transform = PageCoordinates(page.dimensions).layoutToDisplay(page.sourceDimensions)
         val candidates = completeLabelMatches(context.labels, options.fieldName)
           .filter { label ->
             val matchBounds = projectMatchBounds(label.match, transform)
@@ -541,14 +547,14 @@ class HybridInkSignView internal constructor(
           "text_key_not_found", "The complete field label was not found on the captured page",
         )
         val projectedRules = context.analysis.rules.mapNotNull { rule ->
-          val start = transform.map(PagePoint(rule.left, rule.y))
-          val end = transform.map(PagePoint(rule.right, rule.y))
+          val start = transform.map(rule.start)
+          val end = transform.map(rule.end)
           if (kotlin.math.abs(start.y - end.y) > 0.001) null else
-            PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y)
+            rule to PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y)
         }
         val projectedMatches = candidates.map { projectMatch(label = it, transform = transform) }
         val placement = selectPdfiumTextKeyPlacement(
-          projectedMatches, projectedRules,
+          projectedMatches, projectedRules.map { it.second },
           options.occurrence ?: TextKeyOccurrence.FIRST, directionRtl, page.dimensions,
         ) ?: throw PdfSessionException(
           "text_rule_not_found", "The complete field label has no usable adjacent rule",
@@ -568,26 +574,25 @@ class HybridInkSignView internal constructor(
         val band = valueBand(placement, anchor)
         val matchingAnnotation = moduleAnnotations(page.id).filter { displayedAnnotationBounds(it, page).intersectsTarget(band) }
         if (matchingAnnotation.size > 1) throw PdfSessionException("text_target_ambiguous", "Multiple annotations occupy the field")
-        val sourceRule = context.analysis.rules.first { rule ->
-          val start = transform.map(PagePoint(rule.left, rule.y))
-          val end = transform.map(PagePoint(rule.right, rule.y))
-          minOf(start.x, end.x) == placement.rule.left && maxOf(start.x, end.x) == placement.rule.right && start.y == placement.rule.y
-        }
-        val identity = "${label.identity}|${sourceRule.left}:${sourceRule.right}:${sourceRule.y}"
-        val embeddedValue = detectEmbeddedText(context.analysis, transform, band, label.sourceStart until label.sourceEnd)
-        selectedWritingRule = placement.rule
-        coordinator.textTargetsForPage(page.id).firstOrNull { it.sourceIdentity == identity } ?: matchingAnnotation.singleOrNull()?.let { annotation ->
+        val canonicalRule = projectedRules.first { it.second == placement.rule }.first
+        val identity = "${label.identity}|${canonicalRule.sourceIndex}"
+        val canonicalBounds = coordinates.displayToCanonical(fieldBounds)
+        val canonicalBand = coordinates.displayToCanonical(band)
+        val embeddedValue = embeddedTextInCanonicalRegion(context.analysis.glyphs, canonicalBand, label.sourceRanges)
+        coordinator.findTextTarget(page.id, identity, canonicalBounds)?.let { target ->
           coordinator.adoptTextTarget(
-            annotation.id, page.id, identity, options.fieldName, fieldBounds,
-            options.toAnnotationOptions(), embeddedValue,
+            target.id, page.id, identity, options.fieldName, canonicalBounds,
+            embeddedValue, canonicalRule, canonicalBand, label.sourceRanges,
+          )
+        } ?: matchingAnnotation.singleOrNull()?.let { annotation ->
+          coordinator.adoptTextTarget(
+            annotation.id, page.id, identity, options.fieldName, canonicalBounds,
+            embeddedValue, canonicalRule, canonicalBand, label.sourceRanges,
           )
         } ?: coordinator.reserveTextTarget(
-          page.id, identity, options.fieldName, fieldBounds, options.toAnnotationOptions(), embeddedValue,
+          page.id, identity, options.fieldName, canonicalBounds, options.toAnnotationOptions(), embeddedValue,
+          canonicalRule, canonicalBand, label.sourceRanges,
         )
-      }
-      if (selected.layoutPage == null) {
-        selected.layoutPage = page.dimensions
-        selected.writingRule = selectedWritingRule
       }
       selected.id.toDouble()
     }
@@ -734,12 +739,12 @@ class HybridInkSignView internal constructor(
     }
     surface.requireModeTransitionReady()
     val (page, slot) = target
+    val rule = requireHorizontalRule(slot, page)
+    val bounds = displayedTargetBounds(slot, page)
     viewportRequestID += 1L
     val requestId = viewportRequestID
     textOverlay.finishForLifecycle()
     surface.switchPage(checkNotNull(coordinator.pageIndexForId(page.id)))
-    val rule = requireHorizontalRule(slot, page)
-    val bounds = displayedTargetBounds(slot, page)
     val center = rule?.let { (it.left + it.right) / 2.0 } ?: (bounds.left + bounds.right) / 2.0
     val request = ViewportRequest.FocusRule(
       x = center,
@@ -785,36 +790,38 @@ class HybridInkSignView internal constructor(
 
   private fun projectMatch(label: PreparedTextLabel, transform: PageTransform): PdfiumTextKeyMatch {
     val bounds = projectMatchBounds(label.match, transform)
-    val lineCenter = transform.map(PagePoint(label.match.left, label.match.lineCenter)).y
+    val rowStart = transform.map(label.match.rowStart).let { PagePoint(it.x, it.y) }
+    val rowEnd = transform.map(label.match.rowEnd).let { PagePoint(it.x, it.y) }
     return label.match.copy(left = bounds.left, top = bounds.top, right = bounds.right,
-      bottom = bounds.bottom, lineCenter = lineCenter, lineHeight = bounds.bottom - bounds.top)
+      bottom = bounds.bottom, lineCenter = (rowStart.y + rowEnd.y) / 2.0,
+      lineHeight = kotlin.math.abs(rowEnd.y - rowStart.y), rowStart = rowStart, rowEnd = rowEnd)
   }
 
   private fun PageRect.intersectsTarget(other: PageRect) = left < other.right && right > other.left && top < other.bottom && bottom > other.top
 
   private fun displayedAnnotationBounds(annotation: TextAnnotation, page: InkPageState): PageRect =
-    textAnnotationOuterBounds(annotation.bounds, PageCoordinates(page.dimensions).layoutToDisplay(annotation.layoutPage), 0.0, 0.0)
+    textAnnotationOuterBounds(annotation.bounds, annotation.layoutToDisplay(page.dimensions), 0.0, 0.0)
 
   private fun displayedTargetBounds(slot: TextTargetSlot, page: InkPageState): PageRect {
-    val transform = PageCoordinates(page.dimensions).layoutToDisplay(slot.layoutPage)
-    slot.writingRule?.let { rule ->
-      val start = transform.map(PagePoint(rule.left, rule.y))
-      val end = transform.map(PagePoint(rule.right, rule.y))
+    val transform = PageCoordinates(page.dimensions).canonicalToDisplayTransform()
+    slot.canonicalWritingRule?.let { rule ->
+      val start = transform.map(rule.start)
+      val end = transform.map(rule.end)
       if (kotlin.math.abs(start.y - end.y) <= 0.001) {
         val bottom = (slot.options?.verticalAnchor ?: TextVerticalAnchor.BOTTOM) == TextVerticalAnchor.BOTTOM
-        val flow = textAnnotationOuterBounds(slot.bounds, transform, 0.0, 0.0)
+        val flow = textAnnotationOuterBounds(slot.canonicalBounds, transform, 0.0, 0.0)
         return PageRect(flow.left, if (bottom) 0.0 else start.y,
           flow.right, if (bottom) start.y else page.dimensions.height)
       }
     }
-    return textAnnotationOuterBounds(slot.bounds, transform, 0.0, 0.0)
+    return textAnnotationOuterBounds(slot.canonicalBounds, transform, 0.0, 0.0)
   }
 
   private fun requireHorizontalRule(slot: TextTargetSlot, page: InkPageState): PdfiumHorizontalSnapCandidate? {
-    val rule = slot.writingRule ?: return null
-    val transform = PageCoordinates(page.dimensions).layoutToDisplay(slot.layoutPage)
-    val start = transform.map(PagePoint(rule.left, rule.y))
-    val end = transform.map(PagePoint(rule.right, rule.y))
+    val rule = slot.canonicalWritingRule ?: return null
+    val transform = PageCoordinates(page.dimensions).canonicalToDisplayTransform()
+    val start = transform.map(rule.start)
+    val end = transform.map(rule.end)
     if (kotlin.math.abs(start.y - end.y) > 0.001) throw PdfSessionException("text_rule_not_found", "The writing rule is vertical")
     return PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y)
   }
@@ -825,24 +832,6 @@ class HybridInkSignView internal constructor(
       placement.rule.right,
       if (anchor == TextVerticalAnchor.BOTTOM) placement.rule.y else placement.rule.y + placement.match.lineHeight)
 
-  private fun detectEmbeddedText(analysis: PdfiumPreparedPageAnalysis, transform: PageTransform,
-    region: PageRect, excluded: IntRange = IntRange.EMPTY): String {
-    val selected = analysis.glyphs.mapIndexedNotNull { index, glyph ->
-      val box = glyph.bounds ?: return@mapIndexedNotNull null
-      val rect = projectMatchBounds(box, transform)
-      if (index in excluded || !rect.intersectsTarget(region) || Character.isWhitespace(glyph.codepoint)) null else index
-    }
-    return buildString {
-      var previous: Int? = null
-      for (index in selected) {
-        previous?.let { prior ->
-          if ((prior + 1 until index).any { Character.isWhitespace(analysis.glyphs[it].codepoint) }) append(' ')
-        }
-        appendCodePoint(analysis.glyphs[index].codepoint)
-        previous = index
-      }
-    }
-  }
 
   private fun runHistoryCommand(command: () -> Unit) {
     checkMainThread()

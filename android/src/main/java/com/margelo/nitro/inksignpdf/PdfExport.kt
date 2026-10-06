@@ -102,7 +102,7 @@ internal data class PdfiumTextRunEntry(
   val fontSize: Float,
   val estimatedAdvance: Float,
   val color: Int,
-  val layoutToRaw: PageTransform = PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+  val layoutToCanonical: PageTransform = PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
 )
 
 internal data class PdfiumFontResource(
@@ -233,9 +233,8 @@ internal object PdfExportTextResolver {
             )
           }
         }
-        annotation.layoutPage?.let { layoutPage ->
-          val transform = PageCoordinates(layoutPage).displayToRawTransform()
-          for (index in firstRun until runs.size) runs[index] = runs[index].copy(layoutToRaw = transform)
+        for (index in firstRun until runs.size) {
+          runs[index] = runs[index].copy(layoutToCanonical = annotation.layoutToCanonical)
         }
       }
     }

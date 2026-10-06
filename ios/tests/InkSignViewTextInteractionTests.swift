@@ -127,14 +127,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let overlay = view.textInteractionOverlay
-    try view.insertTextAt(text: "bounded text",
-                               bounds: TextAnnotationBounds(x: 150, y: 100, width: 130, height: 80),
-                               options: TextAnnotationOptions(direction: .ltr,
-                                                              maxLines: nil,
-                                                              alignment: .start,
-                                                              verticalAnchor: nil))
-    let original = try XCTUnwrap(view.documentCoordinator.document?.activePage.history.content
-      .textAnnotations.first)
+    let original = try insertTextForTest("bounded text",
+      bounds: TextAnnotationBounds(x: 150, y: 100, width: 130, height: 80),
+      options: TextAnnotationOptions(fontSize: nil, color: nil, direction: .ltr,
+        maxLines: nil, alignment: .start, verticalAnchor: nil), in: view)
     let tapPoint = CGPoint(x: original.bounds.midX, y: original.bounds.midY)
     XCTAssertTrue(overlay.routeTap(at: tapPoint))
 
@@ -171,17 +167,17 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     view.container.semanticContentAttribute = .forceRightToLeft
     try view.setTextDirection(direction: .ltr)
 
-    try view.insertTextAt(text: "left to right",
-                               bounds: TextAnnotationBounds(x: 80, y: 50, width: 220, height: 350),
-                               options: nil)
-    try view.insertTextAt(text: "right to left",
-                               bounds: TextAnnotationBounds(x: 30, y: 80, width: 80, height: 40),
-                               options: TextAnnotationOptions(direction: .auto, maxLines: nil,
-                                                              alignment: .start, verticalAnchor: nil))
+    try insertTextForTest("left to right",
+      bounds: TextAnnotationBounds(x: 80, y: 50, width: 220, height: 350),
+      options: nil, in: view)
+    try insertTextForTest("right to left",
+      bounds: TextAnnotationBounds(x: 30, y: 80, width: 80, height: 40),
+      options: TextAnnotationOptions(fontSize: nil, color: nil, direction: .auto,
+        maxLines: nil, alignment: .start, verticalAnchor: nil), in: view)
     try view.setTextDirection(direction: .auto)
-    try view.insertTextAt(text: "resolved app direction",
-                               bounds: TextAnnotationBounds(x: 0, y: 140, width: 100, height: 260),
-                               options: nil)
+    try insertTextForTest("resolved app direction",
+      bounds: TextAnnotationBounds(x: 0, y: 140, width: 100, height: 260),
+      options: nil, in: view)
 
     let annotations = try XCTUnwrap(view.documentCoordinator.document?.activePage.history
       .content.textAnnotations)
@@ -203,13 +199,11 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
 
-    try fixture.view.insertTextAt(
-      text: "first line\nsecond line\nthird line",
+    try insertTextForTest(
+      "first line\nsecond line\nthird line",
       bounds: TextAnnotationBounds(x: 80, y: 180, width: 200, height: 100),
-      options: TextAnnotationOptions(direction: .ltr,
-                                     maxLines: 2,
-                                     alignment: .start,
-                                     verticalAnchor: .bottom))
+      options: TextAnnotationOptions(fontSize: nil, color: nil, direction: .ltr,
+        maxLines: 2, alignment: .start, verticalAnchor: .bottom), in: fixture.view)
     let annotation = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history
       .content.textAnnotations.first)
     let flowBounds = try XCTUnwrap(annotation.flowBounds)
@@ -224,14 +218,12 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                              2 * InkSignPdfTextStyle.font(size: annotation.fontSize).lineHeight + 0.01)
 
     let lineHeight = InkSignPdfTextStyle.font(size: annotation.fontSize).lineHeight
-    try fixture.view.insertTextAt(
-      text: "only visible line\nhidden second line",
+    try insertTextForTest(
+      "only visible line\nhidden second line",
       bounds: TextAnnotationBounds(x: 20, y: 20, width: 160,
                                     height: Double(lineHeight + 0.1)),
-      options: TextAnnotationOptions(direction: .ltr,
-                                     maxLines: 2,
-                                     alignment: .start,
-                                     verticalAnchor: .top))
+      options: TextAnnotationOptions(fontSize: nil, color: nil, direction: .ltr,
+        maxLines: 2, alignment: .start, verticalAnchor: .top), in: fixture.view)
     let heightLimited = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history
       .content.textAnnotations.last)
     XCTAssertLessThanOrEqual(heightLimited.bounds.height, lineHeight + 0.01)
@@ -396,7 +388,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
         flowBounds: flowBounds,
         maxLines: 2)
       if !currentFits && !shortenedFits { break }
-      fontSize = try view.increaseTextSize()
+      fontSize = try view.textInteractionOverlay.increaseTextSize()
     }
     XCTAssertFalse(InkSignPdfTextRenderer.fits(originalText,
                                                 fontSize: CGFloat(fontSize),
@@ -452,14 +444,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
-    let annotation = makeCenteredTextAnnotation(id: "rtl-text", text: "שלום",
-                                                 fontSize: 16,
-                                                 pageSize: fixture.view.activePageSize(),
-                                                 isRTL: true)
-    fixture.view.appendTextAnnotation(annotation,
-                                      generation: fixture.view.documentCoordinator.generation,
-                                      pageIndex: 0)
-
+    let annotation = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 6, text: "שלום",
+                                 fontSize: 16,
+                                 pageSize: fixture.view.activePageSize(),
+                                 isRTL: true),
+      in: fixture.view,
+      pageIndex: 0)
     XCTAssertTrue(overlay.routeTap(at: CGPoint(x: annotation.bounds.midX,
                                                 y: annotation.bounds.midY)))
     let editor = try XCTUnwrap(textEditor(in: overlay))
@@ -798,11 +789,11 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
   func testTextViewportPanPreservesZoomAndCanonicalAnnotationBounds() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let annotation = makeCenteredTextAnnotation(id: "text-1", text: "note", fontSize: 16,
-                                                 pageSize: fixture.view.activePageSize())
-    fixture.view.appendTextAnnotation(annotation,
-                                      generation: fixture.view.documentCoordinator.generation,
-                                      pageIndex: 0)
+    let annotation = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 1, text: "note", fontSize: 16,
+                                 pageSize: fixture.view.activePageSize()),
+      in: fixture.view,
+      pageIndex: 0)
     let history = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history)
     let zoom = fixture.view.documentView.scaleFactor
 
@@ -814,7 +805,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
   func testTextRendererDrawsMultilineLatinAndRTLInCanonicalPageSpace() {
     let annotation = makeCenteredTextAnnotation(
-      id: "text",
+      id: 3,
       text: "Latin\nשלום עולם",
       fontSize: 18,
       pageSize: CGSize(width: 300, height: 200))
@@ -837,8 +828,9 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     attachment.name = "latin-rtl-text-rendering-manual-review"
     attachment.lifetime = .keepAlways
     add(attachment)
-    XCTAssertEqual(InkSignPdfTextRenderer.canonicalToPDFTransform(
-      for: CGRect(x: -12, y: 24, width: 300, height: 200)).tx, -12, accuracy: 0.001)
+    XCTAssertEqual(PageGeometry(mediaBox: CGRect(x: -12, y: 24, width: 300, height: 200),
+                                rotation: 0).canonicalToPDFTransform.tx,
+                   -12, accuracy: 0.001)
   }
 
   func testNativeExporterShapesAndExportsLTRAndRTLText() throws {
@@ -846,9 +838,9 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let state = try XCTUnwrap(fixture.view.documentCoordinator.document)
     let geometry = state.pages[0].geometry
-    let latin = makeCenteredTextAnnotation(id: "latin", text: "Latin",
+    let latin = makeCenteredTextAnnotation(id: 7, text: "Latin",
                                            fontSize: 18, pageSize: geometry.mediaBox.size)
-    let rtl = InkSignPdfTextAnnotation(id: "rtl", text: "שלום",
+    let rtl = InkSignPdfTextAnnotation(id: 5, text: "שלום",
                                        bounds: latin.bounds.offsetBy(dx: 0, dy: 30),
                                        fontSize: latin.fontSize,
                                        isRTL: true)
@@ -893,7 +885,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let history = InkSignPdfPageContentHistory()
     let pageSize = CGSize(width: 400, height: 600)
     let annotation = makeCenteredTextAnnotation(
-      id: "text",
+      id: 3,
       text: "before",
       fontSize: 16,
       pageSize: pageSize)
@@ -921,7 +913,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let first = InkSignPdfPageContentHistory()
     let second = InkSignPdfPageContentHistory()
     let annotation = makeCenteredTextAnnotation(
-      id: "first",
+      id: 4,
       text: "page one",
       fontSize: 18,
       pageSize: CGSize(width: 300, height: 300))
@@ -1285,12 +1277,12 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
-    let annotation = makeCenteredTextAnnotation(id: "text-1", text: "note",
-                                                 fontSize: 16,
-                                                 pageSize: fixture.view.activePageSize())
-    fixture.view.appendTextAnnotation(annotation,
-                                      generation: fixture.view.documentCoordinator.generation,
-                                      pageIndex: 0)
+    let annotation = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 1, text: "note",
+                                 fontSize: 16,
+                                 pageSize: fixture.view.activePageSize()),
+      in: fixture.view,
+      pageIndex: 0)
 
     XCTAssertEqual(overlay.dragTarget(at: CGPoint(x: annotation.bounds.midX,
                                                    y: annotation.bounds.midY)), annotation.id)
@@ -1301,11 +1293,11 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
-    let original = makeCenteredTextAnnotation(id: "text-1", text: "note", fontSize: 16,
-                                               pageSize: fixture.view.activePageSize())
-    fixture.view.appendTextAnnotation(original,
-                                      generation: fixture.view.documentCoordinator.generation,
-                                      pageIndex: 0)
+    let original = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 1, text: "note", fontSize: 16,
+                                 pageSize: fixture.view.activePageSize()),
+      in: fixture.view,
+      pageIndex: 0)
     let start = CGPoint(x: original.bounds.midX, y: original.bounds.midY)
     let destination = CGPoint(x: start.x + 28, y: start.y - 13)
     let history = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history)
@@ -1323,11 +1315,11 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 2)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
-    let original = makeCenteredTextAnnotation(id: "text-1", text: "note", fontSize: 16,
-                                               pageSize: fixture.view.activePageSize())
-    fixture.view.appendTextAnnotation(original,
-                                      generation: fixture.view.documentCoordinator.generation,
-                                      pageIndex: 0)
+    let original = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 1, text: "note", fontSize: 16,
+                                 pageSize: fixture.view.activePageSize()),
+      in: fixture.view,
+      pageIndex: 0)
     let start = CGPoint(x: original.bounds.midX, y: original.bounds.midY)
     let destination = CGPoint(x: start.x + 30, y: start.y + 20)
     let history = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history)
@@ -1352,11 +1344,11 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
-    let annotation = makeCenteredTextAnnotation(id: "text-1", text: "note", fontSize: 16,
-                                                 pageSize: fixture.view.activePageSize())
-    fixture.view.appendTextAnnotation(annotation,
-                                      generation: fixture.view.documentCoordinator.generation,
-                                      pageIndex: 0)
+    let annotation = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 1, text: "note", fontSize: 16,
+                                 pageSize: fixture.view.activePageSize()),
+      in: fixture.view,
+      pageIndex: 0)
     let point = CGPoint(x: annotation.bounds.midX, y: annotation.bounds.midY)
     XCTAssertTrue(overlay.routeDrag(.began, at: point, selectedOnly: false))
     XCTAssertTrue(overlay.routeDrag(.ended, at: point, selectedOnly: false))
@@ -1365,11 +1357,20 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(textEditor(in: overlay)?.text, "note")
   }
 
-  func testTextAnnotationIDsAreMonotonicAndUnique() {
-    let view = InkSignView()
+  func testTextTargetIDsAreMonotonicAndUnique() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let pageID = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.id)
+    let pageSize = fixture.view.activePageSize()
+    let first = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 1, text: "first", fontSize: 16, pageSize: pageSize),
+      in: fixture.view, pageIndex: 0)
+    let second = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 2, text: "second", fontSize: 16, pageSize: pageSize),
+      in: fixture.view, pageIndex: 0)
 
-    XCTAssertEqual(view.allocateTextAnnotationID(), "text-1")
-    XCTAssertEqual(view.allocateTextAnnotationID(), "text-2")
+    XCTAssertEqual(first.id, 1)
+    XCTAssertEqual(second.id, 2)
   }
 
 }

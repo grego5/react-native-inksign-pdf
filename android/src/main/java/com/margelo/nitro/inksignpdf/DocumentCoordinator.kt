@@ -19,11 +19,12 @@ internal data class TextTargetSlot(
   val pageId: String,
   var sourceIdentity: String?,
   var fieldName: String?,
-  var bounds: PageRect,
+  var canonicalBounds: PageRect,
   var options: TextAnnotationOptions?,
   var embeddedValue: String = "",
-  var layoutPage: PdfPageDimensions? = null,
-  var writingRule: PdfiumHorizontalSnapCandidate? = null,
+  var canonicalWritingRule: CanonicalWritingRule? = null,
+  var canonicalDetectionBounds: PageRect = canonicalBounds,
+  var excludedSourceRanges: List<IntRange> = emptyList(),
 )
 
 /** UI-thread-owned coordinator for one published mutable PDF document. */
@@ -50,6 +51,7 @@ internal class MutableDocumentCoordinator(
   private var disposed = false
   private var nextTextId = 1L
   private val textTargets = LinkedHashMap<Long, TextTargetSlot>()
+  private val textSourceGlyphs = HashMap<String, List<PdfiumPreparedGlyph>>()
   var fallbackFont: PdfFallbackFont? = null
   var structuralDirty: Boolean = false
     private set
@@ -107,6 +109,7 @@ internal class MutableDocumentCoordinator(
     mutablePages.addAll(candidatePages)
     val retainedPageIds = candidatePages.mapTo(HashSet()) { it.id }
     textTargets.entries.removeAll { it.value.pageId !in retainedPageIds }
+    textSourceGlyphs.keys.removeAll { it !in retainedPageIds }
     activePageId = candidateActivePageId
     structuralDirty = true
   }
@@ -207,25 +210,23 @@ internal class MutableDocumentCoordinator(
     pageId: String,
     sourceIdentity: String?,
     fieldName: String?,
-    bounds: PageRect,
+    canonicalBounds: PageRect,
     options: TextAnnotationOptions?,
     embeddedValue: String = "",
+    canonicalWritingRule: CanonicalWritingRule? = null,
+    canonicalDetectionBounds: PageRect = canonicalBounds,
+    excludedSourceRanges: List<IntRange> = emptyList(),
   ): TextTargetSlot {
     if (pageForId(pageId) == null) throw PdfSessionException(
       "operation_cancelled", "The target page no longer exists",
     )
-    val existing = textTargets.values.firstOrNull { slot ->
-      slot.pageId == pageId && if (sourceIdentity != null) {
-        slot.sourceIdentity == sourceIdentity
-      } else {
-        slot.sourceIdentity == null && slot.bounds == bounds
-      }
-    }
+    val existing = findTextTarget(pageId, sourceIdentity, canonicalBounds)
     if (existing != null) return existing
     if (nextTextId > MAX_SAFE_TEXT_ID) throw PdfSessionException(
       "text_id_exhausted", "The view has exhausted its numeric text IDs",
     )
-    val slot = TextTargetSlot(nextTextId++, pageId, sourceIdentity, fieldName, bounds, options, embeddedValue)
+    val slot = TextTargetSlot(nextTextId++, pageId, sourceIdentity, fieldName, canonicalBounds, options,
+      embeddedValue, canonicalWritingRule, canonicalDetectionBounds, excludedSourceRanges)
     textTargets[slot.id] = slot
     return slot
   }
@@ -236,51 +237,90 @@ internal class MutableDocumentCoordinator(
   fun textTargetsForPage(pageId: String): List<TextTargetSlot> =
     textTargets.values.filter { it.pageId == pageId }
 
+  fun findTextTarget(pageId: String, sourceIdentity: String?, canonicalBounds: PageRect): TextTargetSlot? =
+    textTargets.values.firstOrNull { slot ->
+      slot.pageId == pageId && if (sourceIdentity != null) slot.sourceIdentity == sourceIdentity
+      else slot.sourceIdentity == null && sameCanonicalBounds(slot.canonicalBounds, canonicalBounds)
+    }
+
+  private fun sameCanonicalBounds(first: PageRect, second: PageRect): Boolean =
+    kotlin.math.abs(first.left - second.left) <= 0.000001 &&
+      kotlin.math.abs(first.top - second.top) <= 0.000001 &&
+      kotlin.math.abs(first.right - second.right) <= 0.000001 &&
+      kotlin.math.abs(first.bottom - second.bottom) <= 0.000001
+
+  fun retainTextSourceGlyphs(pageId: String, glyphs: List<PdfiumPreparedGlyph>) {
+    // Source text is immutable for the lifetime of a stable page ID.
+    if (textSourceGlyphs.containsKey(pageId)) return
+    textSourceGlyphs[pageId] = glyphs
+    textTargetsForPage(pageId).forEach(::refreshEmbeddedValue)
+  }
+
   fun adoptTextTarget(
     id: Long,
     pageId: String,
     sourceIdentity: String?,
     fieldName: String?,
-    bounds: PageRect,
-    options: TextAnnotationOptions?,
+    canonicalBounds: PageRect,
     embeddedValue: String,
+    canonicalWritingRule: CanonicalWritingRule? = null,
+    canonicalDetectionBounds: PageRect = canonicalBounds,
+    excludedSourceRanges: List<IntRange> = emptyList(),
   ): TextTargetSlot {
     val slot = textTarget(id)
     if (slot.pageId != pageId) throw PdfSessionException(
       "text_not_found", "The text ID belongs to another page",
     )
-    val conflict = textTargets.values.firstOrNull {
-      it.id != id && it.pageId == pageId && if (sourceIdentity != null) {
-        it.sourceIdentity == sourceIdentity
-      } else {
-        it.sourceIdentity == null && it.bounds == bounds
-      }
+    if (slot.sourceIdentity != null && sourceIdentity != null && slot.sourceIdentity != sourceIdentity) {
+      throw PdfSessionException("text_target_ambiguous", "The annotation belongs to another source field")
     }
-    if (conflict != null) throw PdfSessionException(
+    val conflict = findTextTarget(pageId, sourceIdentity, canonicalBounds)
+    if (conflict != null && conflict.id != id) throw PdfSessionException(
       "text_target_ambiguous", "The resolved field already has another text target",
     )
-    slot.sourceIdentity = sourceIdentity
-    slot.fieldName = fieldName
-    slot.bounds = bounds
-    // Resolution associates geometry; explicit styling owns option changes.
-    slot.embeddedValue = embeddedValue
+    slot.canonicalBounds = canonicalBounds
+    if (sourceIdentity != null || slot.sourceIdentity == null) {
+      slot.sourceIdentity = sourceIdentity
+      slot.fieldName = fieldName
+      slot.canonicalWritingRule = canonicalWritingRule
+      slot.canonicalDetectionBounds = canonicalDetectionBounds
+      slot.excludedSourceRanges = excludedSourceRanges
+      slot.embeddedValue = embeddedValue
+    }
     return slot
   }
 
-  fun updateTextTargetBounds(id: Long, pageId: String, bounds: PageRect) {
+  fun updateTextTargetBounds(id: Long, pageId: String, canonicalBounds: PageRect) {
     val target = textTarget(id)
     if (target.pageId != pageId) throw PdfSessionException(
       "text_not_found", "The text ID belongs to another page",
     )
-    target.bounds = bounds
+    target.canonicalBounds = canonicalBounds
+    if (target.sourceIdentity == null) {
+      target.canonicalDetectionBounds = canonicalBounds
+      refreshEmbeddedValue(target)
+    }
+  }
+
+  private fun refreshEmbeddedValue(target: TextTargetSlot) {
+    val glyphs = textSourceGlyphs[target.pageId] ?: return
+    target.embeddedValue = embeddedTextInCanonicalRegion(glyphs, target.canonicalDetectionBounds, target.excludedSourceRanges)
+  }
+
+  private fun synchronizeTextPlacement(page: InkPageState) {
+    page.history.contentSnapshot().mapNotNull { it.textAnnotationOrNull() }.forEach { annotation ->
+      updateTextTargetBounds(annotation.id, page.id, annotation.canonicalPlacementBounds)
+    }
   }
 
   fun removeTextTargetsForPage(pageId: String) {
     textTargets.entries.removeAll { it.value.pageId == pageId }
+    textSourceGlyphs.remove(pageId)
   }
 
   fun clearTextTargets() {
     textTargets.clear()
+    textSourceGlyphs.clear()
   }
 
   fun pageHistoryRevision(index: Int): Long = page(index).history.revision
@@ -296,13 +336,24 @@ internal class MutableDocumentCoordinator(
   }
 
   fun appendActiveInk(outline: StrokeOutline) = activeHistory().append(outline)
-  fun appendActiveText(annotation: TextAnnotation) = activeHistory().appendText(annotation)
-  fun appendText(page: InkPageState, annotation: TextAnnotation) = page.history.appendText(annotation)
+  fun appendActiveText(annotation: TextAnnotation) = appendText(page(activePageIndex), annotation)
+  fun appendText(page: InkPageState, annotation: TextAnnotation) {
+    page.history.appendText(annotation)
+    updateTextTargetBounds(annotation.id, page.id, annotation.canonicalPlacementBounds)
+  }
   fun replaceActiveText(before: TextAnnotation, after: TextAnnotation) =
-    activeHistory().replaceText(before, after)
+    replaceText(page(activePageIndex), before, after)
+  fun replaceText(page: InkPageState, before: TextAnnotation, after: TextAnnotation) {
+    page.history.replaceText(before, after)
+    updateTextTargetBounds(after.id, page.id, after.canonicalPlacementBounds)
+  }
   fun removeActiveText(annotation: TextAnnotation) = activeHistory().removeTextAnnotation(annotation)
-  fun undoActiveHistory(): InkHistoryMutation = activeHistory().undoMutation()
-  fun redoActiveHistory(): InkHistoryMutation = activeHistory().redoMutation()
+  fun undoActiveHistory(): InkHistoryMutation = activeHistory().undoMutation().also {
+    synchronizeTextPlacement(page(activePageIndex))
+  }
+  fun redoActiveHistory(): InkHistoryMutation = activeHistory().redoMutation().also {
+    synchronizeTextPlacement(page(activePageIndex))
+  }
   fun clearActiveHistory(): InkHistoryMutation = activeHistory().clearMutation()
   fun resetHistories() = mutablePages.forEach { it.history.reset() }
 

@@ -14,7 +14,7 @@ and export.
 - [`src/index.ts`](../../../../src/index.ts) validates public arguments before
   native dispatch. Platforms check document-dependent bounds when admitting a
   command; loaders validate PDF, image, and OS data at ingress.
-- Text uses canonical top-left page points. Direct insertion clips complete
+- Public placement and viewport inputs use displayed top-left page points. Direct insertion clips complete
   lines to its flow bounds; manual placement applies the same options to its
   editor and committed text. The editor admits fitting input, allows deletion,
   and retains text through reflow. Committed text stores its resolved direction
@@ -54,8 +54,20 @@ and export.
   leaves the PDF source intact. Field lookup matches complete labels by token
   frequency, so word order may vary while partial labels and repeated-word
   mismatches do not match.
-- Stored geometry uses canonical page coordinates: media-box-relative with a
-  top-left origin. Viewport transforms are presentation-only.
+- The coordinator stores target placement bounds, writing-rule endpoints, and
+  source-value detection regions in canonical media-box-relative top-left
+  coordinates at rotation zero. Source label identity retains exact glyph ranges
+  and the original rule identity. Free bounds are canonicalized before the
+  coordinator decides reuse or adoption.
+- Text annotations retain local layout bounds, flow bounds, and captured
+  orientation. One layout-to-canonical transform derives their placement and
+  presentation without changing wrapping. Current page orientation projects
+  source candidates and targets for selection, editing, insertion, and focus.
+  Rotation leaves target identity, canonical geometry, annotation layout, and
+  history unchanged; viewport transforms affect presentation only.
+- Named targets keep their source association and detection region when module
+  text moves. Free targets track accepted placement, including undo and redo,
+  and refresh their embedded fallback from retained immutable source geometry.
 - Opens and page mutations prepare detached candidates. Failed or cancelled
   page mutations leave the current document intact. Caller source files are
   never overwritten.

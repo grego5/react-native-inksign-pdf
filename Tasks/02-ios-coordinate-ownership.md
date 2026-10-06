@@ -1,7 +1,7 @@
 # iOS canonical targets and displayed operations
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Implemented; verification deferred to Task 05
 Complexity: High
 
 ## Objective and scope
@@ -30,4 +30,3 @@ Coordinator and overlays retain their current main-thread ownership. Analysis st
 ## Completion
 iOS follows the same physical identity and displayed-operation semantics as Android. Record any platform mapping uncertainty for final verification.
 Proposed commit: Refactor iOS text targets to canonical geometry
-

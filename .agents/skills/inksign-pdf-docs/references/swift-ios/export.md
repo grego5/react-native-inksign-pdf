@@ -6,8 +6,11 @@
 - Export writes a separate output; source and working documents retain their
   current state.
 - Export applies pending page rotation to a detached PDF after verifying source
-  geometry. Existing text and PencilKit ink rotate with the page. Text added
-  after rotation keeps the displayed orientation captured at insertion.
+  geometry. CoreText shapes and selects lines in saved local layout, and the
+  renderer maps that layout to canonical content. `PageGeometry` converts
+  canonical content to PDF coordinates, including the media-box origin. Captured
+  current rotation is applied once as output page metadata. PencilKit ink keeps
+  its canonical content mapping; text retains its captured wrapping.
 
 - PDFKit carries source pages into the output; Quartz draws annotations and
   CoreText shapes committed text.

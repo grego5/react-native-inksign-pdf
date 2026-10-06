@@ -149,6 +149,14 @@ struct InkSignPdfTextAnnotation: Equatable {
   var position: CGPoint { bounds.origin }
   var intrinsicSize: CGSize { bounds.size }
 
+  func layoutToCanonical(mediaBox: CGRect) -> CGAffineTransform {
+    PageGeometry(mediaBox: mediaBox, rotation: 0).layoutToCanonical(rotation: layoutRotation)
+  }
+
+  func canonicalPlacementBounds(mediaBox: CGRect) -> CGRect {
+    (flowBounds ?? bounds).applying(layoutToCanonical(mediaBox: mediaBox))
+  }
+
   func replacingText(_ text: String, pageSize: CGSize) -> InkSignPdfTextAnnotation {
     if let flowBounds {
       let bounds = InkSignPdfTextRenderer.visibleBounds(for: text,
@@ -175,6 +183,8 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     fontSize: fontSize,
                                     textColor: textColor,
                                     isRTL: isRTL,
+                                    maxLines: maxLines,
+                                    verticalAnchor: verticalAnchor,
                                     alignment: alignment,
                                     layoutRotation: layoutRotation)
   }
@@ -232,25 +242,10 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     fontSize: fontSize,
                                     textColor: textColor,
                                     isRTL: isRTL,
+                                    maxLines: maxLines,
+                                    verticalAnchor: verticalAnchor,
                                     alignment: alignment,
                                     layoutRotation: layoutRotation)
-  }
-
-  func convertedToRawCoordinates(mediaBox: CGRect) -> InkSignPdfTextAnnotation {
-    guard layoutRotation != 0 else { return self }
-    let layoutGeometry = PageGeometry(mediaBox: mediaBox, rotation: layoutRotation)
-    return InkSignPdfTextAnnotation(
-      id: id,
-      text: text,
-      bounds: layoutGeometry.displayToRaw(bounds),
-      fontSize: fontSize,
-      textColor: textColor,
-      isRTL: isRTL,
-      flowBounds: flowBounds.map(layoutGeometry.displayToRaw),
-      maxLines: maxLines,
-      verticalAnchor: verticalAnchor,
-      alignment: alignment,
-      layoutRotation: 0)
   }
 
   static func intrinsicSize(of text: String,

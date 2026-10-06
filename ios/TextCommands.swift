@@ -102,10 +102,6 @@ enum InkSignPdfKeyRuleSelector {
 }
 
 extension InkSignView {
-  func allocateTextAnnotationID() throws -> UInt64 {
-    try documentCoordinator.allocateTextID()
-  }
-
   func setTextMode(options: TextModeOptions?) throws {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
@@ -166,8 +162,10 @@ extension InkSignView {
           return
         }
         do {
+          let analysis = try result.get()
+          if !coordinator.textTargets(for: captured.3).isEmpty { coordinator.retainTextAnalysis(analysis) }
           settlement.resolve(HybridAnalyzedPage(owner: self, generation: captured.1,
-            pageID: captured.3, analysis: try result.get()))
+            pageID: captured.3, analysis: analysis))
         } catch {
           settlement.reject(error)
         }
@@ -181,16 +179,18 @@ extension InkSignView {
     guard let document = documentCoordinator.document,
           let page = document.pages.first(where: { $0.id == handle.pageID }) else { throw TextError.cancelled }
     let geometry = page.geometry
+    documentCoordinator.retainTextAnalysis(handle.analysis)
     let fieldBounds: CGRect
     var identity: String?
     var embeddedValue = ""
-    var selectedRule: InkSignPdfPlacementRule?
+    var selectedRule: InkSignPdfCanonicalWritingRule?
+    var excludedSourceRanges: [NSRange] = []
     var detectionBounds: CGRect
     if let fieldName = options.fieldName {
       let lookup = handle.analysis.lookup(key: fieldName)
       guard lookup.hasLiteralMatch else { throw TextError.keyNotFound }
       let displayed = handle.analysis.displayedFieldGeometry(lookup: lookup,
-        sourceGeometry: page.sourceGeometry, geometry: geometry)
+        geometry: geometry)
       let candidates = displayed.matches.filter { match in
         guard let bounds = options.bounds else { return true }
         let region = CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height)
@@ -208,46 +208,45 @@ extension InkSignView {
         : CGRect(x: placement.contentMinX, y: placement.rule.y,
                  width: placement.contentMaxX - placement.contentMinX,
                  height: geometry.displaySize.height - placement.rule.y)
-      selectedRule = placement.rule
       guard let ruleIndex = displayed.rules.firstIndex(of: placement.rule) else { throw TextError.ruleNotFound }
-      let sourceRule = handle.analysis.rules[ruleIndex]
-      identity = "\(placement.match.sourceIndex)|\(sourceRule.minX):\(sourceRule.maxX):\(sourceRule.y)"
+      let sourceRule = displayed.sourceRules[ruleIndex]
+      selectedRule = sourceRule
+      guard let label = handle.analysis.labelCandidates.first(where: { $0.match.sourceIndex == placement.match.sourceIndex }) else {
+        preconditionFailure("Selected label is missing from its prepared analysis")
+      }
+      identity = "\(label.identity)|\(sourceRule.sourceIndex)"
+      excludedSourceRanges = label.sourceRanges
       detectionBounds = CGRect(x: placement.rule.minX,
         y: anchor == .bottom ? placement.rule.y - placement.match.lineHeight : placement.rule.y,
         width: placement.rule.maxX - placement.rule.minX, height: placement.match.lineHeight)
-      embeddedValue = embeddedText(in: detectionBounds, analysis: handle.analysis,
-        sourceGeometry: page.sourceGeometry, geometry: geometry,
-        excluded: handle.analysis.labelCandidates.first { $0.match.sourceIndex == placement.match.sourceIndex }?.sourceRanges ?? [])
     } else {
       guard let bounds = options.bounds else { throw TextError.invalidBounds }
       fieldBounds = CGRect(x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height)
       guard validPreparedBounds(fieldBounds, pageSize: geometry.displaySize) else { throw TextError.invalidBounds }
       detectionBounds = fieldBounds
-      embeddedValue = embeddedText(in: detectionBounds, analysis: handle.analysis,
-        sourceGeometry: page.sourceGeometry, geometry: geometry)
     }
+    let canonicalBounds = geometry.displayToCanonical(fieldBounds)
+    let canonicalDetectionBounds = geometry.displayToCanonical(detectionBounds)
+    embeddedValue = handle.analysis.embeddedText(in: canonicalDetectionBounds, excluding: excludedSourceRanges)
     let occupied = page.history.content.textAnnotations.filter {
-      let basis = PageGeometry(mediaBox: page.geometry.mediaBox, rotation: $0.layoutRotation)
-      return geometry.rawToDisplay(basis.displayToRaw($0.bounds)).intersects(detectionBounds)
+      let bounds = $0.bounds.applying(geometry.layoutToDisplay(rotation: $0.layoutRotation))
+      return bounds.minX < detectionBounds.maxX && bounds.maxX > detectionBounds.minX &&
+        bounds.minY < detectionBounds.maxY && bounds.maxY > detectionBounds.minY
     }
     guard occupied.count <= 1 else { throw TextError.targetAmbiguous }
     let target: InkSignPdfTextTarget
-    if let existing = documentCoordinator.textTargets(for: page.id).first(where: {
-      if let identity { return $0.sourceIdentity == identity }
-      return $0.sourceIdentity == nil && displayedTargetBounds($0, page: page) == fieldBounds
-    }) { return Double(existing.id) }
+    if let existing = documentCoordinator.findTextTarget(pageID: page.id, sourceIdentity: identity,
+                                                         canonicalBounds: canonicalBounds) { return Double(existing.id) }
     if let annotation = occupied.first {
       target = try documentCoordinator.adoptTextTarget(id: annotation.id, pageID: page.id,
-        sourceIdentity: identity, fieldName: options.fieldName, bounds: fieldBounds,
-        options: options.annotationOptions, embeddedValue: embeddedValue)
+        sourceIdentity: identity, fieldName: options.fieldName, canonicalBounds: canonicalBounds,
+        embeddedValue: embeddedValue, canonicalWritingRule: selectedRule,
+        canonicalDetectionBounds: canonicalDetectionBounds, excludedSourceRanges: excludedSourceRanges)
     } else {
       target = try documentCoordinator.reserveTextTarget(pageID: page.id, sourceIdentity: identity,
-        fieldName: options.fieldName, bounds: fieldBounds, options: options.annotationOptions,
-        embeddedValue: embeddedValue)
-    }
-    try documentCoordinator.updateTextTarget(target.id, pageID: page.id) {
-      $0.layoutGeometry = geometry
-      $0.writingRule = selectedRule
+        fieldName: options.fieldName, canonicalBounds: canonicalBounds, options: options.annotationOptions,
+        embeddedValue: embeddedValue, canonicalWritingRule: selectedRule,
+        canonicalDetectionBounds: canonicalDetectionBounds, excludedSourceRanges: excludedSourceRanges)
     }
     return Double(target.id)
   }
@@ -282,7 +281,7 @@ extension InkSignView {
         bounds: TextAnnotationBounds(x: Double(bounds.minX), y: Double(bounds.minY),
           width: Double(bounds.width), height: Double(bounds.height)),
         options: target.annotationOptions, capturedPage: (handle.generation, page.id,
-          page.geometry.displaySize, page.geometry.rotation), coordinateSpace: .displayed,
+          page.geometry.displaySize, page.geometry.rotation),
         targetID: target.id)
     }
   }
@@ -309,14 +308,15 @@ extension InkSignView {
     if textInteractionOverlay.setPreparedDraftOptions(id: target.id, pageID: page.id, options: options) { return }
     guard let current = page.history.content.textAnnotations.first(where: { $0.id == target.id }) else { return }
     let fontSize = CGFloat(options.fontSize ?? Double(current.fontSize))
-    let styled = current.changingFontSize(to: fontSize, pageSize: PageGeometry(mediaBox: page.geometry.mediaBox, rotation: current.layoutRotation).displaySize)
-    let updated = InkSignPdfTextAnnotation(id: styled.id, text: styled.text, bounds: styled.bounds,
-      fontSize: styled.fontSize, textColor: options.color ?? current.textColor,
+    let styled = InkSignPdfTextAnnotation(id: current.id, text: current.text, bounds: current.bounds,
+      fontSize: fontSize, textColor: options.color ?? current.textColor,
       isRTL: options.direction.map { textInteractionOverlay.resolvedDirection($0) } ?? current.isRTL,
-      flowBounds: styled.flowBounds, maxLines: Int(options.maxLines ?? Double(current.maxLines)),
+      flowBounds: current.flowBounds, maxLines: Int(options.maxLines ?? Double(current.maxLines)),
       verticalAnchor: options.verticalAnchor.map(InkSignPdfTextVerticalAnchor.init) ?? current.verticalAnchor,
       alignment: options.alignment.map(InkSignPdfTextAlignment.init) ?? current.alignment,
       layoutRotation: current.layoutRotation)
+    let updated = styled.replacingText(styled.text,
+      pageSize: PageGeometry(mediaBox: page.geometry.mediaBox, rotation: current.layoutRotation).displaySize)
     if updated != current {
       try replaceTextAnnotation(current, with: updated, type: .textEdit,
                                 generation: handle.generation, pageID: page.id)
@@ -330,8 +330,11 @@ extension InkSignView {
     let value = draft ?? annotation?.text ?? target.embeddedValue
     let source: TextValueSource = draft != nil || annotation != nil ? .annotation
       : (!target.embeddedValue.isEmpty ? .embedded : .empty)
+    let bounds = displayedTargetBounds(target, page: page)
     return TextEntry(id: Double(target.id), value: value, fieldName: target.fieldName,
-      bounds: displayedTargetBounds(target, page: page).publicBounds, hasValue: !value.isEmpty, valueSource: source)
+      bounds: TextAnnotationBounds(x: Double(bounds.minX), y: Double(bounds.minY),
+        width: Double(bounds.width), height: Double(bounds.height)),
+      hasValue: !value.isEmpty, valueSource: source)
   }
 
   func adjustPreparedTextSize(_ handle: HybridAnalyzedPage, id: Double, delta: Double) throws -> Double {
@@ -416,70 +419,27 @@ extension InkSignView {
   }
 
   private func displayedTargetBounds(_ target: InkSignPdfTextTarget, page: InkSignPdfPageState) -> CGRect {
-    guard let basis = target.layoutGeometry else { return target.bounds }
-    if let rule = target.writingRule {
-      let start = page.geometry.rawToDisplay(basis.displayToRaw(CGPoint(x: rule.minX, y: rule.y)))
-      let end = page.geometry.rawToDisplay(basis.displayToRaw(CGPoint(x: rule.maxX, y: rule.y)))
+    if let rule = target.canonicalWritingRule {
+      let start = page.geometry.canonicalToDisplay(rule.start)
+      let end = page.geometry.canonicalToDisplay(rule.end)
       if abs(start.y - end.y) <= 0.001 {
         let bottom = (target.options.verticalAnchor ?? .bottom) == .bottom
-        let flow = page.geometry.rawToDisplay(basis.displayToRaw(target.bounds))
+        let flow = page.geometry.canonicalToDisplay(target.canonicalBounds)
         return CGRect(x: flow.minX, y: bottom ? 0 : start.y,
           width: flow.width, height: bottom ? start.y : page.geometry.displaySize.height - start.y)
       }
     }
-    return page.geometry.rawToDisplay(basis.displayToRaw(target.bounds))
+    return page.geometry.canonicalToDisplay(target.canonicalBounds)
   }
 
   private func displayedWritingRule(_ target: InkSignPdfTextTarget, page: InkSignPdfPageState) throws -> InkSignPdfPlacementRule? {
-    guard let rule = target.writingRule, let basis = target.layoutGeometry else { return nil }
-    let start = page.geometry.rawToDisplay(basis.displayToRaw(CGPoint(x: rule.minX, y: rule.y)))
-    let end = page.geometry.rawToDisplay(basis.displayToRaw(CGPoint(x: rule.maxX, y: rule.y)))
+    guard let rule = target.canonicalWritingRule else { return nil }
+    let start = page.geometry.canonicalToDisplay(rule.start)
+    let end = page.geometry.canonicalToDisplay(rule.end)
     guard abs(start.y - end.y) <= 0.001 else { throw TextError.ruleNotFound }
     return InkSignPdfPlacementRule(minX: min(start.x, end.x), maxX: max(start.x, end.x), y: start.y)
   }
 
-  private func embeddedText(in bounds: CGRect, analysis: InkSignPdfPageAnalysis,
-                            sourceGeometry: PageGeometry, geometry: PageGeometry, excluded ranges: [NSRange] = []) -> String {
-    let source = analysis.sourceText as NSString
-    let excluded = ranges.reduce(into: Set<Int>()) { result, range in
-      for index in range.location..<(range.location + range.length) { result.insert(index) }
-    }
-    var included = [Bool](repeating: false, count: source.length)
-    for index in 0..<min(source.length, min(analysis.characterBounds.count, analysis.characterVisualRows.count)) {
-      guard !excluded.contains(index), let rect = analysis.characterBounds[index] else { continue }
-      let sourceDisplay = CGRect(x: rect.minX * sourceGeometry.displaySize.width / analysis.pageSize.width,
-                                 y: rect.minY * sourceGeometry.displaySize.height / analysis.pageSize.height,
-                                 width: rect.width * sourceGeometry.displaySize.width / analysis.pageSize.width,
-                                 height: rect.height * sourceGeometry.displaySize.height / analysis.pageSize.height)
-      let projected = geometry.rawToDisplay(sourceGeometry.displayToRaw(sourceDisplay))
-      guard bounds.intersects(projected) else { continue }
-      included[index] = true
-    }
-    if source.length > 0 {
-      for index in 0..<source.length where !excluded.contains(index) && Self.isWhitespace(source.character(at: index)) {
-        let before = (0..<index).reversed().first { included[$0] }
-        let after = ((index + 1)..<source.length).first { included[$0] }
-        if let before, let after, analysis.characterVisualRows[before] == analysis.characterVisualRows[after] {
-          included[index] = true
-        }
-      }
-    }
-    var ranges: [NSRange] = []
-    var start: Int?
-    for index in 0...source.length {
-      let selected = index < source.length && included[index]
-      if selected, start == nil { start = index }
-      if !selected, let rangeStart = start {
-        ranges.append(NSRange(location: rangeStart, length: index - rangeStart))
-        start = nil
-      }
-    }
-    return ranges.map { source.substring(with: $0) }.joined().trimmingCharacters(in: .whitespacesAndNewlines)
-  }
-
-  private static func isWhitespace(_ value: unichar) -> Bool {
-    value == 0x20 || value == 0x09 || value == 0x0A || value == 0x0D || value == 0x00A0
-  }
   func activeTextAnnotations() -> [InkSignPdfTextAnnotation] {
     documentCoordinator.document?.activePage.history.content.textAnnotations ?? []
   }
@@ -498,11 +458,7 @@ extension InkSignView {
           state.activePageIndex == pageIndex else { return }
     cancelActiveStroke()
     guard state.activePage.history.appendText(annotation) else { return }
-    if (try? documentCoordinator.textTarget(annotation.id, pageID: state.activePage.id)) == nil {
-      _ = try? documentCoordinator.adoptTextTarget(id: annotation.id, pageID: state.activePage.id,
-        sourceIdentity: nil, fieldName: nil, bounds: annotation.flowBounds ?? annotation.bounds,
-        options: nil, embeddedValue: "")
-    }
+    documentCoordinator.updateTextPlacement(annotation, page: state.activePage)
     textInteractionOverlay.syncContent()
     emitChange()
   }
@@ -521,11 +477,7 @@ extension InkSignView {
     let targetIsActive = state.activePageID == pageID
     if targetIsActive { cancelActiveStroke() }
     guard target.history.appendText(annotation) else { return }
-    if (try? documentCoordinator.textTarget(annotation.id, pageID: pageID)) == nil {
-      _ = try documentCoordinator.adoptTextTarget(id: annotation.id, pageID: pageID,
-        sourceIdentity: nil, fieldName: nil, bounds: annotation.flowBounds ?? annotation.bounds,
-        options: nil, embeddedValue: "")
-    }
+    documentCoordinator.updateTextPlacement(annotation, page: target)
     if targetIsActive { textInteractionOverlay.syncContent() }
     emitChange()
   }
@@ -539,6 +491,7 @@ extension InkSignView {
       throw TextError.cancelled
     }
     guard page.history.replaceText(before: before, with: after, type: type) else { return }
+    documentCoordinator.updateTextPlacement(after, page: page)
     if documentCoordinator.document?.activePage.id == pageID { textInteractionOverlay.syncContent() }
     emitChange()
   }
@@ -565,7 +518,8 @@ extension InkSignView {
           let state = documentCoordinator.document,
           state.activePageIndex == pageIndex else { return }
     cancelActiveStroke()
-  guard state.activePage.history.replaceText(before: before, with: after, type: type) else { return }
+    guard state.activePage.history.replaceText(before: before, with: after, type: type) else { return }
+    documentCoordinator.updateTextPlacement(after, page: state.activePage)
     textInteractionOverlay.syncContent()
     emitChange()
   }
@@ -588,6 +542,6 @@ extension InkSignView {
 private extension ResolveTextOptions {
   var annotationOptions: TextAnnotationOptions {
     TextAnnotationOptions(fontSize: fontSize, color: color, direction: direction,
-      maxLines: maxLines, alignment: alignment, verticalAnchor: verticalAnchor)
+      maxLines: maxLines, alignment: alignment, verticalAnchor: verticalAnchor ?? (fieldName == nil ? .top : .bottom))
   }
 }

@@ -5,8 +5,7 @@ internal data class PreparedTextLabel(
   val fieldName: String,
   val identity: String,
   val tokens: List<List<Int>>,
-  val sourceStart: Int,
-  val sourceEnd: Int,
+  val sourceRanges: List<IntRange>,
 )
 
 /** Builds complete visual label candidates independently of the later query. */
@@ -32,7 +31,7 @@ internal fun preparedTextLabels(analysis: PdfiumPreparedPageAnalysis): List<Prep
   fun finish(end: Int) {
     if (start >= 0 && token.isNotEmpty() && right > left && bottom > top) {
       words += Word(start, end, token.toList(), PdfiumTextKeyMatch(
-        left, top, right, bottom, start.toDouble(), lineCenter, lineHeight,
+        left, top, right, bottom, start.toDouble(), lineCenter / token.size, lineHeight,
       ), row)
     }
     start = -1
@@ -52,7 +51,7 @@ internal fun preparedTextLabels(analysis: PdfiumPreparedPageAnalysis): List<Prep
       return@forEachIndexed
     }
     if (bounds == null || glyph.visualRow < 0) {
-      finish(index + 1)
+      finish(index)
       return@forEachIndexed
     }
     if (start >= 0 && glyph.visualRow != row) finish(index)
@@ -83,18 +82,42 @@ internal fun preparedTextLabels(analysis: PdfiumPreparedPageAnalysis): List<Prep
     groups.mapNotNull { group ->
       if (group.isEmpty()) return@mapNotNull null
       val minSource = group.minOf { it.start }
-      val maxSource = group.maxOf { it.end }
-      val glyphs = analysis.glyphs.subList(minSource, maxSource)
-      val boxes = glyphs.mapNotNull { it.bounds }
+      val sourceRanges = group.sortedBy { it.start }.map { it.start until it.end }
+      val boxes = sourceRanges.flatMap { range -> range.mapNotNull { analysis.glyphs[it].bounds } }
       if (boxes.isEmpty()) return@mapNotNull null
+      val labelTop = boxes.minOf { it.top }
+      val labelBottom = boxes.maxOf { it.bottom }
       val match = PdfiumTextKeyMatch(
-        boxes.minOf { it.left }, boxes.minOf { it.top }, boxes.maxOf { it.right }, boxes.maxOf { it.bottom },
-        minSource.toDouble(), boxes.map { it.lineCenter }.average(), boxes.map { it.lineHeight }.average(),
+        boxes.minOf { it.left }, labelTop, boxes.maxOf { it.right }, labelBottom,
+        minSource.toDouble(), (labelTop + labelBottom) / 2.0, labelBottom - labelTop,
       )
-      val spelling = StringBuilder()
-      glyphs.forEach { glyph -> spelling.appendCodePoint(glyph.codepoint) }
-      val identity = "$minSource:$maxSource:${group.first().row}"
-      PreparedTextLabel(match, spelling.toString().trim(), identity, group.map { it.token }, minSource, maxSource)
+      val spelling = sourceRanges.joinToString(" ") { range ->
+        buildString { range.forEach { appendCodePoint(analysis.glyphs[it].codepoint) } }
+      }
+      val identity = sourceRanges.joinToString(";") { "${it.first}:${it.last + 1}" }
+      PreparedTextLabel(match, spelling, identity, group.map { it.token }, sourceRanges)
+    }
+  }
+}
+
+internal fun embeddedTextInCanonicalRegion(
+  glyphs: List<PdfiumPreparedGlyph>, region: PageRect, excluded: List<IntRange> = emptyList(),
+): String {
+  if (region.right <= region.left || region.bottom <= region.top) return ""
+  val selected = glyphs.mapIndexedNotNull { index, glyph ->
+    val box = glyph.bounds ?: return@mapIndexedNotNull null
+    if (excluded.any { index in it } || Character.isWhitespace(glyph.codepoint) ||
+      box.left >= region.right || box.right <= region.left ||
+      box.top >= region.bottom || box.bottom <= region.top) null else index
+  }
+  return buildString {
+    var previous: Int? = null
+    for (index in selected) {
+      previous?.let { prior ->
+        if ((prior + 1 until index).any { Character.isWhitespace(glyphs[it].codepoint) }) append(' ')
+      }
+      appendCodePoint(glyphs[index].codepoint)
+      previous = index
     }
   }
 }
@@ -109,7 +132,8 @@ internal fun completeLabelMatches(labels: List<PreparedTextLabel>, query: String
 }
 
 internal fun ResolveTextOptions.toAnnotationOptions() = TextAnnotationOptions(
-  fontSize, color, direction, maxLines, alignment, verticalAnchor,
+  fontSize, color, direction, maxLines, alignment,
+  verticalAnchor ?: if (fieldName != null) TextVerticalAnchor.BOTTOM else TextVerticalAnchor.TOP,
 )
 
 internal fun PageRect.toPublicBounds() = TextAnnotationBounds(

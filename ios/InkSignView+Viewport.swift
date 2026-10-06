@@ -26,6 +26,7 @@ enum ViewportRequest {
 
 struct ViewportTarget: Equatable {
   let zoom: CGFloat
+  /// Current displayed page coordinates.
   let focus: CGPoint
 }
 
@@ -90,12 +91,11 @@ extension InkSignView {
           documentView.currentPage === state.activePage.page else { return false }
     documentView.autoScales = false
     let zoom = min(max(target.zoom, documentView.minScaleFactor), documentView.maxScaleFactor)
-    let mediaBox = state.activePage.geometry.mediaBox
+    let geometry = state.activePage.geometry
     documentView.scaleFactor = zoom
     let destination = PDFDestination(
       page: state.activePage.page,
-      at: CGPoint(x: mediaBox.minX + target.focus.x,
-                  y: mediaBox.maxY - target.focus.y))
+      at: target.focus.applying(geometry.displayToPDFTransform))
     destination.zoom = zoom
     documentView.go(to: destination)
     invalidateOverlayTransformCache()
@@ -138,7 +138,7 @@ extension InkSignView {
       constrainedY = min(max(focusY, fullVisibleHeight / 2), pageHeight - fullVisibleHeight / 2)
     }
     return ViewportTarget(zoom: targetZoom,
-                          focus: geometry.displayToRaw(CGPoint(x: horizontalFocus, y: constrainedY)))
+                          focus: CGPoint(x: horizontalFocus, y: constrainedY))
   }
 
   func applyModeTransition(toEditing: Bool, request: ViewportRequest) throws {
@@ -243,16 +243,17 @@ extension InkSignView {
     }
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
     let pdfFocus = documentView.convert(viewCenter, to: page)
-    let mediaBox = state.activePage.geometry.mediaBox
-    let x = min(max(pdfFocus.x - mediaBox.minX, 0), mediaBox.width)
-    let y = min(max(mediaBox.maxY - pdfFocus.y, 0), mediaBox.height)
+    let geometry = state.activePage.geometry
+    let focus = pdfFocus.applying(geometry.displayToPDFTransform.inverted())
+    let x = min(max(focus.x, 0), geometry.displaySize.width)
+    let y = min(max(focus.y, 0), geometry.displaySize.height)
     let zoom = Double(documentView.scaleFactor)
     guard x.isFinite, y.isFinite, zoom.isFinite, zoom > 0 else {
       throw ViewportError.notReady
     }
     return Viewport(
-      x: min(max(Double(x), 0), Double(mediaBox.width)),
-      y: min(max(Double(y), 0), Double(mediaBox.height)),
+      x: Double(x),
+      y: Double(y),
       zoom: zoom,
     )
   }
@@ -285,12 +286,12 @@ extension InkSignView {
       guard let zoom = usableFitScale() else { return nil }
       return ViewportTarget(
         zoom: zoom,
-        focus: CGPoint(x: pageGeometry.mediaBox.width / 2,
-                       y: pageGeometry.mediaBox.height / 2))
+        focus: CGPoint(x: pageGeometry.displaySize.width / 2,
+                       y: pageGeometry.displaySize.height / 2))
     case .focus(let focus, let zoom):
-      let currentFocus = currentCanonicalFocus() ?? CGPoint(
-        x: pageGeometry.mediaBox.width / 2,
-        y: pageGeometry.mediaBox.height / 2
+      let currentFocus = currentDisplayedFocus() ?? CGPoint(
+        x: pageGeometry.displaySize.width / 2,
+        y: pageGeometry.displaySize.height / 2
       )
       let targetZoom = CGFloat(zoom ?? Double(documentView.scaleFactor))
       return ViewportTarget(zoom: targetZoom, focus: focus ?? currentFocus)
@@ -299,14 +300,13 @@ extension InkSignView {
 
   private func openViewportTarget(for pending: PendingOpen) -> ViewportTarget? {
     guard let state = documentCoordinator.document else { return nil }
-    let mediaBox = state.activePage.geometry.mediaBox
-    let focus = pending.focus ?? CGPoint(x: mediaBox.width / 2,
-                                          y: mediaBox.height / 2)
+    let size = state.activePage.geometry.displaySize
+    let focus = pending.focus ?? CGPoint(x: size.width / 2, y: size.height / 2)
     if pending.fitToPage {
       guard let zoom = usableFitScale() else { return nil }
       return ViewportTarget(
         zoom: zoom,
-        focus: CGPoint(x: mediaBox.width / 2, y: mediaBox.height / 2))
+        focus: CGPoint(x: size.width / 2, y: size.height / 2))
     }
     return ViewportTarget(zoom: CGFloat(pending.zoom ?? 1), focus: focus)
   }
@@ -368,9 +368,8 @@ extension InkSignView {
     let location = recognizer.location(in: documentView)
     guard let page = documentView.currentPage else { return }
     let pdfPoint = documentView.convert(location, to: page)
-    let mediaBox = documentCoordinator.document?.activePage.geometry.mediaBox ?? .zero
-    let tappedPoint = CGPoint(x: pdfPoint.x - mediaBox.minX,
-                              y: mediaBox.maxY - pdfPoint.y)
+    guard let geometry = documentCoordinator.document?.activePage.geometry else { return }
+    let tappedPoint = pdfPoint.applying(geometry.displayToPDFTransform.inverted())
     guard tappedPoint.x.isFinite, tappedPoint.y.isFinite else { return }
     let focus = tappedPoint
 
@@ -415,14 +414,13 @@ extension InkSignView {
     }
   }
 
-  private func currentCanonicalFocus() -> CGPoint? {
+  private func currentDisplayedFocus() -> CGPoint? {
     guard let state = documentCoordinator.document,
           let page = documentView.currentPage,
           page === state.activePage.page else { return nil }
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
     let pdfPoint = documentView.convert(viewCenter, to: page)
-    return CGPoint(x: pdfPoint.x - state.activePage.geometry.mediaBox.minX,
-                   y: state.activePage.geometry.mediaBox.maxY - pdfPoint.y)
+    return pdfPoint.applying(state.activePage.geometry.displayToPDFTransform.inverted())
   }
 
   static func parseViewport(_ options: ViewportOptions?) -> ViewportRequest {
