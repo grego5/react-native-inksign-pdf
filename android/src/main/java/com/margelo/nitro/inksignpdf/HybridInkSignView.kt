@@ -141,6 +141,7 @@ class HybridInkSignView internal constructor(
       field = value
     }
   override var onPageChange: ((PageInfo) -> Unit)? = null
+  override var onZoomedInChange: ((Boolean) -> Unit)? = null
   override var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Unit)? = null
     set(value) {
       field = value
@@ -207,6 +208,7 @@ class HybridInkSignView internal constructor(
     surface.onPageChange = { page ->
       if (!disposed && !surface.isOpenHandoffInProgress) onPageChange?.invoke(toPublicPageInfo(page))
     }
+    surface.onZoomedInChange = { zoomedIn -> if (!disposed) onZoomedInChange?.invoke(zoomedIn) }
   }
 
   override fun open(path: String, options: ViewportOptions?): Promise<PageInfo> {
@@ -1217,6 +1219,7 @@ class HybridInkSignView internal constructor(
     coordinator.closeSession(outputs + workingFiles, artifactPolicy::deleteExact)
     onStateChange = null
     onPageChange = null
+    onZoomedInChange = null
     textOverlay.onInteractionModeChanged = null
   }
 

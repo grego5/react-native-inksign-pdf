@@ -500,6 +500,38 @@ open class HybridInkSignViewSpec_cxx {
     }
   }
   
+  public final var onZoomedInChange: bridge.std__optional_std__function_void_bool____zoomedIn______ {
+    @inline(__always)
+    get {
+      return { () -> bridge.std__optional_std__function_void_bool____zoomedIn______ in
+        if let __unwrappedValue = self.__implementation.onZoomedInChange {
+          return bridge.create_std__optional_std__function_void_bool____zoomedIn______({ () -> bridge.Func_void_bool in
+            let __closureWrapper = Func_void_bool(__unwrappedValue)
+            return bridge.create_Func_void_bool(__closureWrapper.toUnsafe())
+          }())
+        } else {
+          return .init()
+        }
+      }()
+    }
+    @inline(__always)
+    set {
+      self.__implementation.onZoomedInChange = { () -> ((_ zoomedIn: Bool) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_bool____zoomedIn______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_bool____zoomedIn______(newValue)
+          return { () -> (Bool) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_bool(__unwrapped)
+            return { (__zoomedIn: Bool) -> Void in
+              __wrappedFunction.call(__zoomedIn)
+            }
+          }()
+        } else {
+          return nil
+        }
+      }()
+    }
+  }
+  
   public final var onTextSelectionChange: bridge.std__optional_std__function_void_const_std__optional_std__variant_nitro__NullType__TextSelection_______selection______ {
     @inline(__always)
     get {

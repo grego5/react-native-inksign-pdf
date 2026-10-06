@@ -141,6 +141,20 @@ abstract class HybridInkSignViewSpec: HybridView() {
       onPageChange = value?.let { it }
     }
   
+  abstract var onZoomedInChange: ((zoomedIn: Boolean) -> Unit)?
+  
+  private var onZoomedInChange_cxx: Func_void_bool?
+    @Keep
+    @DoNotStrip
+    get() {
+      return onZoomedInChange?.let { Func_void_bool_java(it) }
+    }
+    @Keep
+    @DoNotStrip
+    set(value) {
+      onZoomedInChange = value?.let { it }
+    }
+  
   abstract var onTextSelectionChange: ((selection: Variant_NullType_TextSelection?) -> Unit)?
   
   private var onTextSelectionChange_cxx: Func_void_std__optional_std__variant_nitro__NullType__TextSelection__?

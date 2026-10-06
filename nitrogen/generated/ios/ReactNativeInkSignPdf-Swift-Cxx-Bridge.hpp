@@ -514,6 +514,43 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::function<void(bool /* zoomedIn */)>
+  /**
+   * Specialized version of `std::function<void(bool)>`.
+   */
+  using Func_void_bool = std::function<void(bool /* zoomedIn */)>;
+  /**
+   * Wrapper class for a `std::function<void(bool / * zoomedIn * /)>`, this can be used from Swift.
+   */
+  class Func_void_bool_Wrapper final {
+  public:
+    explicit Func_void_bool_Wrapper(std::function<void(bool /* zoomedIn */)>&& func): _function(std::make_unique<std::function<void(bool /* zoomedIn */)>>(std::move(func))) {}
+    inline void call(bool zoomedIn) const noexcept {
+      _function->operator()(zoomedIn);
+    }
+  private:
+    std::unique_ptr<std::function<void(bool /* zoomedIn */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_bool_Wrapper wrap_Func_void_bool(Func_void_bool value) noexcept {
+    return Func_void_bool_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::optional<std::function<void(bool /* zoomedIn */)>>
+  /**
+   * Specialized version of `std::optional<std::function<void(bool / * zoomedIn * /)>>`.
+   */
+  using std__optional_std__function_void_bool____zoomedIn______ = std::optional<std::function<void(bool /* zoomedIn */)>>;
+  inline std::optional<std::function<void(bool /* zoomedIn */)>> create_std__optional_std__function_void_bool____zoomedIn______(const std::function<void(bool /* zoomedIn */)>& value) noexcept {
+    return std::optional<std::function<void(bool /* zoomedIn */)>>(value);
+  }
+  inline bool has_value_std__optional_std__function_void_bool____zoomedIn______(const std::optional<std::function<void(bool /* zoomedIn */)>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::function<void(bool /* zoomedIn */)> get_std__optional_std__function_void_bool____zoomedIn______(const std::optional<std::function<void(bool /* zoomedIn */)>>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::variant<nitro::NullType, TextSelection>
   /**
    * Wrapper struct for `std::variant<nitro::NullType, TextSelection>`.

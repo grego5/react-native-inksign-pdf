@@ -134,6 +134,11 @@ void JHybridInkSignViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass>
     hybridView->setOnPageChange(newProps->onPageChange.get());
   }
   if (oldProps == nullptr
+        ? newProps->onZoomedInChange.isProvided()
+        : !newProps->onZoomedInChange.hasSameValue(oldProps->onZoomedInChange)) {
+    hybridView->setOnZoomedInChange(newProps->onZoomedInChange.get());
+  }
+  if (oldProps == nullptr
         ? newProps->onTextSelectionChange.isProvided()
         : !newProps->onTextSelectionChange.hasSameValue(oldProps->onTextSelectionChange)) {
     hybridView->setOnTextSelectionChange(newProps->onTextSelectionChange.get());

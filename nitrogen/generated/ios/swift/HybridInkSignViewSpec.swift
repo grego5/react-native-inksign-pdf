@@ -26,6 +26,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   var pagerDirection: PagerDirection? { get set }
   var onStateChange: ((_ event: StateChangeEvent) -> Void)? { get set }
   var onPageChange: ((_ event: PageInfo) -> Void)? { get set }
+  var onZoomedInChange: ((_ zoomedIn: Bool) -> Void)? { get set }
   var onTextSelectionChange: ((_ selection: Variant_NullType_TextSelection?) -> Void)? { get set }
 
   // Methods

@@ -93,6 +93,9 @@ file already at `uri` is reused:
 
 ## Common actions
 
+Use `onZoomedInChange={setControlsHidden}` to hide your controls when zoom is
+above page fit. It reports after settling; fitted or smaller zoom reports `false`.
+
 Use `setViewMode()`, `setInkMode()`, or `setTextMode()` to choose an input mode.
 Omit options to preserve the viewport; pass `{}` to fit the page, or
 `{ zoom: 3, x: 200, y: 600 }` to zoom and focus. Text-mode viewport changes
