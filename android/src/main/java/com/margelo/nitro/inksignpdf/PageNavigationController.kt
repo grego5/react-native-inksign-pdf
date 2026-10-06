@@ -279,7 +279,7 @@ internal class PageNavigationController(
     requestInvalidate()
   }
 
-  internal fun onVisibleTilesReady(
+  internal fun onVisibleTilesPresented(
     generation: Long,
     pageIndex: Int,
     pageSwitchId: Long,
@@ -426,7 +426,15 @@ internal class PageNavigationController(
     val currentGesture = transaction.gesture
     val updated = supplied ?: PageNavigationPolicy.update(currentGesture, currentX, currentY)
     if (updated.phase == SwipePhase.CANDIDATE) {
-      settleToRest()
+      // Neutral displacement resets presentation, not ownership of the touch stream.
+      state = NavigationState.Dragging(transaction.copy(
+        gesture = updated,
+        latestTouchX = currentX,
+        latestTouchY = currentY,
+        selectedPreview = null,
+        presentation = NavigationPresentation(),
+      ))
+      requestInvalidate()
       return
     }
     val direction = updated.physicalDirection ?: return

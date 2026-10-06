@@ -93,5 +93,12 @@
   Velocity is clamped to the platform maximum; multi-touch, cancellation,
   vertical-dominant movement, and unavailable neighbors do not commit. If a
   target preview is still rendering at release, the intent waits for that preview.
+- An admitted page pull owns the touch stream until release or cancellation.
+  Returning to neutral restores the resting presentation while retaining the
+  gesture; pulling again can reveal either eligible neighbor in the same stream.
+- After transition settlement, the target preview remains until the tiled draw
+  submits complete visible coverage at the final viewport. Cache readiness requests
+  drawing; a next-frame acknowledgement retires the preview only for the matching
+  document, page, and switch ID. This is draw submission, not a GPU presentation fence.
 - Edit mode accepts a single finger or stylus stroke using the transform and
   pen settings captured at stroke start.

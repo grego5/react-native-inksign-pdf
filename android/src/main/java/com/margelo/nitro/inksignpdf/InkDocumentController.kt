@@ -390,6 +390,8 @@ internal class InkDocumentController(
     canvas.drawRect(pageRect, pagePaint)
 
     val displayedRequests = displayedVisibleTileRequests
+    visibleTilesDrawn = false
+    var drawnTiles = 0
     if (displayedRequests.isNotEmpty()) {
       val tileToViewScale = viewScale / displayedRequests[0].scale
       displayedRequests.forEach { request ->
@@ -404,9 +406,13 @@ internal class InkDocumentController(
           coreRect = tileCoreRect,
           paint = tilePaint,
         )
+        drawnTiles += 1
       }
     }
     canvas.restore()
+    visibleTilesDrawn = displayedRequests.isNotEmpty() &&
+      !tileLevelTransitionPending && displayedRequests == activeVisibleTileRequests &&
+      drawnTiles == displayedRequests.size
     drawState.set(viewScale, viewOffsetX, viewOffsetY)
     return drawState
   }
@@ -771,6 +777,10 @@ internal class InkDocumentController(
       onVisibleTilesReady?.invoke()
     }
   }
+
+  /** True only after the current draw submitted complete destination coverage. */
+  internal var visibleTilesDrawn: Boolean = false
+    private set
 
   private fun stopFling() {
     scroller.forceFinished(true)
