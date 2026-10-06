@@ -184,6 +184,40 @@ internal class SurfaceView(
   var textAnnotationBeingEdited: (() -> Long?)? = null
   var onStateChange: ((InkState) -> Unit)? = null
   var onPageChange: ((PdfPageInfo) -> Unit)? = null
+  var onZoomedInChange: ((Boolean) -> Unit)? = null
+  private var zoomReportSample: Triple<String, Double, Double>? = null
+  private var reportedZoomDocument: Long? = null
+  private var reportedZoomedIn: Boolean? = null
+  private var zoomTouchActive = false
+  private val reportSettledZoom = object : Runnable {
+    override fun run() {
+      if (disposed) return
+      if (zoomTouchActive || pageNavigationController.state() != NavigationState.Idle) {
+        postDelayed(this, 120L)
+        return
+      }
+      val sample = zoomReportSample ?: return
+      val zoomedIn = sample.second > sample.third * 1.001
+      val generation = documentCoordinator.generation
+      if (reportedZoomDocument != generation || reportedZoomedIn != zoomedIn) {
+        reportedZoomDocument = generation
+        reportedZoomedIn = zoomedIn
+        onZoomedInChange?.invoke(zoomedIn)
+      }
+    }
+  }
+
+  private fun observeZoomForReporting() {
+    if (!documentCoordinator.hasDocument) return
+    val page = documentCoordinator.page(documentCoordinator.activePageIndex)
+    val viewport = documentController.viewportSnapshot() ?: return
+    val fit = documentController.usableFitZoomFor(page.dimensions) ?: return
+    val sample = Triple(page.id, viewport.zoom, fit)
+    if (sample == zoomReportSample && reportedZoomDocument == documentCoordinator.generation) return
+    zoomReportSample = sample
+    removeCallbacks(reportSettledZoom)
+    postDelayed(reportSettledZoom, 120L)
+  }
   var onTextContentChanged: (() -> Unit)? = null
   var onTextTransformChanged: (() -> Unit)? = null
   var onModeChanged: (() -> Unit)? = null
@@ -1018,6 +1052,7 @@ internal class SurfaceView(
     if (disposed) return
     val navigationPresentation = pageNavigationController.presentation()
     val drawState = documentController.draw(canvas, navigationPresentation) ?: return
+    observeZoomForReporting()
 
     InkPerfetto.section("InkSign/draw") {
       canvas.save()
@@ -1088,6 +1123,14 @@ internal class SurfaceView(
   }
 
   override fun onTouchEvent(event: MotionEvent): Boolean {
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> zoomTouchActive = true
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+        zoomTouchActive = false
+        removeCallbacks(reportSettledZoom)
+        postDelayed(reportSettledZoom, 120L)
+      }
+    }
     if (disposed) return false
     if (openHandoffInProgress) return true
     perfetto.eventReceived(event.eventTime)
@@ -1160,6 +1203,8 @@ internal class SurfaceView(
     documentController.dispose()
     clearSnapCandidateMeasurement()
     onPageChange = null
+    removeCallbacks(reportSettledZoom)
+    onZoomedInChange = null
     resetDocumentHistories()
     pageSwitchRequestId += 1L
     lastReportedState = InkState(false, false, false)

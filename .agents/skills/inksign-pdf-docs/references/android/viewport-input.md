@@ -1,6 +1,10 @@
 # Android viewport and input
 
 ## Viewport
+- `onZoomedInChange(boolean)` reports settled zoom above fitted scale with a
+   0.1% tolerance. Native deduplicates results per document; page/size changes
+   reevaluate fit. Reporting waits for touch/navigation completion and 120 ms
+   without a zoom/fit change; continuous viewport updates stay native.
 
 - View and document state belong to the UI thread. Viewport focus uses displayed
   top-left page coordinates; transforms map stored content to that orientation.

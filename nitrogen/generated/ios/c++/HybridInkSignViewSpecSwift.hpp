@@ -237,6 +237,13 @@ namespace margelo::nitro::inksignpdf {
     inline void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) noexcept override {
       _swiftPart.setOnPageChange(onPageChange);
     }
+    inline std::optional<std::function<void(bool /* zoomedIn */)>> getOnZoomedInChange() noexcept override {
+      auto __result = _swiftPart.getOnZoomedInChange();
+      return __result;
+    }
+    inline void setOnZoomedInChange(const std::optional<std::function<void(bool /* zoomedIn */)>>& onZoomedInChange) noexcept override {
+      _swiftPart.setOnZoomedInChange(onZoomedInChange);
+    }
     inline std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> getOnTextSelectionChange() noexcept override {
       auto __result = _swiftPart.getOnTextSelectionChange();
       return __result;

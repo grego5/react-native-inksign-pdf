@@ -167,6 +167,50 @@ final class InkSignView: HybridInkSignViewSpec {
 
   var onStateChange: ((StateChangeEvent) -> Void)?
   var onPageChange: ((PageInfo) -> Void)?
+  var onZoomedInChange: ((Bool) -> Void)?
+  private var zoomReportWork: DispatchWorkItem?
+  private var zoomReportSample: (UUID, CGFloat, CGFloat)?
+  private var reportedZoomGeneration: UInt64?
+  private var reportedZoomedIn: Bool?
+
+  func scheduleZoomedInReport() {
+    guard !disposed, let state = documentCoordinator.document,
+          let fit = usableFitScale() else { return }
+    let sample = (state.activePage.id, documentView.scaleFactor, fit)
+    if let previous = zoomReportSample, previous == sample,
+       reportedZoomGeneration == documentCoordinator.generation { return }
+    zoomReportSample = sample
+    zoomReportWork?.cancel()
+    queueZoomedInReport()
+  }
+
+  private func queueZoomedInReport() {
+    let work = DispatchWorkItem { [weak self] in
+      guard let self, !self.disposed, let state = self.documentCoordinator.document else { return }
+      if self.hasActiveViewportGesture(in: self.documentView) {
+        self.queueZoomedInReport()
+        return
+      }
+      guard let fit = self.usableFitScale() else { return }
+      let zoomedIn = self.documentView.scaleFactor > fit * 1.001
+      if self.reportedZoomGeneration != self.documentCoordinator.generation || self.reportedZoomedIn != zoomedIn {
+        self.reportedZoomGeneration = self.documentCoordinator.generation
+        self.reportedZoomedIn = zoomedIn
+        self.onZoomedInChange?(zoomedIn)
+      }
+      self.zoomReportSample = (state.activePage.id, self.documentView.scaleFactor, fit)
+    }
+    zoomReportWork = work
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
+  }
+
+  private func hasActiveViewportGesture(in view: UIView) -> Bool {
+    if let scroll = view as? UIScrollView,
+       scroll.isTracking || scroll.isDragging || scroll.isDecelerating || scroll.isZooming || scroll.isZoomBouncing {
+      return true
+    }
+    return view.subviews.contains { hasActiveViewportGesture(in: $0) }
+  }
   var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Void)?
 
   var canvasView: InkCanvasView { overlayProvider.canvasView }
@@ -294,6 +338,8 @@ final class InkSignView: HybridInkSignViewSpec {
       }
       self.onStateChange = nil
       self.onPageChange = nil
+      self.zoomReportWork?.cancel()
+      self.onZoomedInChange = nil
     }
   }
 

@@ -194,6 +194,12 @@ using namespace margelo::nitro::inksignpdf::views;
           : !newViewProps.onPageChange.hasSameValue(oldViewProps->onPageChange)) {
       swiftPart.setOnPageChange(newViewProps.onPageChange.get());
     }
+    // onZoomedInChange: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.onZoomedInChange.isProvided()
+          : !newViewProps.onZoomedInChange.hasSameValue(oldViewProps->onZoomedInChange)) {
+      swiftPart.setOnZoomedInChange(newViewProps.onZoomedInChange.get());
+    }
     // onTextSelectionChange: optional
     if (oldViewProps == nullptr
           ? newViewProps.onTextSelectionChange.isProvided()

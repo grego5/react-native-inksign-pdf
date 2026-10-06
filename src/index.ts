@@ -94,9 +94,10 @@ const NativeInkSignView = getHostComponent<InkSignViewProps, InkSignViewMethods>
 );
 
 type NativeInkSignViewProps = React.ComponentProps<typeof NativeInkSignView>;
-type InkSignViewComponentProps = Omit<NativeInkSignViewProps, 'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange'> & {
+type InkSignViewComponentProps = Omit<NativeInkSignViewProps, 'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomedInChange'> & {
   onStateChange?: InkSignViewProps['onStateChange'];
   onPageChange?: InkSignViewProps['onPageChange'];
+  onZoomedInChange?: InkSignViewProps['onZoomedInChange'];
   onTextSelectionChange?: InkSignViewProps['onTextSelectionChange'];
 };
 
@@ -234,7 +235,7 @@ function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHand
 export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewComponentProps>(
   (props, ref) => {
     validatePagerDirection(props.pagerDirection);
-    const { onStateChange, onPageChange, onTextSelectionChange, ...nativeProps } = props;
+    const { onStateChange, onPageChange, onTextSelectionChange, onZoomedInChange, ...nativeProps } = props;
     const wrappedHybridRef = useMemo(
       () =>
         callback((value: InkSignViewNativeHandle | null) => {
@@ -249,6 +250,7 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewCompon
     );
     const wrappedStateChange = useMemo(() => callback(onStateChange), [onStateChange]);
     const wrappedPageChange = useMemo(() => callback(onPageChange), [onPageChange]);
+    const wrappedZoomedInChange = useMemo(() => callback(onZoomedInChange), [onZoomedInChange]);
     const wrappedTextSelectionChange = useMemo(() => callback(onTextSelectionChange), [onTextSelectionChange]);
 
     return React.createElement(NativeInkSignView, {
@@ -256,6 +258,7 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewCompon
       hybridRef: wrappedHybridRef,
       onStateChange: wrappedStateChange,
       onPageChange: wrappedPageChange,
+      onZoomedInChange: wrappedZoomedInChange,
       onTextSelectionChange: wrappedTextSelectionChange,
     });
   },

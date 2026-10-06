@@ -2,6 +2,11 @@
 
 ## Viewport and modes
 
+- `onZoomedInChange(boolean)` reports settled zoom above fitted scale with a
+  0.1% tolerance. Native deduplicates results per document and reevaluates after
+  page/size changes. Reporting waits 120 ms after scale/fit changes and for
+  PDFView scroll/zoom gestures to finish; continuous updates stay native.
+
 - **Mode commands:** `setViewMode()` and `setInkMode()` finish text interaction
   and apply viewport options immediately. Omission preserves the viewport; an
   empty object fits; zoom and paired x/y override supplied values. `setTextMode()`

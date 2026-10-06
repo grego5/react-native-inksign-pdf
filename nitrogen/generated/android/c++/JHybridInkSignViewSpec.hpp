@@ -82,6 +82,8 @@ namespace margelo::nitro::inksignpdf {
     void setOnStateChange(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& onStateChange) override;
     std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() override;
     void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) override;
+    std::optional<std::function<void(bool /* zoomedIn */)>> getOnZoomedInChange() override;
+    void setOnZoomedInChange(const std::optional<std::function<void(bool /* zoomedIn */)>>& onZoomedInChange) override;
     std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> getOnTextSelectionChange() override;
     void setOnTextSelectionChange(const std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>& onTextSelectionChange) override;
 

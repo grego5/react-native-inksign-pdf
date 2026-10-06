@@ -215,6 +215,8 @@ export interface InkSignViewProps extends HybridViewProps {
   pagerDirection?: PagerDirection
   onStateChange?: (event: StateChangeEvent) => void
   onPageChange?: (event: PageInfo) => void
+  /** Reports settled zoom above fitted scale; at or below fit reports false. */
+  onZoomedInChange?: (zoomedIn: boolean) => void
   onTextSelectionChange?: (selection: TextSelection | null) => void
 }
 
