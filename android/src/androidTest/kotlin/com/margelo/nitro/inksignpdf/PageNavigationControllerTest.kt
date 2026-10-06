@@ -22,6 +22,27 @@ class PageNavigationControllerTest {
   fun close() = harness.close()
 
   @Test
+  fun returningToOriginKeepsPullActiveAndAllowsEitherNeighbor() = harness.onMain {
+    harness.prepare(SwipeDirection.LEFT)
+    harness.prepare(SwipeDirection.RIGHT)
+    harness.touch(down(150f, 100f))
+    harness.touch(move(0f, 100f))
+    assertEquals(SwipeDirection.LEFT, harness.controller.presentation().direction)
+    harness.touch(move(150f, 100f))
+    assertTrue(harness.controller.state() is NavigationState.Dragging)
+    assertEquals(null, harness.controller.presentation().selectedPreview)
+    harness.touch(move(0f, 100f))
+    assertEquals(SwipeDirection.LEFT, harness.controller.presentation().direction)
+    harness.touch(move(150f, 100f))
+    harness.touch(move(300f, 100f))
+    assertEquals(SwipeDirection.RIGHT, harness.controller.presentation().direction)
+    harness.touch(up(300f, 100f))
+    harness.settlement.complete()
+    assertEquals(0, harness.installs.single().targetPageIndex)
+    assertEquals(listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_CANCEL), harness.forwarded)
+  }
+
+  @Test
   fun outwardStreamForwardsDownThenOneCancelAndStopsOrdinaryRouting() = harness.onMain {
     harness.prepare(SwipeDirection.LEFT)
     harness.touch(down(150f, 100f))
@@ -177,7 +198,7 @@ class PageNavigationControllerTest {
     harness.swipeLeftAndRelease()
     harness.settlement.finishLatest()
     val handoff = harness.installs.single()
-    harness.controller.onVisibleTilesReady(9L, handoff.targetPageIndex, handoff.pageSwitchId)
+    harness.controller.onVisibleTilesPresented(9L, handoff.targetPageIndex, handoff.pageSwitchId)
     assertTrue(harness.controller.state() is NavigationState.Switching)
     harness.controller.onVisibleTilesFailed(1L, handoff.targetPageIndex, handoff.pageSwitchId - 1L)
     assertTrue(harness.controller.state() is NavigationState.Switching)
@@ -185,7 +206,7 @@ class PageNavigationControllerTest {
     assertEquals(NavigationState.Idle, harness.controller.state())
 
     harness.controller.cancel()
-    harness.controller.onVisibleTilesReady(1L, handoff.targetPageIndex, handoff.pageSwitchId)
+    harness.controller.onVisibleTilesPresented(1L, handoff.targetPageIndex, handoff.pageSwitchId)
     assertEquals(NavigationState.Idle, harness.controller.state())
   }
 

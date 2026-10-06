@@ -629,13 +629,28 @@ internal class SurfaceView(
 
   private fun onVisibleTilesReady() {
     requireOnUiThread()
-    val document = documentCoordinator.takeIf { it.hasDocument } ?: return
-    pageNavigationController.onVisibleTilesReady(
-      document.generation,
-      document.activePageIndex,
-      pageSwitchRequestId,
-    )
-    pageNavigationController.reconcilePreviews()
+    // Cache readiness requests a draw; only a completed draw retires the preview.
+    invalidate()
+  }
+
+  private var pendingTilePresentation: PageSwitchHandoff? = null
+
+  private fun acknowledgeTilePresentation() {
+    if (!documentController.visibleTilesDrawn) return
+    val handoff = (pageNavigationController.state() as? NavigationState.Switching)?.handoff ?: return
+    if (pendingTilePresentation == handoff) return
+    pendingTilePresentation = handoff
+    postOnAnimation {
+      if (pendingTilePresentation != handoff) return@postOnAnimation
+      pendingTilePresentation = null
+      if (disposed || !documentCoordinator.hasDocument ||
+        documentCoordinator.generation != handoff.documentGeneration ||
+        documentCoordinator.activePageIndex != handoff.targetPageIndex ||
+        pageSwitchRequestId != handoff.pageSwitchId) return@postOnAnimation
+      pageNavigationController.onVisibleTilesPresented(
+        handoff.documentGeneration, handoff.targetPageIndex, handoff.pageSwitchId,
+      )
+    }
   }
 
   private fun onVisibleTilesFailed(
@@ -1084,6 +1099,7 @@ internal class SurfaceView(
       canvas.restore()
     }
     drawPagePreview(canvas, navigationPresentation)
+    acknowledgeTilePresentation()
     perfetto.marker("InkSign/completed ink submitted")
   }
 
