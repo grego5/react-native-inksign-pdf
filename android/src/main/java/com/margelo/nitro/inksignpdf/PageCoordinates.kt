@@ -2,7 +2,7 @@ package com.margelo.nitro.inksignpdf
 
 import android.graphics.Matrix
 
-/** Maps raw PDF content coordinates to the page orientation reported by PDFium. */
+/** Canonical media-box-relative, top-left content and displayed page geometry. */
 internal class PageCoordinates(private val page: PdfPageDimensions) {
   val rawWidth: Double
     get() = if (page.rotation % 2 == 0) page.width else page.height
@@ -46,9 +46,17 @@ internal class PageCoordinates(private val page: PdfPageDimensions) {
 
   fun displayToRawTransform(): PageTransform = rawToDisplayTransform.inverse()
 
+  fun canonicalToDisplay(point: PagePoint): PagePoint = rawToDisplay(point)
+  fun canonicalToDisplay(rect: PageRect): PageRect = rawToDisplay(rect)
+  fun displayToCanonical(point: PagePoint): PagePoint = displayToRaw(point)
+  fun displayToCanonical(rect: PageRect): PageRect = displayToRaw(rect)
+  fun canonicalToDisplayTransform(): PageTransform = rawToDisplayTransform
+  fun layoutToCanonical(layoutPage: PdfPageDimensions?): PageTransform =
+    layoutPage?.let { PageCoordinates(it).displayToRawTransform() }
+      ?: PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
   fun layoutToDisplay(layoutPage: PdfPageDimensions?): PageTransform =
-    (layoutPage?.let { PageCoordinates(it).displayToRawTransform() }
-      ?: PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)).then(rawToDisplayTransform)
+    layoutToCanonical(layoutPage).then(rawToDisplayTransform)
 
   private fun mapRect(rect: PageRect, mapPoint: (PagePoint) -> PagePoint): PageRect {
     val corners = listOf(

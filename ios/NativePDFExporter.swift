@@ -177,7 +177,7 @@ enum InkSignPdfNativeExporter {
 
   private static func pdfPath(_ canonicalPath: CGPath,
                               mediaBox: CGRect) throws -> (CGRect, CGPath) {
-    var toPDF = InkSignPdfTextRenderer.canonicalToPDFTransform(for: mediaBox)
+    var toPDF = PageGeometry(mediaBox: mediaBox, rotation: 0).canonicalToPDFTransform
     guard let pathInPDF = canonicalPath.copy(using: &toPDF) else {
       throw InkSignPdfNativeExporterError.invalidOutput(
         "signature path could not be transformed to PDF coordinates")
@@ -204,19 +204,10 @@ enum InkSignPdfNativeExporter {
     return (bounds, localPath)
   }
 
-  private static func pdfBounds(for canonicalBounds: CGRect,
-                               in mediaBox: CGRect) -> CGRect {
-    CGRect(x: mediaBox.minX + canonicalBounds.minX,
-           y: mediaBox.maxY - canonicalBounds.maxY,
-           width: canonicalBounds.width,
-           height: canonicalBounds.height)
-  }
-
   private static func pdfBounds(for text: InkSignPdfTextAnnotation,
                                 in mediaBox: CGRect) -> CGRect {
-    let layoutGeometry = PageGeometry(mediaBox: mediaBox, rotation: text.layoutRotation)
-    return pdfBounds(for: layoutGeometry.displayToRaw(text.flowBounds ?? text.bounds),
-                     in: mediaBox)
+    return text.canonicalPlacementBounds(mediaBox: mediaBox)
+      .applying(PageGeometry(mediaBox: mediaBox, rotation: 0).canonicalToPDFTransform)
   }
 
   private static func sameGeometry(_ expected: PageGeometry,

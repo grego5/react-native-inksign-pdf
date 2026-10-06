@@ -32,58 +32,6 @@ struct PageGeometry {
     }
   }
 
-  func displayToRaw(_ point: CGPoint) -> CGPoint {
-    switch Self.normalizedRotation(rotation) {
-    case 90:
-      return CGPoint(x: point.y, y: mediaBox.height - point.x)
-    case 180:
-      return CGPoint(x: mediaBox.width - point.x, y: mediaBox.height - point.y)
-    case 270:
-      return CGPoint(x: mediaBox.width - point.y, y: point.x)
-    default:
-      return point
-    }
-  }
-
-  func displayToRaw(_ rect: CGRect) -> CGRect {
-    let corners = [
-      CGPoint(x: rect.minX, y: rect.minY),
-      CGPoint(x: rect.maxX, y: rect.minY),
-      CGPoint(x: rect.minX, y: rect.maxY),
-      CGPoint(x: rect.maxX, y: rect.maxY),
-    ].map(displayToRaw)
-    let xs = corners.map(\.x)
-    let ys = corners.map(\.y)
-    return CGRect(x: xs.min()!, y: ys.min()!,
-                  width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
-  }
-
-  func rawToDisplay(_ point: CGPoint) -> CGPoint {
-    switch Self.normalizedRotation(rotation) {
-    case 90:
-      return CGPoint(x: mediaBox.height - point.y, y: point.x)
-    case 180:
-      return CGPoint(x: mediaBox.width - point.x, y: mediaBox.height - point.y)
-    case 270:
-      return CGPoint(x: point.y, y: mediaBox.width - point.x)
-    default:
-      return point
-    }
-  }
-
-  func rawToDisplay(_ rect: CGRect) -> CGRect {
-    let corners = [
-      CGPoint(x: rect.minX, y: rect.minY),
-      CGPoint(x: rect.maxX, y: rect.minY),
-      CGPoint(x: rect.minX, y: rect.maxY),
-      CGPoint(x: rect.maxX, y: rect.maxY),
-    ].map(rawToDisplay)
-    let xs = corners.map(\.x)
-    let ys = corners.map(\.y)
-    return CGRect(x: xs.min()!, y: ys.min()!,
-                  width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
-  }
-
   var displayToPDFTransform: CGAffineTransform {
     switch Self.normalizedRotation(rotation) {
     case 90:
@@ -99,5 +47,29 @@ struct PageGeometry {
       return CGAffineTransform(a: 1, b: 0, c: 0, d: -1,
                                tx: mediaBox.minX, ty: mediaBox.maxY)
     }
+  }
+
+  /// PDF coordinates include the media-box origin and have a bottom-left origin.
+  var canonicalToPDFTransform: CGAffineTransform {
+    CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: mediaBox.minX, ty: mediaBox.maxY)
+  }
+
+  var displayToCanonicalTransform: CGAffineTransform {
+    displayToPDFTransform.concatenating(canonicalToPDFTransform.inverted())
+  }
+
+  var canonicalToDisplayTransform: CGAffineTransform { displayToCanonicalTransform.inverted() }
+
+  func displayToCanonical(_ rect: CGRect) -> CGRect { rect.applying(displayToCanonicalTransform) }
+  func displayToCanonical(_ point: CGPoint) -> CGPoint { point.applying(displayToCanonicalTransform) }
+  func canonicalToDisplay(_ rect: CGRect) -> CGRect { rect.applying(canonicalToDisplayTransform) }
+  func canonicalToDisplay(_ point: CGPoint) -> CGPoint { point.applying(canonicalToDisplayTransform) }
+
+  func layoutToCanonical(rotation: Int) -> CGAffineTransform {
+    PageGeometry(mediaBox: mediaBox, rotation: rotation).displayToCanonicalTransform
+  }
+
+  func layoutToDisplay(rotation: Int) -> CGAffineTransform {
+    layoutToCanonical(rotation: rotation).concatenating(canonicalToDisplayTransform)
   }
 }

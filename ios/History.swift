@@ -7,6 +7,7 @@ extension InkSignView {
       self.textInteractionOverlay.finishForLifecycle()
       guard let page = self.documentCoordinator.document?.activePage else { return }
       guard page.history.undo() else { return }
+      self.documentCoordinator.synchronizeTextPlacement(on: page)
       self.installCommittedDrawing()
       self.textInteractionOverlay.syncContent()
       self.emitChange()
@@ -19,6 +20,7 @@ extension InkSignView {
       self.textInteractionOverlay.finishForLifecycle()
       guard let page = self.documentCoordinator.document?.activePage else { return }
       guard page.history.redo() else { return }
+      self.documentCoordinator.synchronizeTextPlacement(on: page)
       self.installCommittedDrawing()
       self.textInteractionOverlay.syncContent()
       self.emitChange()

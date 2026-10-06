@@ -29,17 +29,14 @@ struct InkSignPdfTextTarget {
   let pageID: UUID
   var sourceIdentity: String?
   var fieldName: String?
-  var bounds: CGRect
+  var canonicalBounds: CGRect
   var options: InkSignPdfTextTargetOptions
   var embeddedValue: String
-  var layoutGeometry: PageGeometry? = nil
-  var writingRule: InkSignPdfPlacementRule? = nil
+  var canonicalWritingRule: InkSignPdfCanonicalWritingRule? = nil
+  var canonicalDetectionBounds: CGRect
+  var excludedSourceRanges: [NSRange] = []
 
   var annotationOptions: TextAnnotationOptions { options.publicOptions }
-  var publicBounds: TextAnnotationBounds {
-    TextAnnotationBounds(x: Double(bounds.minX), y: Double(bounds.minY),
-      width: Double(bounds.width), height: Double(bounds.height))
-  }
 }
 import NitroModules
 
@@ -129,6 +126,7 @@ final class InkSignPdfDocumentCoordinator {
   private var ownedOutputs = Set<URL>()
   private var nextTextID: UInt64 = 0
   private var textTargets: [UInt64: InkSignPdfTextTarget] = [:]
+  private var textSourceAnalysis: [UUID: InkSignPdfPageAnalysis] = [:]
   private var pageAnalysisGeneration: UInt64?
   private var pageAnalysisCache: [PageAnalysisKey: InkSignPdfPageAnalysis] = [:]
   private var pageAnalysisLRU: [PageAnalysisKey] = []
@@ -147,42 +145,56 @@ final class InkSignPdfDocumentCoordinator {
   func reserveTextTarget(pageID: UUID,
                          sourceIdentity: String?,
                          fieldName: String?,
-                         bounds: CGRect,
+                         canonicalBounds: CGRect,
                          options: TextAnnotationOptions?,
-                         embeddedValue: String = "") throws -> InkSignPdfTextTarget {
+                         embeddedValue: String = "",
+                         canonicalWritingRule: InkSignPdfCanonicalWritingRule? = nil,
+                         canonicalDetectionBounds: CGRect? = nil,
+                         excludedSourceRanges: [NSRange] = []) throws -> InkSignPdfTextTarget {
     guard document?.pages.contains(where: { $0.id == pageID }) == true else {
       throw InkSignView.TextError.cancelled
     }
-    let normalized = bounds.standardized
-    if let existing = textTargets.values.first(where: { target in
-      guard target.pageID == pageID else { return false }
-      if let sourceIdentity { return target.sourceIdentity == sourceIdentity }
-      return target.sourceIdentity == nil && target.bounds == normalized
-    }) { return existing }
+    let normalized = canonicalBounds.standardized
+    if let existing = findTextTarget(pageID: pageID, sourceIdentity: sourceIdentity, canonicalBounds: normalized) { return existing }
     let id = try allocateTextID()
     let target = InkSignPdfTextTarget(id: id, pageID: pageID,
-      sourceIdentity: sourceIdentity, fieldName: fieldName, bounds: normalized,
-      options: InkSignPdfTextTargetOptions(options), embeddedValue: embeddedValue)
+      sourceIdentity: sourceIdentity, fieldName: fieldName, canonicalBounds: normalized,
+      options: InkSignPdfTextTargetOptions(options), embeddedValue: embeddedValue,
+      canonicalWritingRule: canonicalWritingRule,
+      canonicalDetectionBounds: canonicalDetectionBounds ?? normalized, excludedSourceRanges: excludedSourceRanges)
     textTargets[id] = target
     return target
   }
 
   func adoptTextTarget(id: UInt64, pageID: UUID, sourceIdentity: String?,
-                       fieldName: String?, bounds: CGRect,
-                       options: TextAnnotationOptions?, embeddedValue: String) throws -> InkSignPdfTextTarget {
+                       fieldName: String?, canonicalBounds: CGRect,
+                       embeddedValue: String,
+                       canonicalWritingRule: InkSignPdfCanonicalWritingRule? = nil,
+                       canonicalDetectionBounds: CGRect? = nil,
+                       excludedSourceRanges: [NSRange] = []) throws -> InkSignPdfTextTarget {
     guard document?.pages.contains(where: { $0.id == pageID }) == true else {
       throw InkSignView.TextError.cancelled
     }
-    var target = textTargets[id] ?? InkSignPdfTextTarget(
-      id: id, pageID: pageID, sourceIdentity: sourceIdentity, fieldName: fieldName,
-      bounds: bounds.standardized, options: InkSignPdfTextTargetOptions(options),
-      embeddedValue: embeddedValue)
+    guard var target = textTargets[id] else { throw InkSignView.TextError.textNotFound }
     guard target.pageID == pageID else { throw InkSignView.TextError.textNotFound }
+    if let conflict = findTextTarget(pageID: pageID, sourceIdentity: sourceIdentity, canonicalBounds: canonicalBounds),
+       conflict.id != id { throw InkSignView.TextError.targetAmbiguous }
+    if let existing = target.sourceIdentity, let sourceIdentity, existing != sourceIdentity {
+      throw InkSignView.TextError.targetAmbiguous
+    }
     target.sourceIdentity = sourceIdentity ?? target.sourceIdentity
     target.fieldName = fieldName ?? target.fieldName
-    target.bounds = bounds.standardized
+    target.canonicalBounds = canonicalBounds.standardized
+    if let sourceIdentity {
+      target.sourceIdentity = sourceIdentity
+      target.canonicalWritingRule = canonicalWritingRule
+      target.canonicalDetectionBounds = canonicalDetectionBounds ?? canonicalBounds.standardized
+      target.excludedSourceRanges = excludedSourceRanges
+    } else if target.sourceIdentity == nil {
+      target.canonicalDetectionBounds = canonicalBounds.standardized
+    }
     // Re-resolution preserves formatting; setTextOptions changes it explicitly.
-    target.embeddedValue = embeddedValue
+    if sourceIdentity != nil || target.sourceIdentity == nil { target.embeddedValue = embeddedValue }
     textTargets[id] = target
     return target
   }
@@ -198,6 +210,46 @@ final class InkSignPdfDocumentCoordinator {
     textTargets.values.filter { $0.pageID == pageID }
   }
 
+  func findTextTarget(pageID: UUID, sourceIdentity: String?, canonicalBounds: CGRect) -> InkSignPdfTextTarget? {
+    textTargets.values.first { target in
+      guard target.pageID == pageID else { return false }
+      if let sourceIdentity { return target.sourceIdentity == sourceIdentity }
+      let bounds = target.canonicalBounds
+      return target.sourceIdentity == nil && abs(bounds.minX - canonicalBounds.minX) <= 0.000001 &&
+        abs(bounds.minY - canonicalBounds.minY) <= 0.000001 && abs(bounds.maxX - canonicalBounds.maxX) <= 0.000001 &&
+        abs(bounds.maxY - canonicalBounds.maxY) <= 0.000001
+    }
+  }
+
+  func retainTextAnalysis(_ analysis: InkSignPdfPageAnalysis) {
+    // Source text is immutable for the lifetime of a stable page ID.
+    guard textSourceAnalysis[analysis.pageID] == nil else { return }
+    textSourceAnalysis[analysis.pageID] = analysis
+    for target in textTargets(for: analysis.pageID) {
+      refreshEmbeddedValue(id: target.id)
+    }
+  }
+
+  private func refreshEmbeddedValue(id: UInt64) {
+    guard var target = textTargets[id], let analysis = textSourceAnalysis[target.pageID] else { return }
+    target.embeddedValue = analysis.embeddedText(in: target.canonicalDetectionBounds, excluding: target.excludedSourceRanges)
+    textTargets[id] = target
+  }
+
+  func updateTextPlacement(_ annotation: InkSignPdfTextAnnotation, page: InkSignPdfPageState) {
+    let bounds = annotation.canonicalPlacementBounds(mediaBox: page.geometry.mediaBox)
+    guard var target = textTargets[annotation.id] else { preconditionFailure("Committed text requires a reserved target") }
+    precondition(target.pageID == page.id)
+    target.canonicalBounds = bounds
+    if target.sourceIdentity == nil { target.canonicalDetectionBounds = bounds }
+    textTargets[annotation.id] = target
+    refreshEmbeddedValue(id: annotation.id)
+  }
+
+  func synchronizeTextPlacement(on page: InkSignPdfPageState) {
+    page.history.content.textAnnotations.forEach { updateTextPlacement($0, page: page) }
+  }
+
   func updateTextTarget(_ id: UInt64, pageID: UUID, mutate: (inout InkSignPdfTextTarget) -> Void) throws {
     guard var target = textTargets[id], target.pageID == pageID else {
       throw InkSignView.TextError.textNotFound
@@ -208,6 +260,7 @@ final class InkSignPdfDocumentCoordinator {
 
   func removeTextTargets(for pageID: UUID) {
     textTargets = textTargets.filter { $0.value.pageID != pageID }
+    textSourceAnalysis.removeValue(forKey: pageID)
   }
 
   var isDirty: Bool {
@@ -289,6 +342,7 @@ final class InkSignPdfDocumentCoordinator {
       replacedDocument = document
       document = nil
       textTargets.removeAll(keepingCapacity: false)
+      textSourceAnalysis.removeAll(keepingCapacity: false)
       structuralDirty = false
       rollbackDocument = nil
       rollbackStructuralDirty = nil
@@ -468,7 +522,7 @@ final class InkSignPdfDocumentCoordinator {
     document = candidate
     let retainedPageIDs = Set(candidate.pages.map(\.id))
     textTargets = textTargets.filter { retainedPageIDs.contains($0.value.pageID) }
-    generation &+= 1
+    textSourceAnalysis = textSourceAnalysis.filter { retainedPageIDs.contains($0.key) }
     pendingArtifacts.remove(candidate.workingURL)
     structuralDirty = true
     return previous
@@ -511,6 +565,7 @@ final class InkSignPdfDocumentCoordinator {
     }
     document = nil
     textTargets.removeAll(keepingCapacity: false)
+    textSourceAnalysis.removeAll(keepingCapacity: false)
     structuralDirty = false
   }
 
@@ -567,6 +622,7 @@ final class InkSignPdfDocumentCoordinator {
     guard !isDisposed else { lock.unlock(); return }
     isDisposed = true
     textTargets.removeAll(keepingCapacity: false)
+    textSourceAnalysis.removeAll(keepingCapacity: false)
     generation &+= 1
     activeOperation = nil
     let cancellationHandlers = Array(pendingCancellations.values)

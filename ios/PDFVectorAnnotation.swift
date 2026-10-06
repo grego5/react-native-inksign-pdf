@@ -72,7 +72,10 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
       self.signaturePath = path.cgPath.copy()
       self.textValue = nil
     } else {
-      guard let id = coder.decodeObject(forKey: "inksign.textID") as? String,
+      let archivedID = coder.decodeObject(forKey: "inksign.textID")
+      let id = (archivedID as? NSNumber)?.uint64Value ??
+        (archivedID as? String).flatMap(UInt64.init)
+      guard let id,
             let text = coder.decodeObject(forKey: "inksign.text") as? String,
             let textColor = coder.decodeObject(forKey: "inksign.textColor") as? String else {
         return nil
@@ -108,7 +111,7 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
       coder.encode(UIBezierPath(cgPath: signaturePath), forKey: "inksign.path")
     }
     if let textValue {
-      coder.encode(textValue.id, forKey: "inksign.textID")
+      coder.encode(NSNumber(value: textValue.id), forKey: "inksign.textID")
       coder.encode(textValue.text, forKey: "inksign.text")
       coder.encode(textValue.textColor, forKey: "inksign.textColor")
       coder.encode(textValue.bounds, forKey: "inksign.textBounds")
@@ -183,10 +186,10 @@ final class InkSignPdfVectorAnnotation: PDFAnnotation {
         context.restoreGState()
         return
       }
-      let layoutGeometry = PageGeometry(mediaBox: mediaBox, rotation: textValue.layoutRotation)
-      context.concatenate(layoutGeometry.displayToPDFTransform)
+      let geometry = PageGeometry(mediaBox: mediaBox, rotation: 0)
+      context.concatenate(geometry.canonicalToPDFTransform)
       _ = InkSignPdfTextRenderer.drawCanonical([textValue],
-                                               pageSize: layoutGeometry.displaySize,
+                                               pageSize: mediaBox.size,
                                                in: context,
                                                color: annotationColor)
     }

@@ -100,9 +100,9 @@ class PageRotationInstrumentationTest {
         val exported = PdfiumRenderSession.open(File(output).readBytes())
         try {
           assertEquals(PdfiumPageSize(240.0, 320.0, 1), exported.pageSize(0))
-          assertTrue(completeLabelMatches(
-            preparedTextLabels(exported.preparePageAnalysis(0)), "New text",
-          ).isNotEmpty())
+          val exportedAnalysis = exported.preparePageAnalysis(0)
+          assertTrue("Export must retain the inserted text glyphs: ${glyphText(exportedAnalysis)}",
+            glyphText(exportedAnalysis).contains("New text"))
           val rendered = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
           try {
             assertTrue(exported.renderPageIntoBitmap(
@@ -192,9 +192,10 @@ class PageRotationInstrumentationTest {
       }
       await(instrumentation, viewRef.get().open(source.absolutePath, null))
       var stableId: Double? = null
-      for (angle in listOf(0, 90, 180, 270)) {
+      for (rotationStep in listOf(0, 90, 180, 270, 360)) {
+        val angle = rotationStep % 360
         val view = viewRef.get()
-        if (angle != 0) await(instrumentation, view.rotatePage(90.0))
+        if (rotationStep != 0) await(instrumentation, view.rotatePage(90.0))
         val page = awaitPreparedPage(instrumentation, view)
         if (angle == 90 || angle == 270) {
           try {
@@ -224,7 +225,12 @@ class PageRotationInstrumentationTest {
           continue
         }
         val id = page.resolveText(fieldResolutionOptions())
-        stableId?.let { assertEquals(it, id, 0.0) } ?: run { stableId = id }
+        if (angle == 180) {
+          assertTrue("The opposite source rule must have a distinct target", id != checkNotNull(stableId))
+        } else {
+          stableId?.let { assertEquals("Returning to the same source rule must reuse its ID", it, id, 0.0) }
+            ?: run { stableId = id }
+        }
         page.setTextValue(id, "OK")
         val ruleY = if (angle == 0) 132.0 else 268.0
         val field = PageRect(if (angle == 0) 210.0 else 190.0, 0.0, 280.0, ruleY)
@@ -289,6 +295,10 @@ class PageRotationInstrumentationTest {
     return android.graphics.Rect(left, top, right + 1, bottom + 1)
   }
 
+  private fun glyphText(analysis: PdfiumPreparedPageAnalysis): String = buildString {
+    analysis.glyphs.forEach { appendCodePoint(it.codepoint) }
+  }
+
   @Test
   fun rotationPreservesHistoryCancelsLiveInputAndPersistsExportedOrientation() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -317,6 +327,7 @@ class PageRotationInstrumentationTest {
       instrumentation.runOnMainSync {
         val view = viewRef.get()
         originalPageId.set(view.coordinator.page(0).id)
+        view.defaultTextColor = "#D00000"
         setPreparedText(preparedPage, TextAnnotationBounds(20.0, 90.0, 180.0, 30.0), "Approved")
         view.coordinator.appendActiveInk(originalInk)
         val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
@@ -390,9 +401,21 @@ class PageRotationInstrumentationTest {
       val exported = PdfiumRenderSession.open(File(outputPath).readBytes())
       try {
         assertEquals(PdfiumPageSize(240.0, 320.0, rotation = 1), exported.pageSize(0))
-        assertTrue("Export should retain committed text", completeLabelMatches(
-          preparedTextLabels(exported.preparePageAnalysis(0)), "Approved",
-        ).isNotEmpty())
+        val exportedAnalysis = exported.preparePageAnalysis(0)
+        assertTrue("Export should retain committed text glyphs: ${glyphText(exportedAnalysis)}",
+          glyphText(exportedAnalysis).contains("Approved"))
+        val rendered = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
+        try {
+          assertTrue(exported.renderPageIntoBitmap(0, rendered,
+            PdfiumAffineMatrix(1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+            PdfiumRect(0.0, 0.0, 240.0, 320.0), flags = pdfiumAndroidDisplayFlags))
+          val pixels = redPixelBounds(rendered)
+          val expected = PageCoordinates(PdfPageDimensions(240.0, 320.0, rotation = 1))
+            .canonicalToDisplay(PageRect(20.0, 90.0, 200.0, 120.0))
+          assertTrue("Exported text pixels $pixels should lie within rotated target $expected",
+            pixels.left >= expected.left - 2 && pixels.right <= expected.right + 2 &&
+              pixels.top >= expected.top - 2 && pixels.bottom <= expected.bottom + 2)
+        } finally { rendered.recycle() }
       } finally {
         exported.close()
         File(outputPath).delete()

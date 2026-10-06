@@ -39,6 +39,8 @@ internal data class PdfiumTextKeyMatch(
   val sourceIndex: Double,
   val lineCenter: Double,
   val lineHeight: Double,
+  val rowStart: PagePoint = PagePoint((left + right) / 2.0, lineCenter - lineHeight / 2.0),
+  val rowEnd: PagePoint = PagePoint((left + right) / 2.0, lineCenter + lineHeight / 2.0),
 )
 
 internal data class PdfiumPreparedGlyph(

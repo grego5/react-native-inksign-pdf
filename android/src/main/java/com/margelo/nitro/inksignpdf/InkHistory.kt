@@ -49,6 +49,16 @@ internal data class TextAnnotation(
   /** Page orientation in which layout coordinates were captured; null means raw content space. */
   val layoutPage: PdfPageDimensions? = null,
 ) {
+  val layoutToCanonical: PageTransform
+    get() = layoutPage?.let { PageCoordinates(it).displayToRawTransform() }
+      ?: PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+  val canonicalPlacementBounds: PageRect
+    get() = textAnnotationOuterBounds(flowBounds ?: bounds, layoutToCanonical, 0.0, 0.0)
+
+  fun layoutToDisplay(page: PdfPageDimensions): PageTransform =
+    layoutToCanonical.then(PageCoordinates(page).canonicalToDisplayTransform())
+
   init {
     require(id > 0L) { "Text annotation ID must be positive" }
     require(text.isNotBlank()) { "Committed text annotation must not be blank" }

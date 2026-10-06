@@ -46,7 +46,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       maxLines: 1,
       verticalAnchor: .bottom)
     let boundedAnnotation = InkSignPdfTextAnnotation(
-      id: "bounded",
+      id: 10,
       text: boundedText,
       bounds: flowBounds,
       fontSize: 18,
@@ -63,13 +63,13 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertLessThanOrEqual(boundedVisibleBounds.height, boundedLineHeight + 0.01)
     XCTAssertEqual(boundedVisibleBounds.maxY, flowBounds.maxY, accuracy: 0.01)
     let text = [
-      InkSignPdfTextAnnotation(id: "latin", text: "CoreText Latin",
+      InkSignPdfTextAnnotation(id: 7, text: "CoreText Latin",
                                bounds: CGRect(x: 60, y: 70, width: 260, height: 32),
                                fontSize: 18),
-      InkSignPdfTextAnnotation(id: "hebrew", text: "עברית",
+      InkSignPdfTextAnnotation(id: 8, text: "עברית",
                                bounds: CGRect(x: 60, y: 110, width: 260, height: 32),
                                fontSize: 18, isRTL: true),
-      InkSignPdfTextAnnotation(id: "arabic", text: "العربية",
+      InkSignPdfTextAnnotation(id: 9, text: "العربية",
                                bounds: CGRect(x: 60, y: 150, width: 260, height: 32),
                                fontSize: 18, isRTL: true),
       boundedAnnotation.replacingText(boundedText, pageSize: geometry.mediaBox.size),
@@ -146,7 +146,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       XCTAssertGreaterThan(annotation.bounds.height, 0)
       persistedSignatureBounds = persistedSignatureBounds.union(annotation.bounds)
     }
-    var canonicalToPDF = InkSignPdfTextRenderer.canonicalToPDFTransform(for: committedMediaBox)
+    var canonicalToPDF = PageGeometry(mediaBox: committedMediaBox, rotation: 0).canonicalToPDFTransform
     let pathBounds = try XCTUnwrap(signature.path.copy(using: &canonicalToPDF)).boundingBoxOfPath
     let expectedAnnotationBounds = pathBounds.insetBy(
       dx: -InkSignPdfNativeExporter.signatureAppearanceMargin,

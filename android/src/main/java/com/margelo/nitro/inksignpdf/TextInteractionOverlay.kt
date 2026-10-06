@@ -68,7 +68,7 @@ internal data class TextPresentationSnapshot(
     val coordinates = PageCoordinates(displayPage)
     return copy(
       page = annotation.layoutPage ?: coordinates.rawPage,
-      transform = coordinates.layoutToDisplay(annotation.layoutPage).then(displayTransform),
+      transform = annotation.layoutToDisplay(displayPage).then(displayTransform),
     )
   }
 
@@ -627,7 +627,7 @@ internal class TextInteractionOverlay(
         pageId = pageId,
         sourceIdentity = null,
         fieldName = null,
-        bounds = flowBounds,
+        canonicalBounds = PageCoordinates(page).displayToCanonical(flowBounds),
         options = options,
       )
     val verticalAnchor = options?.verticalAnchor ?: TextVerticalAnchor.TOP
@@ -762,7 +762,7 @@ internal class TextInteractionOverlay(
     val pageId = surface.documentCoordinator.page(presentation.pageIndex).id
     val initialBounds = flowBounds ?: PageRect(pagePoint.x, pagePoint.y, pagePoint.x, pagePoint.y)
     val id = surface.documentCoordinator.reserveTextTarget(
-      pageId, null, null, initialBounds, null,
+      pageId, null, null, PageCoordinates(presentation.page).displayToCanonical(initialBounds), null,
     ).id
     val state = InteractionState.Editing(
       id = id,
@@ -1642,9 +1642,6 @@ internal class TextInteractionOverlay(
       verticalAnchor = state.verticalAnchor,
       alignment = state.alignment,
       layoutPage = state.original?.layoutPage ?: if (state.original == null) presentation.page else null,
-    )
-    surface.documentCoordinator.updateTextTargetBounds(
-      state.id, state.pageId, flowBounds ?: bounds,
     )
     return if (flowBounds == null) updated else updated.copy(
       bounds = TextLayoutSpec.visibleBounds(updated, flowBounds),

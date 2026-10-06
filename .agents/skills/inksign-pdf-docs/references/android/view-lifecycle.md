@@ -17,6 +17,11 @@
   for both placement paths. The least-recently-used cache is bounded to eight
   pages and 8 MiB estimated storage. Page navigation does not invalidate entries;
   replacing or closing the session releases them.
+- Prepared handles retain canonical analysis independently of that cache.
+  The coordinator retains immutable source glyphs for resolved targets so
+  accepted free placement can refresh its embedded fallback after cache eviction.
+  Page deletion and document replacement release the corresponding targets and
+  retained glyphs. Handles keep the captured page through navigation and reordering.
 
 ## Opening
 
@@ -43,7 +48,8 @@
 - `rotatePage()` updates presentation orientation and geometry revision while
   retaining source geometry, working bytes, page identity, and undo/redo. Page
   assembly retains pending orientation; [export](export.md) writes it to PDF
-  metadata. Cached source analysis is projected into presentation coordinates.
+  metadata. Cached source analysis is canonicalized at preparation and projected
+  into current display for operations; rotation does not rewrite target geometry.
 - `hasInk()` reads committed ink entries on the active page, so navigation,
   undo, redo, and clear are reflected directly by history.
 - Reopen assembled candidates and validate page count, order, and source geometry

@@ -26,6 +26,17 @@ Use existing deterministic fixtures and observable geometry/history invariants:
 Consolidate equivalent existing cases instead of adding duplicate predicates or timing assertions.
 
 ## Validation
+Tasks 01–04 have static implementation review only. Migrate existing fixture
+callers to canonical target bounds, canonical rule endpoints, and exact label
+ranges before execution. iOS fixtures must reserve coordinator targets, use
+the shared PageGeometry mapper, and retain annotation layout rather than
+flattening it; Android export fixtures must use layoutToCanonical. Confirm
+prepared handles survive structural publication with retained page IDs.
+No tests or builds were run for this refactor.
+Static source review and `git diff --check` passed. Existing test callers of
+removed display/raw helpers and the standalone annotation-ID allocator must
+be migrated to the shared canonical mapper and coordinator reservation API.
+
 While restricted: inspect focused diffs, verify task links, and run git diff --check. Add/update regression source without running tests/builds.
 After authorization:
 - tools/test-android.ps1 -Mode jvm -Test <changed focused class>
@@ -38,4 +49,3 @@ Use the documented host execution context. Record device/ABI, source identity, c
 ## Completion
 Record deterministic coverage and remaining limits separately. Runtime completion requires the focused geometry/export/lifecycle checks on both platforms; no performance claim is inferred from fewer conversions.
 Proposed commit: Verify canonical target identity and rotated presentation
-

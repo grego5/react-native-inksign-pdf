@@ -15,10 +15,11 @@
 - **Edit mode:** PencilKit owns ink input. The text overlay owns text placement,
   selection, editing, and movement. PDF navigation resumes when editing ends.
 - **Coordinates:** Text placement uses top-left page points in the displayed
-  page orientation. Existing text follows later page rotations; new text uses
-  the orientation active when it is added. Viewport movement preserves page
-  content geometry. Editing preserves zoom and may pan to keep the editor and
-  caret visible.
+  page orientation. `PageGeometry` maps displayed operations to canonical
+  storage and confines PDFKit's media-box origin and bottom-left convention to
+  adapters. Viewport focus and snapshots use current display. Editing preserves
+  zoom and may pan to keep the editor and caret visible. See the shared
+  [document model](../architecture.md#document-model).
 
 ## Text
 
@@ -40,6 +41,11 @@
   Bounded text uses one fixed physical flow rectangle in the editor and
   committed model; RTL changes logical alignment, never edge order. The model
   keeps that rectangle separate from measured visible-text bounds.
+- **Layout mapping:** Committed annotations retain local bounds, flow bounds,
+  and orientation. Rendering, editor activation, selection, hit testing, and
+  dragging use layout-to-canonical followed by the current presentation map.
+  New manual text captures displayed layout; accepted moves update coordinator
+  target placement without changing a named target's source association.
 - **Prepared free text:** `{ x, y, width, height }` is measured in the displayed
   page orientation and defines a fixed rectangle; x/y stay at its physical
   top-left in either direction. Alignment positions measured text inside it.
@@ -60,16 +66,23 @@
   reconciling caret visibility.
 
 ## Prepared page text
-- Prepared labels are complete contiguous visual groups. Lookup compares full
+- Prepared labels are complete visual groups with exact source ranges. Lookup compares full
   token-frequency counts, preserving repeated words while allowing extracted
   word-order differences. Partial labels and substrings do not match. Rules
-  becoming vertical after rotation are ineligible. Empty targets reserve a
+  are projected from immutable canonical endpoints with their original source
+  identity. A vertical writing rule rejects new field insertion and focus;
+  existing module text remains editable and clearable. Named focus uses the rule;
+  free focus uses the target center. Empty targets reserve a
   coordinator-owned numeric ID; prepared handles retain source analysis and
   target the captured stable page through navigation. UI-owned slots and history
   outlive analysis-cache eviction; the overlay owns drafts and selection.
 - Module annotation/draft values take precedence over detected embedded source
   text. Clearing removes module text only and reveals the source fallback again.
-  See the public API contract and Android input reference for shared semantics.
+  Detection and adoption use the local rule-width/label-height band on the chosen
+  side, excluding only selected label ranges; free targets use placement bounds.
+  Competing annotations reject adoption. Formatting is finalized before measuring
+  visible bounds, and re-resolution preserves existing formatting. See the
+  [document model](../architecture.md#document-model).
 
 ## Pager direction
 

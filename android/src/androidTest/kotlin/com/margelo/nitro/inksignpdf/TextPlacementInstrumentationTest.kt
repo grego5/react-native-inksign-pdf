@@ -2377,7 +2377,7 @@ internal class TextPlacementInstrumentationTest {
       page.id,
       sourceIdentity = null,
       fieldName = null,
-      bounds = annotation.bounds,
+      canonicalBounds = annotation.canonicalPlacementBounds,
       options = null,
     )
     assertEquals(annotation.id, slot.id)

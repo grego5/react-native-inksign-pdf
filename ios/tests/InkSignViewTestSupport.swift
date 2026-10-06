@@ -75,7 +75,7 @@ func textEditor(in overlay: InkSignPdfTextInteractionOverlay) -> UITextView? {
 }
 
 func makeCenteredTextAnnotation(
-  id: String,
+  id: UInt64,
   text: String,
   fontSize: CGFloat,
   pageSize: CGSize,
@@ -95,4 +95,54 @@ func makeCenteredTextAnnotation(
                                   bounds: CGRect(origin: origin, size: size),
                                   fontSize: fontSize,
                                   isRTL: isRTL)
+}
+
+func appendTextAnnotationForTest(
+  _ annotation: InkSignPdfTextAnnotation,
+  in view: InkSignView,
+  pageIndex: Int
+) throws -> InkSignPdfTextAnnotation {
+  let document = try XCTUnwrap(view.documentCoordinator.document)
+  let state = try XCTUnwrap(document.pages.indices.contains(pageIndex) ? document.pages[pageIndex] : nil)
+  let alignment: TextAlignment
+  switch annotation.alignment {
+  case .start: alignment = .start
+  case .end: alignment = .end
+  case .center: alignment = .center
+  }
+  let options = TextAnnotationOptions(
+    fontSize: Double(annotation.fontSize),
+    color: annotation.textColor,
+    direction: annotation.isRTL ? .rtl : .ltr,
+    maxLines: annotation.maxLines > 0 ? Double(annotation.maxLines) : nil,
+    alignment: alignment,
+    verticalAnchor: annotation.verticalAnchor == .bottom ? .bottom : .top)
+  let flowBounds = annotation.flowBounds ?? annotation.bounds
+  try view.textInteractionOverlay.addTextAnnotation(
+    text: annotation.text,
+    bounds: TextAnnotationBounds(x: Double(flowBounds.minX), y: Double(flowBounds.minY),
+      width: Double(flowBounds.width), height: Double(flowBounds.height)),
+    options: options,
+    resolvedDirectionRtl: annotation.isRTL,
+    capturedPage: (generation: view.documentCoordinator.generation,
+      pageID: state.id, pageSize: state.geometry.displaySize,
+      layoutRotation: state.geometry.rotation))
+  return try XCTUnwrap(state.history.content.textAnnotations.last)
+}
+
+func insertTextForTest(
+  _ text: String,
+  bounds: TextAnnotationBounds,
+  options: TextAnnotationOptions?,
+  in view: InkSignView
+) throws -> InkSignPdfTextAnnotation {
+  let state = try XCTUnwrap(view.documentCoordinator.document?.activePage)
+  try view.textInteractionOverlay.addTextAnnotation(
+    text: text,
+    bounds: bounds,
+    options: options,
+    capturedPage: (generation: view.documentCoordinator.generation,
+      pageID: state.id, pageSize: state.geometry.displaySize,
+      layoutRotation: state.geometry.rotation))
+  return try XCTUnwrap(state.history.content.textAnnotations.last)
 }

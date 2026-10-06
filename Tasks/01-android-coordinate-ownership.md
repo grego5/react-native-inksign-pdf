@@ -1,7 +1,7 @@
 # Android canonical targets and displayed operations
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Implemented; verification deferred to Task 05
 Complexity: High
 
 ## Objective and scope
@@ -32,4 +32,3 @@ Native document/view changes run on the UI thread; asynchronous analysis publish
 ## Completion
 All Android target reuse, adoption, manual placement, editing, focus, and committed rendering follow the explicit spaces above. Remove superseded conversion branches in the same change. Record static limitations; execution validation belongs to the final task.
 Proposed commit: Refactor Android text targets to canonical geometry
-

@@ -8,9 +8,12 @@
   and text as positioned PDF text objects, then serializes a candidate.
 - Reopen the candidate with PDFium and validate page metadata, object counts, path
   geometry, text font sizes, and placements before atomically publishing it.
-- Export applies captured page orientation to the output and retains source and
-  working bytes. Ink uses raw page-content coordinates; text runs use each
-  annotation's layout-to-content transform. See [text geometry](viewport-input.md#text).
+- Export retains source and working bytes. Text shaping and line selection use
+  saved local layout; positioned runs carry the annotation's layout-to-canonical
+  transform. The PDFium adapter converts canonical content to PDF coordinates,
+  including the media-box origin, and persists captured page orientation once
+  as page metadata. Ink keeps its canonical content mapping. See
+  [text geometry](viewport-input.md#text).
 - Stale or cancelled work cannot publish output. Replacement and disposal follow the
   [document operation contract](../architecture.md#document-operations).
 

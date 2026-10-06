@@ -143,6 +143,7 @@ enum InkSignPdfTextRenderer {
                                                        isRTL: annotation.isRTL,
                                                        alignment: annotation.alignment)
       context.saveGState()
+      context.concatenate(annotation.layoutToCanonical(mediaBox: CGRect(origin: .zero, size: pageSize)))
       let origin: CGPoint
       if let flowBounds = annotation.flowBounds {
         context.clip(to: flowBounds)
@@ -166,11 +167,6 @@ enum InkSignPdfTextRenderer {
     }
     context.restoreGState()
     return true
-  }
-
-  static func canonicalToPDFTransform(for mediaBox: CGRect) -> CGAffineTransform {
-    CGAffineTransform(a: 1, b: 0, c: 0, d: -1,
-                      tx: mediaBox.minX, ty: mediaBox.maxY)
   }
 
   static func color(from value: String) -> UIColor? {

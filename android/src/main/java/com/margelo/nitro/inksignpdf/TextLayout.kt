@@ -332,9 +332,7 @@ internal class TextRenderLayer private constructor(
       val selection = entry.selection
       if (flowBounds != null && selection != null && selection.lineCount == 0) return@forEach
       canvas.save()
-      if (!inLayoutSpace) entry.annotation.layoutPage?.let {
-        canvas.concat(PageCoordinates(it).displayToRawTransform().toCanvasMatrix())
-      }
+      if (!inLayoutSpace) canvas.concat(entry.annotation.layoutToCanonical.toCanvasMatrix())
       if (flowBounds == null) {
         canvas.translate(entry.annotation.bounds.left.toFloat(), entry.annotation.bounds.top.toFloat())
         val maxLines = entry.annotation.maxLines

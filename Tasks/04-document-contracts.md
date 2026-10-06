@@ -1,7 +1,7 @@
 # Document coordinate ownership
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Implemented; verification deferred to Task 05
 Complexity: Low
 
 ## Objective and scope
@@ -25,4 +25,3 @@ Public API uses displayed page coordinates. IDs and captured-page lifetime remai
 ## Completion
 References are concise, current and consistent across platforms. No implementation-transition narrative or speculative performance claim remains in changed paragraphs.
 Proposed commit: Document canonical target and displayed operation contracts
-

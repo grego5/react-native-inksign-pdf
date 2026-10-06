@@ -1,7 +1,7 @@
 # Integrate canonical geometry with rotation and export
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Implemented; verification deferred to Task 05
 Complexity: High
 
 ## Objective and scope
@@ -30,4 +30,3 @@ Worker export consumes immutable snapshots. Check session/operation freshness on
 ## Completion
 Preview, editor geometry, and export consume the same local-layout-to-canonical mapping. All remaining rotation mutation sites concern page presentation or structural output only.
 Proposed commit: Align rotation and export with canonical text geometry
-

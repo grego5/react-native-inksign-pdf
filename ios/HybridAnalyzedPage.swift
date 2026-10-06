@@ -8,6 +8,20 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec {
   let pageID: UUID
   let analysis: InkSignPdfPageAnalysis
 
+  /** Nitrogen requires a default factory for returned HybridObjects. Handles
+   * created through the public API use the owner-backed initializer below. */
+  override init() {
+    let pageID = UUID()
+    self.owner = nil
+    self.generation = 0
+    self.pageID = pageID
+    self.analysis = InkSignPdfPageAnalysis(generation: 0,
+      pageID: pageID, pageIndex: 0, sourceText: "", characterBounds: [],
+      characterVisualRows: [], rules: [], labelCandidates: [],
+      estimatedMemoryBytes: 0)
+    super.init()
+  }
+
   init(owner: InkSignView,
        generation: UInt64,
        pageID: UUID,

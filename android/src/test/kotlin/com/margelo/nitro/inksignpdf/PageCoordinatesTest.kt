@@ -32,4 +32,34 @@ class PageCoordinatesTest {
       coordinates.rawToView(displayToView).map(PagePoint(0.0, 0.0)),
     )
   }
+
+  @Test
+  fun canonicalTargetsRoundTripThroughEveryDisplayedRotation() {
+    val canonical = PageRect(31.0, 47.0, 92.0, 118.0)
+    val cases = listOf(
+      PdfPageDimensions(320.0, 240.0, 0),
+      PdfPageDimensions(320.0, 240.0, 1),
+      PdfPageDimensions(320.0, 240.0, 2),
+      PdfPageDimensions(320.0, 240.0, 3),
+    )
+
+    cases.forEach { page ->
+      val coordinates = PageCoordinates(page)
+      assertEquals(canonical, coordinates.displayToCanonical(coordinates.canonicalToDisplay(canonical)))
+    }
+  }
+
+  @Test
+  fun capturedLayoutRotationReturnsToCanonicalBeforeCurrentDisplayProjection() {
+    val media = PdfPageDimensions(320.0, 240.0)
+    val captured = PdfPageDimensions(240.0, 320.0, rotation = 1)
+    val current = PageCoordinates(media.copy(rotation = 3))
+    val local = PageRect(22.0, 35.0, 82.0, 115.0)
+    val layoutToCanonical = PageCoordinates(media).layoutToCanonical(captured)
+    val canonical = textAnnotationOuterBounds(local, layoutToCanonical, 0.0, 0.0)
+    val displayed = current.canonicalToDisplay(canonical)
+
+    assertEquals(canonical, current.displayToCanonical(displayed))
+    assertEquals(local, textAnnotationOuterBounds(canonical, layoutToCanonical.inverse(), 0.0, 0.0))
+  }
 }
