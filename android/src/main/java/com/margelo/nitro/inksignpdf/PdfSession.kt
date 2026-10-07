@@ -690,7 +690,35 @@ internal class PdfSessionWorker(
     }
   }
 
-  /** Replaces the latest viewport epoch for same-document tile work. */
+  /** Source rasters survive viewport and navigation-preview epochs. */
+  fun renderPageBase(generation: Long, request: PdfTileRequest,
+    completion: (Result<PdfTile>) -> Unit) {
+    if (closed) {
+      completion(Result.failure(cancelled(generation)))
+      return
+    }
+    try {
+      executor.execute {
+        val result = runCatching {
+          if (isStale(generation)) throw cancelled(generation)
+          val session = current ?: throw cancelled(generation)
+          session.renderPreview(request) {
+            if (isStale(generation)) throw cancelled(generation)
+          }.also { tile ->
+            if (isStale(generation)) {
+              tile.bitmap.recycle()
+              throw cancelled(generation)
+            }
+          }
+        }
+        completion(result)
+      }
+    } catch (_: java.util.concurrent.RejectedExecutionException) {
+      completion(Result.failure(cancelled(generation)))
+    }
+  }
+
+  /** Invalidates raster work when its page/reader changes, independently of coverage. */
   fun updateTileEpoch(generation: Long, tileEpoch: Long) {
     if (requestedGeneration == generation) requestedTileEpoch = tileEpoch
   }

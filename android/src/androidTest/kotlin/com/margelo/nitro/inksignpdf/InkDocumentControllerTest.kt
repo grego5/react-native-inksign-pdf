@@ -2,6 +2,8 @@ package com.margelo.nitro.inksignpdf
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
 import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -23,13 +25,153 @@ class InkDocumentControllerTest {
   private val context: Context = instrumentation.targetContext
 
   @Test
+  fun tilePresentationEpochRequiresACompleteDrawAfterInvalidation() {
+    val harness = ControllerHarness(page = PdfPageDimensions(5000.0, 5000.0))
+    val bitmap = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+    var presentedEpoch: Long? = null
+    try {
+      harness.runOnMain {
+        assertEquals(null, harness.controller.visibleTilePresentationEpoch())
+        harness.controller.draw(Canvas(bitmap))
+        presentedEpoch = harness.controller.visibleTilePresentationEpoch()
+        assertTrue(presentedEpoch != null)
+        harness.controller.setPage(PdfPageDimensions(5000.0, 5000.0))
+        assertEquals(null, harness.controller.visibleTilePresentationEpoch())
+      }
+      harness.awaitVisibleTileCoverage()
+      harness.runOnMain {
+        assertEquals(null, harness.controller.visibleTilePresentationEpoch())
+        harness.controller.draw(Canvas(bitmap))
+        val nextEpoch = harness.controller.visibleTilePresentationEpoch()
+        assertTrue(nextEpoch != null)
+        assertNotEquals(presentedEpoch, nextEpoch)
+      }
+    } finally {
+      bitmap.recycle()
+      harness.close()
+    }
+  }
+
+  @Test
+  fun panningIntoUncachedAreaDrawsPageBaseUntilSharpTilesArrive() {
+    val harness = ControllerHarness(page = PdfPageDimensions(5000.0, 5000.0))
+    val base = Bitmap.createBitmap(32, 32, Bitmap.Config.ARGB_8888)
+    val output = Bitmap.createBitmap(512, 512, Bitmap.Config.ARGB_8888)
+    base.eraseColor(Color.RED)
+    try {
+      harness.runOnMain { harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0)) }
+      harness.awaitVisibleTileCoverage()
+      val before = harness.state()
+      harness.session.bitmapColor = Color.BLUE
+      val started = harness.session.blockNextRender()
+      harness.runOnMain { harness.controller.setZoomForTest(1.0, PagePoint(1000.0, 1000.0)) }
+      assertTrue(started.await(5L, TimeUnit.SECONDS))
+      val after = harness.state()
+      assertEquals(before.activeVisibleKeys.map { it.level }.toSet(), after.activeVisibleKeys.map { it.level }.toSet())
+      assertFalse(after.transitionPending)
+      harness.runOnMain {
+        harness.controller.draw(Canvas(output), baseRaster = base)
+        assertEquals(Color.RED, output.getPixel(256, 256))
+      }
+      harness.session.releaseBlockedRender()
+      harness.awaitVisibleTileCoverage()
+      harness.runOnMain {
+        harness.controller.draw(Canvas(output), baseRaster = base)
+        assertEquals(Color.BLUE, output.getPixel(256, 256))
+        assertFalse(base.isRecycled)
+      }
+    } finally {
+      harness.close()
+      base.recycle()
+      output.recycle()
+    }
+  }
+
+  @Test
+  fun prefetchStopsAtCacheCapacityAndEvictedTilesStillLoadWhenVisible() {
+    val tileBytes = (androidPdfTileSizePx + androidPdfTileBleedPx * 2).toLong().let { it * it * 4L }
+    val harness = ControllerHarness(
+      page = PdfPageDimensions(5000.0, 5000.0),
+      viewportSize = 256,
+      tileCacheBudgetBytes = tileBytes * 2L,
+    )
+    try {
+      harness.awaitState { it.pendingKeys.isEmpty() }
+      val zoom = 1.0 / context.resources.displayMetrics.density
+      harness.runOnMain {
+        harness.controller.setPage(PdfPageDimensions(5000.0, 5000.0),
+          zoom = zoom, focus = PagePoint(1280.0, 1280.0), fitToPage = false)
+      }
+      // The preload window is much larger than two bitmaps. It must still finish.
+      harness.awaitState { !it.transitionPending && it.pendingKeys.isEmpty() }
+      val window = harness.state()
+      val keys = (window.activeVisibleKeys + window.activePrefetchKeys).toSet()
+      val renders = harness.session.renderedRequests.filter { it.key in keys }
+      assertEquals(keys, renders.map { it.key }.toSet())
+      assertEquals(keys.size, renders.size)
+      harness.runOnMain {
+        assertTrue(harness.controller.isVisibleTileCoverageComplete())
+        assertTrue(harness.controller.tileCacheBytes <= tileBytes * 2L)
+      }
+
+      val evicted = harness.session.renderedRequests.zip(harness.session.cachedBitmaps)
+        .first { (request, bitmap) -> request.key in window.activePrefetchKeys && bitmap.isRecycled }
+        .first
+      val before = harness.session.renderedRequestCount
+      // A real replan inside the same tile window must not restart evicted prefetch.
+      harness.runOnMain { harness.controller.setZoomForTest(zoom, PagePoint(1281.0, 1281.0)) }
+      harness.awaitState { it.pendingKeys.isEmpty() }
+      assertEquals(window.activePrefetchKeys, harness.state().activePrefetchKeys)
+      assertEquals(before, harness.session.renderedRequestCount)
+
+      // Same scale, but an evicted prefetch tile is now the sole visible tile.
+      harness.runOnMain {
+        harness.controller.setZoomForTest(zoom, PagePoint(
+          (evicted.leftPx + evicted.widthPx / 2.0) / evicted.scale,
+          (evicted.topPx + evicted.heightPx / 2.0) / evicted.scale,
+        ))
+      }
+      harness.awaitState { !it.transitionPending && it.pendingKeys.isEmpty() }
+      harness.runOnMain { assertTrue(harness.controller.isVisibleTileCoverageComplete()) }
+      assertEquals(listOf(evicted.key), harness.state().activeVisibleKeys)
+      assertEquals(2, harness.session.renderedRequests.count { it.key == evicted.key })
+    } finally {
+      harness.close()
+    }
+  }
+
+  @Test
+  fun overlappingPanKeepsTheInFlightTileAndUsesLatestDemand() {
+    val harness = ControllerHarness(page = PdfPageDimensions(5000.0, 5000.0))
+    try {
+      val started = harness.session.blockNextRender()
+      harness.runOnMain { harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0)) }
+      assertTrue(started.await(5L, TimeUnit.SECONDS))
+      val request = requireNotNull(harness.session.blockedRequest)
+      harness.runOnMain {
+        harness.controller.setZoomForTest(1.0, PagePoint(
+          (request.leftPx + request.widthPx / 2.0) / request.scale,
+          (request.topPx + request.heightPx / 2.0) / request.scale,
+        ))
+      }
+      harness.session.releaseBlockedRender()
+      harness.awaitVisibleTileCoverage()
+      assertEquals(1, harness.session.renderedRequests.count { it.key == request.key })
+      assertTrue(harness.state().displayedVisibleKeys.contains(request.key))
+      harness.runOnMain { assertTrue(harness.controller.isVisibleTileCoverageComplete()) }
+    } finally {
+      harness.close()
+    }
+  }
+
+  @Test
   fun sameLevelPanUpdatesDisplayedRequestsImmediately() {
     val harness = ControllerHarness(page = PdfPageDimensions(5000.0, 5000.0))
     try {
       harness.runOnMain {
         harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0))
       }
-      harness.awaitState { !it.transitionPending && it.pendingKeys.isEmpty() }
+      harness.awaitVisibleTileCoverage()
       val before = harness.state()
 
       harness.runOnMain {
@@ -82,12 +224,12 @@ class InkDocumentControllerTest {
     val harness = ControllerHarness(page = PdfPageDimensions(5000.0, 5000.0))
     try {
       val before = harness.state()
-      harness.session.renderLimit = 1
+      val started = harness.session.blockNextRender(after = 1)
 
       harness.runOnMain {
         harness.controller.setZoomForTest(1.0, PagePoint(2500.0, 2500.0))
       }
-      harness.awaitState { it.transitionPending && it.pendingKeys.isEmpty() }
+      assertTrue(started.await(5L, TimeUnit.SECONDS))
       val after = harness.state()
 
       assertEquals(before.displayedVisibleKeys, after.displayedVisibleKeys)
@@ -100,7 +242,7 @@ class InkDocumentControllerTest {
 
   @Test
   fun alreadyCachedLatestLevelSwapsWithoutWorkerRendering() {
-    val harness = ControllerHarness(page = PdfPageDimensions(500.0, 500.0), viewportSize = 64)
+    val harness = ControllerHarness(page = PdfPageDimensions(500.0, 500.0), viewportSize = 32)
     try {
       harness.runOnMain {
         harness.controller.setZoomForTest(0.1, PagePoint(272.0, 272.0))
@@ -110,16 +252,18 @@ class InkDocumentControllerTest {
           state.displayedVisibleKeys.contains(key)
         }
       }
+      harness.awaitVisibleTileCoverage()
       val cachedLevel = harness.state().activeVisibleKeys
 
       harness.runOnMain {
-        harness.controller.setZoomForTest(1.0, PagePoint(272.0, 272.0))
+        harness.controller.setZoomForTest(0.3, PagePoint(272.0, 272.0))
       }
       harness.awaitState { state ->
         !state.transitionPending && state.activeVisibleKeys.all { key ->
           state.displayedVisibleKeys.contains(key)
         }
       }
+      harness.awaitVisibleTileCoverage()
       val target = harness.state().activeVisibleKeys
       assertNotEquals(cachedLevel, target)
       val renderCountBeforeRestore = harness.session.renderedRequestCount
@@ -128,8 +272,13 @@ class InkDocumentControllerTest {
         harness.controller.setZoomForTest(0.1, PagePoint(272.0, 272.0))
       }
       val restored = harness.state()
+      var cacheBytes = 0L
+      harness.runOnMain { cacheBytes = harness.controller.tileCacheBytes }
 
-      assertFalse("cached latest level should swap immediately: $restored", restored.transitionPending)
+      assertFalse(
+        "cached latest level should swap immediately: $restored, cacheBytes=$cacheBytes",
+        restored.transitionPending,
+      )
       assertEquals(restored.activeVisibleKeys, restored.displayedVisibleKeys)
       assertEquals(cachedLevel, restored.activeVisibleKeys)
       assertEquals(renderCountBeforeRestore, harness.session.renderedRequestCount)
@@ -158,8 +307,11 @@ class InkDocumentControllerTest {
       assertEquals(initial.displayedVisibleKeys, during.displayedVisibleKeys)
       assertNotEquals(initial.activeVisibleKeys, newestTarget)
 
+      val renderedBeforeRelease = harness.session.renderedRequestCount
       harness.session.releaseBlockedRender()
       harness.awaitState { !it.transitionPending && it.displayedVisibleKeys == newestTarget }
+      assertEquals(newestTarget.first(),
+        harness.session.renderedRequests[renderedBeforeRelease + 1].key)
     } finally {
       harness.close()
     }
@@ -319,7 +471,7 @@ class InkDocumentControllerTest {
       assertTrue(during.activeVisibleKeys.all { it.pageIndex == 1 })
 
       harness.session.releaseBlockedRender()
-      harness.awaitState { it.pendingKeys.isEmpty() }
+      harness.awaitVisibleTileCoverage()
       assertTrue(harness.session.cachedBitmaps.any { !it.isRecycled })
 
       harness.runOnMain { harness.switchPage(0) }
@@ -383,6 +535,7 @@ class InkDocumentControllerTest {
     private val page: PdfPageDimensions,
     private val pages: List<PdfPageDimensions> = listOf(page),
     private val viewportSize: Int = 512,
+    private val tileCacheBudgetBytes: Long? = null,
   ) {
     private var activePageIndex = 0
     private var pageSwitchId = 1L
@@ -411,11 +564,12 @@ class InkDocumentControllerTest {
           currentDocumentGeneration = { generation },
           currentPageIndex = { activePageIndex },
           currentPageSwitchId = { pageSwitchId },
+          tileCacheBudgetBytes = tileCacheBudgetBytes,
         )
         controller.onSizeChanged(viewportSize, viewportSize)
         controller.setPage(info.pages[0])
       }
-      awaitState { !it.transitionPending && it.pendingKeys.isEmpty() }
+      awaitVisibleTileCoverage()
     }
 
     fun state(): InkDocumentController.TilePresentationStateForTest {
@@ -508,7 +662,21 @@ class InkDocumentControllerTest {
         if (predicate(state())) return
         Thread.sleep(20L)
       }
-      assertTrue("timed out waiting for tile controller state", predicate(state()))
+      val finalState = state()
+      assertTrue("timed out waiting for tile controller state: $finalState", predicate(finalState))
+    }
+
+    fun awaitVisibleTileCoverage() {
+      val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5L)
+      while (System.nanoTime() < deadline) {
+        var covered = false
+        instrumentation.runOnMainSync { covered = controller.isVisibleTileCoverageComplete() }
+        if (covered) return
+        Thread.sleep(20L)
+      }
+      var covered = false
+      instrumentation.runOnMainSync { covered = controller.isVisibleTileCoverageComplete() }
+      assertTrue("timed out waiting for visible tile coverage", covered)
     }
 
     fun close() {
@@ -529,14 +697,19 @@ class InkDocumentControllerTest {
   ) : PdfSessionResource {
     override val info = PdfSessionInfo("controller-test.pdf", pages, 1L)
     val cachedBitmaps = Collections.synchronizedList(ArrayList<Bitmap>())
+    @Volatile var bitmapColor = Color.TRANSPARENT
     @Volatile var renderedRequestCount = 0
       private set
-    @Volatile var renderLimit = Int.MAX_VALUE
+    val renderedRequests = Collections.synchronizedList(ArrayList<PdfTileRequest>())
+    @Volatile var blockedRequest: PdfTileRequest? = null
+      private set
+    @Volatile private var rendersUntilBlock = 0
     @Volatile private var blockNext = false
     @Volatile private var renderStarted: CountDownLatch? = null
     @Volatile private var renderRelease: CountDownLatch? = null
 
-    fun blockNextRender(): CountDownLatch {
+    fun blockNextRender(after: Int = 0): CountDownLatch {
+      rendersUntilBlock = after
       val started = CountDownLatch(1)
       renderStarted = started
       renderRelease = CountDownLatch(1)
@@ -554,19 +727,22 @@ class InkDocumentControllerTest {
     ): List<PdfTile> {
       val rendered = ArrayList<PdfTile>()
       try {
-        if (blockNext) {
+        if (blockNext && rendersUntilBlock-- <= 0) {
+          blockedRequest = requests.firstOrNull()
           blockNext = false
           renderStarted?.countDown()
           check(renderRelease?.await(5L, TimeUnit.SECONDS) == true)
         }
-        requests.take(renderLimit).forEach { request ->
+        requests.forEach { request ->
           beforeEach()
           renderedRequestCount += 1
+          renderedRequests += request
           val bitmap = Bitmap.createBitmap(
             request.rasterWidthPx,
             request.rasterHeightPx,
             Bitmap.Config.ARGB_8888,
           )
+          bitmap.eraseColor(bitmapColor)
           cachedBitmaps += bitmap
           rendered += PdfTile(request, bitmap)
         }

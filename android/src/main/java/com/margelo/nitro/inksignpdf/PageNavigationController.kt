@@ -13,11 +13,12 @@ internal sealed interface NavigationState {
   data object Idle : NavigationState
   data class Dragging(val transaction: NavigationDragTransaction) : NavigationState
   data class Settling(val settlement: NavigationSettlement) : NavigationState
-  data class Switching(
-    val handoff: PageSwitchHandoff,
-    val preview: PreparedPagePreview,
-  ) : NavigationState
 }
+
+internal data class PageNavigationHandoff(
+  val handoff: PageSwitchHandoff,
+  val preview: PreparedPagePreview,
+)
 
 internal sealed interface PagePreviewSlot {
   data object Empty : PagePreviewSlot
@@ -53,6 +54,7 @@ internal data class PageSwitchHandoff(
 )
 
 internal data class NavigationPresentation(
+  val currentPagePreview: PreparedPagePreview? = null,
   val translationX: Double = 0.0,
   val currentPageScale: Double = 1.0,
   val direction: SwipeDirection? = null,
@@ -103,7 +105,6 @@ internal fun targetPanelOffsetX(
  * Its only interaction with this class is an immutable presentation passed to draw.
  */
 internal class PageNavigationController(
-  private val sessionWorker: PdfSessionWorker,
   private val mainHandler: Handler = Handler(Looper.getMainLooper()),
   private val requestInvalidate: () -> Unit,
   private val requestAnimation: () -> Unit,
@@ -114,12 +115,12 @@ internal class PageNavigationController(
   private val targetTextAnnotations: (Int) -> List<TextAnnotation>,
   private val fitZoomFor: (PdfPageDimensions) -> Double?,
   private val previewPreparationAllowed: () -> Boolean,
+  private val releasePreviewBitmap: (android.graphics.Bitmap) -> Unit = { it.recycle() },
   private val installCommittedPage: (PageSwitchHandoff) -> Boolean,
   private val forwardToDocumentNavigation: (MotionEvent) -> Unit,
   private val onArmed: () -> Unit,
   private val onPageNavigationSettled: () -> Unit,
-  private val previewScheduler: PageNavigationPreviewScheduler =
-    WorkerPageNavigationPreviewScheduler(sessionWorker),
+  private val previewScheduler: PageNavigationPreviewScheduler,
   private val settlementDriver: PageNavigationSettlementDriver =
     ValueAnimatorPageNavigationSettlementDriver(requestAnimation),
   private val minimumFlingVelocityPxPerSecond: Double = 400.0,
@@ -127,7 +128,6 @@ internal class PageNavigationController(
 ) {
   private var state: NavigationState = NavigationState.Idle
   private var transactionToken = 0L
-  private var previewEpoch = 0L
   private val slots = HashMap<SwipeDirection, PagePreviewSlot>()
   private var velocityTracker: VelocityTracker? = null
 
@@ -138,101 +138,104 @@ internal class PageNavigationController(
     .keys
     .toSet()
 
-  internal fun handoffPending(): Boolean = state is NavigationState.Switching
+  private var pendingHandoff: PageNavigationHandoff? = null
 
-  internal fun presentation(): NavigationPresentation = when (val current = state) {
+  internal fun onPreviewEvicted(bitmap: android.graphics.Bitmap) {
+    requireOnUiThread()
+    val retired = slots.filterValues {
+      it is PagePreviewSlot.Ready && it.preview.bitmap === bitmap
+    }.keys.toList()
+    retired.forEach { slots.remove(it) }
+    if (retired.isNotEmpty()) requestInvalidate()
+  }
+
+  internal fun handoffPending(): Boolean = pendingHandoff != null
+  internal fun handoff(): PageSwitchHandoff? = pendingHandoff?.handoff
+
+  internal fun presentation(): NavigationPresentation = (when (val current = state) {
     NavigationState.Idle -> NavigationPresentation()
     is NavigationState.Dragging -> current.transaction.presentation
     is NavigationState.Settling -> current.settlement.currentPresentation
-    is NavigationState.Switching -> NavigationPresentation(
-      direction = current.handoff.direction,
-      selectedPreview = current.preview,
-    )
+  }).copy(currentPagePreview = pendingHandoff?.preview)
+
+  internal fun requestedPageIndex(): Int? {
+    val transaction = (state as? NavigationState.Dragging)?.transaction ?: return null
+    if (transaction.ordinaryNavigationActive || transaction.gesture.phase == SwipePhase.CANDIDATE) return null
+    return transaction.context.eligibleTargets[transaction.gesture.physicalDirection]
   }
 
-  internal fun reconcilePreviews() {
+  private fun requestPreview(direction: SwipeDirection, context: NavigationContext) {
     requireOnUiThread()
-    if (state != NavigationState.Idle || !previewPreparationAllowed()) return
-    val nextContext = currentContext() ?: return
-    nextContext.eligibleTargets.forEach { (direction, targetIndex) ->
-      val target = targetPage(targetIndex) ?: return@forEach
-      val revision = nextContext.targetContentRevisions[targetIndex] ?: return@forEach
-      val request = pagePreviewRequest(
-        generation = nextContext.documentGeneration,
-        pageSwitchId = nextContext.pageSwitchId,
-        sourcePageIndex = nextContext.sourcePageIndex,
-        targetPageIndex = targetIndex,
-        direction = direction,
-        targetPage = target,
-        targetZoom = fitZoomFor(target) ?: return@forEach,
-        targetFocus = PagePoint(target.width / 2.0, target.height / 2.0),
-        targetContentRevision = revision,
-        viewportWidthPx = nextContext.viewportWidthPx,
-        viewportHeightPx = nextContext.viewportHeightPx,
-        density = nextContext.density,
-        inkPaths = targetInkPaths(targetIndex),
-        textAnnotations = targetTextAnnotations(targetIndex),
-      ) ?: return@forEach
-      val slot = slots[direction]
-      if (slot is PagePreviewSlot.Ready && slot.preview.request.key == request.key) return@forEach
-      if (slot is PagePreviewSlot.Loading && slot.request.key == request.key) return@forEach
-      val preparedRequest = request.copy(
-        textAnnotations = emptyList(),
-        textLayer = TextRenderLayer.from(request.textAnnotations),
-      )
-      replaceSlot(direction, PagePreviewSlot.Loading(preparedRequest))
-      val epoch = previewEpoch
-      previewScheduler.updateEpoch(nextContext.documentGeneration, epoch)
-      previewScheduler.renderPreview(nextContext.documentGeneration, epoch, preparedRequest.request) { result ->
-        val tile = result.getOrNull()
-        val install = Runnable {
-          val current = slots[direction]
-          val matchingRequest = !isDisposed() && epoch == previewEpoch &&
-            current is PagePreviewSlot.Loading && current.request.key == preparedRequest.key
-          if (result.isFailure && matchingRequest) {
-            replaceSlot(direction, PagePreviewSlot.Empty)
-            requestInvalidate()
-            return@Runnable
+    if (!previewPreparationAllowed()) return
+    if (slots[direction] != null) return
+    val targetIndex = context.eligibleTargets[direction] ?: return
+    val target = targetPage(targetIndex) ?: return
+    val revision = context.targetContentRevisions[targetIndex] ?: return
+    val request = pagePreviewRequest(
+      generation = context.documentGeneration,
+      pageSwitchId = context.pageSwitchId,
+      sourcePageIndex = context.sourcePageIndex,
+      targetPageIndex = targetIndex,
+      direction = direction,
+      targetPage = target,
+      targetZoom = fitZoomFor(target) ?: return,
+      targetFocus = PagePoint(target.width / 2.0, target.height / 2.0),
+      targetContentRevision = revision,
+      viewportWidthPx = context.viewportWidthPx,
+      viewportHeightPx = context.viewportHeightPx,
+      density = context.density,
+      inkPaths = targetInkPaths(targetIndex),
+      textAnnotations = targetTextAnnotations(targetIndex),
+    ) ?: return
+    val preparedRequest = request.copy(
+      textAnnotations = emptyList(),
+      textLayer = TextRenderLayer.from(request.textAnnotations),
+    )
+    val loading = PagePreviewSlot.Loading(preparedRequest)
+    replaceSlot(direction, loading)
+    previewScheduler.renderPreview(context.documentGeneration, preparedRequest.request) { result ->
+      val tile = result.getOrNull()
+      val install = Runnable {
+        val current = slots[direction]
+        val matchingRequest = !isDisposed() && current === loading
+        if (result.isFailure && matchingRequest) {
+          replaceSlot(direction, PagePreviewSlot.Empty)
+          val transaction = (state as? NavigationState.Dragging)?.transaction
+          if (transaction?.releaseRequested == true && transaction.gesture.physicalDirection == direction) {
+            settleToRest()
           }
-          val valid = matchingRequest && tile?.request?.key == preparedRequest.request.key
-          if (!valid) {
-            tile?.bitmap?.recycle()
-            return@Runnable
-          }
-          replaceSlot(direction, PagePreviewSlot.Ready(PreparedPagePreview(preparedRequest, checkNotNull(tile).bitmap)))
-          replayPullIfReady(direction)
           requestInvalidate()
+          return@Runnable
         }
-        if (Looper.myLooper() == Looper.getMainLooper()) install.run()
-        else if (!mainHandler.post(install)) tile?.bitmap?.recycle()
+        val valid = matchingRequest && tile?.request?.key == preparedRequest.request.key
+        if (!valid) {
+          tile?.bitmap?.let(releasePreviewBitmap)
+          return@Runnable
+        }
+        replaceSlot(direction, PagePreviewSlot.Ready(PreparedPagePreview(preparedRequest, checkNotNull(tile).bitmap)))
+        replayPullIfReady(direction)
+        requestInvalidate()
       }
+      if (Looper.myLooper() == Looper.getMainLooper()) install.run()
+      else if (!mainHandler.post(install)) tile?.bitmap?.let(releasePreviewBitmap)
     }
-    val validDirections = nextContext.eligibleTargets.keys
-    slots.keys.toList().filter { it !in validDirections }.forEach { replaceSlot(it, PagePreviewSlot.Empty) }
   }
 
   internal fun onTouch(event: MotionEvent): Boolean {
     requireOnUiThread()
-    if (state is NavigationState.Switching) return true
     if (event.actionMasked == MotionEvent.ACTION_DOWN) {
       clearVelocityTracker()
       velocityTracker = VelocityTracker.obtain()
     }
     velocityTracker?.addMovement(event)
     if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-      if (state is NavigationState.Settling) cancelSettleForNewPull()
+      if (state is NavigationState.Settling) takeOverSettlement()
       val captured = capture(event)
       if (captured == null) {
         clearVelocityTracker()
         return false
       }
       val (capturedContext, capturedGesture) = captured
-      val needsPreviewRetry = capturedContext.eligibleTargets.any { (direction, targetPageIndex) ->
-        (slots[direction] == null || slots[direction] is PagePreviewSlot.Empty) &&
-          ((capturedGesture.eligibility.previous && targetPageIndex == capturedContext.sourcePageIndex - 1) ||
-            (capturedGesture.eligibility.next && targetPageIndex == capturedContext.sourcePageIndex + 1))
-      }
-      if (needsPreviewRetry) reconcilePreviews()
       state = NavigationState.Dragging(
         NavigationDragTransaction(
           context = capturedContext,
@@ -242,6 +245,7 @@ internal class PageNavigationController(
           ordinaryNavigationActive = true,
         ),
       )
+      recycleAllSlots()
       forwardToDocumentNavigation(event)
       return true
     }
@@ -266,14 +270,17 @@ internal class PageNavigationController(
     return true
   }
 
-  internal fun cancel() {
+  internal fun reset() {
+    cancelGesture()
+    releaseHandoff()
+  }
+
+  internal fun cancelGesture() {
     requireOnUiThread()
     clearVelocityTracker()
     transactionToken += 1L
     cancelSettlementDriver()
     state = NavigationState.Idle
-    previewEpoch += 1L
-    currentContext()?.let { previewScheduler.updateEpoch(it.documentGeneration, previewEpoch) }
     recycleAllSlots()
     onPageNavigationSettled()
     requestInvalidate()
@@ -285,20 +292,18 @@ internal class PageNavigationController(
     pageSwitchId: Long,
   ) {
     requireOnUiThread()
-    val current = (state as? NavigationState.Switching)?.handoff ?: return
+    val current = pendingHandoff?.handoff ?: return
     if (current.documentGeneration != generation || current.targetPageIndex != pageIndex ||
       current.pageSwitchId != pageSwitchId
     ) return
-    state = NavigationState.Idle
-    replaceSlot(current.direction, PagePreviewSlot.Empty)
+    releaseHandoff()
     onPageNavigationSettled()
-    reconcilePreviews()
     requestInvalidate()
   }
 
   internal fun onVisibleTilesFailed(generation: Long, pageIndex: Int, pageSwitchId: Long) {
     requireOnUiThread()
-    val current = (state as? NavigationState.Switching)?.handoff ?: return
+    val current = pendingHandoff?.handoff ?: return
     if (current.documentGeneration != generation || current.targetPageIndex != pageIndex ||
       current.pageSwitchId != pageSwitchId
     ) return
@@ -311,7 +316,7 @@ internal class PageNavigationController(
     state = state,
     preparedDirections = previewDirections(),
     previewPresented = presentation().selectedPreview != null,
-    handoffPending = state is NavigationState.Switching,
+    handoffPending = pendingHandoff != null,
     translationX = presentation().translationX,
     targetPanelOffsetX = presentation().targetPanelOffsetX,
   )
@@ -434,6 +439,7 @@ internal class PageNavigationController(
         selectedPreview = null,
         presentation = NavigationPresentation(),
       ))
+      recycleAllSlots()
       requestInvalidate()
       return
     }
@@ -451,13 +457,11 @@ internal class PageNavigationController(
       latestTouchY = currentY,
       selectedPreview = preview,
       hapticIssued = hapticIssued,
-      presentation = if (preview == null) {
-        NavigationPresentation(direction = direction, progress = updated.progress)
-      } else {
-        pullPresentation(transaction.context, updated, preview)
-      },
+      presentation = pullPresentation(transaction.context, updated, preview),
     )
     state = NavigationState.Dragging(nextTransaction)
+    slots.keys.toList().filter { it != direction }.forEach { replaceSlot(it, PagePreviewSlot.Empty) }
+    requestPreview(direction, transaction.context)
     requestInvalidate()
     if (nextTransaction.releaseRequested && preview != null) settleToCommit(nextTransaction)
   }
@@ -486,7 +490,7 @@ internal class PageNavigationController(
     if ((current.gesture.phase == SwipePhase.ARMED || flick) && current.gesture.targetDelta != null) {
       if (current.selectedPreview == null) {
         state = NavigationState.Dragging(current.copy(releaseRequested = true))
-        reconcilePreviews()
+        requestPreview(checkNotNull(current.gesture.physicalDirection), current.context)
         return
       }
       settleToCommit(current)
@@ -499,7 +503,7 @@ internal class PageNavigationController(
   private fun pullPresentation(
     context: NavigationContext,
     pull: NavigationGesture,
-    preview: PreparedPagePreview,
+    preview: PreparedPagePreview?,
   ): NavigationPresentation {
     val direction = checkNotNull(pull.physicalDirection)
     val width = context.viewportWidthPx.toDouble()
@@ -568,8 +572,8 @@ internal class PageNavigationController(
   private fun finishRest(settlement: NavigationSettlement) {
     if ((state as? NavigationState.Settling)?.settlement !== settlement) return
     state = NavigationState.Idle
+    recycleAllSlots()
     onPageNavigationSettled()
-    reconcilePreviews()
     requestInvalidate()
   }
 
@@ -627,19 +631,19 @@ internal class PageNavigationController(
 
   private fun commit(settlement: NavigationSettlement) {
     val capturedContext = settlement.context ?: run {
-      failCommit(null)
+      failCommit()
       return
     }
     val pull = settlement.gesture ?: run {
-      failCommit(null)
+      failCommit()
       return
     }
     val preview = settlement.preview ?: run {
-      failCommit(pull.physicalDirection)
+      failCommit()
       return
     }
     val targetPage = capturedContext.eligibleTargets[pull.physicalDirection] ?: run {
-      failCommit(pull.physicalDirection)
+      failCommit()
       return
     }
     val exactPageSwitchHandoff = PageSwitchHandoff(
@@ -656,24 +660,36 @@ internal class PageNavigationController(
       false
     }
     if (!installed) {
-      failCommit(exactPageSwitchHandoff.direction)
+      failCommit()
       return
     }
-    state = NavigationState.Switching(exactPageSwitchHandoff, preview)
-    requestInvalidate()
-  }
-
-  private fun failCommit(direction: SwipeDirection?) {
+    // The installed page owns this fallback independently of the next touch stream.
+    slots.remove(exactPageSwitchHandoff.direction)
+    releaseHandoff()
+    pendingHandoff = PageNavigationHandoff(exactPageSwitchHandoff, preview)
     state = NavigationState.Idle
-    direction?.let { replaceSlot(it, PagePreviewSlot.Empty) }
+    recycleAllSlots()
     onPageNavigationSettled()
-    reconcilePreviews()
     requestInvalidate()
   }
 
-  private fun cancelSettleForNewPull() {
-    cancelSettlementDriver()
+  private fun failCommit() {
     state = NavigationState.Idle
+    recycleAllSlots()
+    onPageNavigationSettled()
+    requestInvalidate()
+  }
+
+  private fun takeOverSettlement() {
+    val settlement = (state as NavigationState.Settling).settlement
+    cancelSettlementDriver()
+    if (settlement.outcome == NavigationSettlementOutcome.COMMIT) {
+      commit(settlement)
+    } else {
+      state = NavigationState.Idle
+      recycleAllSlots()
+      requestInvalidate()
+    }
   }
 
   private fun cancelSettlementDriver() {
@@ -687,13 +703,18 @@ internal class PageNavigationController(
   private fun replaceSlot(direction: SwipeDirection, next: PagePreviewSlot) {
     val previous = slots.put(direction, next)
     if (previous is PagePreviewSlot.Ready && previous.preview.bitmap !== (next as? PagePreviewSlot.Ready)?.preview?.bitmap) {
-      previous.preview.bitmap.recycle()
+      releasePreviewBitmap(previous.preview.bitmap)
     }
     if (next is PagePreviewSlot.Empty) slots.remove(direction)
   }
 
+  private fun releaseHandoff() {
+    pendingHandoff?.preview?.bitmap?.let(releasePreviewBitmap)
+    pendingHandoff = null
+  }
+
   private fun recycleAllSlots() {
-    slots.values.forEach { slot -> if (slot is PagePreviewSlot.Ready) slot.preview.bitmap.recycle() }
+    slots.values.forEach { slot -> if (slot is PagePreviewSlot.Ready) releasePreviewBitmap(slot.preview.bitmap) }
     slots.clear()
   }
 

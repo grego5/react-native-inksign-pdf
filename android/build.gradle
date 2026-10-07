@@ -440,6 +440,12 @@ android {
     }
   }
 
+  if (project.findProperty('inkSignTileBenchmark') == 'true') {
+    testBuildType = 'release'
+    sourceSets.androidTest.java.srcDir(file('../tools/android-tile-benchmark'))
+    sourceSets.androidTest.manifest.srcFile(file('../tools/android-tile-benchmark/AndroidManifest.xml'))
+  }
+
   buildFeatures {
     buildConfig = true
     prefab = true

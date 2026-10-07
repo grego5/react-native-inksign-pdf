@@ -44,8 +44,11 @@ class ScopedPage final {
   explicit ScopedPage(FPDF_PAGE page) : page_(page) {}
   ScopedPage(const ScopedPage&) = delete;
   ScopedPage& operator=(const ScopedPage&) = delete;
-  ~ScopedPage() {
+  ~ScopedPage() { reset(); }
+
+  void reset(FPDF_PAGE page = nullptr) {
     if (page_ != nullptr) FPDF_ClosePage(page_);
+    page_ = page;
   }
 
   FPDF_PAGE get() const { return page_; }
@@ -182,6 +185,10 @@ struct PdfiumDocumentSession::Impl final {
   std::vector<std::uint8_t> documentBytes;
   FPDF_DOCUMENT document = nullptr;
   std::size_t pageCount = 0;
+  // Retain one parsed page and its decoded-image cache across tile renders.
+  // Access and release remain under the PDFium API mutex.
+  ScopedPage renderPage{nullptr};
+  std::optional<std::size_t> renderPageIndex;
   std::unique_ptr<FontSubstitutionRegistry> fontRegistry =
       std::make_unique<FontSubstitutionRegistry>();
   // A PdfiumDocumentSession is tied to one immutable source generation. Page
@@ -857,9 +864,17 @@ PdfiumError PdfiumDocumentSession::renderPage(
   auto& state = pdfiumLibraryState();
   std::lock_guard apiLock(state.apiMutex);
   ScopedFontRegistry activeRegistry(impl_->fontRegistry.get());
-  ScopedPage page(FPDF_LoadPage(impl_->document,
-                                static_cast<int>(request.pageIndex)));
-  if (page.get() == nullptr) {
+  if (impl_->renderPageIndex != request.pageIndex) {
+    impl_->renderPage.reset();
+    impl_->renderPageIndex.reset();
+    impl_->renderPage.reset(FPDF_LoadPage(
+        impl_->document, static_cast<int>(request.pageIndex)));
+    if (impl_->renderPage.get() != nullptr) {
+      impl_->renderPageIndex = request.pageIndex;
+    }
+  }
+  const auto page = impl_->renderPage.get();
+  if (page == nullptr) {
     const auto error = FPDF_GetLastError();
     return {PdfiumErrorCode::PageOpenFailed,
             "FPDF_LoadPage failed (PDFium error " +
@@ -883,7 +898,7 @@ PdfiumError PdfiumDocumentSession::renderPage(
   const FS_RECTF pdfiumClip{
       static_cast<float>(clip.left), static_cast<float>(clip.top),
       static_cast<float>(clip.right), static_cast<float>(clip.bottom)};
-  FPDF_RenderPageBitmapWithMatrix(bitmap.get(), page.get(), &pdfiumMatrix,
+  FPDF_RenderPageBitmapWithMatrix(bitmap.get(), page, &pdfiumMatrix,
                                   &pdfiumClip,
                                   static_cast<int>(request.flags));
   return {};
@@ -902,6 +917,9 @@ void PdfiumDocumentSession::closeUnchecked() noexcept {
     auto& state = pdfiumLibraryState();
     {
       std::lock_guard apiLock(state.apiMutex);
+      ScopedFontRegistry activeRegistry(impl_->fontRegistry.get());
+      impl_->renderPage.reset();
+      impl_->renderPageIndex.reset();
       FPDF_CloseDocument(impl_->document);
     }
     impl_->document = nullptr;

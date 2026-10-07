@@ -1,6 +1,11 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.pdf.PdfDocument
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
 import androidx.test.platform.app.InstrumentationRegistry
@@ -69,6 +74,61 @@ class PdfiumSmokeInstrumentationTest {
       }
     } finally {
       session.close()
+    }
+  }
+
+  @Test
+  fun retainedRenderPageMatchesFreshSessionsAcrossTransformsAndPageSwitches() {
+    val document = PdfDocument()
+    val source = try {
+      for (index in 0..1) {
+        val page = document.startPage(PdfDocument.PageInfo.Builder(128, 96, index + 1).create())
+        val image = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
+        try {
+          val canvas = Canvas(image)
+          canvas.drawColor(if (index == 0) Color.RED else Color.BLUE)
+          val paint = Paint().apply { color = if (index == 0) Color.GREEN else Color.YELLOW }
+          canvas.drawRect(32f, 16f, 80f, 64f, paint)
+          page.canvas.drawBitmap(image, null, RectF(0f, 0f, 128f, 96f), null)
+        } finally { image.recycle() }
+        document.finishPage(page)
+      }
+      ByteArrayOutputStream().use { output -> document.writeTo(output); output.toByteArray() }
+    } finally { document.close() }
+    val identity = PdfiumAffineMatrix(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    val requests = listOf(
+      0 to identity,
+      0 to PdfiumAffineMatrix(2.0, 0.0, 0.0, 2.0, -48.0, -24.0),
+      0 to PdfiumAffineMatrix(0.0, 1.0, -1.0, 0.0, 128.0, 0.0),
+      1 to identity,
+      1 to PdfiumAffineMatrix(2.0, 0.0, 0.0, 2.0, -48.0, -24.0),
+      0 to identity,
+    )
+    fun render(session: PdfiumRenderSession, page: Int, matrix: PdfiumAffineMatrix): Bitmap {
+      val bitmap = Bitmap.createBitmap(128, 96, Bitmap.Config.ARGB_8888)
+      try {
+        assertTrue(session.renderPageIntoBitmap(page, bitmap, matrix,
+          PdfiumRect(0.0, 0.0, 128.0, 96.0), flags = pdfiumAndroidDisplayFlags))
+        return bitmap
+      } catch (failure: Throwable) { bitmap.recycle(); throw failure }
+    }
+    PdfiumRenderSession.open(source).use { retained ->
+      var firstPagePixel: Int? = null
+      for ((page, matrix) in requests) {
+        val actual = render(retained, page, matrix)
+        try {
+          PdfiumRenderSession.open(source).use { fresh ->
+            val expected = render(fresh, page, matrix)
+            try { assertTrue("Retained page $page must match a fresh render at $matrix", actual.sameAs(expected)) }
+            finally { expected.recycle() }
+          }
+          if (matrix == identity) {
+            val pixel = actual.getPixel(8, 8)
+            assertNotEquals("The source image must be visible", Color.WHITE, pixel)
+            if (page == 0) firstPagePixel = pixel else assertNotEquals(firstPagePixel, pixel)
+          }
+        } finally { actual.recycle() }
+      }
     }
   }
 

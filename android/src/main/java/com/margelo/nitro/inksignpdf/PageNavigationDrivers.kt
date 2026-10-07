@@ -5,31 +5,11 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 
 internal interface PageNavigationPreviewScheduler {
-  fun updateEpoch(generation: Long, previewEpoch: Long)
-
   fun renderPreview(
     generation: Long,
-    previewEpoch: Long,
     request: PdfTileRequest,
     completion: (Result<PdfTile>) -> Unit,
   )
-}
-
-internal class WorkerPageNavigationPreviewScheduler(
-  private val worker: PdfSessionWorker,
-) : PageNavigationPreviewScheduler {
-  override fun updateEpoch(generation: Long, previewEpoch: Long) {
-    worker.updatePreviewEpoch(generation, previewEpoch)
-  }
-
-  override fun renderPreview(
-    generation: Long,
-    previewEpoch: Long,
-    request: PdfTileRequest,
-    completion: (Result<PdfTile>) -> Unit,
-  ) {
-    worker.renderPreview(generation, previewEpoch, request, completion)
-  }
 }
 
 internal interface PageNavigationSettlementDriver {

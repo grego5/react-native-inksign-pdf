@@ -1,112 +1,96 @@
 # Android viewport and input
 
 ## Viewport
-- `onZoomedInChange(boolean)` reports settled zoom above fitted scale with a
-   0.1% tolerance. Native deduplicates results per document; page/size changes
-   reevaluate fit. Reporting waits for touch/navigation completion and 120 ms
-   without a zoom/fit change; continuous viewport updates stay native.
 
-- View and document state belong to the UI thread. Viewport focus uses displayed
-  top-left page coordinates; transforms map stored content to that orientation.
-- Mode changes commit an active text draft or cancel untapped placement.
-  `setViewMode()` and `setInkMode()` apply viewport options immediately;
-  `setTextMode()` applies them after a valid placement tap.
-- Omitted options preserve the viewport; `{}` fits the page. Text-only options
-  preserve it. Zoom is absolute; paired x/y specify displayed page focus.
-  Placement zoom alone focuses the editor. Caret following and keyboard
-  avoidance may pan without changing zoom. `doubleTap.zoom` belongs to double taps.
-- Opening and page changes fit the page unless viewport options override it.
-  Page-change events follow installation, and newer navigation requests replace
-  older pending requests.
-- Ink input maps from the view into raw page-content coordinates; rendering
-  applies page orientation and viewport transforms.
+- UI-thread state uses displayed top-left page coordinates for focus. Transforms
+  map stored content into display; ink input maps view coordinates to raw page content.
+- `setViewMode()`/`setInkMode()` apply viewport options immediately;
+  `setTextMode()` applies them after a valid tap. Mode changes commit an active
+  draft or cancel untapped placement.
+- Omission preserves the viewport; `{}` fits; text-only options preserve it.
+  Zoom is absolute; paired x/y set page focus. Placement zoom alone focuses the
+  editor. Caret/keyboard handling may pan without zooming; `doubleTap.zoom`
+  controls double taps.
+- Open/page changes fit unless viewport options override. Page callbacks follow
+  installation; newer navigation requests replace pending ones.
+- `onZoomedInChange(boolean)` reports zoom above fit with 0.1% tolerance,
+  deduplicated per document. Page/size changes reevaluate fit. Notify after touch/
+  navigation ends and 120 ms without a zoom/fit change; continuous updates stay native.
 
 ## Text
 
-- An annotation retains its local layout orientation and flow rectangle.
-  `PageCoordinates` derives layout-to-display through layout-to-canonical;
-  the editor, committed rendering, selection, and drag use that mapping.
-  New text captures the current displayed orientation. Accepted placement is
-  converted once at the coordinator boundary. See the shared
-  [document model](../architecture.md#document-model) and [export](export.md).
-- `TextInteractionOverlay` owns text placement, hit testing, editing, dragging,
-  and keyboard avoidance. Placement drags and editor-outside drags pan the viewport;
-  two-finger gestures pan and pinch even over the editor. Viewport takeover
-  preserves the draft or armed placement and owns the stream until release.
-  Manual navigation suspends caret following until text changes. Lifecycle
-  cancellation retires viewport ownership and consumes the old stream through release.
-  Text gestures bypass ink and page navigation.
-- Prepared free targets use `{ x, y, width, height }` in displayed page coordinates;
-  x/y stay at the physical
-  top-left in either direction, and vertical anchoring moves only visible text.
-- `setTextMode(options?)` arms placement and reports `textPlacement`.
-  A valid tap opens the editor on finger-up; an invalid tap leaves placement
-  armed. Optional width and height make a physical rectangle from the tap
-  toward the right and down; direction never changes its edges. Alignment, line
-  limit, and vertical anchor affect text inside it. Preview and committed text
-  show the same complete lines. Dimensions are hard bounds; `maxLines` is an
-  additional cap, not a requested line count. An outside tap finishes editing;
-  committing or cancelling the draft returns to view mode.
-- A bounded editor admits text that fits its flow region and line limit.
-  Rejected input at a collapsed caret leaves text and caret in place; deletion
-  remains possible after reflow. A shorter composing replacement can reduce
-  overflow, while an overflowing extension preserves the existing composition.
-  Direction and font-size changes retain entered text. `verticalAnchor` changes
-  placement, not fit. Programmatic values use the same committed text layout.
-- Without box dimensions, placement centers the box horizontally and aligns its
-  inner bottom to the tap, subject to page clamping, rule snapping, and `maxLines`.
-  The active presentation loads snap candidates lazily from shared page analysis.
-  The above-rule snap band uses the associated label line-height, with the
-  existing screen-space tolerance as a minimum and measured editor line-height
-  when no label is associated. Below-rule tolerance remains unchanged; see
-  [document ownership and caching](view-lifecycle.md).
-- `setTextDirection()` updates future placement and an active editor immediately.
-  Switching keeps the fixed flow rectangle in place; subsequent text edits
-  reflow inside it, and caret following uses that direction.
-  Explicit LTR/RTL overrides app policy; `auto` uses app layout direction.
-  Omission uses the last `setTextDirection()` choice, or app direction when unset.
-  The resolved direction is saved when editing commits.
-- Editing or dragging an existing annotation does not apply placement snapping.
-  Text selection, outlines, and editing share the same page-to-view geometry.
+- Annotations retain layout orientation/flow rectangles. `PageCoordinates` maps
+  layout → canonical → display for editor, rendering, selection, and drag.
+  New text captures display orientation; the coordinator converts accepted
+  placement once. See [document model](../architecture.md#document-model)
+  and [export](export.md).
+- `TextInteractionOverlay` owns placement, hit testing, editing, dragging, and
+  keyboard avoidance. Placement/editor-outside drags pan; two fingers pan/pinch
+  even over the editor. Viewport takeover retains drafts/armed placement and owns
+  the stream until release; manual navigation pauses caret following until text changes.
+  Lifecycle cancellation consumes the retired stream through release.
+  Text gestures bypass ink/page navigation.
+- Free bounds use displayed `{ x, y, width, height }`; x/y is physical top-left
+  for either direction. Dimensioned taps extend right/down. Alignment and
+  `verticalAnchor` position text inside the rectangle without moving its edges.
+  Dimensions are hard limits; `maxLines` caps complete lines without forcing a count.
+  Preview and committed layout select the same complete lines.
+- `setTextMode()` arms placement and reports `textPlacement`. A valid tap opens
+  the editor on finger-up; invalid taps keep it armed. Outside taps finish editing;
+  commit/cancel returns to view mode.
+- Bounded editors admit fitting text. Rejection at a collapsed caret preserves
+  text/caret; deletion remains available after reflow. Shorter composing replacements
+  may reduce overflow; overflowing extensions preserve composition. Direction/font
+  changes retain text; vertical anchor affects placement, not fit. Programmatic
+  values use the same committed layout.
+- Auto-sized placement centers horizontally with inner bottom at the tap, then
+  clamps/snaps to the page/rules. Snap candidates load lazily from shared analysis.
+  Above-rule tolerance is the greater of screen tolerance and label line-height
+  (editor line-height when unlabeled); below-rule tolerance is screen-based.
+  Existing annotation editing/dragging does not snap.
+- `setTextDirection()` updates future placement and the editor, preserving fixed
+  flow bounds; reflow/caret following use the updated direction. Explicit LTR/RTL
+  wins; `auto` uses app direction; omission uses the last setting or app direction.
+  Commit saves the resolved direction.
 
 ## Prepared page text
-- Prepared labels are complete visual groups with exact source glyph ranges. Lookup compares full
-  token-frequency counts, preserving repeated words while allowing extracted
-  word-order differences. Partial labels and substrings do not match. Rules
-  are selected after canonical source geometry is projected into current display.
-  A vertical writing rule rejects new field insertion and focus; existing module
-  text remains editable and clearable. Named focus uses the rule; free focus
-  uses the target center. Empty targets reserve a
-  coordinator-owned numeric ID; prepared handles retain source analysis and
-  target the captured stable page through navigation. UI-owned slots and history
-  outlive analysis-cache eviction; the overlay owns drafts and selection.
-- Module annotation/draft values take precedence over detected embedded source
-  text. Clearing removes module text only and reveals the source fallback again.
-  Detection and adoption use the selected rule-width/label-height band on the
-  chosen side; only the selected label glyph ranges are excluded. Free targets
-  use their canonical placement region. Competing annotations reject adoption.
-  Re-resolution preserves formatting; explicit formatting is finalized before
-  measuring visible bounds. See the [document model](../architecture.md#document-model).
+
+- Complete visual labels retain exact source glyph ranges. Lookup compares full
+  word counts: repeated words matter, extracted word order may differ,
+  partial labels/substrings do not match. Project source rules into current display
+  before selection. See [handle/target ownership](view-lifecycle.md#ownership).
+- Empty targets reserve numeric IDs. Value precedence is draft → committed module
+  text → embedded source text → empty. Clear removes module text, revealing source
+  fallback. Re-resolution preserves formatting; finalize explicit formatting before
+  measuring visible bounds.
+- Named detection/adoption uses rule width and one label-height band above the rule
+  for bottom anchor, below for top. Exclude only the selected label's glyph ranges.
+  Free targets use their placement region. Competing annotations reject adoption.
+- Named focus uses the writing rule; free focus uses the target center. Vertical
+  rules reject new field insertion/focus; existing module text remains editable
+  and clearable.
 
 ## Ink and navigation
 
-- View mode owns page navigation; pan and pinch remain viewport input. The
-  `pagerDirection` prop controls physical next/previous mapping independently
-  of text direction; `auto` follows app layout direction.
-- A slow horizontal drag keeps the existing distance threshold. A quick flick
-  may commit after 25 dp travel at 400 dp/s when displacement and velocity agree.
-  Velocity is clamped to the platform maximum; multi-touch, cancellation,
-  vertical-dominant movement, and unavailable neighbors do not commit. If a
-  target preview is still rendering at release, the intent waits for that preview.
-- An admitted page pull owns the touch stream until release or cancellation.
-  Returning to neutral restores the resting presentation while retaining the
-  gesture; pulling again can reveal either eligible neighbor in the same stream.
-- After transition settlement, the target preview remains until the tiled draw
-  submits complete visible coverage at the final viewport. Cache readiness requests
-  drawing; a next-frame acknowledgement retires the preview only for the matching
-  document, page, and switch ID. This is draw submission, not a GPU presentation fence.
-- Edit mode accepts a single finger or stylus stroke using the transform and
-  pen settings captured at stroke start. A second finger cancels unfinished
-  finger ink and transfers the stream to viewport pan/pinch until all fingers
-  lift; stylus streams retain drawing ownership. Page, mode, and lifecycle
-  changes cancel viewport input and consume the retired stream through release.
+- View mode admits page pulls at content edges; pan/pinch remain viewport input.
+  `pagerDirection` controls physical next/previous mapping independently of text;
+  `auto` follows app direction.
+- Distance threshold is 30% of visible page width; flicks may commit after 25 dp
+  at 400 dp/s with agreeing displacement/velocity. Clamp velocity to platform
+  maximum. Multi-touch, cancellation, vertical-dominant motion, or missing neighbors
+  cannot commit.
+- A pull owns the stream through release/cancel and follows the finger while its
+  chosen preview loads. Neutral retains the gesture; reversal requests the other
+  neighbor. Release waits for a loading preview; failure settles back to source.
+- Touch during committed settlement stops animation, installs the destination
+  once, and captures a new gesture there; during snap-back it uses the source.
+  Tile handoff is independent and cannot block/reset the newer gesture.
+- Handoff metadata retires after complete current tile coverage is drawn and
+  acknowledged: hardware Android 10+ uses frame commit; older/software rendering
+  uses the next frame. Recheck document/page/switch ID, coverage revision, and
+  completeness. Readiness requests drawing; frame commit confirms submission,
+  not physical presentation. See [base fallback/tiles](rendering-front-buffer.md#pdf-pages).
+- Ink uses one finger or stylus with transform/pen settings captured at stroke start.
+  A second finger cancels finger ink and owns viewport pan/pinch until all lift;
+  stylus retains drawing ownership. Page/mode/lifecycle changes cancel viewport
+  input and consume the retired stream through release.

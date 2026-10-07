@@ -30,6 +30,7 @@ internal class InkDocumentController(
   private val currentDocumentGeneration: () -> Long?,
   private val currentPageIndex: () -> Int?,
   private val currentPageSwitchId: () -> Long?,
+  tileCacheBudgetBytes: Long? = null,
 ) {
   internal data class TilePresentationStateForTest(
     val activeVisibleKeys: List<PdfTileKey>,
@@ -67,7 +68,7 @@ internal class InkDocumentController(
   private val pageRect = RectF()
   private val tileRect = RectF()
   private val tileCoreRect = RectF()
-  private val cache = PdfTileCache(tileCacheLimitBytes(context))
+  private val cache = PdfTileCache(tileCacheBudgetBytes ?: tileCacheLimitBytes(context))
   private val scroller = OverScroller(context)
   private val gestureDetector = GestureDetector(context, GestureListener())
   private val scaleGestureDetector = ScaleGestureDetector(context, ScaleListener())
@@ -82,15 +83,17 @@ internal class InkDocumentController(
   private var scaling = false
   private var lastScrollerX = 0
   private var lastScrollerY = 0
-  private var pendingKeys = HashSet<PdfTileKey>()
   private var tileRequestEpoch = 0L
+  private var tileRasterEpoch = 0L
+  private var pendingTileRequest: PdfTileRequest? = null
   private var activeTileWindow: PdfTileWindow? = null
   private var activeVisibleTileRequests: List<PdfTileRequest> = emptyList()
   private var activePrefetchTileRequests: List<PdfTileRequest> = emptyList()
   private var displayedVisibleTileRequests: List<PdfTileRequest> = emptyList()
   private var tileLevelTransitionPending = false
   private val protectedVisibleTileKeys = HashSet<PdfTileKey>()
-  private val suppressedPrefetchKeys = HashSet<PdfTileKey>()
+  // One attempt per unchanged window, even if a successfully cached tile is later evicted.
+  private val attemptedPrefetchKeys = HashSet<PdfTileKey>()
   private var lastPlannedZoom = Double.NaN
   private var lastPlannedFocusX = Double.NaN
   private var lastPlannedFocusY = Double.NaN
@@ -363,6 +366,7 @@ internal class InkDocumentController(
   fun draw(
     canvas: Canvas,
     navigationPresentation: NavigationPresentation = NavigationPresentation(),
+    baseRaster: android.graphics.Bitmap? = null,
   ): DrawState? {
     requireOnUiThread()
     if (disposed) return null
@@ -388,6 +392,7 @@ internal class InkDocumentController(
       (viewOffsetY + currentPage.height * viewScale).toFloat(),
     )
     canvas.drawRect(pageRect, pagePaint)
+    baseRaster?.let { canvas.drawBitmap(it, null, pageRect, tilePaint) }
 
     val displayedRequests = displayedVisibleTileRequests
     visibleTilesDrawn = false
@@ -548,10 +553,12 @@ internal class InkDocumentController(
       activePrefetchKeys = activePrefetchTileRequests.map { it.key },
       displayedVisibleKeys = displayedVisibleTileRequests.map { it.key },
       protectedVisibleKeys = protectedVisibleTileKeys.toSet(),
-      pendingKeys = pendingKeys.toSet(),
+      pendingKeys = pendingTileRequest?.let { setOf(it.key) } ?: emptySet(),
       transitionPending = tileLevelTransitionPending,
     )
   }
+
+  internal val tileCacheBytes: Long get() = cache.allocatedBytes
 
   /** Reports existing coverage without changing the viewport or requesting tiles. */
   internal fun isVisibleTileCoverageComplete(): Boolean {
@@ -612,6 +619,7 @@ internal class InkDocumentController(
       previous = activeTileWindow,
     )
     if (nextWindow != activeTileWindow) {
+      visibleTilesDrawn = false
       val previousWindow = activeTileWindow
       tileRequestEpoch += 1L
       activeTileWindow = nextWindow
@@ -637,108 +645,83 @@ internal class InkDocumentController(
         displayedVisibleTileRequests = activeVisibleTileRequests
       }
       rebuildProtectedVisibleTileKeys()
-      suppressedPrefetchKeys.clear()
-      sessionWorker.updateTileEpoch(generation, tileRequestEpoch)
+      attemptedPrefetchKeys.clear()
+      sessionWorker.updateTileEpoch(generation, tileRasterEpoch)
       completeTileLevelTransitionIfCovered()
     }
-    val requestEpoch = tileRequestEpoch
-    var visibleRequests: ArrayList<PdfTileRequest>? = null
-    activeVisibleTileRequests.forEach { request ->
-      if (!cache.containsKey(request.key) &&
-        pendingKeys.add(request.key)
-      ) {
-        val batch = visibleRequests ?: ArrayList<PdfTileRequest>().also {
-          visibleRequests = it
-        }
-        batch += request
-      }
-    }
-    var prefetchRequests: ArrayList<PdfTileRequest>? = null
-    activePrefetchTileRequests.forEach { request ->
-      if (!cache.containsKey(request.key) &&
-        request.key !in suppressedPrefetchKeys &&
-        pendingKeys.add(request.key)
-      ) {
-        val batch = prefetchRequests ?: ArrayList<PdfTileRequest>().also {
-          prefetchRequests = it
-        }
-        batch += request
-      }
-    }
-    visibleRequests?.let { submitTileBatch(generation, requestEpoch, it) }
-    prefetchRequests?.let { submitTileBatch(generation, requestEpoch, it) }
+    dispatchNextTile()
     notifyVisibleTilesReadyIfCovered()
   }
 
-  private fun submitTileBatch(
-    generation: Long,
-    requestEpoch: Long,
-    requests: List<PdfTileRequest>,
-  ) {
-    sessionWorker.renderTiles(generation, requestEpoch, requests) { result ->
+  /** Only one tile is admitted to the serialized worker; the rest remain latest UI demand. */
+  private fun dispatchNextTile() {
+    if (disposed || tileRequestsSuspended || pendingTileRequest != null) return
+    val generation = currentDocumentGeneration() ?: return
+    val request = activeVisibleTileRequests.firstOrNull { !cache.containsKey(it.key) }
+      ?: activePrefetchTileRequests.firstOrNull {
+        !cache.containsKey(it.key) && it.key !in attemptedPrefetchKeys
+      } ?: return
+    val rasterEpoch = tileRasterEpoch
+    pendingTileRequest = request
+    sessionWorker.updateTileEpoch(generation, rasterEpoch)
+    sessionWorker.renderTiles(generation, rasterEpoch, listOf(request)) { result ->
       val posted = mainHandler.post {
-        requests.forEach { pendingKeys.remove(it.key) }
-        if (disposed || requestEpoch != tileRequestEpoch) {
+        if (disposed || rasterEpoch != tileRasterEpoch || pendingTileRequest !== request) {
           result.getOrNull()?.forEach { it.bitmap.recycle() }
           return@post
         }
-        val acceptedGeneration = currentDocumentGeneration()
-        val acceptedPageIndex = currentPageIndex()
-        val acceptedPageSwitchId = currentPageSwitchId()
-        if (acceptedGeneration != generation ||
-          acceptedPageIndex != requests.firstOrNull()?.key?.pageIndex ||
-          acceptedPageSwitchId != requests.firstOrNull()?.key?.pageSwitchId
-        ) {
+        pendingTileRequest = null
+        val currentRequest = activeVisibleTileRequests.firstOrNull { it.key == request.key }
+          ?: activePrefetchTileRequests.firstOrNull { it.key == request.key }
+        val accepted = currentDocumentGeneration() == generation &&
+          currentPageIndex() == request.key.pageIndex &&
+          currentPageSwitchId() == request.key.pageSwitchId && currentRequest != null
+        if (!accepted) {
           result.getOrNull()?.forEach { it.bitmap.recycle() }
+          dispatchNextTile()
           return@post
         }
-        if (result.isFailure && requests.any { it.priority == androidPdfTileVisiblePriority }) {
-          lastPlannedZoom = Double.NaN
-          lastPlannedFocusX = Double.NaN
-          lastPlannedFocusY = Double.NaN
-          lastPlannedWidthPx = Double.NaN
-          lastPlannedHeightPx = Double.NaN
-          val firstRequest = checkNotNull(requests.firstOrNull())
-          onVisibleTilesFailed?.invoke(
-            generation,
-            firstRequest.key.pageIndex,
-            firstRequest.key.pageSwitchId,
-          )
-          requestInvalidate()
-          return@post
+        val latest = checkNotNull(currentRequest)
+        if (latest.priority == androidPdfTilePrefetchPriority) {
+          attemptedPrefetchKeys.add(request.key)
         }
-        result.onSuccess { tiles ->
-          tiles.forEach { tile ->
-            if (tile.request.key.generation == generation &&
-              activeTileWindow?.contains(tile.request.key) == true
-            ) {
-              if (!cache.put(tile, protectedVisibleTileKeys) &&
-                tile.request.priority == androidPdfTilePrefetchPriority
-              ) {
-                suppressedPrefetchKeys += tile.request.key
-              }
-            } else {
-              tile.bitmap.recycle()
-            }
+        if (result.isFailure) {
+          if (latest.priority == androidPdfTileVisiblePriority) {
+            lastPlannedZoom = Double.NaN
+            lastPlannedFocusX = Double.NaN
+            lastPlannedFocusY = Double.NaN
+            lastPlannedWidthPx = Double.NaN
+            lastPlannedHeightPx = Double.NaN
+            onVisibleTilesFailed?.invoke(generation, request.key.pageIndex, request.key.pageSwitchId)
+            requestInvalidate()
+            return@post
+          }
+        } else {
+          result.getOrThrow().forEach { tile ->
+            cache.put(tile, protectedVisibleTileKeys)
           }
           if (!completeTileLevelTransitionIfCovered()) requestInvalidate()
           notifyVisibleTilesReadyIfCovered()
         }
+        dispatchNextTile()
       }
       if (!posted) result.getOrNull()?.forEach { it.bitmap.recycle() }
     }
   }
 
   private fun invalidateTiles() {
+    visibleTilesDrawn = false
     tileRequestEpoch += 1L
+    tileRasterEpoch += 1L
+    pendingTileRequest = null
+    currentDocumentGeneration()?.let { sessionWorker.updateTileEpoch(it, tileRasterEpoch) }
     activeTileWindow = null
     activeVisibleTileRequests = emptyList()
     activePrefetchTileRequests = emptyList()
     displayedVisibleTileRequests = emptyList()
     tileLevelTransitionPending = false
     protectedVisibleTileKeys.clear()
-    suppressedPrefetchKeys.clear()
-    pendingKeys.clear()
+    attemptedPrefetchKeys.clear()
     lastPlannedZoom = Double.NaN
     lastPlannedFocusX = Double.NaN
     lastPlannedFocusY = Double.NaN
@@ -782,6 +765,9 @@ internal class InkDocumentController(
   /** True only after the current draw submitted complete destination coverage. */
   internal var visibleTilesDrawn: Boolean = false
     private set
+
+  internal fun visibleTilePresentationEpoch(): Long? =
+    tileRequestEpoch.takeIf { visibleTilesDrawn && isVisibleTileCoverageComplete() }
 
   private fun stopFling() {
     scroller.forceFinished(true)
