@@ -125,6 +125,9 @@ internal fun embeddedTextInCanonicalRegion(
 internal fun completeLabelMatches(labels: List<PreparedTextLabel>, query: String): List<PreparedTextLabel> {
   val queryTokens = tokenizeFieldName(query)
   if (queryTokens.isEmpty()) return emptyList()
+  val joinedQuery = queryTokens.flatten()
+  val exact = labels.filter { tokenizeFieldName(it.fieldName).flatten() == joinedQuery }
+  if (exact.isNotEmpty()) return exact
   val expected = queryTokens.groupingBy { it }.eachCount()
   return labels.filter { label ->
     label.tokens.size == queryTokens.size && label.tokens.groupingBy { it }.eachCount() == expected

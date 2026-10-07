@@ -51,9 +51,10 @@ and export.
   and remain monotonic across document opens. Prepared operations are synchronous
   after asynchronous page preparation and continue to address the captured page.
   Module text takes precedence over embedded source text; clearing module text
-  leaves the PDF source intact. Field lookup matches complete labels by token
-  frequency, so word order may vary while partial labels and repeated-word
-  mismatches do not match.
+  leaves the PDF source intact. Field lookup first compares complete labels with
+  whitespace removed, then falls back to token frequencies if no exact joined
+  label matches. Partial labels and repeated-word mismatches do not match;
+  the fallback permits extracted word-order differences.
 - The coordinator stores target placement bounds, writing-rule endpoints, and
   source-value detection regions in canonical media-box-relative top-left
   coordinates at rotation zero. Source label identity retains exact glyph ranges
