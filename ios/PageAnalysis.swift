@@ -165,6 +165,11 @@ struct InkSignPdfPageAnalysis {
   func lookup(key: String) -> InkSignPdfTextLookup {
     let wanted = Self.tokens(key)
     guard !wanted.isEmpty else { return InkSignPdfTextLookup(hasLiteralMatch: false, matches: []) }
+    let joinedQuery = wanted.flatMap { $0 }
+    let exact = labelCandidates.filter { Self.tokens($0.fieldName).flatMap { $0 } == joinedQuery }
+    if !exact.isEmpty {
+      return InkSignPdfTextLookup(hasLiteralMatch: true, matches: exact.map(\.match))
+    }
     let wantedCounts = Self.tokenCounts(wanted)
     let matches = labelCandidates.filter {
       $0.tokens.count == wanted.count && Self.tokenCounts($0.tokens) == wantedCounts

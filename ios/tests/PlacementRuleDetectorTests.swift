@@ -6,6 +6,22 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class PlacementRuleDetectorTests: XCTestCase {
+  func testJoinedWholeLabelMatchesMissingSpaceWithoutAcceptingPartialLabel() throws {
+    let url = try makePDF { context in
+      drawFixtureLabel("FullName", at: CGPoint(x: 80, y: 120), in: context)
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    try requireDrawableLabel("FullName", in: page)
+    let analysis = InkSignPdfPageAnalysis.build(generation: 1, pageID: UUID(), pageIndex: 0,
+      page: page, mediaBox: page.bounds(for: .mediaBox))
+    XCTAssertEqual(analysis.lookup(key: "Full Name").matches.count, 1)
+    XCTAssertFalse(analysis.lookup(key: "Name").hasLiteralMatch)
+    XCTAssertFalse(analysis.lookup(key: "Full").hasLiteralMatch)
+    XCTAssertFalse(analysis.lookup(key: "Full Full Name").hasLiteralMatch)
+  }
+
   func testCanonicalGeometryRoundTripsWithRotationsAndMediaBoxOrigin() {
     let mediaBox = CGRect(x: 36, y: 54, width: 320, height: 240)
     let canonicalPoint = CGPoint(x: 47, y: 81)

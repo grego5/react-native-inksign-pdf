@@ -6,6 +6,21 @@ import org.junit.Test
 
 class PreparedTextResolverTest {
   @Test
+  fun joinedWholeLabelMatchPrecedesReorderedWordsAndExcludesPartialLabels() {
+    val text = "חתימתהלקוח"
+    val joined = preparedTextLabels(PdfiumPreparedPageAnalysis(200.0, 100.0,
+      text.mapIndexed { index, char -> glyph(char, index * 6.0, 0.0, 0) }, emptyList())).single()
+    val reordered = joined.copy(fieldName = "הלקוח חתימת",
+      tokens = listOf("הלקוח".map { it.code }, "חתימת".map { it.code }))
+
+    assertEquals(listOf(joined), completeLabelMatches(listOf(reordered, joined), "חתימת הלקוח"))
+    assertEquals(listOf(reordered), completeLabelMatches(listOf(reordered), "חתימת הלקוח"))
+    assertTrue(completeLabelMatches(listOf(joined), "הלקוח").isEmpty())
+    assertTrue(completeLabelMatches(listOf(joined), "חתימת").isEmpty())
+    assertTrue(completeLabelMatches(listOf(joined), "חתימת חתימת הלקוח").isEmpty())
+  }
+
+  @Test
   fun shortGlyphDoesNotShrinkLabelHeightForAdjacentRuleSelection() {
     val text = "טכנאי"
     val glyphs = text.mapIndexed { index, char ->
