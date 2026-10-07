@@ -14,6 +14,11 @@ and export.
 - [`src/index.ts`](../../../../src/index.ts) validates public arguments before
   native dispatch. Platforms check document-dependent bounds when admitting a
   command; loaders validate PDF, image, and OS data at ingress.
+- The React wrapper publishes a stable imperative ref at mount. It holds the
+  latest `open()` until native attachment; supersession and unmount reject a
+  waiting request with `operation_cancelled`. Other commands require attachment
+  (`view_not_ready`). Suspense hiding preserves the attachment. Native owns
+  dispatched operations and their cancellation.
 - Public placement and viewport inputs use displayed top-left page points. Direct insertion clips complete
   lines to its flow bounds; manual placement applies the same options to its
   editor and committed text. The editor admits fitting input, allows deletion,

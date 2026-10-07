@@ -31,7 +31,7 @@
   "scripts": {
     "nitrogen": "nitrogen",
     "build": "bob build",
-    "test:public-api": "npm run build && node --test tools/public-arguments.test.cjs",
+    "test:public-api": "npm run build && node --test tools/public-arguments.test.cjs tools/view-connection.test.cjs tools/view-ref.test.cjs",
     "test:stroke:fast": "node tools/test-stroke-replay-fast.mjs",
     "verify:pdfium": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/verify-pdfium.ps1",
     "check:artifact-parity": "powershell -NoProfile -ExecutionPolicy Bypass -File tools/check-managed-artifact-parity.ps1",
@@ -70,6 +70,7 @@
     "react-native": "0.86.0",
     "react-native-builder-bob": "^0.40.0",
     "react-native-nitro-modules": "0.37.1",
+    "react-test-renderer": "19.3.0",
     "typescript": "npm:@typescript/typescript6@^6.0.2"
   },
   "engines": {
