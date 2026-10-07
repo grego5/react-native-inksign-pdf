@@ -15,6 +15,26 @@
   rendering does not record them; Android debug recordings use the configured
   native cache root and are removed only by debug cleanup.
 
+## Tile dispatch measurements
+
+```powershell
+tools\test-android.ps1 -Mode connected -TileBenchmark
+python tools\analyze-tile-dispatch.py diagnostics\tile-dispatch-report.json
+```
+
+- The opt-in harness uses real PDFium, a non-debuggable release APK, hardware
+  drawing, and generated vector/image PDFs. Normal test runs exclude it.
+- Fixed 3× fit zoom and scheduled pan/reversal produce repeatable demand.
+  Separate fresh-session/tile-cache and warm-cache samples; exclude warmup.
+- JSON reports are saved to device Downloads as `inksign-tile-dispatch-*.json`;
+  pull the report locally before analysis. Metrics separate rendering, worker
+  queueing, UI admission observation, and draw coverage. Continuation gaps
+  exclude viewport-triggered submissions after idle intervals.
+- Idle memory snapshots compare native allocations and process PSS before open,
+  after prefetch drains, and after close; they do not measure peak memory.
+- This isolates detailed tiles without React, base rasters, or ink. Draw timings
+  describe CPU submission; use an app trace for full-pipeline frame costs.
+
 ## Trace reports
 
 Analyze and compare traces with:

@@ -13,6 +13,7 @@ import kotlin.math.roundToInt
 
 internal const val androidPdfTileSizePx = 512
 internal const val androidPdfTileBleedPx = 2
+internal const val androidPdfTilePrefetchRadius = 2
 internal const val androidPdfTileVisiblePriority = 0
 internal const val androidPdfTilePrefetchPriority = 1
 private const val tileScaleRoot = 1.4142135623730951
@@ -142,7 +143,7 @@ internal fun quantizePdfTileScale(pixelsPerPagePoint: Double): Pair<Int, Double>
   return level to tileScaleRoot.pow(level.toDouble())
 }
 
-/** Computes only the tiles that can contribute to the viewport plus one-tile margin. */
+/** Computes only the tiles that can contribute to the viewport plus a symmetric prefetch margin. */
 internal object PdfTileGrid {
   fun visibleWindow(
     page: PdfPageDimensions,
@@ -180,10 +181,10 @@ internal object PdfTileGrid {
     val lastVisibleRow = tileIndex(
       maxOf(visibleBottomPx.toLong() - 1L, visibleTopPx.toLong()), rows,
     )
-    val firstColumn = (firstVisibleColumn - 1).coerceAtLeast(0)
-    val lastColumn = (lastVisibleColumn + 1).coerceAtMost(columns - 1)
-    val firstRow = (firstVisibleRow - 1).coerceAtLeast(0)
-    val lastRow = (lastVisibleRow + 1).coerceAtMost(rows - 1)
+    val firstColumn = (firstVisibleColumn - androidPdfTilePrefetchRadius).coerceAtLeast(0)
+    val lastColumn = (lastVisibleColumn + androidPdfTilePrefetchRadius).coerceAtMost(columns - 1)
+    val firstRow = (firstVisibleRow - androidPdfTilePrefetchRadius).coerceAtLeast(0)
+    val lastRow = (lastVisibleRow + androidPdfTilePrefetchRadius).coerceAtMost(rows - 1)
     if (previous?.matches(
         generation = generation,
         pageSwitchId = pageSwitchId,
@@ -307,6 +308,7 @@ internal class PdfTileCache(
 ) {
   private val entries = LinkedHashMap<PdfTileKey, PdfTile>(16, 0.75f, true)
   private var currentBytes = 0L
+  internal val allocatedBytes: Long get() = currentBytes
 
   init {
     require(maxBytes > 0L)

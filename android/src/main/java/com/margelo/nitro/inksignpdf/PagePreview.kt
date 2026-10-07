@@ -1,6 +1,5 @@
 package com.margelo.nitro.inksignpdf
 
-import kotlin.math.floor
 
 /** Immutable identity for one target-page snapshot request. */
 internal data class PagePreviewKey(
@@ -23,8 +22,6 @@ internal data class PagePreviewRequest(
   val targetTransform: PageTransform,
   val historyTransform: PageTransform,
   val targetPage: PdfPageDimensions,
-  val bitmapLeftPx: Double,
-  val bitmapTopPx: Double,
   val inkPaths: List<InkPathData>,
   val textAnnotations: List<TextAnnotation>,
   val textLayer: TextRenderLayer,
@@ -61,14 +58,6 @@ internal fun pagePreviewRequest(
   )
   viewport.setViewport(targetZoom, targetFocus)
   val state = viewport.state
-  val scale = state.pageToView.uniformScale() ?: return null
-  val viewOffsetX = state.pageToView.tx
-  val viewOffsetY = state.pageToView.ty
-  val leftPx = floor(-viewOffsetX).toLong()
-  val topPx = floor(-viewOffsetY).toLong()
-  if (leftPx !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong() ||
-    topPx !in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()
-  ) return null
   val key = PagePreviewKey(
     generation = generation,
     sourcePageIndex = sourcePageIndex,
@@ -81,31 +70,16 @@ internal fun pagePreviewRequest(
     viewportHeightPx = viewportHeightPx,
     density = density,
   )
-  val request = PdfTileRequest(
-    pageRotation = targetPage.rotation,
-    key = PdfTileKey(
-      generation = generation,
-      pageSwitchId = pageSwitchId,
-      pageIndex = targetPageIndex,
-      level = 0,
-      x = 0,
-      y = 0,
-    ),
-    leftPx = leftPx.toInt(),
-    topPx = topPx.toInt(),
-    widthPx = viewportWidthPx,
-    heightPx = viewportHeightPx,
-    scale = scale,
-    priority = androidPdfTileVisiblePriority,
-  )
+  val request = pageBaseRequest(PdfTileKey(
+    generation = generation, pageSwitchId = pageSwitchId,
+    pageIndex = targetPageIndex, level = 0, x = 0, y = 0,
+  ), targetPage)
   return PagePreviewRequest(
     key = key,
     request = request,
     targetTransform = state.pageToView,
     historyTransform = PageCoordinates(targetPage).rawToView(state.pageToView),
     targetPage = targetPage,
-    bitmapLeftPx = viewOffsetX + leftPx,
-    bitmapTopPx = viewOffsetY + topPx,
     inkPaths = inkPaths.toList(),
     textAnnotations = textAnnotations.toList(),
     textLayer = TextRenderLayer.empty(),

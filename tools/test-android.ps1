@@ -6,6 +6,7 @@ param(
     [string]$Test,
     [ValidateSet("arm64-v8a", "x86", "x86_64")]
     [string]$Abi = "arm64-v8a",
+    [switch]$TileBenchmark,
     [switch]$AllDevices,
     [switch]$RefreshDependencies
 )
@@ -24,6 +25,8 @@ $gradleUserHome = if (-not [string]::IsNullOrWhiteSpace($env:GRADLE_USER_HOME)) 
     $null
 }
 $moduleProject = ":grego5_react-native-inksign-pdf"
+$instrumentationBuildType = if ($TileBenchmark) { "release" } else { "debug" }
+$instrumentationVariant = if ($TileBenchmark) { "Release" } else { "Debug" }
 $progressIntervalSeconds = 15
 $progressPollIntervalSeconds = 1
 
@@ -268,7 +271,7 @@ function Get-ArtifactPaths([string]$ArtifactMode) {
             ForEach-Object { $_.FullName })
     }
     $appDebugApk = Join-Path $androidProject "app\build\outputs\apk\debug\app-debug.apk"
-    $moduleInstrumentationRoot = Join-Path $moduleAndroidProject "build\outputs\apk\androidTest\debug"
+    $moduleInstrumentationRoot = Join-Path $moduleAndroidProject "build\outputs\apk\androidTest\$instrumentationBuildType"
     return @($files |
         Where-Object {
             $_.FullName -ieq $appDebugApk -or
@@ -281,6 +284,12 @@ function Get-ArtifactPaths([string]$ArtifactMode) {
 
 if ($AllDevices -and $Mode -ne "connected") {
     Stop-Runner "-AllDevices is only valid with -Mode connected"
+}
+if ($TileBenchmark -and $Mode -ne "connected") {
+    Stop-Runner "-TileBenchmark requires -Mode connected"
+}
+if ($TileBenchmark -and [string]::IsNullOrWhiteSpace($Test)) {
+    $Test = "com.margelo.nitro.inksignpdf.TileDispatchBenchmark"
 }
 if ($Mode -eq "jvm" -and $PSBoundParameters.ContainsKey("Abi")) {
     Stop-Runner "-Abi is only valid with -Mode build or connected"
@@ -304,7 +313,10 @@ if ($Mode -eq "jvm") {
         $gradleArguments += @("--tests", $Test)
     }
 } elseif ($Mode -eq "connected") {
-    $gradleArguments += "${moduleProject}:connectedDebugAndroidTest"
+    $gradleArguments += "${moduleProject}:connected${instrumentationVariant}AndroidTest"
+    if ($TileBenchmark) {
+        $gradleArguments += "-PinkSignTileBenchmark=true"
+    }
     if (-not [string]::IsNullOrWhiteSpace($Test)) {
         $gradleArguments += "-Pandroid.testInstrumentationRunnerArguments.class=$Test"
     }
@@ -330,7 +342,7 @@ try {
             Remove-Item Env:ANDROID_SERIAL -ErrorAction SilentlyContinue
         } else {
             $env:ANDROID_SERIAL = Get-FirstOnlineAndroidSerial
-            Write-Output "connectedDebugAndroidTest: running on first available device '$($env:ANDROID_SERIAL)'"
+            Write-Output "connected${instrumentationVariant}AndroidTest: running on first available device '$($env:ANDROID_SERIAL)'"
         }
     }
 

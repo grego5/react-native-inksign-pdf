@@ -1,8 +1,11 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.os.Build
 import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CountDownLatch
@@ -105,24 +108,25 @@ class SurfaceViewTest {
   }
 
   @Test
-  fun stableLayoutPrewarmsAdjacentPreviewBeforeTouchMovement() {
-    harness.awaitPreparedPagePreview()
-
+  fun idleCoverageDoesNotPrepareAdjacentPages() {
+    harness.awaitActivePageBase()
+    harness.awaitVisibleTileCoverage()
+    harness.awaitWorkerIdle()
     harness.runOnMain {
       val state = harness.surface.pageNavigationState()
-      assertTrue(state.preparedDirections.contains(SwipeDirection.LEFT))
+      assertTrue(state.preparedDirections.isEmpty())
       assertFalse(state.previewPresented)
     }
+    assertEquals(1, FakePdfSession.previewRenderCount)
   }
 
   @Test
   fun selectedPreviewGatesPullAndReleaseUntilItIsReady() {
-    FakePdfSession.holdPreviews()
-    harness.runOnMain { harness.setDocument(harness.documentInfo()) }
-    assertTrue(
-      "preview rendering must be held before sending the gated gesture",
-      FakePdfSession.awaitPreviewStarted(),
-    )
+    val scheduler = ManualPreviewScheduler()
+    val driver = ManualSettlementDriver()
+    harness.close()
+    harness = SurfaceHarness(previewScheduler = scheduler, settlementDriver = driver)
+    harness.runOnMain { scheduler.completeLatest() }
     harness.sendPageNavigationSwipe()
 
     harness.sendPageNavigationRelease()
@@ -131,10 +135,14 @@ class SurfaceViewTest {
       assertEquals(0, harness.surface.currentPageInfo().pageIndex)
       assertFalse(harness.surface.pageNavigationState().previewPresented)
     }
-    FakePdfSession.releasePreviews()
     harness.runOnMain {
+      scheduler.completeLatest()
       assertEquals(0, harness.surface.currentPageInfo().pageIndex)
       assertFalse(harness.surface.pageNavigationState().handoffPending)
+      assertEquals(1, driver.pendingCount())
+      driver.finish(0)
+      assertEquals(1, harness.surface.currentPageInfo().pageIndex)
+      assertTrue(harness.surface.pageNavigationState().handoffPending)
     }
   }
 
@@ -149,6 +157,47 @@ class SurfaceViewTest {
     previewScheduler.completeLatest()
     harness.runOnMain {
       assertTrue(harness.surface.pageNavigationState().previewPresented)
+    }
+  }
+
+  @Test
+  fun reversedReleasedPullAcquiresItsDestinationAfterObsoleteRenderFreesCapacity() {
+    val scheduler = ManualPreviewScheduler()
+    val driver = ManualSettlementDriver()
+    harness.close()
+    harness = SurfaceHarness(previewScheduler = scheduler, settlementDriver = driver)
+    val output = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888)
+    try {
+      harness.runOnMain {
+        scheduler.completeLatest() // Active first page.
+        harness.surface.switchPage(1)
+        harness.surface.draw(Canvas(output))
+        scheduler.completeLatest() // Active middle page.
+        assertEquals(listOf(0, 1), scheduler.requestedPages())
+
+        dispatch(downEvent(150f, 150f, 17_000L))
+        dispatch(motionEvent(MotionEvent.ACTION_MOVE, 0f, 150f, 17_020L))
+        assertEquals(listOf(0, 1, 2), scheduler.requestedPages())
+        dispatch(motionEvent(MotionEvent.ACTION_MOVE, 150f, 150f, 17_040L))
+        dispatch(motionEvent(MotionEvent.ACTION_MOVE, 300f, 150f, 17_060L))
+        dispatch(upEvent(300f, 150f, 17_080L))
+        assertEquals(1, harness.surface.currentPageInfo().pageIndex)
+        assertEquals(3, scheduler.requestedPages().size)
+        assertEquals(0, driver.pendingCount())
+
+        // Active plus the obsolete reservation leaves no room for the new base.
+        val obsolete = scheduler.completeLatest()
+        assertTrue(obsolete.isRecycled)
+        assertEquals(listOf(0, 1, 2, 0), scheduler.requestedPages())
+        assertEquals(0, driver.pendingCount())
+        scheduler.completeLatest()
+        assertEquals(1, driver.pendingCount())
+        driver.finish(0)
+        assertEquals(0, harness.surface.currentPageInfo().pageIndex)
+        assertTrue(harness.surface.pageNavigationState().handoffPending)
+      }
+    } finally {
+      output.recycle()
     }
   }
 
@@ -174,7 +223,7 @@ class SurfaceViewTest {
 
   @Test
   fun winningSwipeTransfersOnceAndProcessesLaterUpAsPageNavigation() {
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     val callbackCount = AtomicReference(0)
     harness.runOnMain {
       harness.surface.onPageChange = { callbackCount.set(callbackCount.get() + 1) }
@@ -194,7 +243,7 @@ class SurfaceViewTest {
     val driver = ManualSettlementDriver()
     harness.close()
     harness = SurfaceHarness(settlementDriver = driver)
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     val density = InstrumentationRegistry.getInstrumentation().targetContext
       .resources.displayMetrics.density
     val dragDistance = 8.0f * density + 1.0f
@@ -218,7 +267,7 @@ class SurfaceViewTest {
 
   @Test
   fun armedFeedbackFiresOnceAcrossGradualAndContinuedArmedMoves() {
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     harness.runOnMain {
       dispatch(downEvent(150.0f, 150.0f, 15_000L))
       dispatch(motionEvent(MotionEvent.ACTION_MOVE, 130.0f, 150.0f, 15_020L))
@@ -236,7 +285,7 @@ class SurfaceViewTest {
     val driver = ManualSettlementDriver()
     harness.close()
     harness = SurfaceHarness(settlementDriver = driver)
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     val density = InstrumentationRegistry.getInstrumentation().targetContext
       .resources.displayMetrics.density
     val dragDistance = 8.0f * density + 1.0f
@@ -263,28 +312,28 @@ class SurfaceViewTest {
   }
 
   @Test
-  fun leavingEditModeResumesPreviewPreparationForPageNavigation() {
-    harness.awaitPreparedPagePreview()
+  fun leavingEditModeAllowsDemandedPageNavigation() {
+    harness.warmNextPageThroughPull()
     harness.runOnMain {
       harness.surface.setEditMode(true)
       dispatch(downEvent(80.0f, 100.0f, 20_000L))
       dispatch(upEvent(180.0f, 100.0f, 20_020L))
       harness.surface.setEditMode(false)
     }
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     harness.sendPageNavigationSwipe()
     harness.sendPageNavigationRelease()
     harness.awaitPage { it == 1 }
   }
 
   @Test
-  fun regainingWindowFocusResumesPreviewPreparationForPageNavigation() {
-    harness.awaitPreparedPagePreview()
+  fun regainingWindowFocusAllowsDemandedPageNavigation() {
+    harness.warmNextPageThroughPull()
     harness.runOnMain {
       harness.surface.onWindowFocusChanged(false)
       harness.surface.onWindowFocusChanged(true)
     }
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     harness.sendPageNavigationSwipe()
     harness.sendPageNavigationRelease()
     harness.awaitPage { it == 1 }
@@ -292,7 +341,7 @@ class SurfaceViewTest {
 
   @Test
   fun resumingWithValidCoverageDoesNotDuplicatePreviewJobs() {
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     val renderCount = FakePdfSession.previewRenderCount
     harness.runOnMain {
       harness.surface.onWindowFocusChanged(true)
@@ -304,7 +353,7 @@ class SurfaceViewTest {
 
   @Test
   fun armedHandoffRetainsPreviewUntilDelayedTargetTilesAreReady() {
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     val callbackCount = AtomicReference(0)
     harness.runOnMain { harness.surface.onPageChange = { callbackCount.set(callbackCount.get() + 1) } }
     val visibleStarted = FakePdfSession.holdNextVisible()
@@ -316,7 +365,8 @@ class SurfaceViewTest {
     harness.runOnMain {
       val state = harness.surface.pageNavigationState()
       assertTrue(state.handoffPending)
-      assertTrue(state.preparedDirections.contains(SwipeDirection.LEFT))
+      assertFalse(requireNotNull(harness.surface.pageNavigationController.presentation().currentPagePreview)
+        .bitmap.isRecycled)
     }
     assertEquals(1, callbackCount.get())
 
@@ -324,13 +374,53 @@ class SurfaceViewTest {
     harness.awaitPageNavigationReady()
     harness.runOnMain {
       assertFalse(harness.surface.pageNavigationState().handoffPending)
-      assertTrue(harness.surface.pageNavigationState().preparedDirections.isNotEmpty())
+      assertTrue(harness.surface.pageNavigationState().preparedDirections.isEmpty())
+    }
+  }
+
+  @Test
+  fun historyEditsRetainFallbackAndStaleFrameCommitWaitsForCurrentTiles() {
+    val frames = ArrayList<Runnable>()
+    val driver = ManualSettlementDriver()
+    harness.close()
+    harness = SurfaceHarness(settlementDriver = driver, frameCommitRegistrar = { frames += it })
+    harness.warmNextPageThroughPull()
+    harness.sendPageNavigationSwipe()
+    harness.sendPageNavigationRelease()
+    harness.runOnMain { driver.finish(0) }
+    harness.awaitVisibleTileCoverage()
+    val bitmap = Bitmap.createBitmap(320, 300, Bitmap.Config.ARGB_8888)
+    try {
+      harness.runOnMain {
+        harness.surface.draw(Canvas(bitmap))
+        val oldFrame = frames.single()
+        assertTrue(harness.surface.pageNavigationState().handoffPending)
+        harness.surface.undo()
+        harness.surface.redo()
+        harness.surface.clear()
+        assertTrue(harness.surface.pageNavigationState().handoffPending)
+        harness.surface.documentController.setZoomForTest(2.0, PagePoint(100.0, 100.0))
+        oldFrame.run()
+        assertTrue(harness.surface.pageNavigationState().handoffPending)
+      }
+      harness.awaitVisibleTileCoverage()
+      harness.runOnMain {
+        harness.surface.draw(Canvas(bitmap))
+        assertEquals(2, frames.size)
+        // A duplicate callback from the retired registration cannot consume the new one.
+        frames.first().run()
+        assertTrue(harness.surface.pageNavigationState().handoffPending)
+        frames.last().run()
+        assertFalse(harness.surface.pageNavigationState().handoffPending)
+      }
+    } finally {
+      bitmap.recycle()
     }
   }
 
   @Test
   fun targetTileFailureUnlocksInteractionForImmediateSecondSwipe() {
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     val callbackCount = AtomicReference(0)
     harness.runOnMain { harness.surface.onPageChange = { callbackCount.set(callbackCount.get() + 1) } }
     FakePdfSession.failNextVisible()
@@ -347,7 +437,7 @@ class SurfaceViewTest {
         PagePoint(300.0, 350.0))
     }
 
-    harness.awaitPreparedPagePreview()
+    harness.warmNextPageThroughPull()
     harness.sendPageNavigationSwipe()
     harness.sendPageNavigationRelease()
     harness.awaitPage { it == 2 }
@@ -670,18 +760,30 @@ class SurfaceViewTest {
   @Test
   fun twoFingerPinchCancelsInkAndReplacementRetiresItsStream() {
     harness.runOnMain {
+      val context = harness.surface.context
+      val configuration = ViewConfiguration.get(context)
+      val initialSpan = if (Build.VERSION.SDK_INT >= 29) {
+        configuration.scaledMinimumScalingSpan.toFloat()
+      } else {
+        240f * context.resources.displayMetrics.density
+      }
+      val beginSpan = initialSpan + configuration.scaledTouchSlop * 2f + 1f
+      val scaledSpan = beginSpan * 1.25f
+      val width = kotlin.math.ceil(scaledSpan * 1.5f).toInt()
+      val center = width / 2f
+      harness.surface.layout(0, 0, width, width)
       harness.setDocument(harness.documentInfo(), zoom = 2.0, fitToPage = false)
       harness.surface.setEditMode(true)
       val before = harness.surface.currentViewportState().zoom
-      dispatch(downEvent(100f, 150f, 1_000L))
-      fun fingers(action: Int, left: Float, right: Float, time: Long): MotionEvent {
+      dispatch(downEvent(center - initialSpan / 2f, center, 1_000L))
+      fun fingers(action: Int, span: Float, time: Long): MotionEvent {
         val properties = Array(2) { index -> MotionEvent.PointerProperties().apply {
           id = index
           toolType = MotionEvent.TOOL_TYPE_FINGER
         } }
-        val coordinates = arrayOf(left, right).map { x -> MotionEvent.PointerCoords().apply {
+        val coordinates = arrayOf(center - span / 2f, center + span / 2f).map { x -> MotionEvent.PointerCoords().apply {
           this.x = x
-          y = 150f
+          y = center
           pressure = 1f
           size = 1f
         } }.toTypedArray()
@@ -689,20 +791,21 @@ class SurfaceViewTest {
           0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
       }
       dispatch(fingers(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
-        100f, 200f, 1_020L))
-      dispatch(fingers(MotionEvent.ACTION_MOVE, 70f, 230f, 1_050L))
-      dispatch(fingers(MotionEvent.ACTION_MOVE, 40f, 260f, 1_080L))
+        initialSpan, 1_020L))
+      // Cross recognition thresholds, then scale beyond the established baseline.
+      dispatch(fingers(MotionEvent.ACTION_MOVE, beginSpan, 1_050L))
+      dispatch(fingers(MotionEvent.ACTION_MOVE, scaledSpan, 1_080L))
       assertTrue(harness.surface.currentViewportState().zoom > before)
       assertEquals(0, harness.surface.completedPagesSnapshot().first().strokes.size)
       assertFalse(harness.surface.presentationDiagnostics().frontBufferOwnsActiveInk)
 
       harness.setDocument(harness.documentInfo(), zoom = 2.0, fitToPage = false)
       val replacement = harness.surface.currentViewportState()
-      dispatch(fingers(MotionEvent.ACTION_MOVE, 10f, 290f, 1_090L))
+      dispatch(fingers(MotionEvent.ACTION_MOVE, scaledSpan * 1.1f, 1_090L))
       assertEquals(replacement, harness.surface.currentViewportState())
       dispatch(fingers(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
-        40f, 260f, 1_100L))
-      dispatch(upEvent(40f, 150f, 1_120L))
+        scaledSpan * 1.1f, 1_100L))
+      dispatch(upEvent(center - scaledSpan * 1.1f / 2f, center, 1_120L))
       assertEquals(replacement, harness.surface.currentViewportState())
       assertEquals(0, harness.surface.completedPagesSnapshot().first().strokes.size)
       assertFalse(harness.surface.presentationDiagnostics().frontBufferOwnsActiveInk)
@@ -887,8 +990,10 @@ class SurfaceViewTest {
   private inner class SurfaceHarness(
     private val previewScheduler: PageNavigationPreviewScheduler? = null,
     private val settlementDriver: PageNavigationSettlementDriver? = null,
+    private val frameCommitRegistrar: ((Runnable) -> Unit)? = null,
   ) {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val committedFrames = ArrayList<Runnable>()
     private val worker = PdfSessionWorker(opener = FakePdfSession)
     private val generation = worker.reserveOpenAttemptId(0L)
     val engine = InkEngine()
@@ -912,6 +1017,7 @@ class SurfaceViewTest {
             lowLatencyInk = frontBuffer,
             pageNavigationPreviewScheduler = previewScheduler,
             pageNavigationSettlementDriver = settlementDriver,
+            pageTileFrameCommitRegistrar = frameCommitRegistrar ?: { committedFrames += it },
             documentCoordinator = coordinator,
           ),
         )
@@ -952,6 +1058,30 @@ class SurfaceViewTest {
       surface.installDocumentPresentation(zoom, focus, fitToPage)
     }
 
+    fun warmNextPageThroughPull() {
+      awaitActivePageBase()
+      sendPageNavigationSwipe()
+      awaitPreparedPagePreview()
+      runOnMain { surface.pageNavigationController.cancelGesture() }
+    }
+
+    fun awaitActivePageBase() {
+      val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5L)
+      var available = false
+      while (System.nanoTime() < deadline) {
+        runOnMain {
+          val page = coordinator.page(coordinator.activePageIndex)
+          // Explicit draw starts the active base for unattached fixture views.
+          val bitmap = Bitmap.createBitmap(surface.width, surface.height, Bitmap.Config.ARGB_8888)
+          try { surface.draw(Canvas(bitmap)) } finally { bitmap.recycle() }
+          available = surface.baseRasterCache.get(coordinator.generation, page.id, page.dimensions) != null
+        }
+        if (available) return
+        Thread.sleep(20L)
+      }
+      assertTrue("Active page base did not arrive", available)
+    }
+
     fun awaitPreparedPagePreview() {
       val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5L)
       var lastState: PageNavigationController.PageNavigationDiagnostics? = null
@@ -965,6 +1095,17 @@ class SurfaceViewTest {
         Thread.sleep(20L)
       }
       assertTrue("state=$lastState", lastState?.preparedDirections?.isNotEmpty() == true)
+    }
+
+    fun awaitVisibleTileCoverage() {
+      val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5L)
+      while (System.nanoTime() < deadline) {
+        var complete = false
+        runOnMain { complete = surface.documentController.isVisibleTileCoverageComplete() }
+        if (complete) return
+        Thread.sleep(20L)
+      }
+      runOnMain { assertTrue(surface.documentController.isVisibleTileCoverageComplete()) }
     }
 
     /** Enqueues a no-op worker fence so all earlier submissions have settled. */
@@ -1002,14 +1143,26 @@ class SurfaceViewTest {
     }
 
     fun awaitPageNavigationReady() {
-      val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5L)
-      while (System.nanoTime() < deadline) {
-        var pending = true
-        runOnMain { pending = surface.pageNavigationState().handoffPending }
-        if (!pending) return
-        Thread.sleep(20L)
+      lateinit var bitmap: Bitmap
+      runOnMain { bitmap = Bitmap.createBitmap(surface.width, surface.height, Bitmap.Config.ARGB_8888) }
+      try {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5L)
+        while (System.nanoTime() < deadline) {
+          var pending = true
+          runOnMain {
+            surface.draw(Canvas(bitmap))
+            val completed = committedFrames.toList()
+            committedFrames.clear()
+            completed.forEach { it.run() }
+            pending = surface.pageNavigationState().handoffPending
+          }
+          if (!pending) return
+          Thread.sleep(20L)
+        }
+        runOnMain { assertFalse(surface.pageNavigationState().handoffPending) }
+      } finally {
+        bitmap.recycle()
       }
-      runOnMain { assertFalse(surface.pageNavigationState().handoffPending) }
     }
 
     fun close() {
@@ -1133,31 +1286,34 @@ class SurfaceViewTest {
 
     private val pending = ArrayList<Pending>()
     private val requestStarted = CountDownLatch(1)
+    private val requestedPages = ArrayList<Int>()
 
-    override fun updateEpoch(generation: Long, previewEpoch: Long) = Unit
 
     override fun renderPreview(
       generation: Long,
-      previewEpoch: Long,
       request: PdfTileRequest,
       completion: (Result<PdfTile>) -> Unit,
     ) {
-      synchronized(pending) { pending += Pending(request, completion) }
+      synchronized(pending) {
+        pending += Pending(request, completion)
+        requestedPages += request.key.pageIndex
+      }
       requestStarted.countDown()
     }
 
     fun awaitRequest(): Boolean = requestStarted.await(5L, TimeUnit.SECONDS)
 
-    fun completeLatest() {
-      val next = synchronized(pending) { checkNotNull(pending.lastOrNull()) }
+    fun requestedPages(): List<Int> = synchronized(pending) { requestedPages.toList() }
+
+    fun completeLatest(): Bitmap {
+      val next = synchronized(pending) { pending.removeLast() }
+      val bitmap = Bitmap.createBitmap(next.request.widthPx, next.request.heightPx, Bitmap.Config.ARGB_8888)
       next.completion(
         Result.success(
-          PdfTile(
-            next.request,
-            Bitmap.createBitmap(next.request.widthPx, next.request.heightPx, Bitmap.Config.ARGB_8888),
-          ),
+          PdfTile(next.request, bitmap),
         ),
       )
+      return bitmap
     }
   }
 

@@ -52,7 +52,7 @@ class PdfTilesTest {
   }
 
   @Test
-  fun tileRequestsIncludeOneTileMarginWithoutFullPageAllocation() {
+  fun tileRequestsIncludeTwoTileMarginWithoutFullPageAllocation() {
     val page = PdfPageDimensions(5000.0, 4000.0)
     val viewport = PageViewport(
       page = page,
@@ -71,15 +71,39 @@ class PdfTilesTest {
     )
     val requests = PdfTileGrid.requests(window)
 
-    assertEquals(16, requests.size)
+    assertEquals(36, requests.size)
     assertTrue(requests.all { it.key.generation == 9L })
     assertTrue(requests.all { it.key.pageIndex == 1 })
     assertTrue(requests.all { it.widthPx in 1..androidPdfTileSizePx })
     assertTrue(requests.all { it.heightPx in 1..androidPdfTileSizePx })
-    assertEquals(setOf(3, 4, 5, 6), requests.map { it.key.x }.toSet())
-    assertEquals(setOf(2, 3, 4, 5), requests.map { it.key.y }.toSet())
+    assertEquals(setOf(2, 3, 4, 5, 6, 7), requests.map { it.key.x }.toSet())
+    assertEquals(setOf(1, 2, 3, 4, 5, 6), requests.map { it.key.y }.toSet())
     assertTrue(requests.take(4).all { it.priority == androidPdfTileVisiblePriority })
     assertTrue(requests.drop(4).all { it.priority == androidPdfTilePrefetchPriority })
+  }
+
+  @Test
+  fun prefetchMarginClampsAtThePageEdge() {
+    val page = PdfPageDimensions(5000.0, 4000.0)
+    val viewport = PageViewport(page, ViewportSize(512.0, 512.0, 1.0))
+    viewport.setZoom(1.0, PagePoint(256.0, 256.0))
+    val window = requireNotNull(PdfTileGrid.visibleWindow(page, viewport, 1L, 1L, 0))
+    val requests = PdfTileGrid.requests(window)
+    assertEquals(9, requests.size)
+    assertEquals(setOf(0, 1, 2), requests.map { it.key.x }.toSet())
+    assertEquals(setOf(0, 1, 2), requests.map { it.key.y }.toSet())
+    assertEquals(1, requests.count { it.priority == androidPdfTileVisiblePriority })
+  }
+
+  @Test
+  fun baseRasterPreservesPageProportionsWithinItsPixelBudget() {
+    val page = PdfPageDimensions(595.0, 842.0)
+    val request = pageBaseRequest(PdfTileKey(1L, 1L, 0, 0, 0, 0), page)
+    assertEquals(pageBaseLongestEdgePx, maxOf(request.widthPx, request.heightPx))
+    assertEquals(page.width / page.height, request.widthPx.toDouble() / request.heightPx, 0.001)
+    assertTrue(request.widthPx.toLong() * request.heightPx <= pageBaseMaxPixels)
+    assertEquals(0, request.rasterLeftPx)
+    assertEquals(0, request.rasterTopPx)
   }
 
   @Test

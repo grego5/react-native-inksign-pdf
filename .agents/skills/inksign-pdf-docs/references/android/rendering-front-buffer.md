@@ -2,38 +2,52 @@
 
 ## PDF pages
 
-- The PDF worker uses one worker-owned PDFium session to render page tiles and
-  navigation previews into Android `ARGB_8888` bitmaps. No second renderer or
-  text overlay repairs the page image.
-- Grid requests keep a 512 px core and render a 2 px bleed around it, clamped to
-  the page. The compositor draws the expanded bitmap through a clip at the
-  core's shared global pixel edges. Preview requests use their full bounds with
-  no bleed, and the cache accounts for each bitmap's allocated size.
-- PDFium handles PDF-to-display Y conversion. Android supplies the positive
-  display scale and tile offset. The native bridge handles bitmap byte order.
-- Android owns tile scheduling, cache keys, document generations,
-  cancellation, and preview lifetime.
-- Embedded PDF fonts remain PDFium-owned. When the app supplies a fallback
-  font, the document session retains its immutable bytes and offers it for
-  non-embedded font requests without requiring complete character coverage.
-  Unsupported glyphs may remain missing. Without a supplied font, requests
-  use PDFium's default provider.
+- `PdfSessionWorker` serializes PDFium rendering into `ARGB_8888` bitmaps; the
+  native bridge converts bitmap byte order. PDFium handles Y conversion;
+  Android supplies positive display scale and tile offsets.
+- Each native document session retains one render-page handle and its PDFium
+  parsed-page/decoded-image cache. Changing the source page releases it;
+  session close releases it before the document under the PDFium mutex.
+  This native cache is separate from Android bitmap budgets and diagnostics.
+- `SurfaceView` owns the full-page base cache, keyed by document generation,
+  stable page ID, and geometry/orientation. Viewport and history changes reuse
+  source pixels. See [cache lifetime](view-lifecycle.md#ownership).
+- Base rasters preserve aspect ratio, capped at a 2048 px longest edge and 4 Mi pixels.
+  The 32 MiB cache counts allocations and in-flight reservations, protects
+  active/presented pages, and defers destinations when full. Navigation borrows
+  bitmaps; eviction removes unpresented borrowers before recycling.
+- Tiles have a separate device-based soft budget, capped at 48 MiB; visible
+  tiles stay protected during trimming. Diagnostics count bitmap allocations
+  and base reservations.
+- Draw base → detailed tiles → module ink/text through the page transform.
+  The base fills uncovered pan regions; zoom retains old detail until the new
+  level covers the viewport. Destination acquisition follows the current pull
+  and pauses during open handoff; editing retains active-page coverage.
+- Grid tiles use 512 px cores with 2 px page-clamped bleed, clipped at shared
+  core edges. Full-page previews have no bleed. Cache accounting uses allocated
+  bitmap sizes.
+- Latest viewport demand includes a two-tile prefetch margin. Dispatch one tile
+  at a time, visible first, yielding to document operations between renders.
+  Raster invalidation and coverage revision are separate: retain useful
+  in-flight pan results; discard stale document/page results and obsolete demand.
+  Attempt prefetch once per window, including successful results later evicted;
+  missing visible tiles remain eligible.
+- PDFium owns embedded fonts. An optional app fallback supplies immutable bytes
+  for non-embedded requests; unsupported glyphs may remain missing. Otherwise,
+  use PDFium's default provider. See [font-file ownership](view-lifecycle.md#ownership).
 
 ## Ink front buffer
 
-- Present either the complete committed contour snapshot or the complete
-  prediction snapshot, never a mixture. Each contour is a closed fill path;
-  display, history, and export use the same native cubics.
+- Display one complete committed or prediction snapshot. Closed fill contours
+  use the same native cubics for display, history, and export.
 - Each accepted move batch produces one committed frame and at most one
-  replaceable prediction snapshot. A terminal batch produces the final frame
-  and hands it off to history. Ordinary `onDraw` does not draw active ink.
+  replaceable prediction; terminal input produces the final history frame.
+  Ordinary `onDraw` excludes active ink.
 - Prediction is presentation-only. Clear it before committed frames and on
-  terminal input, cancellation, reset, document replacement, presenter loss,
-  mode change, and disposal.
-- Reject input without a presenter. Accept callbacks only for the current
-  generation and sequence, and keep pending work bounded.
-- A successful terminal input commits its stroke and clears transient contour
-  state. A delayed acknowledgement for that same generation cannot restore
-  cleared committed or prediction contours after the handoff.
-- Page switches cancel active input and handoff, then rebuild display from
-  that page's history. History is page-local; document dirty state is not.
+  terminal input, cancellation, reset, replacement, presenter loss, mode change,
+  or disposal.
+- Input requires a presenter. Bound pending work and accept callbacks only for
+  the current generation/sequence. Terminal success commits history and clears
+  transient contours; delayed acknowledgements cannot restore them.
+- Page switches cancel active input/handoff and rebuild from page-local history.
+  See [history and disposal](view-lifecycle.md#page-history-and-disposal).

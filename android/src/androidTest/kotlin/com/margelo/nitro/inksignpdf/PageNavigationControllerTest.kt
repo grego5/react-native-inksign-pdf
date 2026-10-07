@@ -23,8 +23,7 @@ class PageNavigationControllerTest {
 
   @Test
   fun returningToOriginKeepsPullActiveAndAllowsEitherNeighbor() = harness.onMain {
-    harness.prepare(SwipeDirection.LEFT)
-    harness.prepare(SwipeDirection.RIGHT)
+    harness.scheduler.completeImmediately = true
     harness.touch(down(150f, 100f))
     harness.touch(move(0f, 100f))
     assertEquals(SwipeDirection.LEFT, harness.controller.presentation().direction)
@@ -37,14 +36,14 @@ class PageNavigationControllerTest {
     harness.touch(move(300f, 100f))
     assertEquals(SwipeDirection.RIGHT, harness.controller.presentation().direction)
     harness.touch(up(300f, 100f))
-    harness.settlement.complete()
+    harness.settlement.finishLatest()
     assertEquals(0, harness.installs.single().targetPageIndex)
     assertEquals(listOf(MotionEvent.ACTION_DOWN, MotionEvent.ACTION_CANCEL), harness.forwarded)
   }
 
   @Test
   fun outwardStreamForwardsDownThenOneCancelAndStopsOrdinaryRouting() = harness.onMain {
-    harness.prepare(SwipeDirection.LEFT)
+    harness.scheduler.completeImmediately = true
     harness.touch(down(150f, 100f))
     harness.touch(move(0f, 100f))
     harness.touch(up(-20f, 100f))
@@ -74,11 +73,13 @@ class PageNavigationControllerTest {
 
   @Test
   fun matchingReadyPreviewReplaysArmedPullOnceWhileMissingPreviewDoesNotArm() = harness.onMain {
-    harness.controller.reconcilePreviews()
     harness.touch(down(150f, 100f))
+    assertEquals(0, harness.scheduler.requestCount(SwipeDirection.LEFT))
+    assertEquals(0, harness.scheduler.requestCount(SwipeDirection.RIGHT))
     harness.touch(move(0f, 100f))
     assertEquals(0, harness.armed)
     assertNull(harness.controller.presentation().selectedPreview)
+    assertTrue(harness.controller.presentation().translationX < 0.0)
 
     harness.scheduler.complete(SwipeDirection.LEFT)
     assertEquals(1, harness.armed)
@@ -89,45 +90,46 @@ class PageNavigationControllerTest {
 
   @Test
   fun matchingPreviewFailureRetriesOnTheNextEligibleGestureAndEnablesNavigation() = harness.onMain {
-    harness.controller.reconcilePreviews()
+    harness.touch(down(150f, 100f))
+    harness.touch(move(0f, 100f))
     val requestCountBeforeFailure = harness.scheduler.requestCount(SwipeDirection.LEFT)
+    harness.touch(up(0f, 100f))
     harness.scheduler.fail(SwipeDirection.LEFT)
     assertFalse(harness.controller.previewDirections().contains(SwipeDirection.LEFT))
+    assertTrue(harness.controller.state() is NavigationState.Settling)
+    harness.settlement.finishLatest()
 
     harness.touch(down(150f, 100f))
+    harness.touch(move(0f, 100f))
     assertEquals(
       requestCountBeforeFailure + 1,
       harness.scheduler.requestCount(SwipeDirection.LEFT),
     )
     harness.scheduler.complete(SwipeDirection.LEFT)
-    harness.touch(move(0f, 100f))
     harness.touch(up(0f, 100f))
     harness.settlement.finishLatest()
 
-    assertTrue(harness.controller.state() is NavigationState.Switching)
+    assertTrue(harness.controller.handoffPending())
   }
 
   @Test
-  fun stalePreviewIsRecycledAndReplacingOneDirectionKeepsTheOther() = harness.onMain {
-    harness.controller.reconcilePreviews()
+  fun stalePreviewIsRecycledWithoutReplacingTheCurrentRequest() = harness.onMain {
+    harness.touch(down(150f, 100f))
+    harness.touch(move(0f, 100f))
     val stale = harness.scheduler.pending(SwipeDirection.LEFT)
-    harness.scheduler.complete(SwipeDirection.RIGHT)
-    harness.controller.cancel()
+    harness.controller.reset()
+    harness.touch(down(150f, 100f))
+    harness.touch(move(0f, 100f))
     stale.complete()
     assertTrue(stale.bitmap!!.isRecycled)
-
-    harness.controller.reconcilePreviews()
+    assertNull(harness.controller.presentation().selectedPreview)
     harness.scheduler.complete(SwipeDirection.LEFT)
-    harness.scheduler.complete(SwipeDirection.RIGHT)
-    assertEquals(setOf(SwipeDirection.LEFT, SwipeDirection.RIGHT), harness.controller.previewDirections())
-    harness.revisionByPage[2] = 1L
-    harness.controller.reconcilePreviews()
-    assertTrue(harness.controller.previewDirections().contains(SwipeDirection.RIGHT))
+    assertEquals(setOf(SwipeDirection.LEFT), harness.controller.previewDirections())
   }
 
   @Test
-  fun falseInstallationReturnsIdleReconcilesAndAllowsTheNextSwipe() = harness.onMain {
-    harness.prepare(SwipeDirection.LEFT)
+  fun falseInstallationReturnsIdleAndAllowsTheNextSwipe() = harness.onMain {
+    harness.scheduler.completeImmediately = true
     harness.installResult = false
     harness.touch(down(150f, 100f))
     harness.touch(move(0f, 100f))
@@ -138,7 +140,6 @@ class PageNavigationControllerTest {
     assertTrue(harness.settled > 0)
     assertEquals(failedPreview.request.key, harness.installs.single().previewKey)
 
-    harness.scheduler.complete(SwipeDirection.LEFT)
     harness.touch(down(150f, 100f))
     harness.touch(move(0f, 100f))
     val replacementPreview = requireNotNull(harness.controller.presentation().selectedPreview)
@@ -148,13 +149,13 @@ class PageNavigationControllerTest {
     harness.installResult = true
     harness.touch(up(0f, 100f))
     harness.settlement.finishLatest()
-    assertTrue(harness.controller.state() is NavigationState.Switching)
+    assertTrue(harness.controller.handoffPending())
     assertEquals(replacementPreview.request.key, harness.installs.last().previewKey)
   }
 
   @Test
   fun recoverableInstallationExceptionReturnsIdleAndAllowsTheNextSwipe() = harness.onMain {
-    harness.prepare(SwipeDirection.LEFT)
+    harness.scheduler.completeImmediately = true
     harness.installException = PdfSessionException("test_install", "controlled failure")
     harness.swipeLeftAndRelease()
     harness.settlement.finishLatest()
@@ -163,15 +164,14 @@ class PageNavigationControllerTest {
     assertTrue(harness.settled > 0)
 
     harness.installException = null
-    harness.scheduler.complete(SwipeDirection.LEFT)
     harness.swipeLeftAndRelease()
     harness.settlement.finishLatest()
-    assertTrue(harness.controller.state() is NavigationState.Switching)
+    assertTrue(harness.controller.handoffPending())
   }
 
   @Test
   fun subthresholdReleaseKeepsPreviewThroughSnapBackThenReturnsToUsableIdle() = harness.onMain {
-    harness.prepare(SwipeDirection.LEFT)
+    harness.scheduler.completeImmediately = true
     harness.touch(down(150f, 100f))
     harness.touch(move(80f, 100f))
     val preview = requireNotNull(harness.controller.presentation().selectedPreview)
@@ -189,23 +189,88 @@ class PageNavigationControllerTest {
     harness.touch(down(150f, 100f))
     harness.touch(move(0f, 100f))
     assertTrue(harness.controller.state() is NavigationState.Dragging)
-    assertSame(preview, harness.controller.presentation().selectedPreview)
+    assertTrue(preview.bitmap.isRecycled)
+    assertTrue(harness.controller.presentation().selectedPreview != null)
+  }
+
+  @Test
+  fun newDownCompletesCommittedSwitchAndIgnoresOldCompletion() = harness.onMain {
+    harness.scheduler.completeImmediately = true
+    harness.swipeLeftAndRelease()
+    harness.settlement.advanceLatest(0.5f)
+    assertTrue(harness.controller.presentation().translationX != 0.0)
+    harness.touch(down(150f, 100f))
+    assertTrue(harness.controller.state() is NavigationState.Dragging)
+    assertEquals(0.0, harness.controller.presentation().translationX, 0.0)
+    harness.settlement.finishLatest()
+    assertEquals(1, harness.installs.size)
+    val context = (harness.controller.state() as NavigationState.Dragging).transaction.context
+    assertEquals(harness.installs.single().targetPageIndex, context.sourcePageIndex)
+    assertEquals(harness.installs.single().pageSwitchId, context.pageSwitchId)
+    harness.touch(move(270f, 100f))
+    assertTrue(harness.controller.presentation().translationX > 0.0)
+  }
+
+  @Test
+  fun newDownDuringRestKeepsCurrentPageAndStartsAnotherPull() = harness.onMain {
+    harness.scheduler.completeImmediately = true
+    harness.touch(down(150f, 100f))
+    harness.touch(move(80f, 100f))
+    harness.touch(up(80f, 100f))
+    harness.settlement.advanceLatest(0.5f)
+    harness.touch(down(150f, 100f))
+    harness.settlement.finishLatest()
+    assertTrue(harness.installs.isEmpty())
+    assertTrue(harness.controller.state() is NavigationState.Dragging)
+    harness.touch(move(0f, 100f))
+    assertTrue(harness.controller.presentation().translationX < 0.0)
+  }
+
+  @Test
+  fun newPullDuringTileHandoffKeepsFallbackAndSurvivesItsAcknowledgement() = harness.onMain {
+    harness.scheduler.completeImmediately = true
+    harness.swipeLeftAndRelease()
+    harness.settlement.finishLatest()
+    val handoff = harness.installs.single()
+    val fallback = requireNotNull(harness.controller.presentation().currentPagePreview)
+    harness.touch(down(150f, 100f))
+    assertTrue(harness.controller.state() is NavigationState.Dragging)
+    assertSame(fallback, harness.controller.presentation().currentPagePreview)
+    assertFalse(fallback.bitmap.isRecycled)
+    harness.touch(move(270f, 100f))
+    val drag = harness.controller.state()
+    val context = (drag as NavigationState.Dragging).transaction.context
+    assertEquals(handoff.targetPageIndex, context.sourcePageIndex)
+    assertEquals(handoff.pageSwitchId, context.pageSwitchId)
+    assertEquals(handoff.sourcePageIndex, context.eligibleTargets[SwipeDirection.RIGHT])
+    assertTrue(harness.controller.presentation().translationX > 0.0)
+    harness.controller.onVisibleTilesPresented(1L, handoff.targetPageIndex, handoff.pageSwitchId)
+    assertEquals(drag, harness.controller.state())
+    assertFalse(harness.controller.handoffPending())
+    assertTrue(fallback.bitmap.isRecycled)
+    harness.touch(up(270f, 100f))
+    harness.settlement.finishLatest()
+    val nextHandoff = harness.installs.last()
+    assertEquals(handoff.targetPageIndex, nextHandoff.sourcePageIndex)
+    assertEquals(handoff.sourcePageIndex, nextHandoff.targetPageIndex)
+    assertEquals(handoff.pageSwitchId + 1L, nextHandoff.pageSwitchId)
   }
 
   @Test
   fun onlyMatchingTileIdentityFinishesSwitchAndDelayedCallbacksAreNoops() = harness.onMain {
-    harness.prepare(SwipeDirection.LEFT)
+    harness.scheduler.completeImmediately = true
     harness.swipeLeftAndRelease()
     harness.settlement.finishLatest()
     val handoff = harness.installs.single()
     harness.controller.onVisibleTilesPresented(9L, handoff.targetPageIndex, handoff.pageSwitchId)
-    assertTrue(harness.controller.state() is NavigationState.Switching)
+    assertTrue(harness.controller.handoffPending())
     harness.controller.onVisibleTilesFailed(1L, handoff.targetPageIndex, handoff.pageSwitchId - 1L)
-    assertTrue(harness.controller.state() is NavigationState.Switching)
+    assertTrue(harness.controller.handoffPending())
     harness.controller.onVisibleTilesFailed(1L, handoff.targetPageIndex, handoff.pageSwitchId)
+    assertTrue(harness.controller.handoffPending())
     assertEquals(NavigationState.Idle, harness.controller.state())
 
-    harness.controller.cancel()
+    harness.controller.reset()
     harness.controller.onVisibleTilesPresented(1L, handoff.targetPageIndex, handoff.pageSwitchId)
     assertEquals(NavigationState.Idle, harness.controller.state())
   }
@@ -214,7 +279,7 @@ class PageNavigationControllerTest {
   fun panelsUseTheSameViewportSizedFrame() = harness.onMain {
     harness.width = 480
     harness.height = 280
-    harness.prepare(SwipeDirection.LEFT)
+    harness.scheduler.completeImmediately = true
     harness.touch(down(240f, 100f))
     harness.touch(move(0f, 100f))
     val beforeRelease = harness.controller.presentation().selectedPreview
@@ -222,16 +287,22 @@ class PageNavigationControllerTest {
     assertSame(beforeRelease, harness.controller.presentation().selectedPreview)
     val presentation = harness.controller.presentation()
     assertEquals(480.0 + presentation.translationX, presentation.targetPanelOffsetX, 0.0001)
-    assertEquals(480, requireNotNull(beforeRelease).request.request.widthPx)
-    assertEquals(280, beforeRelease.request.request.heightPx)
+    val raster = requireNotNull(beforeRelease).request.request
+    assertEquals(pageBaseLongestEdgePx, maxOf(raster.widthPx, raster.heightPx))
+    assertEquals(300.0 / 500.0, raster.widthPx.toDouble() / raster.heightPx, 0.001)
+    assertEquals(0, raster.leftPx)
+    assertEquals(0, raster.topPx)
     harness.settlement.finishLatest()
-    assertTrue(harness.controller.state() is NavigationState.Switching)
+    assertTrue(harness.controller.handoffPending())
   }
 
   private class ControllerHarness {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
-    private val worker = PdfSessionWorker(PdfSessionOpener { _, _ -> error("unused") })
-    val scheduler = ManualPreviewScheduler()
+    private var sourcePageIndex = 1
+    private var pageSwitchId = 4L
+    val scheduler = ManualPreviewScheduler { direction ->
+      sourcePageIndex + if (direction == SwipeDirection.LEFT) 1 else -1
+    }
     val settlement = ManualSettlementDriver()
     val forwarded = ArrayList<Int>()
     val installs = ArrayList<PageSwitchHandoff>()
@@ -244,7 +315,6 @@ class PageNavigationControllerTest {
     var height = 300
     var focus = PagePoint(150.0, 150.0)
     val controller = PageNavigationController(
-      sessionWorker = worker,
       requestInvalidate = {},
       requestAnimation = {},
       currentContext = ::context,
@@ -257,6 +327,11 @@ class PageNavigationControllerTest {
       installCommittedPage = {
         installs += it
         installException?.let { exception -> throw exception }
+        if (installResult) {
+          sourcePageIndex = it.targetPageIndex
+          pageSwitchId = it.pageSwitchId
+          focus = PagePoint(150.0, 250.0)
+        }
         installResult
       },
       forwardToDocumentNavigation = { forwarded += it.actionMasked },
@@ -267,11 +342,6 @@ class PageNavigationControllerTest {
     )
 
     fun onMain(action: () -> Unit) = instrumentation.runOnMainSync(action)
-
-    fun prepare(direction: SwipeDirection) {
-      controller.reconcilePreviews()
-      scheduler.complete(direction)
-    }
 
     fun touch(event: MotionEvent) {
       if (!controller.onTouch(event)) forwarded += event.actionMasked
@@ -284,18 +354,21 @@ class PageNavigationControllerTest {
       touch(up(0f, 100f))
     }
 
-    fun close() = worker.close()
+    fun close() = onMain { controller.reset() }
 
     private fun context() = NavigationContext(
       documentGeneration = 1L,
-      sourcePageIndex = 1,
+      sourcePageIndex = sourcePageIndex,
       pageCount = 3,
-      pageSwitchId = 4L,
+      pageSwitchId = pageSwitchId,
       viewportWidthPx = width,
       viewportHeightPx = height,
       density = 1.0,
       layoutDirection = android.view.View.LAYOUT_DIRECTION_LTR,
-      eligibleTargets = mapOf(SwipeDirection.LEFT to 2, SwipeDirection.RIGHT to 0),
+      eligibleTargets = buildMap {
+        if (sourcePageIndex < 2) put(SwipeDirection.LEFT, sourcePageIndex + 1)
+        if (sourcePageIndex > 0) put(SwipeDirection.RIGHT, sourcePageIndex - 1)
+      },
       targetContentRevisions = revisionByPage,
     )
 
@@ -305,7 +378,9 @@ class PageNavigationControllerTest {
     }
   }
 
-  private class ManualPreviewScheduler : PageNavigationPreviewScheduler {
+  private class ManualPreviewScheduler(
+    private val targetPageIndex: (SwipeDirection) -> Int,
+  ) : PageNavigationPreviewScheduler {
     data class Pending(
       val request: PdfTileRequest,
       val completion: (Result<PdfTile>) -> Unit,
@@ -318,28 +393,33 @@ class PageNavigationControllerTest {
     }
 
     private val requests = ArrayList<Pending>()
-    override fun updateEpoch(generation: Long, previewEpoch: Long) = Unit
-    override fun renderPreview(generation: Long, previewEpoch: Long, request: PdfTileRequest,
-      completion: (Result<PdfTile>) -> Unit) { requests += Pending(request, completion) }
+    var completeImmediately = false
+    override fun renderPreview(generation: Long, request: PdfTileRequest,
+      completion: (Result<PdfTile>) -> Unit) {
+      val pending = Pending(request, completion)
+      requests += pending
+      if (completeImmediately) pending.complete()
+    }
     fun fail(direction: SwipeDirection) = pending(direction).completion(Result.failure(
       IllegalStateException("controlled preview failure"),
     ))
     fun requestCount(direction: SwipeDirection): Int = requests.count {
-      it.request.key.pageIndex == if (direction == SwipeDirection.LEFT) 2 else 0
+      it.request.key.pageIndex == targetPageIndex(direction)
     }
     fun pending(direction: SwipeDirection): Pending = requests.last {
-      it.request.key.pageIndex == if (direction == SwipeDirection.LEFT) 2 else 0
+      it.request.key.pageIndex == targetPageIndex(direction)
     }
     fun complete(direction: SwipeDirection) = pending(direction).complete()
   }
 
   private class ManualSettlementDriver : PageNavigationSettlementDriver {
-    private data class Pending(val onEnd: () -> Unit) : PageNavigationSettlementDriver.Handle {
+    private data class Pending(val onProgress: (Float) -> Unit, val onEnd: () -> Unit) : PageNavigationSettlementDriver.Handle {
       override fun cancel() = Unit
     }
     private val pending = ArrayList<Pending>()
     override fun start(from: Float, to: Float, durationMillis: Long, onProgress: (Float) -> Unit,
-      onEnd: () -> Unit): PageNavigationSettlementDriver.Handle = Pending(onEnd).also(pending::add)
+      onEnd: () -> Unit): PageNavigationSettlementDriver.Handle = Pending(onProgress, onEnd).also(pending::add)
+    fun advanceLatest(amount: Float) = pending.last().onProgress(amount)
     fun finishLatest() = pending.removeLast().onEnd()
   }
 

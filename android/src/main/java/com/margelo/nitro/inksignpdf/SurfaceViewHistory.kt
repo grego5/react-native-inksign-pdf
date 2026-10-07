@@ -54,7 +54,6 @@ internal fun SurfaceView.presentHistoryMutation(mutation: InkHistoryMutation) {
   notifyStateChange()
   invalidate()
   onTextContentChanged?.invoke()
-  pageNavigationController.reconcilePreviews()
 }
 
 internal fun SurfaceView.rebuildCommittedTextLayer() {
