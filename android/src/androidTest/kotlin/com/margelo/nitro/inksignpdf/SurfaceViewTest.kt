@@ -668,6 +668,48 @@ class SurfaceViewTest {
   }
 
   @Test
+  fun twoFingerPinchCancelsInkAndReplacementRetiresItsStream() {
+    harness.runOnMain {
+      harness.setDocument(harness.documentInfo(), zoom = 2.0, fitToPage = false)
+      harness.surface.setEditMode(true)
+      val before = harness.surface.currentViewportState().zoom
+      dispatch(downEvent(100f, 150f, 1_000L))
+      fun fingers(action: Int, left: Float, right: Float, time: Long): MotionEvent {
+        val properties = Array(2) { index -> MotionEvent.PointerProperties().apply {
+          id = index
+          toolType = MotionEvent.TOOL_TYPE_FINGER
+        } }
+        val coordinates = arrayOf(left, right).map { x -> MotionEvent.PointerCoords().apply {
+          this.x = x
+          y = 150f
+          pressure = 1f
+          size = 1f
+        } }.toTypedArray()
+        return MotionEvent.obtain(1_000L, time, action, 2, properties, coordinates,
+          0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+      }
+      dispatch(fingers(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+        100f, 200f, 1_020L))
+      dispatch(fingers(MotionEvent.ACTION_MOVE, 70f, 230f, 1_050L))
+      dispatch(fingers(MotionEvent.ACTION_MOVE, 40f, 260f, 1_080L))
+      assertTrue(harness.surface.currentViewportState().zoom > before)
+      assertEquals(0, harness.surface.completedPagesSnapshot().first().strokes.size)
+      assertFalse(harness.surface.presentationDiagnostics().frontBufferOwnsActiveInk)
+
+      harness.setDocument(harness.documentInfo(), zoom = 2.0, fitToPage = false)
+      val replacement = harness.surface.currentViewportState()
+      dispatch(fingers(MotionEvent.ACTION_MOVE, 10f, 290f, 1_090L))
+      assertEquals(replacement, harness.surface.currentViewportState())
+      dispatch(fingers(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+        40f, 260f, 1_100L))
+      dispatch(upEvent(40f, 150f, 1_120L))
+      assertEquals(replacement, harness.surface.currentViewportState())
+      assertEquals(0, harness.surface.completedPagesSnapshot().first().strokes.size)
+      assertFalse(harness.surface.presentationDiagnostics().frontBufferOwnsActiveInk)
+    }
+  }
+
+  @Test
   fun cancelledStrokeDoesNotAppendHistoryOrLeaveActivePresentation() {
     harness.runOnMain {
       harness.surface.setEditMode(true)

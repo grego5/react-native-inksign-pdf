@@ -227,7 +227,7 @@ internal class SurfaceView(
   init {
     lowLatencyInk.setPresentationAcknowledgementListener(::onFrontBufferAcknowledged)
     lowLatencyInk.setLifecycleCancellationListener {
-      cancelActiveStroke(cancellationReason = CANCELLATION_LIFECYCLE)
+      cancelInputGesture(cancellationReason = CANCELLATION_LIFECYCLE)
     }
     documentController.onDoubleTapEditMode = ::enterEditModeFromDoubleTap
     documentController.onViewportChanged = {
@@ -271,7 +271,7 @@ internal class SurfaceView(
     requireOnUiThread()
     if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
     openHandoffInProgress = true
-    cancelActiveStroke()
+    cancelInputGesture()
     pageNavigationController.cancel()
     documentController.suspendTileRequests()
   }
@@ -337,7 +337,7 @@ internal class SurfaceView(
   ) {
     requireOnUiThread()
     if (disposed) return
-    cancelActiveStroke()
+    cancelInputGesture()
     pageNavigationController.cancel()
     resetDocumentHistories()
     clearSnapCandidateMeasurement()
@@ -368,7 +368,7 @@ internal class SurfaceView(
     requireOnUiThread()
     if (disposed) return
     openHandoffInProgress = false
-    cancelActiveStroke()
+    cancelInputGesture()
     pageNavigationController.cancel()
     resetDocumentHistories()
     clearSnapCandidateMeasurement()
@@ -406,7 +406,7 @@ internal class SurfaceView(
     requireOnUiThread()
     val state = documentCoordinator
     val snapshot = state.presentationSnapshot()
-    cancelActiveStroke()
+    cancelInputGesture()
     pageNavigationController.cancel()
     pageSwitchRequestId += 1L
     val active = snapshot.pages[snapshot.activePageIndex]
@@ -500,7 +500,7 @@ internal class SurfaceView(
     documentController.requireViewportCommandReady()
     require(pageIndex in 0 until state.pageCount) { "Invalid PDF page index: $pageIndex" }
     if (pageIndex == state.activePageIndex) return currentPageInfo()
-    cancelActiveStroke()
+    cancelInputGesture()
     val target = state.activatePage(pageIndex)
     clearSnapCandidateMeasurement()
     pageSwitchRequestId += 1L
@@ -529,7 +529,7 @@ internal class SurfaceView(
     } catch (_: PdfSessionException) {
       return false
     }
-    cancelActiveStroke()
+    cancelInputGesture()
     val target = state.activatePage(handoff.targetPageIndex)
     clearSnapCandidateMeasurement()
     pageSwitchRequestId = handoff.pageSwitchId
@@ -548,7 +548,7 @@ internal class SurfaceView(
       if (disposed) return@runOnUi
       if (editMode == enabled) return@runOnUi
       pageNavigationController.cancel()
-      if (!enabled) cancelActiveStroke()
+      if (!enabled) cancelInputGesture()
       editMode = enabled
       documentController.onEditModeChanged(enabled)
       onModeChanged?.invoke()
@@ -593,7 +593,19 @@ internal class SurfaceView(
   internal fun handleTextViewportTouch(event: MotionEvent) {
     requireOnUiThread()
     if (disposed) return
+    updateZoomTouchState(event)
     documentController.handleViewTouch(event)
+  }
+
+  private fun updateZoomTouchState(event: MotionEvent) {
+    when (event.actionMasked) {
+      MotionEvent.ACTION_DOWN -> zoomTouchActive = true
+      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+        zoomTouchActive = false
+        removeCallbacks(reportSettledZoom)
+        postDelayed(reportSettledZoom, 120L)
+      }
+    }
   }
 
   internal fun isTextFocusAnimating(): Boolean {
@@ -720,7 +732,7 @@ internal class SurfaceView(
     }
     documentController.requireViewportCommandReady()
     pageNavigationController.cancel()
-    cancelActiveStroke()
+    cancelInputGesture()
     editMode = false
     documentController.onEditModeChanged(false)
     onModeChanged?.invoke()
@@ -751,7 +763,7 @@ internal class SurfaceView(
   ) {
     requireModeTransitionReady()
     pageNavigationController.cancel()
-    cancelActiveStroke()
+    cancelInputGesture()
     documentController.applyViewport(request, animated = true, completion = {
       if (isCurrent()) {
         if (enterEditMode) enterEditModeFromDoubleTap()
@@ -971,7 +983,7 @@ internal class SurfaceView(
     runOnUi {
       if (disposed) return@runOnUi
       pageNavigationController.cancel()
-      cancelActiveStroke()
+      cancelInputGesture()
       presentHistoryMutation(documentCoordinator.undoActiveHistory())
     }
   }
@@ -980,7 +992,7 @@ internal class SurfaceView(
     runOnUi {
       if (disposed) return@runOnUi
       pageNavigationController.cancel()
-      cancelActiveStroke()
+      cancelInputGesture()
       presentHistoryMutation(documentCoordinator.redoActiveHistory())
     }
   }
@@ -989,7 +1001,7 @@ internal class SurfaceView(
     runOnUi {
       if (disposed) return@runOnUi
       pageNavigationController.cancel()
-      cancelActiveStroke()
+      cancelInputGesture()
       presentHistoryMutation(documentCoordinator.clearActiveHistory())
     }
   }
@@ -1054,7 +1066,7 @@ internal class SurfaceView(
     super.onSizeChanged(width, height, oldWidth, oldHeight)
     // A viewport change invalidates both active geometry and any handoff waiting for the old
     // regular frame. Re-enter through the same generation invalidation path in either case.
-    cancelActiveStroke()
+    cancelInputGesture()
     pageNavigationController.cancel()
     documentController.onSizeChanged(width, height)
     onTextTransformChanged?.invoke()
@@ -1139,15 +1151,15 @@ internal class SurfaceView(
   }
 
   override fun onTouchEvent(event: MotionEvent): Boolean {
-    when (event.actionMasked) {
-      MotionEvent.ACTION_DOWN -> zoomTouchActive = true
-      MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-        zoomTouchActive = false
-        removeCallbacks(reportSettledZoom)
-        postDelayed(reportSettledZoom, 120L)
-      }
-    }
+    updateZoomTouchState(event)
     if (disposed) return false
+    if (event.actionMasked == MotionEvent.ACTION_DOWN) inkTouchOwner = InkTouchOwner.DRAW
+    if (inkTouchOwner == InkTouchOwner.DISCARD) {
+      if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+        inkTouchOwner = InkTouchOwner.DRAW
+      }
+      return true
+    }
     if (openHandoffInProgress) return true
     perfetto.eventReceived(event.eventTime)
     if (editMode) {
@@ -1160,6 +1172,23 @@ internal class SurfaceView(
     perfetto.eventDelivered(event.eventTime)
     return InkPerfetto.section("InkSign/MotionEvent") {
       if (editMode) {
+        if (inkTouchOwner == InkTouchOwner.DRAW && event.actionMasked == MotionEvent.ACTION_POINTER_DOWN &&
+          (0 until event.pointerCount).all { event.getToolType(it) == MotionEvent.TOOL_TYPE_FINGER }
+        ) {
+          cancelInputGesture()
+          inkTouchOwner = InkTouchOwner.VIEWPORT
+          val down = MotionEvent.obtain(event)
+          down.action = MotionEvent.ACTION_DOWN
+          documentController.handleViewTouch(down)
+          down.recycle()
+        }
+        if (inkTouchOwner == InkTouchOwner.VIEWPORT) {
+          documentController.handleViewTouch(event)
+          if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            inkTouchOwner = InkTouchOwner.DRAW
+          }
+          return@section true
+        }
         if (event.actionMasked == MotionEvent.ACTION_DOWN) {
           documentController.cancelViewportAnimation()
           requestUnbufferedDispatch(event)
@@ -1172,6 +1201,24 @@ internal class SurfaceView(
     }
   }
 
+  private enum class InkTouchOwner { DRAW, VIEWPORT, DISCARD }
+  private var inkTouchOwner = InkTouchOwner.DRAW
+
+  internal fun cancelInputGesture(
+    cancelEngineWhenIdle: Boolean = false,
+    cancellationReason: Int = CANCELLATION_INPUT,
+  ) {
+    if (inkTouchOwner == InkTouchOwner.VIEWPORT) {
+      inkTouchOwner = InkTouchOwner.DISCARD
+      val time = SystemClock.uptimeMillis()
+      val cancel = MotionEvent.obtain(time, time, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+      updateZoomTouchState(cancel)
+      documentController.handleViewTouch(cancel)
+      cancel.recycle()
+    }
+    cancelActiveStroke(cancelEngineWhenIdle, cancellationReason)
+  }
+
   override fun computeScroll() {
     super.computeScroll()
     documentController.computeScroll()
@@ -1180,7 +1227,7 @@ internal class SurfaceView(
   override fun onDetachedFromWindow() {
     requireOnUiThread()
     pageNavigationWindowFocus = false
-    cancelActiveStroke()
+    cancelInputGesture()
     pageNavigationController.cancel()
     stopPrediction()
     inkRenderer.discardDisplayLists()
@@ -1203,7 +1250,7 @@ internal class SurfaceView(
     if (hasWindowFocus) {
       pageNavigationController.reconcilePreviews()
     } else {
-      cancelActiveStroke()
+      cancelInputGesture()
       pageNavigationController.cancel()
       onWindowFocusLost?.invoke()
     }
@@ -1215,7 +1262,7 @@ internal class SurfaceView(
     if (disposed) return
     disposed = true
     pageNavigationController.cancel()
-    cancelActiveStroke(cancelEngineWhenIdle = true)
+    cancelInputGesture(cancelEngineWhenIdle = true)
     documentController.dispose()
     clearSnapCandidateMeasurement()
     onPageChange = null

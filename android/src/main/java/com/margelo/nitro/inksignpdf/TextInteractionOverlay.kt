@@ -395,7 +395,6 @@ internal class TextInteractionOverlay(
     val down: MotionEvent,
     val target: TouchTarget,
     val startsSelectedDrag: Boolean = false,
-    var panning: Boolean = false,
   )
 
   private data class PendingPlacementGesture(
@@ -837,18 +836,21 @@ internal class TextInteractionOverlay(
   }
 
   fun finishForLifecycle() {
+    cancelViewportTouch()
     clearPlacementForLifecycle()
     finishEditing()
     clearSelection()
   }
 
   fun cancelForDocumentReplacement() {
+    cancelViewportTouch()
     clearPlacementForLifecycle()
     cancelEditing()
     clearSelection()
   }
 
   fun dispose() {
+    cancelViewportTouch()
     finishEditing()
     clearSelection()
     hideKeyboard()
@@ -952,6 +954,11 @@ internal class TextInteractionOverlay(
 
   fun syncContent() {
     val presentation = surface.textPresentationSnapshot()
+    viewportTouchPage?.let { (generation, pageIndex) ->
+      if (presentation == null || presentation.generation != generation || presentation.pageIndex != pageIndex) {
+        cancelViewportTouch()
+      }
+    }
     lastPresentation = presentation
     if (presentation == null) {
       cancelPendingTouch()
@@ -1087,8 +1094,112 @@ internal class TextInteractionOverlay(
     }
   }
 
+  private enum class TouchOwner { TEXT, VIEWPORT, DISCARD }
+  private var touchOwner = TouchOwner.TEXT
+  private var viewportTouchDown: MotionEvent? = null
+  private var viewportTouchPage: Pair<Long, Int>? = null
+  private var caretFollowPaused = false
+
+  private fun pauseCaretFollow() {
+    caretFollowPaused = true
+    editor?.cancelCaretFollow()
+  }
+
+  private fun canFollowCaret(): Boolean =
+    !caretFollowPaused && touchOwner == TouchOwner.TEXT && !surface.isTextFocusAnimating()
+
+  private fun startViewportTouch(down: MotionEvent) {
+    pauseCaretFollow()
+    touchOwner = TouchOwner.VIEWPORT
+    surface.handleTextViewportTouch(down)
+  }
+
+  private fun finishViewportTouch() {
+    touchOwner = TouchOwner.TEXT
+    viewportTouchDown?.recycle()
+    viewportTouchDown = null
+    viewportTouchPage = null
+  }
+
+  private fun cancelViewportTouch() {
+    val down = viewportTouchDown
+    val discard = touchOwner == TouchOwner.DISCARD || down != null || pendingTouch != null
+    cancelPendingTouch()
+    if (touchOwner == TouchOwner.VIEWPORT && down != null) {
+      val cancel = MotionEvent.obtain(down)
+      cancel.action = MotionEvent.ACTION_CANCEL
+      surface.handleTextViewportTouch(cancel)
+      cancel.recycle()
+    }
+    finishViewportTouch()
+    if (discard) touchOwner = TouchOwner.DISCARD
+    editor?.cancelCaretFollow()
+  }
+
+  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+      finishViewportTouch()
+      viewportTouchDown = MotionEvent.obtain(event)
+      viewportTouchPage = surface.textTransformSnapshot()?.let { it.generation to it.pageIndex }
+    }
+    if (touchOwner == TouchOwner.DISCARD) {
+      if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+        finishViewportTouch()
+      }
+      return true
+    }
+    if (touchOwner == TouchOwner.TEXT && event.actionMasked == MotionEvent.ACTION_POINTER_DOWN &&
+      interactionState !is InteractionState.Idle && viewportTouchDown != null
+    ) {
+      val down = checkNotNull(viewportTouchDown)
+      val page = viewportTouchPage
+      viewportTouchDown = null
+      val cancel = MotionEvent.obtain(event)
+      cancel.action = MotionEvent.ACTION_CANCEL
+      super.dispatchTouchEvent(cancel)
+      cancel.recycle()
+      viewportTouchDown = down
+      viewportTouchPage = page
+      startViewportTouch(down)
+    }
+    val handled = if (touchOwner == TouchOwner.VIEWPORT) {
+      surface.handleTextViewportTouch(event)
+      true
+    } else super.dispatchTouchEvent(event)
+    if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+      finishViewportTouch()
+    }
+    return handled
+  }
+
   override fun onTouchEvent(event: MotionEvent): Boolean {
+    if (event.actionMasked == MotionEvent.ACTION_DOWN && viewportTouchDown == null) {
+      finishViewportTouch()
+      viewportTouchDown = MotionEvent.obtain(event)
+      viewportTouchPage = surface.textTransformSnapshot()?.let { it.generation to it.pageIndex }
+    }
+    val handled = when (touchOwner) {
+      TouchOwner.VIEWPORT -> { surface.handleTextViewportTouch(event); true }
+      TouchOwner.DISCARD -> true
+      TouchOwner.TEXT -> handleTextTouch(event)
+    }
+    if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+      finishViewportTouch()
+    }
+    return handled
+  }
+
+  private fun handleTextTouch(event: MotionEvent): Boolean {
     pendingPlacementGesture?.let { gesture ->
+      val down = viewportTouchDown
+      if (event.actionMasked == MotionEvent.ACTION_MOVE && down != null &&
+        kotlin.math.hypot(event.x - down.x, event.y - down.y) > ViewConfiguration.get(context).scaledTouchSlop
+      ) {
+        pendingPlacementGesture = null
+        startViewportTouch(down)
+        surface.handleTextViewportTouch(event)
+        return true
+      }
       when (event.actionMasked) {
         MotionEvent.ACTION_UP -> {
           pendingPlacementGesture = null
@@ -1164,21 +1275,16 @@ internal class TextInteractionOverlay(
     val touch = pendingTouch ?: return false
     val annotation = touch.target as? TouchTarget.Annotation
     val action = event.actionMasked
-    if (action == MotionEvent.ACTION_MOVE && !touch.panning &&
+    if (action == MotionEvent.ACTION_MOVE &&
       !touch.startsSelectedDrag && !annotationGesture.dragging && kotlin.math.hypot(
         event.rawX - touch.down.rawX,
         event.rawY - touch.down.rawY,
       ) > ViewConfiguration.get(context).scaledTouchSlop
     ) {
       annotationGesture.cancel()
-      surface.handleTextViewportTouch(touch.down)
-      touch.panning = true
-    }
-    if (touch.panning) {
+      startViewportTouch(touch.down)
+      finishPendingTouch(touch)
       surface.handleTextViewportTouch(event)
-      if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
-        finishPendingTouch(touch)
-      }
       return true
     }
     if (annotation == null) {
@@ -1214,16 +1320,11 @@ internal class TextInteractionOverlay(
   private fun cancelPendingTouch() {
     val touch = pendingTouch ?: return
     annotationGesture.cancel()
-    if (touch.panning) {
-      val cancel = MotionEvent.obtain(touch.down)
-      cancel.action = MotionEvent.ACTION_CANCEL
-      surface.handleTextViewportTouch(cancel)
-      cancel.recycle()
-    }
     finishPendingTouch(touch)
   }
 
   private fun showEditor(value: String): TextEntryView {
+    caretFollowPaused = false
     editor?.let { removeView(it) }
     val state = checkNotNull(interactionState as? InteractionState.Editing)
     val entry = TextEntryView(context).apply {
@@ -1302,6 +1403,7 @@ internal class TextInteractionOverlay(
 
         override fun afterTextChanged(s: Editable?) {
           if (editor !== this@apply) return
+          caretFollowPaused = false
           val currentState = interactionState as? InteractionState.Editing
           currentState?.directionSwitchFrame = null
           requestLayout()
@@ -1325,7 +1427,7 @@ internal class TextInteractionOverlay(
         if (state != null && transform != null && previousPresentation != null &&
           previousPresentation.generation == transform.generation &&
           previousPresentation.pageIndex == transform.pageIndex &&
-          !surface.isTextFocusAnimating()
+          canFollowCaret()
         ) {
           val presentation = previousPresentation.copy(
             page = transform.page,
@@ -1782,7 +1884,7 @@ internal class TextInteractionOverlay(
     entry.keepPrefixAtTop = state.flowBounds != null
     val bounds = editorBounds(entry, state, presentation)
     layoutEditorFrame(entry, bounds, presentation.transform)
-    if (!surface.isTextFocusAnimating()) entry.scheduleCaretFollow()
+    if (canFollowCaret()) entry.scheduleCaretFollow()
   }
 
   /** Returns the active line's caret with visibility room on either side. */

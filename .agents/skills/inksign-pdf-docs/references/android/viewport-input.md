@@ -30,7 +30,12 @@
   converted once at the coordinator boundary. See the shared
   [document model](../architecture.md#document-model) and [export](export.md).
 - `TextInteractionOverlay` owns text placement, hit testing, editing, dragging,
-  and keyboard avoidance. Text gestures do not enter ink or page navigation.
+  and keyboard avoidance. Placement drags and editor-outside drags pan the viewport;
+  two-finger gestures pan and pinch even over the editor. Viewport takeover
+  preserves the draft or armed placement and owns the stream until release.
+  Manual navigation suspends caret following until text changes. Lifecycle
+  cancellation retires viewport ownership and consumes the old stream through release.
+  Text gestures bypass ink and page navigation.
 - Prepared free targets use `{ x, y, width, height }` in displayed page coordinates;
   x/y stay at the physical
   top-left in either direction, and vertical anchoring moves only visible text.
@@ -101,4 +106,7 @@
   drawing; a next-frame acknowledgement retires the preview only for the matching
   document, page, and switch ID. This is draw submission, not a GPU presentation fence.
 - Edit mode accepts a single finger or stylus stroke using the transform and
-  pen settings captured at stroke start.
+  pen settings captured at stroke start. A second finger cancels unfinished
+  finger ink and transfers the stream to viewport pan/pinch until all fingers
+  lift; stylus streams retain drawing ownership. Page, mode, and lifecycle
+  changes cancel viewport input and consume the retired stream through release.

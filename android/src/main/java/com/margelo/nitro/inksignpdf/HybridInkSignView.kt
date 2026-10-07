@@ -415,7 +415,7 @@ class HybridInkSignView internal constructor(
       )
     }
     checkMainThread()
-    surface.cancelActiveStroke()
+    surface.cancelInputGesture()
     val operation = beginStructuralOperation()
     try {
       viewportRequestID += 1L
