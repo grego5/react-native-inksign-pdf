@@ -79,6 +79,9 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
 }
 ```
 
+Use a normal React ref. You can call `open()` from an effect after mounting; it
+waits for native attachment. Await it before using other document commands.
+
 Tap the page after choosing **Draw** or **Place text**. `finalize()` returns a
 temporary PDF path; copy the file if it needs to remain available after the
 signing view closes.

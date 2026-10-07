@@ -1,6 +1,7 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useState } from 'react';
 import { callback, getHostComponent } from 'react-native-nitro-modules';
 import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConfig.json';
+import { createViewConnection } from './viewConnection';
 import {
   argumentError,
   validateAddPagesOptions,
@@ -94,7 +95,10 @@ const NativeInkSignView = getHostComponent<InkSignViewProps, InkSignViewMethods>
 );
 
 type NativeInkSignViewProps = React.ComponentProps<typeof NativeInkSignView>;
-type InkSignViewComponentProps = Omit<NativeInkSignViewProps, 'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomedInChange'> & {
+type InkSignViewComponentProps = Omit<
+  NativeInkSignViewProps,
+  'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomedInChange'
+> & {
   onStateChange?: InkSignViewProps['onStateChange'];
   onPageChange?: InkSignViewProps['onPageChange'];
   onZoomedInChange?: InkSignViewProps['onZoomedInChange'];
@@ -110,7 +114,7 @@ function callAsync<T>(validate: () => void, invoke: () => Promise<T>): Promise<T
   }
 }
 
-const nativeHandles = new WeakMap<object, InkSignViewNativeHandle>();
+const nativeHandles = new WeakMap<object, () => InkSignViewNativeHandle>();
 
 function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): AnalyzedPage {
   return {
@@ -138,7 +142,8 @@ function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): Analyzed
     },
     setTextOptions(id, options) {
       validateTextId(id);
-      if (options === undefined) throw argumentError('invalid_text_options', 'Text options are required');
+      if (options === undefined)
+        throw argumentError('invalid_text_options', 'Text options are required');
       validateTextAnnotationOptions(options);
       native.setTextOptions(id, options);
     },
@@ -148,110 +153,154 @@ function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): Analyzed
     },
     adjustTextSize(id, delta) {
       validateTextId(id);
-      if (!Number.isFinite(delta)) throw argumentError('invalid_text_size_delta', 'Text size delta must be finite');
+      if (!Number.isFinite(delta))
+        throw argumentError('invalid_text_size_delta', 'Text size delta must be finite');
       return native.adjustTextSize(id, delta);
     },
     getTextEntries: () => native.getTextEntries(),
     focusText(id, options) {
       validateTextId(id);
-      return callAsync(() => validateFieldFocusOptions(options), () => native.focusText(id, options));
+      return callAsync(
+        () => validateFieldFocusOptions(options),
+        () => native.focusText(id, options),
+      );
     },
   };
 }
 
-function createValidatedHandle(native: InkSignViewNativeHandle): InkSignViewHandle {
+function createValidatedHandle(
+  connection: ReturnType<typeof createViewConnection>,
+): InkSignViewHandle {
+  const getNative = connection.getNative;
   const handle = {
-    __type: native.__type,
-    name: native.name,
-    toString: () => native.toString(),
-    equals(other: InkSignViewNativeHandle) {
-      return native.equals(nativeHandles.get(other) ?? other);
+    get __type() {
+      return getNative().__type;
     },
-    dispose: () => native.dispose(),
+    get name() {
+      return getNative().name;
+    },
+    toString: () => getNative().toString(),
+    equals(other: InkSignViewNativeHandle) {
+      return getNative().equals(nativeHandles.get(other)?.() ?? other);
+    },
+    dispose: () => getNative().dispose(),
     open(path, viewport) {
-      return callAsync(() => {
-        if (typeof path !== 'string' || path.trim() === '') {
-          throw argumentError('invalid_document_path', 'A non-empty PDF path is required');
-        }
-        validateViewportOptions(viewport);
-      }, () => native.open(path, viewport));
+      return callAsync(
+        () => {
+          if (typeof path !== 'string' || path.trim() === '') {
+            throw argumentError('invalid_document_path', 'A non-empty PDF path is required');
+          }
+          validateViewportOptions(viewport);
+        },
+        () => connection.open(path, viewport),
+      );
     },
     addPages(options) {
-      return callAsync(() => validateAddPagesOptions(options), () => native.addPages(options));
+      return callAsync(
+        () => validateAddPagesOptions(options),
+        () => getNative().addPages(options),
+      );
     },
-    removePage: () => callAsync(() => {}, () => native.removePage()),
+    removePage: () =>
+      callAsync(
+        () => {},
+        () => getNative().removePage(),
+      ),
     movePage(pageIndex) {
-      return callAsync(() => {
-        if (typeof pageIndex !== 'number' || !Number.isInteger(pageIndex) || pageIndex < 0) {
-          throw argumentError('invalid_page_index', 'The destination page index must be a non-negative integer');
-        }
-      }, () => native.movePage(pageIndex));
+      return callAsync(
+        () => {
+          if (typeof pageIndex !== 'number' || !Number.isInteger(pageIndex) || pageIndex < 0) {
+            throw argumentError(
+              'invalid_page_index',
+              'The destination page index must be a non-negative integer',
+            );
+          }
+        },
+        () => getNative().movePage(pageIndex),
+      );
     },
     rotatePage(degrees) {
-      return callAsync(() => {
-        if (degrees !== 90 && degrees !== 180 && degrees !== 270) {
-          throw argumentError('invalid_page_rotation', 'Page rotation must be 90, 180, or 270 degrees clockwise');
-        }
-      }, () => native.rotatePage(degrees));
+      return callAsync(
+        () => {
+          if (degrees !== 90 && degrees !== 180 && degrees !== 270) {
+            throw argumentError(
+              'invalid_page_rotation',
+              'Page rotation must be 90, 180, or 270 degrees clockwise',
+            );
+          }
+        },
+        () => getNative().rotatePage(degrees),
+      );
     },
-    nextPage: () => native.nextPage(),
-    previousPage: () => native.previousPage(),
-    getViewport: () => native.getViewport(),
-    hasInk: () => native.hasInk(),
+    nextPage: () => getNative().nextPage(),
+    previousPage: () => getNative().previousPage(),
+    getViewport: () => getNative().getViewport(),
+    hasInk: () => getNative().hasInk(),
     getPage(pageIndex) {
-      return callAsync(() => validatePageIndex(pageIndex), async () =>
-        createValidatedAnalyzedPage(await native.getPage(pageIndex)));
+      return callAsync(
+        () => validatePageIndex(pageIndex),
+        async () => createValidatedAnalyzedPage(await getNative().getPage(pageIndex)),
+      );
     },
     setInkMode(viewport) {
       validateViewportOptions(viewport);
-      native.setInkMode(viewport);
+      getNative().setInkMode(viewport);
     },
     setViewMode(viewport) {
       validateViewportOptions(viewport);
-      native.setViewMode(viewport);
+      getNative().setViewMode(viewport);
     },
-    undo: () => native.undo(),
-    redo: () => native.redo(),
-    clear: () => native.clear(),
+    undo: () => getNative().undo(),
+    redo: () => getNative().redo(),
+    clear: () => getNative().clear(),
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
         throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');
       }
-      native.setTextDirection(direction);
+      getNative().setTextDirection(direction);
     },
     setTextMode(options) {
       validateTextModeOptions(options);
-      native.setTextMode(options);
+      getNative().setTextMode(options);
     },
-    finalize: () => callAsync(() => {}, () => native.finalize()),
-    startDebugRecording: () => native.startDebugRecording(),
-    stopDebugRecording: () => native.stopDebugRecording(),
-    exportDebugRecording: () => callAsync(() => {}, () => native.exportDebugRecording()),
+    finalize: () =>
+      callAsync(
+        () => {},
+        () => getNative().finalize(),
+      ),
+    startDebugRecording: () => getNative().startDebugRecording(),
+    stopDebugRecording: () => getNative().stopDebugRecording(),
+    exportDebugRecording: () =>
+      callAsync(
+        () => {},
+        () => getNative().exportDebugRecording(),
+      ),
   } satisfies InkSignViewHandle;
-  nativeHandles.set(handle, native);
+  nativeHandles.set(handle, getNative);
   return handle;
 }
 
 export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewComponentProps>(
   (props, ref) => {
     validatePagerDirection(props.pagerDirection);
-    const { onStateChange, onPageChange, onTextSelectionChange, onZoomedInChange, ...nativeProps } = props;
-    const wrappedHybridRef = useMemo(
-      () =>
-        callback((value: InkSignViewNativeHandle | null) => {
-          const handle = value === null ? null : createValidatedHandle(value);
-          if (typeof ref === 'function') {
-            ref(handle);
-          } else if (ref !== null) {
-            ref.current = handle;
-          }
-        }),
-      [ref],
-    );
+    const { onStateChange, onPageChange, onTextSelectionChange, onZoomedInChange, ...nativeProps } =
+      props;
+    const [connection] = useState(createViewConnection);
+    const [handle] = useState(() => createValidatedHandle(connection));
+    useLayoutEffect(() => {
+      connection.mount();
+    }, []);
+    // Suspense disconnects layout effects while retaining the native view.
+    useEffect(() => () => connection.unmount(), []);
+    useImperativeHandle(ref, () => handle, []);
+    const wrappedHybridRef = useMemo(() => callback(connection.attach), []);
     const wrappedStateChange = useMemo(() => callback(onStateChange), [onStateChange]);
     const wrappedPageChange = useMemo(() => callback(onPageChange), [onPageChange]);
     const wrappedZoomedInChange = useMemo(() => callback(onZoomedInChange), [onZoomedInChange]);
-    const wrappedTextSelectionChange = useMemo(() => callback(onTextSelectionChange), [onTextSelectionChange]);
+    const wrappedTextSelectionChange = useMemo(
+      () => callback(onTextSelectionChange),
+      [onTextSelectionChange],
+    );
 
     return React.createElement(NativeInkSignView, {
       ...nativeProps,
