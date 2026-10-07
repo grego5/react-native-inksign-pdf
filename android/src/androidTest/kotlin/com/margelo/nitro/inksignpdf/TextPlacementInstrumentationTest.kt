@@ -1572,6 +1572,118 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
+  fun editorTwoFingerPanStaysAwayUntilTypingResumesCaretFollow() {
+    lateinit var overlay: TextInteractionOverlay
+    var awayFocus = PagePoint(0.0, 0.0)
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      overlay = harness.createOverlay()
+      overlay.armPlacement(1L)
+      dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_000L)
+      dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_010L)
+      editorView(overlay).setText("Ada")
+      editorView(overlay).setSelection(3)
+    }
+    try {
+      harness.waitForDetachedCaretFollow()
+      harness.runOnMain {
+        val editor = editorView(overlay)
+        val x = (editor.left + editor.right) / 2f
+        val y = (editor.top + editor.bottom) / 2f
+        val down = MotionEvent.obtain(5_100L, 5_100L, MotionEvent.ACTION_DOWN, x, y, 0)
+        try { assertTrue(overlay.dispatchTouchEvent(down)) } finally { down.recycle() }
+        dispatchEditorFingers(overlay, MotionEvent.ACTION_POINTER_DOWN or
+          (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), x, y, 5_120L)
+        dispatchEditorFingers(overlay, MotionEvent.ACTION_MOVE, x + 300f, y, 5_150L)
+        dispatchEditorFingers(overlay, MotionEvent.ACTION_MOVE, x + 600f, y, 5_180L)
+        dispatchEditorFingers(overlay, MotionEvent.ACTION_CANCEL, x + 600f, y, 5_200L)
+        awayFocus = harness.surface.currentViewportState().focus
+        assertEquals("Ada", editor.text.toString())
+        assertEquals(3, editor.selectionStart)
+        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertCaretIsOutsideView(editor, 3, overlay.width, overlay.height)
+      }
+      harness.waitForDetachedCaretFollow()
+      harness.runOnMain {
+        assertEquals(awayFocus, harness.surface.currentViewportState().focus)
+        editorView(overlay).append("!")
+      }
+      harness.waitForDetachedCaretFollow()
+      harness.runOnMain {
+        assertCaretIsInsideView(editorView(overlay), 4, overlay.width, overlay.height)
+      }
+    } finally { harness.runOnMain { overlay.dispose() } }
+  }
+
+  private fun dispatchEditorFingers(
+    overlay: TextInteractionOverlay, action: Int, x: Float, y: Float, time: Long,
+  ) {
+    val properties = Array(2) { index -> MotionEvent.PointerProperties().apply {
+      id = index
+      toolType = MotionEvent.TOOL_TYPE_FINGER
+    } }
+    val coordinates = Array(2) { index -> MotionEvent.PointerCoords().apply {
+      this.x = x + index * 100f
+      this.y = y
+      pressure = 1f
+      size = 1f
+    } }
+    val event = MotionEvent.obtain(5_100L, time, action, 2, properties, coordinates,
+      0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_TOUCHSCREEN, 0)
+    try { assertTrue(overlay.dispatchTouchEvent(event)) } finally { event.recycle() }
+  }
+
+  @Test
+  fun replacementCancelsPlacementPanAndConsumesTheOldStream() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        overlay.armPlacement(1L)
+        fun send(action: Int, x: Float, time: Long) {
+          val event = MotionEvent.obtain(5_500L, time, action, x, 150f, 0)
+          try { assertTrue(overlay.dispatchTouchEvent(event)) } finally { event.recycle() }
+        }
+        send(MotionEvent.ACTION_DOWN, 150f, 5_500L)
+        send(MotionEvent.ACTION_MOVE, 200f, 5_520L)
+        overlay.cancelForDocumentReplacement()
+        harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+        val focus = harness.surface.currentViewportState().focus
+        send(MotionEvent.ACTION_MOVE, 250f, 5_540L)
+        send(MotionEvent.ACTION_UP, 250f, 5_560L)
+        assertEquals(focus, harness.surface.currentViewportState().focus)
+        assertEquals(0, editorCount(overlay))
+      } finally { overlay.dispose() }
+    }
+  }
+
+  @Test
+  fun placementDragPansWithoutCreatingAnEditorAndLeavesPlacementArmed() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        overlay.armPlacement(1L)
+        val before = harness.surface.currentViewportState().focus
+        listOf(
+          Triple(MotionEvent.ACTION_DOWN, 150f, 5_500L),
+          Triple(MotionEvent.ACTION_MOVE, 200f, 5_520L),
+          Triple(MotionEvent.ACTION_UP, 200f, 5_540L),
+        ).forEach { (action, x, time) ->
+          val event = MotionEvent.obtain(5_500L, time, action, x, 150f, 0)
+          try { assertTrue(overlay.dispatchTouchEvent(event)) } finally { event.recycle() }
+        }
+        assertEquals(InteractionMode.TEXTPLACEMENT, overlay.interactionMode())
+        assertEquals(0, editorCount(overlay))
+        assertTrue(harness.surface.currentViewportState().focus.x != before.x)
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_560L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_580L))
+        assertEquals(1, editorCount(overlay))
+      } finally { overlay.dispose() }
+    }
+  }
+
+  @Test
   fun outsideEditorDragPansViewportAndKeepsEditorActive() {
     harness.runOnMain {
       harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)

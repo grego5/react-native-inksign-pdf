@@ -428,6 +428,7 @@ internal class InkDocumentController(
     gestureDetector.onTouchEvent(event)
     if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
       scaling = false
+      stopFling()
       requestVisibleTiles()
     }
   }
@@ -907,14 +908,22 @@ internal class InkDocumentController(
   }
 
   private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+    private var focusX = 0f
+    private var focusY = 0f
+
     override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
       scaling = true
+      focusX = detector.focusX
+      focusY = detector.focusY
       stopFling()
       return true
     }
 
     override fun onScale(detector: ScaleGestureDetector): Boolean {
       val currentViewport = viewport ?: return false
+      currentViewport.panBy((focusX - detector.focusX).toDouble(), (focusY - detector.focusY).toDouble())
+      focusX = detector.focusX
+      focusY = detector.focusY
       currentViewport.zoomAround(
         detector.focusX.toDouble(),
         detector.focusY.toDouble(),
