@@ -1,6 +1,7 @@
 # iOS PDF export
 
-- `finalize()` exports an immutable snapshot of committed page content.
+- `finalize()` exports an immutable snapshot of committed page content and
+  returns the published output as a `file://` URI. Artifact ownership uses URLs.
 - Live strokes, predictions, drafts, selection, and viewport state are not
   included.
 - Export writes a separate output; source and working documents retain their

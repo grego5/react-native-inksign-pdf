@@ -51,6 +51,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridGetter("onTextSelectionChange", &HybridInkSignViewSpec::getOnTextSelectionChange);
       prototype.registerHybridSetter("onTextSelectionChange", &HybridInkSignViewSpec::setOnTextSelectionChange);
       prototype.registerHybridMethod("open", &HybridInkSignViewSpec::open);
+      prototype.registerHybridMethod("close", &HybridInkSignViewSpec::close);
       prototype.registerHybridMethod("addPages", &HybridInkSignViewSpec::addPages);
       prototype.registerHybridMethod("removePage", &HybridInkSignViewSpec::removePage);
       prototype.registerHybridMethod("movePage", &HybridInkSignViewSpec::movePage);

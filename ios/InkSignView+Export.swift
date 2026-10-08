@@ -4,6 +4,10 @@ import NitroModules
 
 extension InkSignView {
   func finalize() throws -> Promise<String> {
+    return enqueueViewerCommand { try self.finalizeNow() }
+  }
+
+  private func finalizeNow() throws -> Promise<String> {
     guard let operation = documentCoordinator.admit(.finalize) else {
       return Promise.rejected(withError: ExportError.operationInProgress)
     }
@@ -56,7 +60,7 @@ extension InkSignView {
         }
         guard didPublish else { throw ExportError.cancelled }
         outputPublished = true
-        result = .success(snapshot.output.path)
+        result = .success(snapshot.output.absoluteString)
       } catch {
         result = .failure(coordinator.isCurrent(snapshot.operation)
                           ? Self.normalizeExportError(error)

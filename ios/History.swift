@@ -1,3 +1,4 @@
+import Foundation
 import PencilKit
 
 extension InkSignView {
@@ -40,28 +41,31 @@ extension InkSignView {
   }
 
   func emitChange(force: Bool = false) {
+    guard !disposed else { return }
     guard !suppressesOpenPresentationCallbacks else { return }
     guard let state = documentCoordinator.document else {
+      documentID = nil
       let mode = textInteractionOverlay.interactionMode()
-      let tuple = (false, false, false, mode.stringValue)
+      let tuple = (false, false, false, mode.stringValue, documentID)
       if force || lastChange == nil || lastChange!.0 != tuple.0 ||
-          lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 {
+          lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 || lastChange!.4 != tuple.4 {
         lastChange = tuple
-        onStateChange?(StateChangeEvent(canUndo: false, canRedo: false, isDirty: false,
+        onStateChange?(ViewerState(documentId: documentID.map { .second($0) } ?? .first(.null), canUndo: false, canRedo: false, isDirty: false,
                                         mode: textInteractionOverlay.interactionMode()))
       }
       return
     }
+    if documentID == nil { documentID = UUID().uuidString }
     let page = state.activePage
     let pageState = page.history.state
     let value = (canUndo: pageState.canUndo, canRedo: pageState.canRedo,
                  isDirty: documentCoordinator.isDirty)
     let mode = textInteractionOverlay.interactionMode()
-    let tuple = (value.canUndo, value.canRedo, value.isDirty, mode.stringValue)
+    let tuple = (value.canUndo, value.canRedo, value.isDirty, mode.stringValue, documentID)
     guard force || lastChange == nil || lastChange!.0 != tuple.0 ||
-            lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 else { return }
+            lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 || lastChange!.4 != tuple.4 else { return }
     lastChange = tuple
-    onStateChange?(StateChangeEvent(canUndo: value.canUndo,
+    onStateChange?(ViewerState(documentId: documentID.map { .second($0) } ?? .first(.null), canUndo: value.canUndo,
                                     canRedo: value.canRedo,
                                     isDirty: value.isDirty,
                                     mode: textInteractionOverlay.interactionMode()))

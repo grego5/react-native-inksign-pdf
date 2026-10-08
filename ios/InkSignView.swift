@@ -105,7 +105,17 @@ final class InkSignView: HybridInkSignViewSpec {
   var endedDrawingPageToOverlayTransform: CGAffineTransform?
   var endedDrawingTransactionID: UInt64?
   var nextDrawingTransactionID: UInt64 = 0
-  var lastChange: (Bool, Bool, Bool, String)?
+  var lastChange: (Bool, Bool, Bool, String, String?)?
+  var documentID: String?
+  var commandQueue: [ViewerCommand] = []
+  var runningCommand: ViewerCommand?
+
+  struct ViewerCommand {
+    let id: UUID
+    let presentation: Bool
+    let start: () -> Void
+    let cancel: () -> Void
+  }
   var backgroundObserver: NSObjectProtocol?
   var pdfPageObserver: NSObjectProtocol?
   var pdfScaleObserver: NSObjectProtocol?
@@ -165,7 +175,9 @@ final class InkSignView: HybridInkSignViewSpec {
     didSet { applyPagerDirection() }
   }
 
-  var onStateChange: ((StateChangeEvent) -> Void)?
+  var onStateChange: ((ViewerState) -> Void)? {
+    didSet { performOnMain { self.emitChange(force: true) } }
+  }
   var onPageChange: ((PageInfo) -> Void)?
   var onZoomedInChange: ((Bool) -> Void)?
   private var zoomReportWork: DispatchWorkItem?
@@ -302,6 +314,7 @@ final class InkSignView: HybridInkSignViewSpec {
     performOnMain {
       guard !self.disposed else { return }
       self.disposed = true
+      self.cancelViewerCommands()
       self.pageInputCoordinator.cancelPending()
       self.cancelPendingPageSwitch()
       self.textInteractionOverlay.discardForDisposal()

@@ -6,31 +6,31 @@ import {
   InkSignView,
   type AddPagesOptions,
   type PageInfo,
-  type StateChangeEvent,
+  type ViewerState,
   type ViewportOptions,
   type InkSignViewHandle,
   type TextSelection,
 } from '@grego5/react-native-inksign-pdf';
 import { ensureFallbackFont, fallbackFontPath } from './fallbackFont';
 import { DebugRecorder } from './DebugRecorder';
-import { filePathToUri } from './localFiles';
 
 export default function App() {
   const debugRecorderEnabled =
     Platform.OS === 'android' && process.env.EXPO_PUBLIC_ENABLE_DEBUG_RECORDER === 'true';
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
-  const modeRef = useRef<StateChangeEvent['mode']>('view');
+  const modeRef = useRef<ViewerState['mode']>('view');
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
   const [textSelection, setTextSelection] = useState<TextSelection | null>(null);
 
-  const [state, setState] = useState<StateChangeEvent>({
+  const [state, setState] = useState<ViewerState>({
+    documentId: null,
     canUndo: false,
     canRedo: false,
     isDirty: false,
     mode: 'view',
   });
 
-  function handleStateChange(nextState: StateChangeEvent) {
+  function handleStateChange(nextState: ViewerState) {
     modeRef.current = nextState.mode;
     setState(nextState);
   }
@@ -58,9 +58,9 @@ export default function App() {
     }
     try {
       if (target === 'edit') {
-        inkSignView.setInkMode(viewport);
+        await inkSignView.setInkMode(viewport);
       } else {
-        inkSignView.setViewMode(viewport);
+        await inkSignView.setViewMode(viewport);
       }
     } catch (error) {
       Alert.alert('Mode change failed', String(error));
@@ -82,9 +82,9 @@ export default function App() {
 
     try {
       if (placementArmed) {
-        inkSignView.setViewMode();
+        await inkSignView.setViewMode();
       } else {
-        inkSignView.setTextMode();
+        await inkSignView.setTextMode();
       }
     } catch (error) {
       Alert.alert(
@@ -155,7 +155,7 @@ export default function App() {
       if (!(await Sharing.isAvailableAsync())) {
         throw new Error('System PDF sharing is unavailable');
       }
-      await Sharing.shareAsync(filePathToUri(signedPath), {
+      await Sharing.shareAsync(signedPath, {
         mimeType: 'application/pdf',
         dialogTitle: 'Signed document',
       });

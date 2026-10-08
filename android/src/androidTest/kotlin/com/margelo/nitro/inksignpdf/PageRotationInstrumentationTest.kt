@@ -97,7 +97,7 @@ class PageRotationInstrumentationTest {
       }
       val output = await(instrumentation, viewRef.get().finalize())
       try {
-        val exported = PdfiumRenderSession.open(File(output).readBytes())
+        val exported = PdfiumRenderSession.open(File(java.net.URI(output)).readBytes())
         try {
           assertEquals(PdfiumPageSize(240.0, 320.0, 1), exported.pageSize(0))
           val exportedAnalysis = exported.preparePageAnalysis(0)
@@ -122,7 +122,7 @@ class PageRotationInstrumentationTest {
             rendered.recycle()
           }
         } finally { exported.close() }
-      } finally { File(output).delete() }
+      } finally { File(java.net.URI(output)).delete() }
     } finally {
       instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
       source.delete()
@@ -258,7 +258,7 @@ class PageRotationInstrumentationTest {
         }
         val output = await(instrumentation, view.finalize())
         try {
-          val exported = PdfiumRenderSession.open(File(output).readBytes())
+          val exported = PdfiumRenderSession.open(File(java.net.URI(output)).readBytes())
           val bitmap = Bitmap.createBitmap(300, 400, Bitmap.Config.ARGB_8888)
           try {
             assertTrue(completeLabelMatches(
@@ -272,7 +272,7 @@ class PageRotationInstrumentationTest {
             assertTrue(pixels.left >= field.left - 2 && pixels.right <= field.right + 2 &&
               pixels.top >= field.top - 2 && pixels.bottom <= field.bottom + 2)
           } finally { bitmap.recycle(); exported.close() }
-        } finally { File(output).delete() }
+        } finally { File(java.net.URI(output)).delete() }
         instrumentation.runOnMainSync { view.clear() }
       }
     } finally {
@@ -384,7 +384,7 @@ class PageRotationInstrumentationTest {
       instrumentation.runOnMainSync { viewRef.get().redo() }
       val outputPath = await(instrumentation, viewRef.get().finalize())
       val visualArtifact = File(checkNotNull(context.getExternalFilesDir(null)), "inksign-rotation-preview.pdf")
-      File(outputPath).copyTo(visualArtifact, overwrite = true)
+      File(java.net.URI(outputPath)).copyTo(visualArtifact, overwrite = true)
       val downloadName = "inksign-rotation-preview-${System.currentTimeMillis()}.pdf"
       val downloadUri = checkNotNull(context.contentResolver.insert(
         MediaStore.Downloads.EXTERNAL_CONTENT_URI,
@@ -398,7 +398,7 @@ class PageRotationInstrumentationTest {
         it.write(visualArtifact.readBytes())
       }
       android.util.Log.i("PageRotationInstrumentationTest", "VISUAL_DOWNLOAD=$downloadName")
-      val exported = PdfiumRenderSession.open(File(outputPath).readBytes())
+      val exported = PdfiumRenderSession.open(File(java.net.URI(outputPath)).readBytes())
       try {
         assertEquals(PdfiumPageSize(240.0, 320.0, rotation = 1), exported.pageSize(0))
         val exportedAnalysis = exported.preparePageAnalysis(0)
@@ -418,7 +418,7 @@ class PageRotationInstrumentationTest {
         } finally { rendered.recycle() }
       } finally {
         exported.close()
-        File(outputPath).delete()
+        File(java.net.URI(outputPath)).delete()
       }
 
       repeat(3) { await(instrumentation, viewRef.get().rotatePage(90.0)) }

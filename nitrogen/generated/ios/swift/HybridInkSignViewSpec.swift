@@ -24,13 +24,14 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   var doubleTap: DoubleTapOptions? { get set }
   var keyboardAvoidanceEnabled: Bool? { get set }
   var pagerDirection: PagerDirection? { get set }
-  var onStateChange: ((_ event: StateChangeEvent) -> Void)? { get set }
+  var onStateChange: ((_ event: ViewerState) -> Void)? { get set }
   var onPageChange: ((_ event: PageInfo) -> Void)? { get set }
   var onZoomedInChange: ((_ zoomedIn: Bool) -> Void)? { get set }
   var onTextSelectionChange: ((_ selection: Variant_NullType_TextSelection?) -> Void)? { get set }
 
   // Methods
   func open(path: String, options: ViewportOptions?) throws -> Promise<PageInfo>
+  func close(cancelPending: Bool?) throws -> Promise<Void>
   func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult>
   func removePage() throws -> Promise<PageInfo>
   func movePage(pageIndex: Double) throws -> Promise<PageInfo>
@@ -40,13 +41,13 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func getViewport() throws -> Viewport
   func hasInk() throws -> Bool
   func getPage(pageIndex: Double?) throws -> Promise<(any HybridAnalyzedPageSpec)>
-  func setInkMode(viewport: ViewportOptions?) throws -> Void
-  func setViewMode(viewport: ViewportOptions?) throws -> Void
+  func setInkMode(viewport: ViewportOptions?) throws -> Promise<Void>
+  func setViewMode(viewport: ViewportOptions?) throws -> Promise<Void>
   func undo() throws -> Void
   func redo() throws -> Void
   func clear() throws -> Void
   func setTextDirection(direction: TextDirection) throws -> Void
-  func setTextMode(options: TextModeOptions?) throws -> Void
+  func setTextMode(options: TextModeOptions?) throws -> Promise<Void>
   func finalize() throws -> Promise<String>
   func startDebugRecording() throws -> Void
   func stopDebugRecording() throws -> Void

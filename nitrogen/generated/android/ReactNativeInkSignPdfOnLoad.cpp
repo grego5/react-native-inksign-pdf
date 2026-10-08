@@ -17,7 +17,7 @@
 
 #include "JHybridAnalyzedPageSpec.hpp"
 #include "JHybridInkSignViewSpec.hpp"
-#include "JFunc_void_StateChangeEvent.hpp"
+#include "JFunc_void_ViewerState.hpp"
 #include "JFunc_void_PageInfo.hpp"
 #include "JFunc_void_bool.hpp"
 #include "JFunc_void_std__optional_std__variant_nitro__NullType__TextSelection__.hpp"
@@ -56,7 +56,7 @@ void registerAllNatives() {
   // Register native JNI methods
   margelo::nitro::inksignpdf::JHybridAnalyzedPageSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridInkSignViewSpec::CxxPart::registerNatives();
-  margelo::nitro::inksignpdf::JFunc_void_StateChangeEvent_cxx::registerNatives();
+  margelo::nitro::inksignpdf::JFunc_void_ViewerState_cxx::registerNatives();
   margelo::nitro::inksignpdf::JFunc_void_PageInfo_cxx::registerNatives();
   margelo::nitro::inksignpdf::JFunc_void_bool_cxx::registerNatives();
   margelo::nitro::inksignpdf::JFunc_void_std__optional_std__variant_nitro__NullType__TextSelection___cxx::registerNatives();

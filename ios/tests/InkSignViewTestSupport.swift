@@ -9,6 +9,15 @@ import XCTest
 protocol InkSignViewTestSupport {}
 
 extension InkSignViewTestSupport where Self: XCTestCase {
+  func awaitModeChange(_ promise: Promise<Void>) throws {
+    let completed = expectation(description: "queued mode applies")
+    var failure: Error?
+    promise.then { _ in completed.fulfill() }
+    promise.catch { failure = $0; completed.fulfill() }
+    wait(for: [completed], timeout: 5)
+    if let failure { throw failure }
+  }
+
   func makeFixture(
     pageCount: Int = 2,
     activePageIndex: Int = 0,

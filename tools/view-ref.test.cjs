@@ -9,7 +9,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let attachments = 0;
 const calls = [];
-const native = { open: async path => { calls.push(path); return { pageIndex: 0 }; } };
+const native = {
+  open: async path => { calls.push(path); return { pageIndex: 0 }; },
+  setInkMode: async () => { calls.push('ink'); },
+  setTextMode: async () => { calls.push('text'); },
+  setViewMode: async () => { calls.push('view'); },
+};
 
 function NativeView({ hybridRef }) {
   // Match Nitro: publish on creation/prop change, rather than layout reactivation.
@@ -102,6 +107,34 @@ test('Strict Mode effect replay leaves the normal ref attached', async () => {
     assert.ok(ref.current);
     assert.equal((await opens.at(-1)).pageIndex, 0);
   } finally {
+    if (root) await act(async () => { root.unmount(); });
+  }
+});
+
+test('mode promises are buffered before attachment and forward native rejection', async () => {
+  calls.length = 0;
+  const ref = React.createRef();
+  const requests = [];
+  function Screen() {
+    React.useLayoutEffect(() => {
+      requests.push(ref.current.open('/modes.pdf'));
+      requests.push(ref.current.setInkMode());
+      requests.push(ref.current.setTextMode());
+      requests.push(ref.current.setViewMode());
+    }, []);
+    return React.createElement(InkSignView, { ref });
+  }
+  let root;
+  const originalViewMode = native.setViewMode;
+  try {
+    await act(async () => { root = create(React.createElement(Screen)); });
+    await Promise.all(requests);
+    assert.deepEqual(calls, ['/modes.pdf', 'ink', 'text', 'view']);
+    const failure = new Error('operation_cancelled: Document replaced');
+    native.setViewMode = async () => { throw failure; };
+    await assert.rejects(ref.current.setViewMode(), error => error === failure);
+  } finally {
+    native.setViewMode = originalViewMode;
     if (root) await act(async () => { root.unmount(); });
   }
 });

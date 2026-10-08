@@ -16,10 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.util.IdentityHashMap
 import java.util.LinkedHashSet
@@ -63,7 +64,7 @@ class HybridInkSignView internal constructor(
   private var pageNavigationRequestID = 0L
   @Volatile private var disposed = false
   private var editMode = false
-  private data class PendingPromise(val documentBound: Boolean, var job: Job? = null)
+  private data class PendingPromise(val presentation: Boolean, var job: Job? = null)
   private val pendingPromises = IdentityHashMap<Promise<*>, PendingPromise>()
 
   override val view: View
@@ -136,9 +137,11 @@ class HybridInkSignView internal constructor(
       field = value
       surface.setPagerDirection(value)
     }
-  override var onStateChange: ((StateChangeEvent) -> Unit)? = null
+  override var onStateChange: ((ViewerState) -> Unit)? = null
     set(value) {
       field = value
+      lastPublicState = null
+      runOnMainSync { emitState() }
     }
   override var onPageChange: ((PageInfo) -> Unit)? = null
   override var onZoomedInChange: ((Boolean) -> Unit)? = null
@@ -211,11 +214,14 @@ class HybridInkSignView internal constructor(
     surface.onZoomedInChange = { zoomedIn -> if (!disposed) onZoomedInChange?.invoke(zoomedIn) }
   }
 
+  private val commandMutex = Mutex()
+  private var documentId: String? = null
+
   override fun open(path: String, options: ViewportOptions?): Promise<PageInfo> {
+    cancelPresentationRequests()
     return launchPromise {
       checkMainThread()
       if (disposed) throw operationCancelled()
-      val openJob = currentCoroutineContext()[Job]
       val viewport = ViewportRequestParser.parseOpen(options)
       val fallbackFontSnapshot = androidFallbackFont
       logFallbackFontSnapshot(fallbackFontSnapshot)
@@ -225,11 +231,11 @@ class HybridInkSignView internal constructor(
         resolveFallbackFont = fallbackFontResolver::resolve,
         awaitContainerSize = { surface.awaitUsableViewportSize() },
         invalidatePrevious = {
-          cancelSupersededDocumentOperations(openJob)
           pageInputCoordinator.cancelPending()
           viewportRequestID += 1L
           pageNavigationRequestID += 1L
           textOverlay.cancelForDocumentReplacement()
+          documentId = null
           surface.clearDocument()
           editMode = false
           lastInkState = InkState(false, false, false)
@@ -243,6 +249,7 @@ class HybridInkSignView internal constructor(
         publishPresentation = { (prepared, pageInfo) ->
           viewportRequestID += 1L
           pageNavigationRequestID += 1L
+          documentId = java.util.UUID.randomUUID().toString()
           surface.publishOpenDocumentPresentation(prepared)
           editMode = false
           pageInfo
@@ -256,6 +263,32 @@ class HybridInkSignView internal constructor(
       runCatching { emitState() }
       pageInfo
     }
+  }
+
+  override fun close(cancelPending: Boolean?): Promise<Unit> {
+    cancelPresentationRequests()
+    if (cancelPending == true) {
+      runOnMainSync {
+        val requests = synchronized(this) { pendingPromises.entries.map { it.key to it.value.job } }
+        requests.forEach { (promise, job) -> rejectPromise(promise, operationCancelled()); job?.cancel() }
+        closePublishedDocument()
+      }
+      return launchPromise { }
+    }
+    return launchPromise { closePublishedDocument() }
+  }
+
+  private fun closePublishedDocument() {
+    pageInputCoordinator.cancelPending()
+    viewportRequestID += 1L
+    pageNavigationRequestID += 1L
+    textOverlay.cancelForDocumentReplacement()
+    coordinator.closeDocument()
+    documentId = null
+    surface.clearDocument()
+    editMode = false
+    lastInkState = InkState(false, false, false)
+    emitState()
   }
 
   private fun logFallbackFontSnapshot(fallbackFontSnapshot: AndroidFallbackFont?) {
@@ -457,13 +490,11 @@ class HybridInkSignView internal constructor(
     coordinator.activePageHasInk()
   }
 
-  override fun setInkMode(viewport: ViewportOptions?) {
-    runOnMainSync { enterMode(edit = true, viewport) }
-  }
+  override fun setInkMode(viewport: ViewportOptions?): Promise<Unit> =
+    launchPromise(presentation = true) { enterMode(edit = true, viewport) }
 
-  override fun setViewMode(viewport: ViewportOptions?) {
-    runOnMainSync { enterMode(edit = false, viewport) }
-  }
+  override fun setViewMode(viewport: ViewportOptions?): Promise<Unit> =
+    launchPromise(presentation = true) { enterMode(edit = false, viewport) }
 
   override fun undo() {
     runOnMainSync { runHistoryCommand(surface::undo) }
@@ -734,7 +765,7 @@ class HybridInkSignView internal constructor(
     context: PreparedPageContext,
     rawId: Double,
     options: FieldFocusOptions?,
-  ): Promise<Unit> = launchPromise {
+  ): Promise<Unit> = launchPromise(presentation = true) {
     val target = withPreparedPage(context) { page ->
       val slot = requireTextTarget(context, rawId)
       page to slot
@@ -844,10 +875,11 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  override fun setTextMode(options: TextModeOptions?) {
-    runOnMainSync {
+  override fun setTextMode(options: TextModeOptions?): Promise<Unit> =
+    launchPromise(presentation = true) {
       checkMainThread()
       if (disposed) throw operationCancelled()
+      if (!coordinator.hasDocument) return@launchPromise
       surface.requireModeTransitionReady()
       viewportRequestID += 1L
       val requestID = viewportRequestID
@@ -861,7 +893,6 @@ class HybridInkSignView internal constructor(
       }
       loadSnapCandidatesForTextPlacement(generation, pageIndex)
     }
-  }
 
   private fun loadSnapCandidatesForTextPlacement(generation: Long, pageIndex: Int) {
     if (surface.hasSnapCandidateMeasurement(generation, pageIndex)) return
@@ -926,7 +957,7 @@ class HybridInkSignView internal constructor(
           val output = awaitWorkerResult { completion ->
             coordinator.exportSession(snapshot, completion)
           }
-          publishExport(snapshot, output)
+          android.net.Uri.fromFile(File(publishExport(snapshot, output))).toString()
         } catch (error: Throwable) {
           retireExport(snapshot.outputPath)
           throw normalizeFinalizeError(error)
@@ -946,7 +977,7 @@ class HybridInkSignView internal constructor(
   }
 
   override fun exportDebugRecording(): Promise<String> {
-    return launchPromise(documentBound = false) {
+    return launchPromise {
       checkMainThread()
       val snapshot = traceRecorder.snapshotForExport()
       val output = artifactPolicy.allocateDebugRecording()
@@ -962,11 +993,11 @@ class HybridInkSignView internal constructor(
   }
 
   private fun <T> launchPromise(
-    documentBound: Boolean = true,
+    presentation: Boolean = false,
     operation: suspend () -> T,
   ): Promise<T> {
     val promise = Promise<T>()
-    val pending = PendingPromise(documentBound)
+    val pending = PendingPromise(presentation)
     synchronized(this) {
       if (disposed) {
         promise.reject(operationCancelled())
@@ -976,7 +1007,7 @@ class HybridInkSignView internal constructor(
     }
     val job = mainScope.launch(start = CoroutineStart.LAZY) {
       try {
-        resolvePromise(promise, operation())
+        commandMutex.withLock { resolvePromise(promise, operation()) }
       } catch (error: Throwable) {
         rejectPromise(promise, error)
       } finally {
@@ -990,10 +1021,14 @@ class HybridInkSignView internal constructor(
     return promise
   }
 
-  private fun cancelSupersededDocumentOperations(currentJob: Job?) {
+  private fun cancelPresentationRequests() {
+    runOnMainSync {
+      viewportRequestID += 1L
+      pageNavigationRequestID += 1L
+    }
     val superseded = synchronized(this) {
       pendingPromises.entries
-        .filter { (promise, pending) -> pending.documentBound && pending.job !== currentJob }
+        .filter { (promise, pending) -> pending.presentation }
         .map { it.key to it.value.job }
     }
     superseded.forEach { (promise, job) ->
@@ -1166,6 +1201,7 @@ class HybridInkSignView internal constructor(
   private fun enterMode(edit: Boolean, viewport: ViewportOptions?) {
     checkMainThread()
     if (disposed) throw operationCancelled()
+    if (!coordinator.hasDocument) return
     val request = ViewportRequestParser.parse(viewport)
     surface.requireModeTransitionReady()
     viewportRequestID += 1L
@@ -1224,12 +1260,15 @@ class HybridInkSignView internal constructor(
   }
 
   private var lastInkState = InkState(false, false, false)
-  private var lastPublicState: StateChangeEvent? = null
+  private var lastPublicState: ViewerState? = null
 
   private fun emitState() {
     if (disposed) return
     if (surface.stateNotificationsSuspended > 0) return
-    val value = StateChangeEvent(
+    if (coordinator.hasDocument && documentId == null) documentId = java.util.UUID.randomUUID().toString()
+    if (!coordinator.hasDocument) documentId = null
+    val value = ViewerState(
+      documentId = documentId?.let { Variant_NullType_String.create(it) } ?: Variant_NullType_String.create(NullType.NULL),
       canUndo = lastInkState.canUndo,
       canRedo = lastInkState.canRedo,
       isDirty = lastInkState.isDirty,

@@ -540,11 +540,8 @@ internal class MutableDocumentCoordinator(
         previousOpen?.handoffFinished?.complete(Unit)
         activeOperation = null
         generationValue = attemptId
-        mutablePages.clear()
-        activePageId = null
-        sourcePath = ""
+        clearPublishedDocument()
         this.fallbackFont = null
-        structuralDirty = false
         val operationID = nextOperation()
         trackWorkingFile(workingFile)
         previousWorkingFile?.let(::trackWorkingFile)
@@ -801,7 +798,22 @@ internal class MutableDocumentCoordinator(
     mutablePages.clear()
     activePageId = null
     sourcePath = ""
+    clearTextTargets()
     markStructuralClean()
+  }
+
+  fun closeDocument() {
+    activeOpenRequest?.superseded?.complete(Unit)
+    activeOpenRequest?.handoffFinished?.complete(Unit)
+    activeOpenRequest = null
+    activeOperation = null
+    sessionWorker.cancel(generationValue)
+    generationValue += 1L
+    val files = workingFiles() + listOfNotNull(currentWorkingFile())
+    clearPublishedDocument()
+    sessionWorker.clearCurrentForReplacement {
+      files.forEach(::retireWorkingFile)
+    }
   }
 
   fun dispose() {

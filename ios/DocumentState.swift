@@ -569,6 +569,13 @@ final class InkSignPdfDocumentCoordinator {
     structuralDirty = false
   }
 
+  func closeDocument() {
+    // Reuse replacement invalidation: retire artifacts and reject late work,
+    // then settle the token without installing another document.
+    if let token = admit(.open) { settle(token, succeeded: false) }
+    clearDocument()
+  }
+
   func setStructuralDirty(_ dirty: Bool) {
     structuralDirty = dirty
   }

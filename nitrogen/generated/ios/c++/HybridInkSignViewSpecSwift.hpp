@@ -18,8 +18,8 @@ namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
-// Forward declaration of `StateChangeEvent` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
+// Forward declaration of `ViewerState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `PageInfo` to properly resolve imports.
@@ -56,13 +56,13 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include <string>
 #include "DoubleTapOptions.hpp"
 #include "PagerDirection.hpp"
-#include "StateChangeEvent.hpp"
+#include "ViewerState.hpp"
 #include <functional>
+#include <NitroModules/Null.hpp>
+#include <variant>
 #include "InteractionMode.hpp"
 #include "PageInfo.hpp"
-#include <NitroModules/Null.hpp>
 #include "TextSelection.hpp"
-#include <variant>
 #include <NitroModules/Promise.hpp>
 #include "ViewportOptions.hpp"
 #include "AddPagesResult.hpp"
@@ -223,11 +223,11 @@ namespace margelo::nitro::inksignpdf {
     inline void setPagerDirection(std::optional<PagerDirection> pagerDirection) noexcept override {
       _swiftPart.setPagerDirection(pagerDirection);
     }
-    inline std::optional<std::function<void(const StateChangeEvent& /* event */)>> getOnStateChange() noexcept override {
+    inline std::optional<std::function<void(const ViewerState& /* event */)>> getOnStateChange() noexcept override {
       auto __result = _swiftPart.getOnStateChange();
       return __result;
     }
-    inline void setOnStateChange(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& onStateChange) noexcept override {
+    inline void setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) noexcept override {
       _swiftPart.setOnStateChange(onStateChange);
     }
     inline std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() noexcept override {
@@ -256,6 +256,14 @@ namespace margelo::nitro::inksignpdf {
     // Methods
     inline std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) override {
       auto __result = _swiftPart.open(path, options);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) override {
+      auto __result = _swiftPart.close(cancelPending);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
@@ -330,17 +338,21 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline void setInkMode(const std::optional<ViewportOptions>& viewport) override {
+    inline std::shared_ptr<Promise<void>> setInkMode(const std::optional<ViewportOptions>& viewport) override {
       auto __result = _swiftPart.setInkMode(viewport);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+      auto __value = std::move(__result.value());
+      return __value;
     }
-    inline void setViewMode(const std::optional<ViewportOptions>& viewport) override {
+    inline std::shared_ptr<Promise<void>> setViewMode(const std::optional<ViewportOptions>& viewport) override {
       auto __result = _swiftPart.setViewMode(viewport);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+      auto __value = std::move(__result.value());
+      return __value;
     }
     inline void undo() override {
       auto __result = _swiftPart.undo();
@@ -366,11 +378,13 @@ namespace margelo::nitro::inksignpdf {
         std::rethrow_exception(__result.error());
       }
     }
-    inline void setTextMode(const std::optional<TextModeOptions>& options) override {
+    inline std::shared_ptr<Promise<void>> setTextMode(const std::optional<TextModeOptions>& options) override {
       auto __result = _swiftPart.setTextMode(options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+      auto __value = std::move(__result.value());
+      return __value;
     }
     inline std::shared_ptr<Promise<std::string>> finalize() override {
       auto __result = _swiftPart.finalize();

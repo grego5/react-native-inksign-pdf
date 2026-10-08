@@ -78,8 +78,8 @@ namespace margelo::nitro::inksignpdf {
     void setKeyboardAvoidanceEnabled(std::optional<bool> keyboardAvoidanceEnabled) override;
     std::optional<PagerDirection> getPagerDirection() override;
     void setPagerDirection(std::optional<PagerDirection> pagerDirection) override;
-    std::optional<std::function<void(const StateChangeEvent& /* event */)>> getOnStateChange() override;
-    void setOnStateChange(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& onStateChange) override;
+    std::optional<std::function<void(const ViewerState& /* event */)>> getOnStateChange() override;
+    void setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) override;
     std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() override;
     void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) override;
     std::optional<std::function<void(bool /* zoomedIn */)>> getOnZoomedInChange() override;
@@ -90,6 +90,7 @@ namespace margelo::nitro::inksignpdf {
   public:
     // Methods
     std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) override;
+    std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) override;
     std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) override;
     std::shared_ptr<Promise<PageInfo>> removePage() override;
     std::shared_ptr<Promise<PageInfo>> movePage(double pageIndex) override;
@@ -99,13 +100,13 @@ namespace margelo::nitro::inksignpdf {
     Viewport getViewport() override;
     bool hasInk() override;
     std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) override;
-    void setInkMode(const std::optional<ViewportOptions>& viewport) override;
-    void setViewMode(const std::optional<ViewportOptions>& viewport) override;
+    std::shared_ptr<Promise<void>> setInkMode(const std::optional<ViewportOptions>& viewport) override;
+    std::shared_ptr<Promise<void>> setViewMode(const std::optional<ViewportOptions>& viewport) override;
     void undo() override;
     void redo() override;
     void clear() override;
     void setTextDirection(TextDirection direction) override;
-    void setTextMode(const std::optional<TextModeOptions>& options) override;
+    std::shared_ptr<Promise<void>> setTextMode(const std::optional<TextModeOptions>& options) override;
     std::shared_ptr<Promise<std::string>> finalize() override;
     void startDebugRecording() override;
     void stopDebugRecording() override;

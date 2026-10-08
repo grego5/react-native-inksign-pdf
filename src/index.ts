@@ -44,7 +44,7 @@ import type {
   ViewportOptions,
   AndroidFallbackFont,
   InkSignViewProps,
-  StateChangeEvent,
+  ViewerState,
   InteractionMode,
   InkSignView as InkSignViewNativeHandle,
   AnalyzedPage as AnalyzedPageNativeHandle,
@@ -75,7 +75,7 @@ export type {
   ViewportOptions,
   AndroidFallbackFont,
   InkSignViewProps,
-  StateChangeEvent,
+  ViewerState,
   InteractionMode,
   ResolveTextOptions,
   TextEntry,
@@ -192,19 +192,26 @@ function createValidatedHandle(
           }
           validateViewportOptions(viewport);
         },
-        () => connection.open(path, viewport),
+        () => connection.invoke(native => native.open(path, viewport)),
       );
+    },
+    close(cancelPending) {
+      return callAsync(() => {
+        if (cancelPending !== undefined && typeof cancelPending !== 'boolean') {
+          throw argumentError('invalid_close_options', 'Cancellation must be a boolean');
+        }
+      }, () => connection.invoke(native => native.close(cancelPending), cancelPending === true));
     },
     addPages(options) {
       return callAsync(
         () => validateAddPagesOptions(options),
-        () => getNative().addPages(options),
+        () => connection.invoke(native => native.addPages(options)),
       );
     },
     removePage: () =>
       callAsync(
         () => {},
-        () => getNative().removePage(),
+        () => connection.invoke(native => native.removePage()),
       ),
     movePage(pageIndex) {
       return callAsync(
@@ -216,7 +223,7 @@ function createValidatedHandle(
             );
           }
         },
-        () => getNative().movePage(pageIndex),
+        () => connection.invoke(native => native.movePage(pageIndex)),
       );
     },
     rotatePage(degrees) {
@@ -229,7 +236,7 @@ function createValidatedHandle(
             );
           }
         },
-        () => getNative().rotatePage(degrees),
+        () => connection.invoke(native => native.rotatePage(degrees)),
       );
     },
     nextPage: () => getNative().nextPage(),
@@ -239,16 +246,20 @@ function createValidatedHandle(
     getPage(pageIndex) {
       return callAsync(
         () => validatePageIndex(pageIndex),
-        async () => createValidatedAnalyzedPage(await getNative().getPage(pageIndex)),
+        async () => createValidatedAnalyzedPage(await connection.invoke(native => native.getPage(pageIndex))),
       );
     },
     setInkMode(viewport) {
-      validateViewportOptions(viewport);
-      getNative().setInkMode(viewport);
+      return callAsync(
+        () => validateViewportOptions(viewport),
+        () => connection.invoke(native => native.setInkMode(viewport)),
+      );
     },
     setViewMode(viewport) {
-      validateViewportOptions(viewport);
-      getNative().setViewMode(viewport);
+      return callAsync(
+        () => validateViewportOptions(viewport),
+        () => connection.invoke(native => native.setViewMode(viewport)),
+      );
     },
     undo: () => getNative().undo(),
     redo: () => getNative().redo(),
@@ -260,20 +271,22 @@ function createValidatedHandle(
       getNative().setTextDirection(direction);
     },
     setTextMode(options) {
-      validateTextModeOptions(options);
-      getNative().setTextMode(options);
+      return callAsync(
+        () => validateTextModeOptions(options),
+        () => connection.invoke(native => native.setTextMode(options)),
+      );
     },
     finalize: () =>
       callAsync(
         () => {},
-        () => getNative().finalize(),
+        () => connection.invoke(native => native.finalize()),
       ),
     startDebugRecording: () => getNative().startDebugRecording(),
     stopDebugRecording: () => getNative().stopDebugRecording(),
     exportDebugRecording: () =>
       callAsync(
         () => {},
-        () => getNative().exportDebugRecording(),
+        () => connection.invoke(native => native.exportDebugRecording()),
       ),
   } satisfies InkSignViewHandle;
   nativeHandles.set(handle, getNative);

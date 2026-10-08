@@ -7,8 +7,9 @@
   page/size changes. Reporting waits 120 ms after scale/fit changes and for
   PDFView scroll/zoom gestures to finish; continuous updates stay native.
 
-- **Mode commands:** `setViewMode()` and `setInkMode()` finish text interaction
-  and apply viewport options immediately. Omission preserves the viewport; an
+- **Mode commands:** Commands return promises and execute in the native FIFO.
+  `setViewMode()` and `setInkMode()` finish text interaction and apply viewport
+  options when executed. Omission preserves the viewport; an
   empty object fits; zoom and paired x/y override supplied values. `setTextMode()`
   captures its viewport request until a valid placement tap; text-only settings
   preserve the viewport. Switching modes commits a draft or cancels untapped

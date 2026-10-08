@@ -22,7 +22,7 @@
 #include <string>
 #include "DoubleTapOptions.hpp"
 #include "PagerDirection.hpp"
-#include "StateChangeEvent.hpp"
+#include "ViewerState.hpp"
 #include <functional>
 #include "PageInfo.hpp"
 #include <NitroModules/Null.hpp>
@@ -65,7 +65,7 @@ namespace margelo::nitro::inksignpdf::views {
     nitro::ReactProp<std::optional<DoubleTapOptions>> doubleTap;
     nitro::ReactProp<std::optional<bool>> keyboardAvoidanceEnabled;
     nitro::ReactProp<std::optional<PagerDirection>> pagerDirection;
-    nitro::ReactProp<std::optional<std::function<void(const StateChangeEvent& /* event */)>>> onStateChange;
+    nitro::ReactProp<std::optional<std::function<void(const ViewerState& /* event */)>>> onStateChange;
     nitro::ReactProp<std::optional<std::function<void(const PageInfo& /* event */)>>> onPageChange;
     nitro::ReactProp<std::optional<std::function<void(bool /* zoomedIn */)>>> onZoomedInChange;
     nitro::ReactProp<std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>> onTextSelectionChange;
