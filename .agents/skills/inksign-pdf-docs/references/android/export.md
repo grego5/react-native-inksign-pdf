@@ -2,6 +2,8 @@
 
 ## Snapshot and output
 
+- `finalize()` returns the published output as a `file://` URI; artifact
+  ownership and cleanup retain filesystem paths. Output remains view-owned.
 - Export snapshots committed page content from the published working document.
   Active gestures and editor drafts are excluded.
 - The PDFium worker preserves source pages and their order, adds ink as vector paths

@@ -47,10 +47,10 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return swiftPart.toUnsafe();
   }
   
-  // pragma MARK: std::function<void(const StateChangeEvent& /* event */)>
-  Func_void_StateChangeEvent create_Func_void_StateChangeEvent(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_StateChangeEvent::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const StateChangeEvent& event) mutable -> void {
+  // pragma MARK: std::function<void(const ViewerState& /* event */)>
+  Func_void_ViewerState create_Func_void_ViewerState(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeInkSignPdf::Func_void_ViewerState::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const ViewerState& event) mutable -> void {
       swiftClosure.call(event);
     };
   }

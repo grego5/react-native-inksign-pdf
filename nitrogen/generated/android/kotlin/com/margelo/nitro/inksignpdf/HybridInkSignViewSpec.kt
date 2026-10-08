@@ -113,13 +113,13 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @set:Keep
   abstract var pagerDirection: PagerDirection?
   
-  abstract var onStateChange: ((event: StateChangeEvent) -> Unit)?
+  abstract var onStateChange: ((event: ViewerState) -> Unit)?
   
-  private var onStateChange_cxx: Func_void_StateChangeEvent?
+  private var onStateChange_cxx: Func_void_ViewerState?
     @Keep
     @DoNotStrip
     get() {
-      return onStateChange?.let { Func_void_StateChangeEvent_java(it) }
+      return onStateChange?.let { Func_void_ViewerState_java(it) }
     }
     @Keep
     @DoNotStrip
@@ -176,6 +176,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun close(cancelPending: Boolean?): Promise<Unit>
+  
+  @DoNotStrip
+  @Keep
   abstract fun addPages(options: AddPagesOptions?): Promise<AddPagesResult>
   
   @DoNotStrip
@@ -212,11 +216,11 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun setInkMode(viewport: ViewportOptions?): Unit
+  abstract fun setInkMode(viewport: ViewportOptions?): Promise<Unit>
   
   @DoNotStrip
   @Keep
-  abstract fun setViewMode(viewport: ViewportOptions?): Unit
+  abstract fun setViewMode(viewport: ViewportOptions?): Promise<Unit>
   
   @DoNotStrip
   @Keep
@@ -236,7 +240,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun setTextMode(options: TextModeOptions?): Unit
+  abstract fun setTextMode(options: TextModeOptions?): Promise<Unit>
   
   @DoNotStrip
   @Keep

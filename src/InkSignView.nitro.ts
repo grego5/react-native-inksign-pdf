@@ -148,7 +148,9 @@ export interface AddPagesResult {
   addedPageCount: number
 }
 
-export interface StateChangeEvent {
+export interface ViewerState {
+  /** Opaque identity of the published document; null while empty. */
+  documentId: string | null
   canUndo: boolean
   canRedo: boolean
   isDirty: boolean
@@ -213,7 +215,7 @@ export interface InkSignViewProps extends HybridViewProps {
   keyboardAvoidanceEnabled?: boolean
   /** Controls which physical side contains the logical next page. Defaults to app direction. */
   pagerDirection?: PagerDirection
-  onStateChange?: (event: StateChangeEvent) => void
+  onStateChange?: (event: ViewerState) => void
   onPageChange?: (event: PageInfo) => void
   /** Reports settled zoom above fitted scale; at or below fit reports false. */
   onZoomedInChange?: (zoomedIn: boolean) => void
@@ -221,7 +223,10 @@ export interface InkSignViewProps extends HybridViewProps {
 }
 
 export interface InkSignViewMethods extends HybridViewMethods {
+  /** FIFO document open; earlier document operations finish first. */
   open(path: string, options?: ViewportOptions): Promise<PageInfo>
+  /** Closes in FIFO order. Pass true to cancel pending work and prevent late publication. */
+  close(cancelPending?: boolean): Promise<void>
   addPages(options?: AddPagesOptions): Promise<AddPagesResult>
   removePage(): Promise<PageInfo>
   movePage(pageIndex: number): Promise<PageInfo>
@@ -234,17 +239,18 @@ export interface InkSignViewMethods extends HybridViewMethods {
   hasInk(): boolean
   /** Prepares source analysis for the captured or explicitly indexed page without navigating. */
   getPage(pageIndex?: number): Promise<AnalyzedPage>
-  /** Ends text interaction and enables ink. Omission preserves the viewport; an empty object fits. */
-  setInkMode(viewport?: ViewportOptions): void
-  /** Ends text/ink interaction. Omission preserves the viewport; an empty object fits. */
-  setViewMode(viewport?: ViewportOptions): void
+  /** FIFO ink mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits. */
+  setInkMode(viewport?: ViewportOptions): Promise<void>
+  /** FIFO view mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits. */
+  setViewMode(viewport?: ViewportOptions): Promise<void>
   undo(): void
   redo(): void
   clear(): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
-  /** Arms one-shot text placement; omission preserves the viewport, an empty object fits after the tap. */
-  setTextMode(options?: TextModeOptions): void
+  /** FIFO text mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits after the tap. */
+  setTextMode(options?: TextModeOptions): Promise<void>
+  /** Returns a temporary local PDF file URI (file://). */
   finalize(): Promise<string>
   /** Android debug builds only. Clears the bounded native trace and starts recording. */
   startDebugRecording(): void

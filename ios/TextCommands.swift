@@ -102,15 +102,17 @@ enum InkSignPdfKeyRuleSelector {
 }
 
 extension InkSignView {
-  func setTextMode(options: TextModeOptions?) throws {
-    try performOnMainSync {
+  func setTextMode(options: TextModeOptions?) throws -> Promise<Void> {
+    enqueueViewerCommand(presentation: true) {
       guard !self.disposed else { throw TextError.cancelled }
+      guard self.documentCoordinator.document != nil else { return Promise<Void>.resolved() }
       try self.requireViewportReady(request: .preserve)
       self.fieldFocusRequestID &+= 1
       self.textInteractionOverlay.finishForLifecycle()
       self.setInteractionMode(editing: false)
       try self.textInteractionOverlay.armPlacement(generation: self.documentCoordinator.generation,
                                                   options: options)
+      return Promise<Void>.resolved()
     }
   }
 
@@ -122,6 +124,10 @@ extension InkSignView {
   }
 
   func getPage(pageIndex: Double?) throws -> Promise<any HybridAnalyzedPageSpec> {
+    return enqueueViewerCommand { try self.getPageNow(pageIndex: pageIndex) }
+  }
+
+  private func getPageNow(pageIndex: Double?) throws -> Promise<any HybridAnalyzedPageSpec> {
     let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect) in
       guard !self.disposed else { throw TextError.cancelled }
       guard let document = self.documentCoordinator.document else { throw TextError.documentNotOpen }
@@ -359,6 +365,13 @@ extension InkSignView {
   }
 
   func focusPreparedText(_ handle: HybridAnalyzedPage, id: Double,
+                         options: FieldFocusOptions?) throws -> Promise<Void> {
+    return enqueueViewerCommand(presentation: true) {
+      try self.focusPreparedTextNow(handle, id: id, options: options)
+    }
+  }
+
+  private func focusPreparedTextNow(_ handle: HybridAnalyzedPage, id: Double,
                          options: FieldFocusOptions?) throws -> Promise<Void> {
     let (page, target) = try preparedTarget(handle, id: id)
     let rule = try displayedWritingRule(target, page: page)

@@ -38,8 +38,6 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
 // Forward declaration of `ResolveTextOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ResolveTextOptions; }
-// Forward declaration of `StateChangeEvent` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
 // Forward declaration of `TextAlignment` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextAnnotationBounds` to properly resolve imports.
@@ -60,6 +58,8 @@ namespace margelo::nitro::inksignpdf { struct TextSelection; }
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
+// Forward declaration of `ViewerState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
@@ -81,7 +81,6 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "PageType.hpp"
 #include "PagerDirection.hpp"
 #include "ResolveTextOptions.hpp"
-#include "StateChangeEvent.hpp"
 #include "TextAlignment.hpp"
 #include "TextAnnotationBounds.hpp"
 #include "TextAnnotationOptions.hpp"
@@ -92,6 +91,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "TextSelection.hpp"
 #include "TextValueSource.hpp"
 #include "TextVerticalAnchor.hpp"
+#include "ViewerState.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
 #include <NitroModules/Null.hpp>

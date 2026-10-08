@@ -13,8 +13,8 @@ namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
-// Forward declaration of `StateChangeEvent` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
+// Forward declaration of `ViewerState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `PageInfo` to properly resolve imports.
@@ -54,26 +54,28 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "JDoubleTapOptions.hpp"
 #include "PagerDirection.hpp"
 #include "JPagerDirection.hpp"
-#include "StateChangeEvent.hpp"
+#include "ViewerState.hpp"
 #include <functional>
-#include "JFunc_void_StateChangeEvent.hpp"
+#include "JFunc_void_ViewerState.hpp"
 #include <NitroModules/JNICallable.hpp>
-#include "JStateChangeEvent.hpp"
+#include "JViewerState.hpp"
+#include <NitroModules/Null.hpp>
+#include <variant>
+#include "JVariant_NullType_String.hpp"
+#include <NitroModules/JNull.hpp>
 #include "InteractionMode.hpp"
 #include "JInteractionMode.hpp"
 #include "PageInfo.hpp"
 #include "JFunc_void_PageInfo.hpp"
 #include "JPageInfo.hpp"
 #include "JFunc_void_bool.hpp"
-#include <NitroModules/Null.hpp>
 #include "TextSelection.hpp"
-#include <variant>
 #include "JFunc_void_std__optional_std__variant_nitro__NullType__TextSelection__.hpp"
 #include "JVariant_NullType_TextSelection.hpp"
-#include <NitroModules/JNull.hpp>
 #include "JTextSelection.hpp"
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
+#include <NitroModules/JUnit.hpp>
 #include "AddPagesResult.hpp"
 #include "JAddPagesResult.hpp"
 #include "Viewport.hpp"
@@ -257,22 +259,22 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JPagerDirection> /* pagerDirection */)>("setPagerDirection");
     method(_javaPart, pagerDirection.has_value() ? JPagerDirection::fromCpp(pagerDirection.value()) : nullptr);
   }
-  std::optional<std::function<void(const StateChangeEvent& /* event */)>> JHybridInkSignViewSpec::getOnStateChange() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_StateChangeEvent::javaobject>()>("getOnStateChange_cxx");
+  std::optional<std::function<void(const ViewerState& /* event */)>> JHybridInkSignViewSpec::getOnStateChange() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_ViewerState::javaobject>()>("getOnStateChange_cxx");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const StateChangeEvent& /* event */)> {
-      if (__result->isInstanceOf(JFunc_void_StateChangeEvent_cxx::javaClassStatic())) [[likely]] {
-        auto downcast = jni::static_ref_cast<JFunc_void_StateChangeEvent_cxx::javaobject>(__result);
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const ViewerState& /* event */)> {
+      if (__result->isInstanceOf(JFunc_void_ViewerState_cxx::javaClassStatic())) [[likely]] {
+        auto downcast = jni::static_ref_cast<JFunc_void_ViewerState_cxx::javaobject>(__result);
         return downcast->cthis()->getFunction();
       } else {
         auto __resultRef = jni::make_global(__result);
-        return JNICallable<JFunc_void_StateChangeEvent, void(StateChangeEvent)>(std::move(__resultRef));
+        return JNICallable<JFunc_void_ViewerState, void(ViewerState)>(std::move(__resultRef));
       }
     }()) : std::nullopt;
   }
-  void JHybridInkSignViewSpec::setOnStateChange(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& onStateChange) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_StateChangeEvent::javaobject> /* onStateChange */)>("setOnStateChange_cxx");
-    method(_javaPart, onStateChange.has_value() ? JFunc_void_StateChangeEvent_cxx::fromCpp(onStateChange.value()) : nullptr);
+  void JHybridInkSignViewSpec::setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_ViewerState::javaobject> /* onStateChange */)>("setOnStateChange_cxx");
+    method(_javaPart, onStateChange.has_value() ? JFunc_void_ViewerState_cxx::fromCpp(onStateChange.value()) : nullptr);
   }
   std::optional<std::function<void(const PageInfo& /* event */)>> JHybridInkSignViewSpec::getOnPageChange() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_PageInfo::javaobject>()>("getOnPageChange_cxx");
@@ -335,6 +337,21 @@ namespace margelo::nitro::inksignpdf {
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
         auto __result = jni::static_ref_cast<JPageInfo>(__boxedResult);
         __promise->resolve(__result->toCpp());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
+  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::close(std::optional<bool> cancelPending) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JBoolean> /* cancelPending */)>("close");
+    auto __result = method(_javaPart, cancelPending.has_value() ? jni::JBoolean::valueOf(cancelPending.value()) : nullptr);
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
       });
       __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
         jni::JniException __jniError(__throwable);
@@ -441,13 +458,35 @@ namespace margelo::nitro::inksignpdf {
       return __promise;
     }();
   }
-  void JHybridInkSignViewSpec::setInkMode(const std::optional<ViewportOptions>& viewport) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JViewportOptions> /* viewport */)>("setInkMode");
-    method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);
+  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::setInkMode(const std::optional<ViewportOptions>& viewport) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JViewportOptions> /* viewport */)>("setInkMode");
+    auto __result = method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
   }
-  void JHybridInkSignViewSpec::setViewMode(const std::optional<ViewportOptions>& viewport) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JViewportOptions> /* viewport */)>("setViewMode");
-    method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);
+  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::setViewMode(const std::optional<ViewportOptions>& viewport) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JViewportOptions> /* viewport */)>("setViewMode");
+    auto __result = method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
   }
   void JHybridInkSignViewSpec::undo() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("undo");
@@ -465,9 +504,20 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextDirection> /* direction */)>("setTextDirection");
     method(_javaPart, JTextDirection::fromCpp(direction));
   }
-  void JHybridInkSignViewSpec::setTextMode(const std::optional<TextModeOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextModeOptions> /* options */)>("setTextMode");
-    method(_javaPart, options.has_value() ? JTextModeOptions::fromCpp(options.value()) : nullptr);
+  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::setTextMode(const std::optional<TextModeOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JTextModeOptions> /* options */)>("setTextMode");
+    auto __result = method(_javaPart, options.has_value() ? JTextModeOptions::fromCpp(options.value()) : nullptr);
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
   }
   std::shared_ptr<Promise<std::string>> JHybridInkSignViewSpec::finalize() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("finalize");

@@ -6,6 +6,104 @@ import NitroModules
 import QuartzCore
 
 extension InkSignView {
+  func enqueueViewerCommand<T>(presentation: Bool = false,
+                               _ action: @escaping () throws -> Promise<T>) -> Promise<T> {
+    let result = InkSignPdfOperationPromise<T>()
+    performOnMain {
+      guard !self.disposed else { result.reject(LoadError.cancelled); return }
+      let id = UUID()
+      let entry = ViewerCommand(id: id, presentation: presentation, start: { [weak self] in
+        guard let self else { result.reject(LoadError.cancelled); return }
+        do {
+          let operation = try action()
+          operation.then { value in
+            self.performOnMain { result.resolve(value); self.finishViewerCommand(id) }
+          }.catch { error in
+            self.performOnMain { result.reject(error); self.finishViewerCommand(id) }
+          }
+        } catch {
+          result.reject(error)
+          self.finishViewerCommand(id)
+        }
+      }, cancel: { result.reject(LoadError.cancelled) })
+      self.commandQueue.append(entry)
+      self.drainViewerCommands()
+    }
+    return result.promise
+  }
+
+  private func drainViewerCommands() {
+    guard !disposed, runningCommand == nil, !commandQueue.isEmpty else { return }
+    let entry = commandQueue.removeFirst()
+    runningCommand = entry
+    entry.start()
+  }
+
+  private func finishViewerCommand(_ id: UUID) {
+    guard runningCommand?.id == id else { return }
+    runningCommand = nil
+    drainViewerCommands()
+  }
+
+  func cancelPresentationCommands() {
+    performOnMain {
+      self.fieldFocusRequestID &+= 1
+      self.pageNavigationRequestID &+= 1
+      self.cancelPendingPageSwitch()
+      let retired = self.commandQueue.filter { $0.presentation }
+      self.commandQueue.removeAll { $0.presentation }
+      retired.forEach { $0.cancel() }
+      if self.runningCommand?.presentation == true {
+        self.runningCommand?.cancel()
+      }
+    }
+  }
+
+  func cancelViewerCommands() {
+    let retired = commandQueue
+    commandQueue.removeAll()
+    let running = runningCommand
+    runningCommand = nil
+    retired.forEach { $0.cancel() }
+    running?.cancel()
+  }
+
+  func close(cancelPending: Bool?) throws -> Promise<Void> {
+    cancelPresentationCommands()
+    if cancelPending == true {
+      return try performOnMainSync {
+        guard !self.disposed else { throw LoadError.cancelled }
+        self.cancelViewerCommands()
+        self.closePublishedDocument()
+        return Promise<Void>.resolved()
+      }
+    }
+    return enqueueViewerCommand {
+      self.closePublishedDocument()
+      return Promise<Void>.resolved()
+    }
+  }
+
+  private func closePublishedDocument() {
+    pendingOpen?.promise.reject(withError: LoadError.cancelled)
+    pendingOpen = nil
+    pageInputCoordinator.cancelPending()
+    textInteractionOverlay.discardForDocumentReplacement()
+    cancelActiveStroke(clearLive: false)
+    cancelPendingPageSwitch()
+    fieldFocusRequestID &+= 1
+    pageNavigationRequestID &+= 1
+    pageSwitchRequestID &+= 1
+    documentCoordinator.closeDocument()
+    documentID = nil
+    documentView.document = nil
+    overlayProvider.reset()
+    attachedOverlayPage = nil
+    invalidateOverlayTransformCache()
+    applyInteractionMode(editing: false, interactionsEnabled: false)
+    emitChange(force: true)
+  }
+
   func performOnMain(_ work: @escaping () -> Void) {
     if Thread.isMainThread { work() } else { DispatchQueue.main.async(execute: work) }
   }
@@ -20,6 +118,11 @@ extension InkSignView {
   }
 
   func open(path: String, options: ViewportOptions?) throws -> Promise<PageInfo> {
+    cancelPresentationCommands()
+    return enqueueViewerCommand { try self.openNow(path: path, options: options) }
+  }
+
+  private func openNow(path: String, options: ViewportOptions?) throws -> Promise<PageInfo> {
     let promise = Promise<PageInfo>()
     performOnMain {
       do {
@@ -85,16 +188,23 @@ extension InkSignView {
     }
   }
 
-  func setInkMode(viewport: ViewportOptions?) throws {
-    try performOnMainSync { try self.transition(toEditing: true, viewport: viewport) }
+  func setInkMode(viewport: ViewportOptions?) throws -> Promise<Void> {
+    enqueueViewerCommand(presentation: true) {
+      try self.transition(toEditing: true, viewport: viewport)
+      return Promise<Void>.resolved()
+    }
   }
 
-  func setViewMode(viewport: ViewportOptions?) throws {
-    try performOnMainSync { try self.transition(toEditing: false, viewport: viewport) }
+  func setViewMode(viewport: ViewportOptions?) throws -> Promise<Void> {
+    enqueueViewerCommand(presentation: true) {
+      try self.transition(toEditing: false, viewport: viewport)
+      return Promise<Void>.resolved()
+    }
   }
 
   private func transition(toEditing: Bool, viewport: ViewportOptions?) throws {
     guard !disposed else { throw ViewportError.cancelled }
+    guard documentCoordinator.document != nil else { return }
     let request = Self.parseViewport(viewport)
     cancelPendingPageSwitch()
     try requireViewportReady(request: request)
@@ -130,6 +240,7 @@ extension InkSignView {
     textInteractionOverlay.clearPlacementRules()
     documentView.document = nil
     overlayProvider.reset()
+    documentID = nil
     documentCoordinator.clearDocument()
     attachedOverlayPage = nil
     invalidateOverlayTransformCache()
@@ -245,6 +356,7 @@ extension InkSignView {
       return
     }
     documentCoordinator.claimArtifact(workingURL)
+    documentID = UUID().uuidString
     overlayProvider.install(document: candidate.document, generation: operation.generation)
     documentView.document = candidate.document
     guard documentView.document === candidate.document else {

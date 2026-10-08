@@ -24,8 +24,9 @@
 ## Publication
 
 - Follow the shared [document operation contract](../architecture.md#document-operations).
-  An accepted open clears PDFView presentation and temporary input, cancels pending
-  document work, and loads a module-owned working copy on the serial PDF queue.
+  Native promise admission is FIFO. Opening clears PDFView presentation/input
+  after preceding document work finishes, then loads a module-owned working copy
+  on the serial PDF queue. Immediate close invalidates pending publication.
 - Install only the current candidate, then resolve opening after PDFView and the
   active overlay are ready. A current open failure leaves the view empty.
 - Cancellation invalidates queued publication immediately. The PDF queue retains

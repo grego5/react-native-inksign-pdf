@@ -32,6 +32,10 @@ extension InkSignView {
   }
 
   func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult> {
+    return enqueueViewerCommand { try self.addPagesNow(options: options) }
+  }
+
+  private func addPagesNow(options: AddPagesOptions?) throws -> Promise<AddPagesResult> {
     let settlement = InkSignPdfOperationPromise<AddPagesResult>()
     let promise = settlement.promise
     performOnMain {
@@ -93,6 +97,10 @@ extension InkSignView {
   }
 
   func removePage() throws -> Promise<PageInfo> {
+    return enqueueViewerCommand { try self.removePageNow() }
+  }
+
+  private func removePageNow() throws -> Promise<PageInfo> {
     let settlement = InkSignPdfOperationPromise<PageInfo>()
     let promise = settlement.promise
     performOnMain {
@@ -117,6 +125,10 @@ extension InkSignView {
   }
 
   func movePage(pageIndex: Double) throws -> Promise<PageInfo> {
+    return enqueueViewerCommand { try self.movePageNow(pageIndex: pageIndex) }
+  }
+
+  private func movePageNow(pageIndex: Double) throws -> Promise<PageInfo> {
     let settlement = InkSignPdfOperationPromise<PageInfo>()
     let promise = settlement.promise
     performOnMain {
@@ -158,6 +170,10 @@ extension InkSignView {
   }
 
   func rotatePage(degrees: Double) throws -> Promise<PageInfo> {
+    return enqueueViewerCommand { try self.rotatePageNow(degrees: degrees) }
+  }
+
+  private func rotatePageNow(degrees: Double) throws -> Promise<PageInfo> {
     let settlement = InkSignPdfOperationPromise<PageInfo>()
     let promise = settlement.promise
     performOnMain {

@@ -14,11 +14,10 @@ and export.
 - [`src/index.ts`](../../../../src/index.ts) validates public arguments before
   native dispatch. Platforms check document-dependent bounds when admitting a
   command; loaders validate PDF, image, and OS data at ingress.
-- The React wrapper publishes a stable imperative ref at mount. It holds the
-  latest `open()` until native attachment; supersession and unmount reject a
-  waiting request with `operation_cancelled`. Other commands require attachment
-  (`view_not_ready`). Suspense hiding preserves the attachment. Native owns
-  dispatched operations and their cancellation.
+- The React wrapper publishes a stable ref at mount and buffers asynchronous
+  calls only until native attachment. Calls are forwarded in invocation order;
+  immediate close/unmount reject undelivered requests. Synchronous commands
+  require attachment. Suspense hiding preserves the connection.
 - Public placement and viewport inputs use displayed top-left page points. Direct insertion clips complete
   lines to its flow bounds; manual placement applies the same options to its
   editor and committed text. The editor admits fitting input, allows deletion,
@@ -86,16 +85,21 @@ and export.
 - The coordinator owns session identity, pending document operations, and
   cancellation for its view. Each operation captures its session and request
   identity when admitted.
-- An accepted `open()` invalidates the previous session, cancels its pending
-  opens, imports, page mutations, text lookups, navigation, viewport requests,
-  and document exports, and clears the previous document's presentation and
-  input state. Debug recording export remains independent of document replacement.
-  Replacement proceeds even when those operations are active.
-- Opening waits internally for document loading and usable presentation geometry.
-  Only the latest accepted open may install a document. Its promise resolves
-  after complete installation; state and page callbacks describe that document.
-  A current open failure leaves the view empty. A superseded open cannot clear
-  or restore a newer session.
+- Native asynchronous document, mode, and field-focus commands execute FIFO.
+  Their document and implicit active page bind when execution begins. Earlier mutations finish before ordinary
+  open/close. Presentation requests for a retiring document are cancelled when
+  replacement/close is scheduled. Other synchronous commands and user gestures act immediately.
+- Mode commands reaching an empty viewer resolve without changing state.
+- `close()` waits its turn; `close(true)` cancels queued/running callers, invalidates
+  late publication, and clears the viewer. Disposal always cancels immediately.
+- Opening waits for loading and usable presentation geometry, then resolves after
+  installation. Failed opening leaves the viewer empty. Prepared handles remain
+  bound to their original document/page and reject after invalidation.
+- `onStateChange` emits complete, deduplicated viewer snapshots including an opaque
+  document ID. Successful opening creates identity; page mutations retain it.
+  Empty state uses null identity, view mode, and false dirty/undo/redo flags.
+- `finalize()` returns a temporary `file://` URI; internal artifact ownership uses
+  filesystem paths. Finalized output survives close and remains view-owned.
 - Check operation identity on the owning thread before publishing mutations,
   emitting asynchronous callbacks, and settling promises. Superseded successes
   and failures reject with `operation_cancelled`; each promise settles once.

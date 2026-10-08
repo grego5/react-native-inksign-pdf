@@ -4,7 +4,8 @@
 
 - UI-thread state uses displayed top-left page coordinates for focus. Transforms
   map stored content into display; ink input maps view coordinates to raw page content.
-- `setViewMode()`/`setInkMode()` apply viewport options immediately;
+- Mode commands return promises and execute in the native FIFO.
+  `setViewMode()`/`setInkMode()` apply viewport options when executed;
   `setTextMode()` applies them after a valid tap. Mode changes commit an active
   draft or cancel untapped placement.
 - Omission preserves the viewport; `{}` fits; text-only options preserve it.

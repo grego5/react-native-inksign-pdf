@@ -21,13 +21,14 @@
   retains entries, session replacement/closure releases them.
 - Prepared handles retain canonical analysis and address stable pages through
   navigation/reordering. The coordinator retains target IDs and immutable source
-  glyphs for embedded fallback after cache eviction. Page deletion or document
-  replacement releases affected targets/glyphs.
+  glyphs for embedded fallback after cache eviction. Page deletion releases
+  affected targets/glyphs; close, replacement, and disposal release all of them.
 
 ## Opening
 
 - Follow the shared [operation contract](../architecture.md#document-operations).
-  Replacement clears viewer/editor/navigation/tile requests and cancels pending work.
+  Native promise admission is FIFO. Scheduling replacement/close cancels
+  presentation requests; preceding document work finishes before ordinary replacement/close.
 - Each open owns an attempt ID and working copy. Validate the PDFium candidate,
   resolve the optional fallback font, then wait cancellably for a nonzero viewport.
 - The worker releases readers/files after their users finish. Reader lifetime

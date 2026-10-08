@@ -184,7 +184,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     result.then { path in
       defer { finalized.fulfill() }
       do {
-        let url = URL(fileURLWithPath: path)
+        let url = URL(string: path)!
         defer { try? FileManager.default.removeItem(at: url) }
         let document = try XCTUnwrap(PDFDocument(url: url))
         let page = try XCTUnwrap(document.page(at: 0))

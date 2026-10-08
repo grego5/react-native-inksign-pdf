@@ -36,8 +36,6 @@ namespace margelo::nitro::inksignpdf { struct PageInfo; }
 namespace margelo::nitro::inksignpdf { enum class PageType; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
-// Forward declaration of `StateChangeEvent` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct StateChangeEvent; }
 // Forward declaration of `TextAlignment` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextAnnotationBounds` to properly resolve imports.
@@ -56,6 +54,8 @@ namespace margelo::nitro::inksignpdf { struct TextSelection; }
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
+// Forward declaration of `ViewerState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
@@ -82,7 +82,6 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "PageInfo.hpp"
 #include "PageType.hpp"
 #include "PagerDirection.hpp"
-#include "StateChangeEvent.hpp"
 #include "TextAlignment.hpp"
 #include "TextAnnotationBounds.hpp"
 #include "TextDirection.hpp"
@@ -92,6 +91,7 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "TextSelection.hpp"
 #include "TextValueSource.hpp"
 #include "TextVerticalAnchor.hpp"
+#include "ViewerState.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
 #include <NitroModules/Null.hpp>
@@ -440,40 +440,84 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::function<void(const StateChangeEvent& /* event */)>
+  // pragma MARK: std::variant<nitro::NullType, std::string>
   /**
-   * Specialized version of `std::function<void(const StateChangeEvent&)>`.
+   * Wrapper struct for `std::variant<nitro::NullType, std::string>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
    */
-  using Func_void_StateChangeEvent = std::function<void(const StateChangeEvent& /* event */)>;
+  struct std__variant_nitro__NullType__std__string_ final {
+    std::variant<nitro::NullType, std::string> variant;
+    std__variant_nitro__NullType__std__string_(std::variant<nitro::NullType, std::string> variant): variant(variant) { }
+    operator std::variant<nitro::NullType, std::string>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline nitro::NullType get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline std::string get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_nitro__NullType__std__string_ create_std__variant_nitro__NullType__std__string_(nitro::NullType value) noexcept {
+    return std__variant_nitro__NullType__std__string_(value);
+  }
+  inline std__variant_nitro__NullType__std__string_ create_std__variant_nitro__NullType__std__string_(const std::string& value) noexcept {
+    return std__variant_nitro__NullType__std__string_(value);
+  }
+  
+  // pragma MARK: std::optional<std::variant<nitro::NullType, std::string>>
   /**
-   * Wrapper class for a `std::function<void(const StateChangeEvent& / * event * /)>`, this can be used from Swift.
+   * Specialized version of `std::optional<std::variant<nitro::NullType, std::string>>`.
    */
-  class Func_void_StateChangeEvent_Wrapper final {
+  using std__optional_std__variant_nitro__NullType__std__string__ = std::optional<std::variant<nitro::NullType, std::string>>;
+  inline std::optional<std::variant<nitro::NullType, std::string>> create_std__optional_std__variant_nitro__NullType__std__string__(const std::variant<nitro::NullType, std::string>& value) noexcept {
+    return std::optional<std::variant<nitro::NullType, std::string>>(value);
+  }
+  inline bool has_value_std__optional_std__variant_nitro__NullType__std__string__(const std::optional<std::variant<nitro::NullType, std::string>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::variant<nitro::NullType, std::string> get_std__optional_std__variant_nitro__NullType__std__string__(const std::optional<std::variant<nitro::NullType, std::string>>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::function<void(const ViewerState& /* event */)>
+  /**
+   * Specialized version of `std::function<void(const ViewerState&)>`.
+   */
+  using Func_void_ViewerState = std::function<void(const ViewerState& /* event */)>;
+  /**
+   * Wrapper class for a `std::function<void(const ViewerState& / * event * /)>`, this can be used from Swift.
+   */
+  class Func_void_ViewerState_Wrapper final {
   public:
-    explicit Func_void_StateChangeEvent_Wrapper(std::function<void(const StateChangeEvent& /* event */)>&& func): _function(std::make_unique<std::function<void(const StateChangeEvent& /* event */)>>(std::move(func))) {}
-    inline void call(StateChangeEvent event) const noexcept {
+    explicit Func_void_ViewerState_Wrapper(std::function<void(const ViewerState& /* event */)>&& func): _function(std::make_unique<std::function<void(const ViewerState& /* event */)>>(std::move(func))) {}
+    inline void call(ViewerState event) const noexcept {
       _function->operator()(event);
     }
   private:
-    std::unique_ptr<std::function<void(const StateChangeEvent& /* event */)>> _function;
+    std::unique_ptr<std::function<void(const ViewerState& /* event */)>> _function;
   } SWIFT_NONCOPYABLE;
-  Func_void_StateChangeEvent create_Func_void_StateChangeEvent(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_StateChangeEvent_Wrapper wrap_Func_void_StateChangeEvent(Func_void_StateChangeEvent value) noexcept {
-    return Func_void_StateChangeEvent_Wrapper(std::move(value));
+  Func_void_ViewerState create_Func_void_ViewerState(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_ViewerState_Wrapper wrap_Func_void_ViewerState(Func_void_ViewerState value) noexcept {
+    return Func_void_ViewerState_Wrapper(std::move(value));
   }
   
-  // pragma MARK: std::optional<std::function<void(const StateChangeEvent& /* event */)>>
+  // pragma MARK: std::optional<std::function<void(const ViewerState& /* event */)>>
   /**
-   * Specialized version of `std::optional<std::function<void(const StateChangeEvent& / * event * /)>>`.
+   * Specialized version of `std::optional<std::function<void(const ViewerState& / * event * /)>>`.
    */
-  using std__optional_std__function_void_const_StateChangeEvent_____event______ = std::optional<std::function<void(const StateChangeEvent& /* event */)>>;
-  inline std::optional<std::function<void(const StateChangeEvent& /* event */)>> create_std__optional_std__function_void_const_StateChangeEvent_____event______(const std::function<void(const StateChangeEvent& /* event */)>& value) noexcept {
-    return std::optional<std::function<void(const StateChangeEvent& /* event */)>>(value);
+  using std__optional_std__function_void_const_ViewerState_____event______ = std::optional<std::function<void(const ViewerState& /* event */)>>;
+  inline std::optional<std::function<void(const ViewerState& /* event */)>> create_std__optional_std__function_void_const_ViewerState_____event______(const std::function<void(const ViewerState& /* event */)>& value) noexcept {
+    return std::optional<std::function<void(const ViewerState& /* event */)>>(value);
   }
-  inline bool has_value_std__optional_std__function_void_const_StateChangeEvent_____event______(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& optional) noexcept {
+  inline bool has_value_std__optional_std__function_void_const_ViewerState_____event______(const std::optional<std::function<void(const ViewerState& /* event */)>>& optional) noexcept {
     return optional.has_value();
   }
-  inline std::function<void(const StateChangeEvent& /* event */)> get_std__optional_std__function_void_const_StateChangeEvent_____event______(const std::optional<std::function<void(const StateChangeEvent& /* event */)>>& optional) noexcept {
+  inline std::function<void(const ViewerState& /* event */)> get_std__optional_std__function_void_const_ViewerState_____event______(const std::optional<std::function<void(const ViewerState& /* event */)>>& optional) noexcept {
     return optional.value();
   }
   

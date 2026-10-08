@@ -34,7 +34,7 @@ namespace margelo::nitro::inksignpdf::views {
     doubleTap(nitro::ReactProp<std::optional<DoubleTapOptions>>::fromRawValue("InkSignView", "doubleTap", rawProps, sourceProps.doubleTap)),
     keyboardAvoidanceEnabled(nitro::ReactProp<std::optional<bool>>::fromRawValue("InkSignView", "keyboardAvoidanceEnabled", rawProps, sourceProps.keyboardAvoidanceEnabled)),
     pagerDirection(nitro::ReactProp<std::optional<PagerDirection>>::fromRawValue("InkSignView", "pagerDirection", rawProps, sourceProps.pagerDirection)),
-    onStateChange(nitro::ReactProp<std::optional<std::function<void(const StateChangeEvent& /* event */)>>>::fromRawValue("InkSignView", "onStateChange", rawProps, sourceProps.onStateChange)),
+    onStateChange(nitro::ReactProp<std::optional<std::function<void(const ViewerState& /* event */)>>>::fromRawValue("InkSignView", "onStateChange", rawProps, sourceProps.onStateChange)),
     onPageChange(nitro::ReactProp<std::optional<std::function<void(const PageInfo& /* event */)>>>::fromRawValue("InkSignView", "onPageChange", rawProps, sourceProps.onPageChange)),
     onZoomedInChange(nitro::ReactProp<std::optional<std::function<void(bool /* zoomedIn */)>>>::fromRawValue("InkSignView", "onZoomedInChange", rawProps, sourceProps.onZoomedInChange)),
     onTextSelectionChange(nitro::ReactProp<std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>>::fromRawValue("InkSignView", "onTextSelectionChange", rawProps, sourceProps.onTextSelectionChange)),

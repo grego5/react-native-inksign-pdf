@@ -436,14 +436,14 @@ open class HybridInkSignViewSpec_cxx {
     }
   }
   
-  public final var onStateChange: bridge.std__optional_std__function_void_const_StateChangeEvent_____event______ {
+  public final var onStateChange: bridge.std__optional_std__function_void_const_ViewerState_____event______ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_std__function_void_const_StateChangeEvent_____event______ in
+      return { () -> bridge.std__optional_std__function_void_const_ViewerState_____event______ in
         if let __unwrappedValue = self.__implementation.onStateChange {
-          return bridge.create_std__optional_std__function_void_const_StateChangeEvent_____event______({ () -> bridge.Func_void_StateChangeEvent in
-            let __closureWrapper = Func_void_StateChangeEvent(__unwrappedValue)
-            return bridge.create_Func_void_StateChangeEvent(__closureWrapper.toUnsafe())
+          return bridge.create_std__optional_std__function_void_const_ViewerState_____event______({ () -> bridge.Func_void_ViewerState in
+            let __closureWrapper = Func_void_ViewerState(__unwrappedValue)
+            return bridge.create_Func_void_ViewerState(__closureWrapper.toUnsafe())
           }())
         } else {
           return .init()
@@ -452,12 +452,12 @@ open class HybridInkSignViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.onStateChange = { () -> ((_ event: StateChangeEvent) -> Void)? in
-        if bridge.has_value_std__optional_std__function_void_const_StateChangeEvent_____event______(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__function_void_const_StateChangeEvent_____event______(newValue)
-          return { () -> (StateChangeEvent) -> Void in
-            let __wrappedFunction = bridge.wrap_Func_void_StateChangeEvent(__unwrapped)
-            return { (__event: StateChangeEvent) -> Void in
+      self.__implementation.onStateChange = { () -> ((_ event: ViewerState) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_const_ViewerState_____event______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_const_ViewerState_____event______(newValue)
+          return { () -> (ViewerState) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_ViewerState(__unwrapped)
+            return { (__event: ViewerState) -> Void in
               __wrappedFunction.call(__event)
             }
           }()
@@ -594,6 +594,32 @@ open class HybridInkSignViewSpec_cxx {
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
       return bridge.create_Result_std__shared_ptr_Promise_PageInfo___(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func close(cancelPending: bridge.std__optional_bool_) -> bridge.Result_std__shared_ptr_Promise_void___ {
+    do {
+      let __result = try self.__implementation.close(cancelPending: { () -> Bool? in
+        if bridge.has_value_std__optional_bool_(cancelPending) {
+          let __unwrapped = bridge.get_std__optional_bool_(cancelPending)
+          return __unwrapped
+        } else {
+          return nil
+        }
+      }())
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_void__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve() })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
     }
   }
   
@@ -749,24 +775,40 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func setInkMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_void_ {
+  public final func setInkMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
     do {
-      try self.__implementation.setInkMode(viewport: viewport.value)
-      return bridge.create_Result_void_()
+      let __result = try self.__implementation.setInkMode(viewport: viewport.value)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_void__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve() })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
     }
   }
   
   @inline(__always)
-  public final func setViewMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_void_ {
+  public final func setViewMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
     do {
-      try self.__implementation.setViewMode(viewport: viewport.value)
-      return bridge.create_Result_void_()
+      let __result = try self.__implementation.setViewMode(viewport: viewport.value)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_void__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve() })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
     }
   }
   
@@ -815,13 +857,21 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func setTextMode(options: bridge.std__optional_TextModeOptions_) -> bridge.Result_void_ {
+  public final func setTextMode(options: bridge.std__optional_TextModeOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
     do {
-      try self.__implementation.setTextMode(options: options.value)
-      return bridge.create_Result_void_()
+      let __result = try self.__implementation.setTextMode(options: options.value)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_void__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve() })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
     }
   }
   

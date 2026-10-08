@@ -39,6 +39,7 @@ target_sources(
   # Android-specific Nitrogen C++ sources
   ../nitrogen/generated/android/c++/JHybridAnalyzedPageSpec.cpp
   ../nitrogen/generated/android/c++/JHybridInkSignViewSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_NullType_String.cpp
   ../nitrogen/generated/android/c++/JVariant_NullType_TextSelection.cpp
   ../nitrogen/generated/android/c++/views/JHybridInkSignViewStateUpdater.cpp
 )

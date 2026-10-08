@@ -80,10 +80,11 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
 ```
 
 Use a normal React ref. You can call `open()` from an effect after mounting; it
-waits for native attachment. Await it before using other document commands.
+waits for native attachment. Async document commands run in call order.
+Use `close()` to close after them, or `close(true)` to cancel pending work.
 
 Tap the page after choosing **Draw** or **Place text**. `finalize()` returns a
-temporary PDF path; copy the file if it needs to remain available after the
+temporary PDF `file://` URI; copy the file if it needs to remain available after the
 signing view closes.
 
 On Android, an optional fallback font can use one shared local cache file. Set
@@ -100,6 +101,8 @@ Use `onZoomedInChange={setControlsHidden}` to hide your controls when zoom is
 above page fit. It reports after settling; fitted or smaller zoom reports `false`.
 
 Use `setViewMode()`, `setInkMode()`, or `setTextMode()` to choose an input mode.
+They return promises and run in call order with document operations.
+Mode calls do nothing while the viewer has no document.
 Omit options to preserve the viewport; pass `{}` to fit the page, or
 `{ zoom: 3, x: 200, y: 600 }` to zoom and focus. Text-mode viewport changes
 apply after the placement tap. Text finishes in view mode; switching modes also

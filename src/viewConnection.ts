@@ -1,20 +1,15 @@
 import { argumentError } from './publicArguments';
-import type { InkSignView, InkSignViewMethods, PageInfo } from './InkSignView.nitro';
+import type { InkSignView } from './InkSignView.nitro';
 
 /** React owns attachment; native owns requests once open() is dispatched. */
 export function createViewConnection() {
   let native: InkSignView | null = null;
   let mounted = true;
-  let pending: {
-    args: Parameters<InkSignViewMethods['open']>;
-    resolve: (page: PageInfo) => void;
-    reject: (reason: unknown) => void;
-  } | undefined;
+  const pending: { dispatch: (native: InkSignView) => void; reject: (reason: unknown) => void }[] = [];
 
   function cancelPending(message: string) {
-    const request = pending;
-    pending = undefined;
-    request?.reject(argumentError('operation_cancelled', message));
+    const requests = pending.splice(0);
+    for (const request of requests) request.reject(argumentError('operation_cancelled', message));
   }
 
   function getNative(): InkSignView {
@@ -24,26 +19,24 @@ export function createViewConnection() {
   }
 
   function dispatch() {
-    if (!native || !pending) return;
-    const request = pending;
-    pending = undefined;
-    try {
-      native.open(...request.args).then(request.resolve, request.reject);
-    } catch (error) {
-      request.reject(error);
-    }
+    if (!native) return;
+    for (const request of pending.splice(0)) request.dispatch(native);
+  }
+
+  function invoke<T>(action: (native: InkSignView) => Promise<T>, cancel = false): Promise<T> {
+    if (!mounted) return Promise.reject(argumentError('operation_cancelled', 'The PDF view is unmounted'));
+    if (cancel) cancelPending('An immediate close cancelled this request');
+    return new Promise((resolve, reject) => {
+      pending.push({ reject, dispatch(value) {
+        try { action(value).then(resolve, reject); } catch (error) { reject(error); }
+      } });
+      dispatch();
+    });
   }
 
   return {
     getNative,
-    open(...args: Parameters<InkSignViewMethods['open']>): Promise<PageInfo> {
-      if (!mounted) return Promise.reject(argumentError('operation_cancelled', 'The PDF view is unmounted'));
-      cancelPending('A newer open request superseded this request');
-      return new Promise((resolve, reject) => {
-        pending = { args, resolve, reject };
-        dispatch();
-      });
-    },
+    invoke,
     attach(value: InkSignView | null) {
       if (!mounted) return;
       native = value;
