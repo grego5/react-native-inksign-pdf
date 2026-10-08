@@ -455,7 +455,21 @@ internal class MutableDocumentCoordinator(
           if (!source.isFile || !source.canRead()) {
             throw PdfSessionException("invalid_source_path", "Unable to read the PDF")
           }
-          source.copyTo(request.workingFile, overwrite = true)
+          val isJpeg = source.inputStream().use { stream ->
+            stream.read() == 0xff && stream.read() == 0xd8 && stream.read() == 0xff
+          }
+          if (isJpeg) {
+            val image = ImagePageEncoder.encode(source, PdfPageDimensions(595.28, 841.89))
+            PdfiumPageAssembler.assemble(
+              input = null,
+              request = PdfiumAssemblyRequest(
+                PdfiumAssemblyOperation.CREATE, appendInputs = listOf(image),
+              ),
+              scratch = request.workingFile,
+            )
+          } else {
+            source.copyTo(request.workingFile, overwrite = true)
+          }
         }
         val resolvedFont: PdfFallbackFont? = if (request.fallbackFont == null) {
           null

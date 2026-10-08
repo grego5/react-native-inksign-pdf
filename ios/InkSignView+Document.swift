@@ -292,7 +292,17 @@ extension InkSignView {
           return
         }
         workingURL = allocated
-        try sourceData.write(to: allocated, options: .atomic)
+        if sourceData.starts(with: [0xff, 0xd8, 0xff]) {
+          let geometry = PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 595.28, height: 841.89),
+                                      rotation: 0)
+          let imagePage = try InkSignPdfMutablePageImageEncoder.encode(url, geometry: geometry)
+          let document = PDFDocument()
+          document.insert(imagePage, at: 0)
+          guard let data = document.dataRepresentation() else { throw LoadError.pdfLoadFailed }
+          try data.write(to: allocated, options: .atomic)
+        } else {
+          try sourceData.write(to: allocated, options: .atomic)
+        }
       } catch {
         self.finishLoad(operation: operation, error: .pdfLoadFailed); return
       }

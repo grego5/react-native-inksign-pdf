@@ -7,6 +7,31 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
+  func testOpenDetectsJpegWithoutExtensionAndCreatesOnePdfPage() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let source = FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignJpegOpen-\(UUID().uuidString).bin")
+    defer {
+      try? FileManager.default.removeItem(at: source)
+      fixture.view.dispose()
+      fixture.window.isHidden = true
+    }
+    let image = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 60)).image { context in
+      UIColor.blue.setFill()
+      context.fill(CGRect(x: 0, y: 0, width: 120, height: 60))
+    }
+    let bytes = try XCTUnwrap(image.jpegData(compressionQuality: 0.9))
+    try bytes.write(to: source)
+    let info = try awaitRotationOperation(fixture.view.open(path: source.absoluteString, options: nil))
+    XCTAssertEqual(info.pageCount, 1)
+    XCTAssertEqual(info.width, 595.28, accuracy: 0.01)
+    XCTAssertEqual(info.height, 841.89, accuracy: 0.01)
+    XCTAssertEqual(try Data(contentsOf: source), bytes)
+    let state = try XCTUnwrap(fixture.view.documentCoordinator.document)
+    let exported = try XCTUnwrap(PDFDocument(url: state.workingURL))
+    XCTAssertEqual(exported.pageCount, 1)
+  }
+
   func testCoordinateTapUsesDisplayedPagePointsAndConsumesOnlyOnce() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
