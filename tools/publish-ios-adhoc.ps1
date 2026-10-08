@@ -44,7 +44,11 @@ if ($PSCmdlet.ParameterSetName -eq 'Remote') {
   }
 }
 
-$IpaPath = (Resolve-Path -LiteralPath $IpaPath -PathType Leaf).Path
+$ipaItem = Get-Item -LiteralPath $IpaPath -ErrorAction Stop
+if ($ipaItem.PSIsContainer) {
+  throw 'IpaPath must point to an IPA file.'
+}
+$IpaPath = $ipaItem.FullName
 if ([System.IO.Path]::GetExtension($IpaPath) -ne '.ipa') {
   throw 'IpaPath must point to an .ipa file.'
 }
