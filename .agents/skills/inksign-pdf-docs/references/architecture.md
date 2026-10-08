@@ -20,8 +20,10 @@ and export.
   immediate close and teardown reject undelivered requests. Synchronous commands
   require attachment. Strict Mode replay preserves pending attachment and
   initialization; Suspense hiding preserves the connection.
-- `initialDocument` accepts a local PDF path or `file://` URI and loads once per
-  keyed session; load failures appear in `onStateChange.error`.
+- `initialDocument` accepts a local PDF/JPEG path or `file://` URI and loads once per
+  keyed session; load failures appear in onStateChange.error.
+  Native open detects JPEG bytes and creates one A4 PDF page using the shared
+  image encoder defaults. The original file remains unchanged.
 - Public placement and viewport inputs use displayed top-left page points. Direct insertion clips complete
   lines to its flow bounds; manual placement applies the same options to its
   editor and committed text. The editor admits fitting input, allows deletion,

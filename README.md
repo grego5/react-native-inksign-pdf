@@ -83,7 +83,8 @@ export function SigningView({ pdfPath, sessionId }: { pdfPath: string; sessionId
 }
 ```
 
-Load a PDF with `initialDocument` or call `open(path)` on the ref after mounting.
+Load a PDF or JPEG with `initialDocument` or call `open(path)` on the ref after
+mounting. JPEG images become a single A4 page, scaled to fit without stretching.
 Both accept a local path or `file://` URI. Choose **Draw** or **Place text** and
 sign the page. `finalize()` returns a temporary PDF `file://` URI; copy the file
 to persistent storage if you need it after closing the viewer.

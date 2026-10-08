@@ -100,7 +100,7 @@ export type InkSignViewProps = Omit<
   NativeInkSignViewProps,
   'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomedInChange'
 > & {
-  /** Local PDF path or file:// URI. */
+  /** Local PDF or JPEG path/file:// URI. JPEG becomes one contain-fitted A4 page. */
   initialDocument?: string;
   onStateChange?: InkSignViewNativeProps['onStateChange'];
   onPageChange?: InkSignViewNativeProps['onPageChange'];

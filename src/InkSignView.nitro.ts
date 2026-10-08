@@ -248,7 +248,7 @@ export interface InkSignViewProps extends HybridViewProps {
 }
 
 export interface InkSignViewMethods extends HybridViewMethods {
-  /** Opens a local PDF path or file:// URI; omitted options fit the page. */
+  /** Opens a local PDF or JPEG path/file:// URI. JPEG becomes one A4 page; omitted options fit. */
   open(path: string, options?: ViewportOptions): Promise<PageInfo>
   /** Closes in FIFO order; omitted `cancelPending` is false. Pass true to cancel pending work. */
   close(cancelPending?: boolean): Promise<void>
