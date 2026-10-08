@@ -5,7 +5,7 @@ extension InkSignView {
   func undo() throws {
     try performOnMainSync {
       self.cancelActiveStroke()
-      self.textInteractionOverlay.finishForLifecycle()
+      self.finishInteractionForLifecycle()
       guard let page = self.documentCoordinator.document?.activePage else { return }
       guard page.history.undo() else { return }
       self.documentCoordinator.synchronizeTextPlacement(on: page)
@@ -18,7 +18,7 @@ extension InkSignView {
   func redo() throws {
     try performOnMainSync {
       self.cancelActiveStroke()
-      self.textInteractionOverlay.finishForLifecycle()
+      self.finishInteractionForLifecycle()
       guard let page = self.documentCoordinator.document?.activePage else { return }
       guard page.history.redo() else { return }
       self.documentCoordinator.synchronizeTextPlacement(on: page)
@@ -31,7 +31,7 @@ extension InkSignView {
   func clear() throws {
     try performOnMainSync {
       self.cancelActiveStroke()
-      self.textInteractionOverlay.finishForLifecycle()
+      self.finishInteractionForLifecycle()
       guard let page = self.documentCoordinator.document?.activePage else { return }
       page.history.clear()
       self.installCommittedDrawing()
@@ -45,13 +45,13 @@ extension InkSignView {
     guard !suppressesOpenPresentationCallbacks else { return }
     guard let state = documentCoordinator.document else {
       documentID = nil
-      let mode = textInteractionOverlay.interactionMode()
-      let tuple = (false, false, false, mode.stringValue, documentID)
+      let mode = interactionMode()
+      let tuple = (false, false, false, mode.stringValue, documentID, loadError)
       if force || lastChange == nil || lastChange!.0 != tuple.0 ||
-          lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 || lastChange!.4 != tuple.4 {
+          lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 || lastChange!.4 != tuple.4 || lastChange!.5 != tuple.5 {
         lastChange = tuple
         onStateChange?(ViewerState(documentId: documentID.map { .second($0) } ?? .first(.null), canUndo: false, canRedo: false, isDirty: false,
-                                        mode: textInteractionOverlay.interactionMode()))
+                                        mode: mode, error: loadError.map { .second($0) } ?? .first(.null)))
       }
       return
     }
@@ -60,14 +60,14 @@ extension InkSignView {
     let pageState = page.history.state
     let value = (canUndo: pageState.canUndo, canRedo: pageState.canRedo,
                  isDirty: documentCoordinator.isDirty)
-    let mode = textInteractionOverlay.interactionMode()
-    let tuple = (value.canUndo, value.canRedo, value.isDirty, mode.stringValue, documentID)
+    let mode = interactionMode()
+    let tuple = (value.canUndo, value.canRedo, value.isDirty, mode.stringValue, documentID, loadError)
     guard force || lastChange == nil || lastChange!.0 != tuple.0 ||
-            lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 || lastChange!.4 != tuple.4 else { return }
+            lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 || lastChange!.4 != tuple.4 || lastChange!.5 != tuple.5 else { return }
     lastChange = tuple
     onStateChange?(ViewerState(documentId: documentID.map { .second($0) } ?? .first(.null), canUndo: value.canUndo,
                                     canRedo: value.canRedo,
                                     isDirty: value.isDirty,
-                                    mode: textInteractionOverlay.interactionMode()))
+                                    mode: mode, error: loadError.map { .second($0) } ?? .first(.null)))
   }
 }

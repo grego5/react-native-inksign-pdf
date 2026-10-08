@@ -207,10 +207,10 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   internal func interactionMode() -> InteractionMode {
     switch interactionState {
-    case .placing: return .textplacement
-    case .editing: return .textediting
-    case .dragging, .selected: return .textselected
-    case .idle: return owner?.editMode == true ? .draw : .view
+    case .placing: return .textadd
+    case .editing: return .textedit
+    case .dragging, .selected: return .view
+    case .idle: return owner?.editMode == true ? .ink : .view
     }
   }
 
@@ -601,6 +601,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   /// The page overlay owns the coordinate transform; this view only receives
   /// annotation-owned touches and lets the canvas handle all other input.
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+    if owner?.isPickingPageCoords == true { return nil }
     if let hit = super.hitTest(point, with: event), hit !== self { return hit }
     if hasPendingPlacement() {
       return owner?.canonicalPagePoint(fromOverlay: point) == nil ? nil : self
@@ -789,7 +790,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
-                          shouldReceive touch: UITouch) -> Bool {
+                         shouldReceive touch: UITouch) -> Bool {
+    if owner?.isPickingPageCoords == true { return false }
     if gestureRecognizer === placementTapRecognizer {
       return placementRecognizerAdmits(at: touch.location(in: self))
     }

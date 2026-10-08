@@ -199,11 +199,20 @@ extension InkSignView {
       state.activePage.page.rotation = state.activePage.geometry.rotation
       self.installStructuralPresentation(state, generation: context.coordinator.generation,
                                          viewport: context.viewport, fitPage: true,
-                                         wasEditing: context.wasEditing)
-      context.coordinator.settle(context.operation, succeeded: true)
-      settlement.resolve(self.toPublicPageInfo(InkSignPdfNativePageInfo(
-        pageIndex: state.activePageIndex, pageCount: state.pages.count,
-        geometry: state.activePage.geometry)))
+                                         wasEditing: context.wasEditing) { outcome in
+        guard context.coordinator.isCurrent(context.operation) else {
+          settlement.reject(MutablePageError.operationCancelled)
+          return
+        }
+        switch outcome {
+        case .success(let info):
+          context.coordinator.settle(context.operation, succeeded: true)
+          settlement.resolve(info)
+        case .failure(let error):
+          context.coordinator.settle(context.operation, succeeded: false)
+          settlement.reject(error)
+        }
+      }
     }
     return promise
   }
@@ -296,7 +305,7 @@ extension InkSignView {
       return false
     }
     cancelPendingPageSwitch()
-    textInteractionOverlay.finishForLifecycle()
+    finishInteractionForLifecycle()
     setInteractionMode(editing: context.wasEditing, interactionsEnabled: false)
     context.prepared = true
     return true
@@ -350,14 +359,21 @@ extension InkSignView {
           }
           self.installStructuralPresentation(candidate, generation: coordinator.generation,
                                              viewport: context.viewport,
-                                             wasEditing: context.wasEditing)
+                                             wasEditing: context.wasEditing) { outcome in
+            guard coordinator.isCurrent(context.operation) else {
+              settlement.reject(MutablePageError.operationCancelled)
+              return
+            }
+            switch outcome {
+            case .success(let info):
+              coordinator.settle(context.operation, succeeded: true)
+              resolve(info, candidate.pages.count - context.pages.count)
+            case .failure(let error):
+              coordinator.settle(context.operation, succeeded: false)
+              settlement.reject(error)
+            }
+          }
           if let previous { coordinator.releaseReplacedDocument(previous) }
-          coordinator.settle(context.operation, succeeded: true)
-          let info = (try? self.currentPageInfo()) ??
-            InkSignPdfNativePageInfo(pageIndex: candidate.activePageIndex,
-                                     pageCount: candidate.pages.count,
-                                     geometry: candidate.activePage.geometry)
-          resolve(self.toPublicPageInfo(info), candidate.pages.count - context.pages.count)
         }
       } catch {
         DispatchQueue.main.async { [weak self] in
@@ -411,23 +427,36 @@ extension InkSignView {
                                              generation: UInt64,
                                              viewport: Viewport?,
                                              fitPage: Bool = false,
-                                             wasEditing: Bool) {
+                                             wasEditing: Bool,
+                                             completion: @escaping (Result<PageInfo, Error>) -> Void) {
     pageSwitchRequestID &+= 1
     pendingPageSwitchID = nil
     let page = state.activePage
+    pendingStructuralPresentationPageID = page.id
     invalidateOverlayTransformCache()
     textInteractionOverlay.clearPlacementRules()
-    overlayProvider.install(document: state.document, generation: generation,
-                            refreshGeometry: fitPage)
-    // Reinstall even when only an in-memory PDFPage orientation changed.
-    documentView.document = nil
-    documentView.document = state.document
+    if documentView.document !== state.document {
+      documentView.document = nil
+      overlayProvider.install(document: state.document, generation: generation)
+      documentView.document = state.document
+    }
     documentView.go(to: page.page)
-    if fitPage { applyViewport(request: .fit) }
-    else { applyStructuralViewport(viewport) }
-    restoreInteractionMode(wasEditing)
     configureDoubleTapGestureRecognition()
-    emitChange(force: true)
+    pendingPageSwitchID = pageSwitchRequestID
+    pendingPageSwitchEditing = wasEditing
+    pendingPageSwitchCompletion = completion
+    if fitPage {
+      pendingPageSwitchViewport = .fit
+    } else {
+      pendingPageSwitchViewport = viewport.map {
+        .focus(CGPoint(x: $0.x, y: $0.y), zoom: $0.zoom)
+      }
+    }
+    documentViewDidNavigate(to: page.page)
+    documentView.layoutDocumentView()
+    documentView.layoutIfNeeded()
+    refreshActiveOverlayTransform()
+    finishPageSwitchIfReady(requestID: pageSwitchRequestID)
   }
 
   private func applyStructuralViewport(_ viewport: Viewport?) {

@@ -644,11 +644,27 @@ internal class SurfaceView(
   }
 
   /** Routes an editor-outside drag to viewport pan without page navigation or ink. */
-  internal fun handleTextViewportTouch(event: MotionEvent) {
+  internal fun handleViewportTouch(event: MotionEvent) {
     requireOnUiThread()
     if (disposed) return
     updateZoomTouchState(event)
     documentController.handleViewTouch(event)
+  }
+
+  internal fun setCoordinatePicking(active: Boolean) {
+    requireOnUiThread()
+    documentController.suppressTapActions = active
+  }
+
+  internal fun pageCoordinatesAt(x: Double, y: Double): PageCoords? {
+    requireOnUiThread()
+    if (disposed || !documentCoordinator.hasDocument) return null
+    val transform = documentController.pageToViewTransform() ?: return null
+    val point = transform.inverse().map(PagePoint(x, y))
+    val page = currentPageInfo()
+    if (!point.x.isFinite() || !point.y.isFinite() ||
+      point.x !in 0.0..page.dimensions.width || point.y !in 0.0..page.dimensions.height) return null
+    return PageCoords(documentCoordinator.activePageId(), page.pageIndex.toDouble(), point.x, point.y)
   }
 
   private fun updateZoomTouchState(event: MotionEvent) {

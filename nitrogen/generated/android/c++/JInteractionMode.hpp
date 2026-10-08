@@ -45,18 +45,18 @@ namespace margelo::nitro::inksignpdf {
         case InteractionMode::VIEW:
           static const auto fieldVIEW = clazz->getStaticField<JInteractionMode>("VIEW");
           return clazz->getStaticFieldValue(fieldVIEW);
-        case InteractionMode::DRAW:
-          static const auto fieldDRAW = clazz->getStaticField<JInteractionMode>("DRAW");
-          return clazz->getStaticFieldValue(fieldDRAW);
-        case InteractionMode::TEXTPLACEMENT:
-          static const auto fieldTEXTPLACEMENT = clazz->getStaticField<JInteractionMode>("TEXTPLACEMENT");
-          return clazz->getStaticFieldValue(fieldTEXTPLACEMENT);
-        case InteractionMode::TEXTSELECTED:
-          static const auto fieldTEXTSELECTED = clazz->getStaticField<JInteractionMode>("TEXTSELECTED");
-          return clazz->getStaticFieldValue(fieldTEXTSELECTED);
-        case InteractionMode::TEXTEDITING:
-          static const auto fieldTEXTEDITING = clazz->getStaticField<JInteractionMode>("TEXTEDITING");
-          return clazz->getStaticFieldValue(fieldTEXTEDITING);
+        case InteractionMode::INK:
+          static const auto fieldINK = clazz->getStaticField<JInteractionMode>("INK");
+          return clazz->getStaticFieldValue(fieldINK);
+        case InteractionMode::TEXTADD:
+          static const auto fieldTEXTADD = clazz->getStaticField<JInteractionMode>("TEXTADD");
+          return clazz->getStaticFieldValue(fieldTEXTADD);
+        case InteractionMode::TEXTEDIT:
+          static const auto fieldTEXTEDIT = clazz->getStaticField<JInteractionMode>("TEXTEDIT");
+          return clazz->getStaticFieldValue(fieldTEXTEDIT);
+        case InteractionMode::PAGECOORDS:
+          static const auto fieldPAGECOORDS = clazz->getStaticField<JInteractionMode>("PAGECOORDS");
+          return clazz->getStaticFieldValue(fieldPAGECOORDS);
         default:
           std::string stringValue = std::to_string(static_cast<int>(value));
           throw std::invalid_argument("Invalid enum value (" + stringValue + "!");

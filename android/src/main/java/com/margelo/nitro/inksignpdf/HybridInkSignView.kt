@@ -6,6 +6,8 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.widget.FrameLayout
 import com.facebook.proguard.annotations.DoNotStrip
 import com.margelo.nitro.core.Promise
@@ -37,7 +39,19 @@ class HybridInkSignView internal constructor(
   private val artifactPolicy = CacheArtifactPolicy.initialize(context)
   private val fallbackFontResolver = AndroidFallbackFontResolver()
   private val pageInputCoordinator = PageInputCoordinator(context, artifactPolicy)
-  private val container = FrameLayout(context)
+  private val container: FrameLayout = object : FrameLayout(context) {
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+      if (event.actionMasked == MotionEvent.ACTION_DOWN) coordinateTouchActive = isPickingPageCoords
+      if (!coordinateTouchActive) return super.dispatchTouchEvent(event)
+      // The whole stream stays with the picker, including cancellation or resolution at UP.
+      surface.handleViewportTouch(event)
+      coordinateTapDetector.onTouchEvent(event)
+      if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+        coordinateTouchActive = false
+      }
+      return true
+    }
+  }
   private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   internal val coordinator = MutableDocumentCoordinator(
     sessionWorker = sessionWorker,
@@ -63,6 +77,28 @@ class HybridInkSignView internal constructor(
   @Volatile private var viewportRequestID = 0L
   private var pageNavigationRequestID = 0L
   @Volatile private var disposed = false
+  private data class CoordinateTarget(val generation: Long, val pageId: String, val geometryRevision: Long)
+  private data class CoordinateRequest(val promise: Promise<PageCoords>, var target: CoordinateTarget? = null)
+  private var pendingPageCoords: CoordinateRequest? = null
+  private val isPickingPageCoords: Boolean get() = pendingPageCoords?.target != null
+  private var coordinateTouchActive = false
+  private val coordinateTapDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+    override fun onDown(event: MotionEvent): Boolean = true
+    override fun onSingleTapUp(event: MotionEvent): Boolean {
+      val pending = pendingPageCoords ?: return false
+      val target = pending.target ?: return false
+      if (!coordinateTargetIsCurrent(target)) {
+        cancelCoordinateRequest()
+        return false
+      }
+      val coordinates = surface.pageCoordinatesAt(event.x.toDouble(), event.y.toDouble()) ?: return false
+      pendingPageCoords = null
+      surface.setCoordinatePicking(false)
+      emitState()
+      pending.promise.resolve(coordinates)
+      return true
+    }
+  })
   private var editMode = false
   private data class PendingPromise(val presentation: Boolean, var job: Job? = null)
   private val pendingPromises = IdentityHashMap<Promise<*>, PendingPromise>()
@@ -184,7 +220,7 @@ class HybridInkSignView internal constructor(
       }
 
       override fun onViewDetachedFromWindow(view: View) {
-        textOverlay.finishForLifecycle()
+        finishInteractionForLifecycle()
         lowLatencyPresenter.synchronizeLifecycleFromFramework()
       }
     })
@@ -209,6 +245,7 @@ class HybridInkSignView internal constructor(
       }
     }
     surface.onPageChange = { page ->
+      pendingPageCoords?.target?.let { if (!coordinateTargetIsCurrent(it)) cancelCoordinateRequest() }
       if (!disposed && !surface.isOpenHandoffInProgress) onPageChange?.invoke(toPublicPageInfo(page))
     }
     surface.onZoomedInChange = { zoomedIn -> if (!disposed) onZoomedInChange?.invoke(zoomedIn) }
@@ -216,52 +253,64 @@ class HybridInkSignView internal constructor(
 
   private val commandMutex = Mutex()
   private var documentId: String? = null
+  private var loadError: String? = null
 
   override fun open(path: String, options: ViewportOptions?): Promise<PageInfo> {
     cancelPresentationRequests()
     return launchPromise {
       checkMainThread()
       if (disposed) throw operationCancelled()
-      val viewport = ViewportRequestParser.parseOpen(options)
-      val fallbackFontSnapshot = androidFallbackFont
-      logFallbackFontSnapshot(fallbackFontSnapshot)
-      val pageInfo = coordinator.executeOpen(
-        sourcePath = path,
-        fallbackFont = fallbackFontSnapshot,
-        resolveFallbackFont = fallbackFontResolver::resolve,
-        awaitContainerSize = { surface.awaitUsableViewportSize() },
-        invalidatePrevious = {
-          pageInputCoordinator.cancelPending()
-          viewportRequestID += 1L
-          pageNavigationRequestID += 1L
-          textOverlay.cancelForDocumentReplacement()
-          documentId = null
-          surface.clearDocument()
-          editMode = false
-          lastInkState = InkState(false, false, false)
-          runCatching { emitState() }
-        },
-        preparePresentation = { info, size ->
-          val presentation = surface.prepareDocumentPresentation(info, viewport, size)
-          presentation to toPublicPageInfo(presentation.pageInfo)
-        },
-        beginHandoff = { surface.beginOpenHandoff() },
-        publishPresentation = { (prepared, pageInfo) ->
-          viewportRequestID += 1L
-          pageNavigationRequestID += 1L
-          documentId = java.util.UUID.randomUUID().toString()
-          surface.publishOpenDocumentPresentation(prepared)
-          editMode = false
-          pageInfo
-        },
-        notifyPublished = {
-          surface.notifyPublishedOpenDocumentPresentation()
-        },
-        abortHandoff = { surface.abortOpenHandoff() },
-      )
-      lastInkState = InkState(false, false, false)
+      loadError = null
       runCatching { emitState() }
-      pageInfo
+      try {
+        val viewport = ViewportRequestParser.parseOpen(options)
+        val fallbackFontSnapshot = androidFallbackFont
+        logFallbackFontSnapshot(fallbackFontSnapshot)
+        val pageInfo = coordinator.executeOpen(
+          sourcePath = path,
+          fallbackFont = fallbackFontSnapshot,
+          resolveFallbackFont = fallbackFontResolver::resolve,
+          awaitContainerSize = { surface.awaitUsableViewportSize() },
+          invalidatePrevious = {
+            pageInputCoordinator.cancelPending()
+            viewportRequestID += 1L
+            pageNavigationRequestID += 1L
+            textOverlay.cancelForDocumentReplacement()
+            documentId = null
+            surface.clearDocument()
+            editMode = false
+            lastInkState = InkState(false, false, false)
+            runCatching { emitState() }
+          },
+          preparePresentation = { info, size ->
+            val presentation = surface.prepareDocumentPresentation(info, viewport, size)
+            presentation to toPublicPageInfo(presentation.pageInfo)
+          },
+          beginHandoff = { surface.beginOpenHandoff() },
+          publishPresentation = { (prepared, pageInfo) ->
+            viewportRequestID += 1L
+            pageNavigationRequestID += 1L
+            documentId = java.util.UUID.randomUUID().toString()
+            surface.publishOpenDocumentPresentation(prepared)
+            editMode = false
+            pageInfo
+          },
+          notifyPublished = {
+            surface.notifyPublishedOpenDocumentPresentation()
+          },
+          abortHandoff = { surface.abortOpenHandoff() },
+        )
+        lastInkState = InkState(false, false, false)
+        runCatching { emitState() }
+        pageInfo
+      } catch (failure: Exception) {
+        if (!disposed && failure !is kotlinx.coroutines.CancellationException &&
+          (failure as? PdfSessionException)?.code != "operation_cancelled") {
+          loadError = failure.message ?: "Unable to open PDF"
+          runCatching { emitState() }
+        }
+        throw failure
+      }
     }
   }
 
@@ -495,6 +544,59 @@ class HybridInkSignView internal constructor(
 
   override fun setViewMode(viewport: ViewportOptions?): Promise<Unit> =
     launchPromise(presentation = true) { enterMode(edit = false, viewport) }
+
+  override fun getPageCoords(): Promise<PageCoords> = runOnMainSync {
+    val result = Promise<PageCoords>()
+    if (disposed) {
+      result.reject(operationCancelled())
+      return@runOnMainSync result
+    }
+    cancelCoordinateRequest()
+    val request = CoordinateRequest(result)
+    pendingPageCoords = request
+    // Only admission is queued. Waiting for the tap must not block replacement/close.
+    launchPromise(presentation = true) {
+      if (pendingPageCoords !== request) throw operationCancelled()
+      if (!coordinator.hasDocument) throw PdfSessionException(
+        "document_not_open", "A document must be open before selecting page coordinates",
+      )
+      enterMode(edit = false, viewport = null)
+      if (pendingPageCoords !== request) throw operationCancelled()
+      val page = coordinator.page(coordinator.activePageIndex)
+      request.target = CoordinateTarget(coordinator.generation, page.id, page.geometryRevision)
+      surface.setCoordinatePicking(true)
+      emitState()
+    }.catch { error ->
+      runOnMainSync {
+        if (pendingPageCoords === request) {
+          cancelCoordinateRequest(error)
+        }
+      }
+    }
+    result
+  }
+
+  private fun cancelCoordinateRequest(error: Throwable = operationCancelled()) {
+    val pending = pendingPageCoords
+    pendingPageCoords = null
+    surface.setCoordinatePicking(false)
+    val time = android.os.SystemClock.uptimeMillis()
+    val cancel = MotionEvent.obtain(time, time, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+    coordinateTapDetector.onTouchEvent(cancel)
+    cancel.recycle()
+    if (pending?.target != null) emitState()
+    pending?.promise?.reject(error)
+  }
+
+  private fun coordinateTargetIsCurrent(target: CoordinateTarget): Boolean =
+    !disposed && coordinator.hasDocument && coordinator.generation == target.generation &&
+      coordinator.activePageId() == target.pageId &&
+      coordinator.page(coordinator.activePageIndex).geometryRevision == target.geometryRevision
+
+  private fun finishInteractionForLifecycle() {
+    if (isPickingPageCoords) cancelCoordinateRequest()
+    textOverlay.finishForLifecycle()
+  }
 
   override fun undo() {
     runOnMainSync { runHistoryCommand(surface::undo) }
@@ -776,7 +878,7 @@ class HybridInkSignView internal constructor(
     val bounds = displayedTargetBounds(slot, page)
     viewportRequestID += 1L
     val requestId = viewportRequestID
-    textOverlay.finishForLifecycle()
+    finishInteractionForLifecycle()
     surface.switchPage(checkNotNull(coordinator.pageIndexForId(page.id)))
     val center = rule?.let { (it.left + it.right) / 2.0 } ?: (bounds.left + bounds.right) / 2.0
     val request = ViewportRequest.FocusRule(
@@ -870,7 +972,7 @@ class HybridInkSignView internal constructor(
     checkMainThread()
     if (disposed) return
     surface.withStateTransaction {
-      textOverlay.finishForLifecycle()
+      finishInteractionForLifecycle()
       command()
     }
   }
@@ -886,7 +988,7 @@ class HybridInkSignView internal constructor(
       val generation = coordinator.generation
       val pageIndex = surface.currentPageInfo().pageIndex
       surface.withStateTransaction {
-        textOverlay.finishForLifecycle()
+        finishInteractionForLifecycle()
         surface.transitionToMode(enabled = false, viewport = ViewportRequest.Preserve)
         if (disposed || requestID != viewportRequestID) throw operationCancelled()
         textOverlay.armPlacement(generation, options)
@@ -923,6 +1025,7 @@ class HybridInkSignView internal constructor(
     pageNavigationRequestID += 1L
     val requestID = pageNavigationRequestID
     if (target == current.pageIndex) return
+    if (isPickingPageCoords) cancelCoordinateRequest()
     val requestGeneration = coordinator.generation
     if (!Handler(Looper.getMainLooper()).post {
         if (disposed || coordinator.generation != requestGeneration ||
@@ -930,7 +1033,7 @@ class HybridInkSignView internal constructor(
         ) return@post
         try {
           surface.withStateTransaction {
-            textOverlay.finishForLifecycle()
+            finishInteractionForLifecycle()
             surface.switchPage(target)
           }
         } catch (error: Throwable) {
@@ -1023,6 +1126,7 @@ class HybridInkSignView internal constructor(
 
   private fun cancelPresentationRequests() {
     runOnMainSync {
+      cancelCoordinateRequest()
       viewportRequestID += 1L
       pageNavigationRequestID += 1L
     }
@@ -1094,7 +1198,7 @@ class HybridInkSignView internal constructor(
     creatingDocument: Boolean = false,
   ) {
     checkMainThread()
-    surface.withStateTransaction { textOverlay.finishForLifecycle() }
+    surface.withStateTransaction { finishInteractionForLifecycle() }
     surface.requireStructuralMutationReady(creatingDocument)
   }
 
@@ -1102,7 +1206,7 @@ class HybridInkSignView internal constructor(
     checkMainThread()
     if (disposed) throw operationCancelled()
     return coordinator.beginOperation {
-      surface.withStateTransaction { textOverlay.finishForLifecycle() }
+      surface.withStateTransaction { finishInteractionForLifecycle() }
     }
   }
 
@@ -1206,7 +1310,7 @@ class HybridInkSignView internal constructor(
     surface.requireModeTransitionReady()
     viewportRequestID += 1L
     surface.withStateTransaction {
-      textOverlay.finishForLifecycle()
+      finishInteractionForLifecycle()
       surface.transitionToMode(edit, request)
     }
   }
@@ -1237,6 +1341,7 @@ class HybridInkSignView internal constructor(
       pendingPromises.clear()
       pending
     }
+    cancelCoordinateRequest()
     promises.forEach { promise -> promise.reject(operationCancelled()) }
     pageInputCoordinator.close()
     textOverlay.dispose()
@@ -1272,7 +1377,8 @@ class HybridInkSignView internal constructor(
       canUndo = lastInkState.canUndo,
       canRedo = lastInkState.canRedo,
       isDirty = lastInkState.isDirty,
-      mode = textOverlay.interactionMode(),
+      mode = if (isPickingPageCoords) InteractionMode.PAGECOORDS else textOverlay.interactionMode(),
+      error = loadError?.let { Variant_NullType_String.create(it) } ?: Variant_NullType_String.create(NullType.NULL),
     )
     if (value == lastPublicState) return
     lastPublicState = value

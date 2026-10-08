@@ -14,10 +14,13 @@ extension InkSignView {
     guard let state = documentCoordinator.document else { return }
     let index = state.document.index(for: page)
     guard index >= 0, index < state.pages.count else { return }
+    if let target = pendingStructuralPresentationPageID, state.pages[index].id != target {
+      return
+    }
 
     if index != state.activePageIndex {
       cancelPendingPageSwitch()
-      textInteractionOverlay.finishForLifecycle()
+      finishInteractionForLifecycle()
       let wasEditing = editMode
       cancelActiveStroke()
       setInteractionMode(editing: false, interactionsEnabled: false)
@@ -54,7 +57,7 @@ extension InkSignView {
     if pageIndex == state.activePageIndex { return try currentPageInfo() }
 
     cancelPendingPageSwitch()
-    textInteractionOverlay.finishForLifecycle()
+    finishInteractionForLifecycle()
     let wasEditing = editMode
     cancelActiveStroke()
     setInteractionMode(editing: false, interactionsEnabled: false)
@@ -87,12 +90,22 @@ extension InkSignView {
           overlayTransformPage == state.activePage.id,
           pageToOverlayTransform != nil else { return }
 
+    let viewport = pendingPageSwitchViewport.flatMap { viewportTarget(for: $0) }
+    if pendingPageSwitchViewport != nil && viewport == nil { return }
     pendingPageSwitchID = nil
-    installCommittedDrawing()
-    setInteractionMode(editing: pendingPageSwitchEditing)
+    pendingPageSwitchViewport = nil
+    let wasEditing = pendingPageSwitchEditing
     pendingPageSwitchEditing = false
     let completion = pendingPageSwitchCompletion
     pendingPageSwitchCompletion = nil
+    if let viewport, !applyViewport(target: viewport) {
+      pendingStructuralPresentationPageID = nil
+      completion?(.failure(ViewportError.notReady))
+      return
+    }
+    pendingStructuralPresentationPageID = nil
+    installCommittedDrawing()
+    setInteractionMode(editing: wasEditing)
     if let completion {
       do {
         completion(.success(toPublicPageInfo(try currentPageInfo())))
@@ -107,6 +120,8 @@ extension InkSignView {
     pendingPageSwitchCompletion = nil
     pendingPageSwitchID = nil
     pendingPageSwitchEditing = false
+    pendingPageSwitchViewport = nil
+    pendingStructuralPresentationPageID = nil
     completion?(.failure(ViewportError.cancelled))
   }
 }

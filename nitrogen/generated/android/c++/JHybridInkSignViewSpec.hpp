@@ -98,6 +98,7 @@ namespace margelo::nitro::inksignpdf {
     void nextPage() override;
     void previousPage() override;
     Viewport getViewport() override;
+    std::shared_ptr<Promise<PageCoords>> getPageCoords() override;
     bool hasInk() override;
     std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) override;
     std::shared_ptr<Promise<void>> setInkMode(const std::optional<ViewportOptions>& viewport) override;

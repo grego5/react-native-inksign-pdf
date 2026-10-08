@@ -17,10 +17,10 @@ import com.facebook.proguard.annotations.DoNotStrip
 @Keep
 enum class InteractionMode(@DoNotStrip @Keep val value: Int) {
   VIEW(0),
-  DRAW(1),
-  TEXTPLACEMENT(2),
-  TEXTSELECTED(3),
-  TEXTEDITING(4);
+  INK(1),
+  TEXTADD(2),
+  TEXTEDIT(3),
+  PAGECOORDS(4);
 
   companion object
 }

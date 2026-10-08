@@ -1,10 +1,11 @@
 import { argumentError } from './publicArguments';
 import type { InkSignView } from './InkSignView.nitro';
 
-/** React owns attachment; native owns requests once open() is dispatched. */
+/** React owns session initialization and attachment; native owns dispatched requests. */
 export function createViewConnection() {
   let native: InkSignView | null = null;
   let mounted = true;
+  let initialized = false;
   const pending: { dispatch: (native: InkSignView) => void; reject: (reason: unknown) => void }[] = [];
 
   function cancelPending(message: string) {
@@ -42,16 +43,24 @@ export function createViewConnection() {
       native = value;
       dispatch();
     },
-    mount() {
+    mount(initialize?: () => Promise<unknown>) {
       mounted = true;
+      if (initialized) return;
+      initialized = true;
+      if (initialize) {
+        // Native reports load errors through onStateChange; cancellation is silent.
+        void initialize().catch(() => {});
+      }
     },
     unmount() {
       mounted = false;
-      cancelPending('The PDF view was unmounted before native attachment');
       // React's Strict Mode immediately replays effects. Release the
-      // native reference after that replay, while rejecting calls immediately.
+      // attachment and pending requests only if this session stays unmounted.
       void Promise.resolve().then(() => {
-        if (!mounted) native = null;
+        if (!mounted) {
+          cancelPending('The PDF view was unmounted before native attachment');
+          native = null;
+        }
       });
     },
   };

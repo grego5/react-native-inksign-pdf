@@ -26,21 +26,26 @@
 - Follow the shared [document operation contract](../architecture.md#document-operations).
   Native promise admission is FIFO. Opening clears PDFView presentation/input
   after preceding document work finishes, then loads a module-owned working copy
-  on the serial PDF queue. Immediate close invalidates pending publication.
+  on the serial PDF queue. New-document generations are allocated at admission
+  and retained through initial publication. Immediate close invalidates pending publication.
 - Install only the current candidate, then resolve opening after PDFView and the
-  active overlay are ready. A current open failure leaves the view empty.
+  active overlay are ready. Completion is claimed before viewport mutation;
+  layout callbacks cannot reenter settlement. A current open failure leaves the view empty.
 - Cancellation invalidates queued publication immediately. The PDF queue retains
   resources used by running work until cleanup can safely release them.
 - Page assembly prepares and validates a detached candidate. Failed, cancelled,
   or stale mutations leave the published document intact.
 - Publication updates the document, page order, active page, and structural
-  dirty state together.
+  dirty state together. Structural commands resolve after the active PDFKit page,
+  overlay, transform, and requested viewport are ready, using the navigation gate.
+  Installation retains its target page until completion; intermediate PDFKit page
+  notifications do not change the coordinator selection.
 - `addPages()` selects the current, first added, or last added page in the
   candidate; its result describes the page published as active.
 - Stable page identity and page-local history follow pages through append,
   removal, and movement.
 - `rotatePage()` updates coordinator-owned orientation and geometry revision.
-  Main-thread code applies it to the in-memory PDFKit page and rebuilds overlays.
+  Main-thread code applies it to the in-memory PDFKit page and relayouts its presentation.
   Working bytes, source geometry, page identity, and undo/redo are retained.
   Page assembly rebinds pending orientation; [export](export.md) writes it to PDF
   metadata. Canonical target geometry and annotation local layout remain unchanged.

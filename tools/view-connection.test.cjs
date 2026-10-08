@@ -58,3 +58,17 @@ test('native open errors settle deferred requests and later opens still work', a
   connection.attach({ open: async () => ({ pageIndex: 1 }) });
   assert.equal((await open(connection, '/valid.pdf')).pageIndex, 1);
 });
+
+test('Strict Mode replay preserves initialization waiting for attachment', async () => {
+  const connection = createViewConnection();
+  const calls = [];
+  let initialOpen;
+  const initialize = () => (initialOpen = open(connection, '/initial.pdf'));
+  connection.mount(initialize);
+  connection.unmount();
+  connection.mount(initialize);
+  await Promise.resolve();
+  connection.attach({ open: async path => { calls.push(path); return { pageIndex: 0 }; } });
+  assert.equal((await initialOpen).pageIndex, 0);
+  assert.deepEqual(calls, ['/initial.pdf']);
+});

@@ -108,7 +108,7 @@ extension InkSignView {
       guard self.documentCoordinator.document != nil else { return Promise<Void>.resolved() }
       try self.requireViewportReady(request: .preserve)
       self.fieldFocusRequestID &+= 1
-      self.textInteractionOverlay.finishForLifecycle()
+      self.finishInteractionForLifecycle()
       self.setInteractionMode(editing: false)
       try self.textInteractionOverlay.armPlacement(generation: self.documentCoordinator.generation,
                                                   options: options)
@@ -390,7 +390,7 @@ extension InkSignView {
               self.documentCoordinator.document?.activePage.id == handle.pageID else {
           result.reject(TextError.cancelled); return
         }
-        self.textInteractionOverlay.finishForLifecycle()
+        self.finishInteractionForLifecycle()
         guard let viewportTarget = self.fieldFocusTarget(ruleY: rule?.y ?? bounds.midY,
           horizontalFocus: rule.map { ($0.minX + $0.maxX) / 2 } ?? bounds.midX, zoom: options?.zoom ?? 2,
           verticalAnchor: options?.verticalAnchor ?? .center, edgeOffset: options?.edgeOffset ?? 0),

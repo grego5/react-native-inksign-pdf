@@ -43,9 +43,13 @@ import NitroModules
 /// Serializes cancellation and worker completion onto the promise's owning
 /// thread so a late worker result cannot settle an already-cancelled command.
 final class InkSignPdfOperationPromise<Value>: @unchecked Sendable {
-  let promise = Promise<Value>()
+  let promise: Promise<Value>
   private let lock = NSLock()
   private var settled = false
+
+  init(promise: Promise<Value> = Promise<Value>()) {
+    self.promise = promise
+  }
 
   func resolve(_ value: Value) {
     settle(.success(value))
@@ -353,7 +357,7 @@ final class InkSignPdfDocumentCoordinator {
       lock.unlock()
       return nil
     }
-    if type == .open { generation &+= 1 }
+    if type == .open || (type == .structural && document == nil) { generation &+= 1 }
     let token = OperationToken(id: UUID(), generation: generation, type: type)
     activeOperation = token
     operationPublishedDocument = false
@@ -553,7 +557,6 @@ final class InkSignPdfDocumentCoordinator {
           generation == operation.generation, activeOperation?.id == operation.id,
           case nil = document else { return false }
     document = candidate
-    generation &+= 1
     pendingArtifacts.remove(candidate.workingURL)
     structuralDirty = true
     return true

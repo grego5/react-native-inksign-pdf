@@ -33,6 +33,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
+// Forward declaration of `PageCoords` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 // Forward declaration of `TextDirection` to properly resolve imports.
@@ -56,6 +58,7 @@ namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
 #include "Viewport.hpp"
+#include "PageCoords.hpp"
 #include <memory>
 #include "HybridAnalyzedPageSpec.hpp"
 #include "TextDirection.hpp"
@@ -136,6 +139,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void nextPage() = 0;
       virtual void previousPage() = 0;
       virtual Viewport getViewport() = 0;
+      virtual std::shared_ptr<Promise<PageCoords>> getPageCoords() = 0;
       virtual bool hasInk() = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) = 0;
       virtual std::shared_ptr<Promise<void>> setInkMode(const std::optional<ViewportOptions>& viewport) = 0;

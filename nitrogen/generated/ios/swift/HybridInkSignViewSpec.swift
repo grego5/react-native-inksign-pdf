@@ -39,6 +39,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func nextPage() throws -> Void
   func previousPage() throws -> Void
   func getViewport() throws -> Viewport
+  func getPageCoords() throws -> Promise<PageCoords>
   func hasInk() throws -> Bool
   func getPage(pageIndex: Double?) throws -> Promise<(any HybridAnalyzedPageSpec)>
   func setInkMode(viewport: ViewportOptions?) throws -> Promise<Void>

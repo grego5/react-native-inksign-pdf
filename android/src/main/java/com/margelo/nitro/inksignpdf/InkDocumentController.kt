@@ -107,6 +107,7 @@ internal class InkDocumentController(
   private var doubleTapZoom = DEFAULT_DOUBLE_TAP_ZOOM
   private var doubleTapEntersEditMode = false
   var onDoubleTapEditMode: (() -> Unit)? = null
+  internal var suppressTapActions = false
   var onViewportChanged: (() -> Unit)? = null
   var onVisibleTilesReady: (() -> Unit)? = null
   var onVisibleTilesFailed: ((Long, Int, Long) -> Unit)? = null
@@ -836,6 +837,7 @@ internal class InkDocumentController(
     override fun onDown(event: MotionEvent): Boolean = true
 
     override fun onDoubleTap(event: MotionEvent): Boolean {
+      if (suppressTapActions) return true
       val currentViewport = viewport ?: return true
       if (!currentViewport.isFitted()) {
         applyViewport(ViewportRequest.Fit, animated = true)

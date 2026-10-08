@@ -19,14 +19,14 @@ public extension InteractionMode {
     switch string {
       case "view":
         self = .view
-      case "draw":
-        self = .draw
-      case "textPlacement":
-        self = .textplacement
-      case "textSelected":
-        self = .textselected
-      case "textEditing":
-        self = .textediting
+      case "ink":
+        self = .ink
+      case "textAdd":
+        self = .textadd
+      case "textEdit":
+        self = .textedit
+      case "pageCoords":
+        self = .pagecoords
       default:
         return nil
     }
@@ -39,14 +39,14 @@ public extension InteractionMode {
     switch self {
       case .view:
         return "view"
-      case .draw:
-        return "draw"
-      case .textplacement:
-        return "textPlacement"
-      case .textselected:
-        return "textSelected"
-      case .textediting:
-        return "textEditing"
+      case .ink:
+        return "ink"
+      case .textadd:
+        return "textAdd"
+      case .textedit:
+        return "textEdit"
+      case .pagecoords:
+        return "pageCoords"
     }
   }
 }

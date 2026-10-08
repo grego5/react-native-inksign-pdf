@@ -87,6 +87,14 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     };
   }
   
+  // pragma MARK: std::function<void(const PageCoords& /* result */)>
+  Func_void_PageCoords create_Func_void_PageCoords(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeInkSignPdf::Func_void_PageCoords::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const PageCoords& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
   // pragma MARK: std::function<void(const std::shared_ptr<HybridAnalyzedPageSpec>& /* result */)>
   Func_void_std__shared_ptr_HybridAnalyzedPageSpec_ create_Func_void_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftClosureWrapper) noexcept {
     auto swiftClosure = ReactNativeInkSignPdf::Func_void_std__shared_ptr_HybridAnalyzedPageSpec_::fromUnsafe(swiftClosureWrapper);

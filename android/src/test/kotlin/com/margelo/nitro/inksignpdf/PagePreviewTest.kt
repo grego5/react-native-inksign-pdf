@@ -71,9 +71,9 @@ class PagePreviewTest {
     assertEquals(1.25, value.key.targetZoom, 0.0000001)
     assertEquals(PagePoint(700.0, 800.0), value.key.targetFocus)
     assertEquals(3L, value.key.targetContentRevision)
-    assertEquals(600, value.request.widthPx)
-    assertEquals(800, value.request.heightPx)
-    assertEquals(2.5, value.request.scale, 0.0000001)
+    assertEquals(1_366, value.request.widthPx)
+    assertEquals(2_048, value.request.heightPx)
+    assertEquals(2_048.0 / 1_500.0, value.request.scale, 0.0000001)
     assertEquals(1, value.request.key.pageIndex)
     assertEquals(listOf(ink), value.inkPaths)
   }

@@ -156,9 +156,9 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
     canvasView.isUserInteractionEnabled = false
   }
 
-  func install(document: PDFDocument, generation: UInt64, refreshGeometry: Bool = false) {
+  func install(document: PDFDocument, generation: UInt64) {
     let identity = ObjectIdentifier(document)
-    guard refreshGeometry || documentIdentity != identity || self.generation != generation else { return }
+    guard documentIdentity != identity || self.generation != generation else { return }
     reset()
     documentIdentity = identity
     self.generation = generation

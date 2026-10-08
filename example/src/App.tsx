@@ -28,6 +28,7 @@ export default function App() {
     canRedo: false,
     isDirty: false,
     mode: 'view',
+    error: null,
   });
 
   function handleStateChange(nextState: ViewerState) {
@@ -68,7 +69,7 @@ export default function App() {
   }
 
   function toggleMode() {
-    void transitionMode(state.mode === 'draw' ? 'view' : 'edit');
+    void transitionMode(state.mode === 'ink' ? 'view' : 'edit');
   }
 
   function fitPage() {
@@ -78,7 +79,7 @@ export default function App() {
   async function toggleTextPlacement() {
     const inkSignView = inkSignViewRef.current;
     if (inkSignView === null || pageInfo === null) return;
-    const placementArmed = modeRef.current === 'textPlacement';
+    const placementArmed = modeRef.current === 'textAdd';
 
     try {
       if (placementArmed) {
@@ -238,7 +239,7 @@ export default function App() {
           </View>
 
           <View style={styles.row}>
-            <Action label={state.mode === 'draw' ? 'View' : 'Sign'} onPress={toggleMode} />
+            <Action label={state.mode === 'ink' ? 'View' : 'Sign'} onPress={toggleMode} />
             <Action label="Fit" onPress={fitPage} />
             <Action
               label="Undo"
@@ -261,7 +262,7 @@ export default function App() {
             <Action
               label="Text +"
               disabled={pageInfo === null}
-              active={state.mode === 'textPlacement'}
+              active={state.mode === 'textAdd'}
               onPress={() => void toggleTextPlacement()}
             />
             <Action

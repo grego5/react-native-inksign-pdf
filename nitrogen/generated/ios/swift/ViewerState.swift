@@ -18,7 +18,7 @@ public extension ViewerState {
   /**
    * Create a new instance of `ViewerState`.
    */
-  init(documentId: Variant_NullType_String?, canUndo: Bool, canRedo: Bool, isDirty: Bool, mode: InteractionMode) {
+  init(documentId: Variant_NullType_String?, canUndo: Bool, canRedo: Bool, isDirty: Bool, mode: InteractionMode, error: Variant_NullType_String?) {
     self.init({ () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
       if let __unwrappedValue = documentId {
         return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
@@ -32,7 +32,20 @@ public extension ViewerState {
       } else {
         return .init()
       }
-    }(), canUndo, canRedo, isDirty, mode)
+    }(), canUndo, canRedo, isDirty, mode, { () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
+      if let __unwrappedValue = error {
+        return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
+          switch __unwrappedValue {
+            case .first(let __value):
+              return bridge.create_std__variant_nitro__NullType__std__string_(margelo.nitro.NullType.null)
+            case .second(let __value):
+              return bridge.create_std__variant_nitro__NullType__std__string_(std.string(__value))
+          }
+        }().variant)
+      } else {
+        return .init()
+      }
+    }())
   }
 
   @inline(__always)
@@ -77,5 +90,29 @@ public extension ViewerState {
   @inline(__always)
   var mode: InteractionMode {
     return self.__mode
+  }
+  
+  @inline(__always)
+  var error: Variant_NullType_String? {
+    return { () -> Variant_NullType_String? in
+      if bridge.has_value_std__optional_std__variant_nitro__NullType__std__string__(self.__error) {
+        let __unwrapped = bridge.get_std__optional_std__variant_nitro__NullType__std__string__(self.__error)
+        return { () -> Variant_NullType_String in
+          let __variant = bridge.std__variant_nitro__NullType__std__string_(__unwrapped)
+          switch __variant.index() {
+            case 0:
+              let __actual = __variant.get_0()
+              return .first(NullType.null)
+            case 1:
+              let __actual = __variant.get_1()
+              return .second(String(__actual))
+            default:
+              fatalError("Variant can never have index \(__variant.index())!")
+          }
+        }()
+      } else {
+        return nil
+      }
+    }()
   }
 }

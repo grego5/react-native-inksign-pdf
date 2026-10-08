@@ -98,6 +98,14 @@ export interface TextSelection {
   pageId: string
 }
 
+/** One tap in displayed top-left page points, matching viewport command coordinates. */
+export interface PageCoords {
+  pageId: string
+  pageIndex: number
+  x: number
+  y: number
+}
+
 /** Prepared source analysis and synchronous text operations for one stable page. */
 export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   resolveText(options: ResolveTextOptions): TextId
@@ -155,14 +163,16 @@ export interface ViewerState {
   canRedo: boolean
   isDirty: boolean
   mode: InteractionMode
+  /** Latest document-load failure; cleared when another load starts. */
+  error: string | null
 }
 
 export type InteractionMode =
   | 'view'
-  | 'draw'
-  | 'textPlacement'
-  | 'textSelected'
-  | 'textEditing'
+  | 'ink'
+  | 'textAdd'
+  | 'textEdit'
+  | 'pageCoords'
 
 export interface ViewportOptions {
   /** Canonical page focus coordinates; x and y must be supplied together. */
@@ -235,6 +245,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   nextPage(): void
   previousPage(): void
   getViewport(): Viewport
+  /** Enters pageCoords mode on the active page without changing the viewport. One tap resolves and returns to view mode; page/mode changes or teardown cancel it. */
+  getPageCoords(): Promise<PageCoords>
   /** Returns whether the active page has committed ink; undo, redo, clear, and page changes are reflected. */
   hasInk(): boolean
   /** Prepares source analysis for the captured or explicitly indexed page without navigating. */

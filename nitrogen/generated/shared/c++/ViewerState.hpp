@@ -49,10 +49,11 @@ namespace margelo::nitro::inksignpdf {
     bool canRedo     SWIFT_PRIVATE;
     bool isDirty     SWIFT_PRIVATE;
     InteractionMode mode     SWIFT_PRIVATE;
+    std::optional<std::variant<nitro::NullType, std::string>> error     SWIFT_PRIVATE;
 
   public:
     ViewerState() = default;
-    explicit ViewerState(std::optional<std::variant<nitro::NullType, std::string>> documentId, bool canUndo, bool canRedo, bool isDirty, InteractionMode mode): documentId(documentId), canUndo(canUndo), canRedo(canRedo), isDirty(isDirty), mode(mode) {}
+    explicit ViewerState(std::optional<std::variant<nitro::NullType, std::string>> documentId, bool canUndo, bool canRedo, bool isDirty, InteractionMode mode, std::optional<std::variant<nitro::NullType, std::string>> error): documentId(documentId), canUndo(canUndo), canRedo(canRedo), isDirty(isDirty), mode(mode), error(error) {}
 
   public:
     friend bool operator==(const ViewerState& lhs, const ViewerState& rhs) = default;
@@ -72,7 +73,8 @@ namespace margelo::nitro {
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canUndo"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canRedo"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty"))),
-        JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode")))
+        JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode"))),
+        JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "error")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::ViewerState& arg) {
@@ -82,6 +84,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "canRedo"), JSIConverter<bool>::toJSI(runtime, arg.canRedo));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "isDirty"), JSIConverter<bool>::toJSI(runtime, arg.isDirty));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "mode"), JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::toJSI(runtime, arg.mode));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "error"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.error));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -97,6 +100,7 @@ namespace margelo::nitro {
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canRedo")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty")))) return false;
       if (!JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode")))) return false;
+      if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "error")))) return false;
       return true;
     }
   };

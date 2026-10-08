@@ -25,6 +25,7 @@ import type {
   FieldFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
+  PageCoords,
   TextAnnotationBounds,
   TextAnnotationOptions,
   TextKeyOccurrence,
@@ -43,7 +44,7 @@ import type {
   Viewport,
   ViewportOptions,
   AndroidFallbackFont,
-  InkSignViewProps,
+  InkSignViewProps as InkSignViewNativeProps,
   ViewerState,
   InteractionMode,
   InkSignView as InkSignViewNativeHandle,
@@ -56,6 +57,7 @@ export type {
   FieldFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
+  PageCoords,
   TextAnnotationBounds,
   TextAnnotationOptions,
   TextKeyOccurrence,
@@ -74,7 +76,6 @@ export type {
   Viewport,
   ViewportOptions,
   AndroidFallbackFont,
-  InkSignViewProps,
   ViewerState,
   InteractionMode,
   ResolveTextOptions,
@@ -89,21 +90,29 @@ export type {
 export type InkSignViewHandle = InkSignViewMethods &
   Pick<InkSignViewNativeHandle, '__type' | 'name' | 'toString' | 'equals' | 'dispose'>;
 
-const NativeInkSignView = getHostComponent<InkSignViewProps, InkSignViewMethods>(
+const NativeInkSignView = getHostComponent<InkSignViewNativeProps, InkSignViewMethods>(
   'InkSignView',
   () => InkSignViewConfig,
 );
 
 type NativeInkSignViewProps = React.ComponentProps<typeof NativeInkSignView>;
-type InkSignViewComponentProps = Omit<
+export type InkSignViewProps = Omit<
   NativeInkSignViewProps,
   'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomedInChange'
 > & {
-  onStateChange?: InkSignViewProps['onStateChange'];
-  onPageChange?: InkSignViewProps['onPageChange'];
-  onZoomedInChange?: InkSignViewProps['onZoomedInChange'];
-  onTextSelectionChange?: InkSignViewProps['onTextSelectionChange'];
+  /** Local PDF path or file:// URI. */
+  initialDocument?: string;
+  onStateChange?: InkSignViewNativeProps['onStateChange'];
+  onPageChange?: InkSignViewNativeProps['onPageChange'];
+  onZoomedInChange?: InkSignViewNativeProps['onZoomedInChange'];
+  onTextSelectionChange?: InkSignViewNativeProps['onTextSelectionChange'];
 };
+
+function validateDocumentPath(path: string): void {
+  if (typeof path !== 'string' || path.trim() === '') {
+    throw argumentError('invalid_document_path', 'A non-empty PDF path or file URI is required');
+  }
+}
 
 function callAsync<T>(validate: () => void, invoke: () => Promise<T>): Promise<T> {
   try {
@@ -187,9 +196,7 @@ function createValidatedHandle(
     open(path, viewport) {
       return callAsync(
         () => {
-          if (typeof path !== 'string' || path.trim() === '') {
-            throw argumentError('invalid_document_path', 'A non-empty PDF path is required');
-          }
+          validateDocumentPath(path);
           validateViewportOptions(viewport);
         },
         () => connection.invoke(native => native.open(path, viewport)),
@@ -202,6 +209,7 @@ function createValidatedHandle(
         }
       }, () => connection.invoke(native => native.close(cancelPending), cancelPending === true));
     },
+    getPageCoords: () => connection.invoke(native => native.getPageCoords()),
     addPages(options) {
       return callAsync(
         () => validateAddPagesOptions(options),
@@ -293,16 +301,25 @@ function createValidatedHandle(
   return handle;
 }
 
-export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewComponentProps>(
+export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>(
   (props, ref) => {
     validatePagerDirection(props.pagerDirection);
-    const { onStateChange, onPageChange, onTextSelectionChange, onZoomedInChange, ...nativeProps } =
-      props;
+    const {
+      initialDocument,
+      onStateChange,
+      onPageChange,
+      onTextSelectionChange,
+      onZoomedInChange,
+      ...nativeProps
+    } = props;
     const [connection] = useState(createViewConnection);
     const [handle] = useState(() => createValidatedHandle(connection));
     useLayoutEffect(() => {
-      connection.mount();
-    }, []);
+      if (initialDocument !== undefined) validateDocumentPath(initialDocument);
+      connection.mount(
+        initialDocument === undefined ? undefined : () => handle.open(initialDocument),
+      );
+    }, [initialDocument]);
     // Suspense disconnects layout effects while retaining the native view.
     useEffect(() => () => connection.unmount(), []);
     useImperativeHandle(ref, () => handle, []);

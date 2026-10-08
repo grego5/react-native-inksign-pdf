@@ -48,12 +48,15 @@ namespace margelo::nitro::inksignpdf {
       jboolean isDirty = this->getFieldValue(fieldIsDirty);
       static const auto fieldMode = clazz->getField<JInteractionMode>("mode");
       jni::local_ref<JInteractionMode> mode = this->getFieldValue(fieldMode);
+      static const auto fieldError = clazz->getField<JVariant_NullType_String>("error");
+      jni::local_ref<JVariant_NullType_String> error = this->getFieldValue(fieldError);
       return ViewerState(
         documentId != nullptr ? std::make_optional(documentId->toCpp()) : std::nullopt,
         static_cast<bool>(canUndo),
         static_cast<bool>(canRedo),
         static_cast<bool>(isDirty),
-        mode->toCpp()
+        mode->toCpp(),
+        error != nullptr ? std::make_optional(error->toCpp()) : std::nullopt
       );
     }
 
@@ -63,7 +66,7 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JViewerState::javaobject> fromCpp(const ViewerState& value) {
-      using JSignature = JViewerState(jni::alias_ref<JVariant_NullType_String>, jboolean, jboolean, jboolean, jni::alias_ref<JInteractionMode>);
+      using JSignature = JViewerState(jni::alias_ref<JVariant_NullType_String>, jboolean, jboolean, jboolean, jni::alias_ref<JInteractionMode>, jni::alias_ref<JVariant_NullType_String>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -72,7 +75,8 @@ namespace margelo::nitro::inksignpdf {
         value.canUndo,
         value.canRedo,
         value.isDirty,
-        JInteractionMode::fromCpp(value.mode)
+        JInteractionMode::fromCpp(value.mode),
+        value.error.has_value() ? JVariant_NullType_String::fromCpp(value.error.value()) : nullptr
       );
     }
   };
