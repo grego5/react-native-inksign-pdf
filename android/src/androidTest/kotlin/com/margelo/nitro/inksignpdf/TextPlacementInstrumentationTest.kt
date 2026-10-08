@@ -747,7 +747,7 @@ internal class TextPlacementInstrumentationTest {
       overlay.onInteractionModeChanged = { modes += overlay.interactionMode() }
       overlay.armPlacement(1L)
 
-      assertEquals(InteractionMode.TEXTPLACEMENT, overlay.interactionMode())
+      assertEquals(InteractionMode.TEXTADD, overlay.interactionMode())
       assertTrue(overlay.hasPendingPlacement())
       val outsidePage = checkNotNull(harness.surface.textPresentationSnapshot())
         .transform.map(PagePoint(-1.0, -1.0))
@@ -755,13 +755,13 @@ internal class TextPlacementInstrumentationTest {
       assertTrue(overlay.hasPendingPlacement())
 
       assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_000L))
-      assertEquals(InteractionMode.TEXTPLACEMENT, overlay.interactionMode())
+      assertEquals(InteractionMode.TEXTADD, overlay.interactionMode())
       assertEquals(0, editorCount(overlay))
       assertTrue(dispatch(overlay, MotionEvent.ACTION_MOVE, 151.0f, 151.0f, 1_010L))
       assertEquals(0, editorCount(overlay))
       assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 1_020L))
       assertFalse(overlay.hasPendingPlacement())
-      assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+      assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
       assertNotNull(overlay.editingAnnotationId())
       assertEquals(1, editorCount(overlay))
       assertTrue(
@@ -773,10 +773,10 @@ internal class TextPlacementInstrumentationTest {
       assertEquals(1.0, harness.surface.currentViewportState().zoom, 0.02)
       harness.surface.setKeyboardOcclusion(80.0)
       overlay.syncTransform()
-      assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+      assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
       assertNotNull(overlay.editingAnnotationId())
-      assertTrue(modes.contains(InteractionMode.TEXTPLACEMENT))
-      assertTrue(modes.contains(InteractionMode.TEXTEDITING))
+      assertTrue(modes.contains(InteractionMode.TEXTADD))
+      assertTrue(modes.contains(InteractionMode.TEXTEDIT))
 
       assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 290.0f, 290.0f, 1_040L))
       assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 290.0f, 290.0f, 1_060L))
@@ -977,7 +977,7 @@ internal class TextPlacementInstrumentationTest {
         activeOverlay.armPlacement(1L)
         assertTrue(dispatch(activeOverlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_100L))
         assertTrue(dispatch(activeOverlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 1_120L))
-        assertEquals(InteractionMode.TEXTEDITING, activeOverlay.interactionMode())
+        assertEquals(InteractionMode.TEXTEDIT, activeOverlay.interactionMode())
         originalGeneration = harness.coordinator.generation
         harness.surface.layout(0, 0, 0, 0)
       }
@@ -1101,7 +1101,7 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 2_100L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 2_120L))
         editorView(overlay).setText("committed on abort")
-        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
         publicStates.clear()
       }
 
@@ -1246,7 +1246,7 @@ internal class TextPlacementInstrumentationTest {
         dispatch(overlay, MotionEvent.ACTION_DOWN, point.x.toFloat(), point.y.toFloat(), 3_000L)
         dispatch(overlay, MotionEvent.ACTION_UP, point.x.toFloat(), point.y.toFloat(), 3_020L)
 
-        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
         val editor = overlay.getChildAt(0) as EditText
         editor.setSelection(1, 3)
         val result = overlay.increaseTextSize()
@@ -1255,7 +1255,7 @@ internal class TextPlacementInstrumentationTest {
         assertEquals("Hello", editor.text.toString())
         assertEquals(1, editor.selectionStart)
         assertEquals(3, editor.selectionEnd)
-        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
 
         editor.setText("Updated")
         overlay.finishForLifecycle()
@@ -1297,13 +1297,13 @@ internal class TextPlacementInstrumentationTest {
         val point = checkNotNull(harness.surface.textPresentationSnapshot())
           .transform.map(PagePoint(80.0, 80.0))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, point.x.toFloat(), point.y.toFloat(), 3_760L))
-        assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
+        assertEquals(InteractionMode.VIEW, overlay.interactionMode())
         assertEquals(null, overlay.editingAnnotationId())
         assertEquals(revisionBeforeHold, harness.activeHistoryRevision())
         assertEquals(16.0, checkNotNull(harness.surface.textPresentationSnapshot())
           .annotations.single().fontSize, 0.0)
         assertEquals(17.0, overlay.increaseTextSize(), 0.0)
-        assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
+        assertEquals(InteractionMode.VIEW, overlay.interactionMode())
         dispatch(overlay, MotionEvent.ACTION_DOWN, 290.0f, 290.0f, 3_800L)
         dispatch(overlay, MotionEvent.ACTION_UP, 290.0f, 290.0f, 3_820L)
         assertEquals(InteractionMode.VIEW, overlay.interactionMode())
@@ -1338,7 +1338,7 @@ internal class TextPlacementInstrumentationTest {
         dispatch(overlay, MotionEvent.ACTION_MOVE, point.x.toFloat() + 40f, point.y.toFloat(), 4_560L)
         dispatch(overlay, MotionEvent.ACTION_UP, point.x.toFloat() + 40f, point.y.toFloat(), 4_580L)
         val moved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
-        assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
+        assertEquals(InteractionMode.VIEW, overlay.interactionMode())
         assertTrue(moved.position.x > original.position.x)
 
         val movedPoint = checkNotNull(harness.surface.textPresentationSnapshot())
@@ -1351,7 +1351,7 @@ internal class TextPlacementInstrumentationTest {
         val movedPoint = checkNotNull(harness.surface.textPresentationSnapshot())
           .transform.map(moved.position)
         dispatch(overlay, MotionEvent.ACTION_CANCEL, movedPoint.x.toFloat(), movedPoint.y.toFloat(), 5_260L)
-        assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
+        assertEquals(InteractionMode.VIEW, overlay.interactionMode())
         assertEquals(moved, checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single())
       }
     } finally {
@@ -1398,7 +1398,7 @@ internal class TextPlacementInstrumentationTest {
             originalPoint.y.toFloat(),
             3_960L,
           ))
-          assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
+          assertEquals(InteractionMode.VIEW, overlay.interactionMode())
           val revisionBeforeMove = harness.activeHistoryRevision()
 
           val scale = snapshot.transform.uniformScale() ?: 1.0
@@ -1436,7 +1436,7 @@ internal class TextPlacementInstrumentationTest {
           ))
           val moved = checkNotNull(harness.surface.textPresentationSnapshot())
             .annotations.single { it.id == annotationId }
-          assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
+          assertEquals(InteractionMode.VIEW, overlay.interactionMode())
           assertTrue(moved.position.x > original.position.x)
           assertEquals(revisionBeforeMove + 1L, harness.activeHistoryRevision())
 
@@ -1451,7 +1451,7 @@ internal class TextPlacementInstrumentationTest {
           val tapY = (movedOuter.top + movedOuter.bottom) / 2f
           assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tapX, tapY, downTime + 60L))
           assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tapX, tapY, downTime + 80L))
-          assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+          assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
           assertEquals(1, editorCount(overlay))
           assertEquals(revisionBeforeMove + 1L, harness.activeHistoryRevision())
         }
@@ -1517,7 +1517,7 @@ internal class TextPlacementInstrumentationTest {
       Thread.sleep(650L)
       harness.runOnMain {
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tapPoint.x.toFloat(), tapPoint.y.toFloat(), 6_650L))
-        assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
+        assertEquals(InteractionMode.VIEW, overlay.interactionMode())
         val scale = presentation.transform.uniformScale() ?: 1.0
         val horizontalPadding = textEditorPaddingPx(
           annotation.fontSize * scale,
@@ -1532,7 +1532,7 @@ internal class TextPlacementInstrumentationTest {
         val downY = outer.centerY()
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, downX, downY, 6_700L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_MOVE, downX + dragDeltaX, downY, 6_720L))
-        assertEquals(InteractionMode.TEXTSELECTED, overlay.interactionMode())
+        assertEquals(InteractionMode.VIEW, overlay.interactionMode())
 
         val preview = Bitmap.createBitmap(overlay.width, overlay.height, Bitmap.Config.ARGB_8888)
         try {
@@ -1600,7 +1600,7 @@ internal class TextPlacementInstrumentationTest {
         awayFocus = harness.surface.currentViewportState().focus
         assertEquals("Ada", editor.text.toString())
         assertEquals(3, editor.selectionStart)
-        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
         assertCaretIsOutsideView(editor, 3, overlay.width, overlay.height)
       }
       harness.waitForDetachedCaretFollow()
@@ -1673,7 +1673,7 @@ internal class TextPlacementInstrumentationTest {
           val event = MotionEvent.obtain(5_500L, time, action, x, 150f, 0)
           try { assertTrue(overlay.dispatchTouchEvent(event)) } finally { event.recycle() }
         }
-        assertEquals(InteractionMode.TEXTPLACEMENT, overlay.interactionMode())
+        assertEquals(InteractionMode.TEXTADD, overlay.interactionMode())
         assertEquals(0, editorCount(overlay))
         assertTrue(harness.surface.currentViewportState().focus.x != before.x)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_560L))
@@ -1692,7 +1692,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.armPlacement(1L)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_600L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_610L))
-        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
         assertEquals(1, editorCount(overlay))
         val editor = editorView(overlay)
         val panStart = listOf(
@@ -1717,7 +1717,7 @@ internal class TextPlacementInstrumentationTest {
         assertTrue(dispatch(overlay, MotionEvent.ACTION_MOVE, panStartX + 50f, panStartY, 5_640L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, panStartX + 50f, panStartY, 5_660L))
 
-        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
         assertEquals(1, editorCount(overlay))
         assertTrue(harness.surface.currentViewportState().focus.x != before.x)
       } finally {
@@ -1736,7 +1736,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.armPlacement(1L)
         assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_000L))
         assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_010L))
-        assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+        assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
         assertEquals(1, editorCount(overlay))
         val editor = editorView(overlay)
         assertTrue(editor.paddingLeft > 0)
@@ -1869,7 +1869,7 @@ internal class TextPlacementInstrumentationTest {
             if (expectedRtl) TextView.TEXT_DIRECTION_RTL else TextView.TEXT_DIRECTION_LTR,
             editor.textDirection,
           )
-          assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+          assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
           assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.isEmpty())
           val switchedBounds = editorPageBounds(editor)
           assertFrameNear(beforeBounds, switchedBounds)
@@ -2209,7 +2209,7 @@ internal class TextPlacementInstrumentationTest {
       val tapY = viewportHeightPx / 2f
       assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tapX, tapY, 7_000L))
       assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tapX, tapY, 7_010L))
-      assertEquals(InteractionMode.TEXTEDITING, overlay.interactionMode())
+      assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
       assertEquals(1, editorCount(overlay))
     }
     try {

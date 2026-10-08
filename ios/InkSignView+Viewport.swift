@@ -61,6 +61,80 @@ enum InkSignPdfTextViewportGeometry {
 }
 
 extension InkSignView {
+  func getPageCoords() throws -> Promise<PageCoords> {
+    try performOnMainSync {
+      guard !self.disposed else { throw LoadError.cancelled }
+      self.cancelCoordinateRequest()
+      let request = CoordinateRequest()
+      self.pendingPageCoords = request
+      // Admission follows FIFO; the interactive wait does not occupy that queue.
+      self.enqueueViewerCommand(presentation: true) {
+        guard self.pendingPageCoords === request else { throw LoadError.cancelled }
+        guard self.documentCoordinator.document != nil else { throw TextError.documentNotOpen }
+        try self.applyModeTransition(toEditing: false, request: .preserve)
+        guard self.pendingPageCoords === request,
+              let page = self.documentCoordinator.document?.activePage else { throw LoadError.cancelled }
+        request.target = CoordinateTarget(generation: self.documentCoordinator.generation,
+                                          pageID: page.id, geometryRevision: page.geometryRevision)
+        self.configureCoordinateTapPriority(in: self.documentView)
+        self.coordinateTapGestureRecognizer.isEnabled = true
+        self.emitChange()
+        return Promise<Void>.resolved()
+      }.catch { [weak self] error in
+        self?.performOnMain {
+          guard let self, self.pendingPageCoords === request else { return }
+          self.cancelCoordinateRequest(error: error)
+        }
+      }
+      return request.result.promise
+    }
+  }
+
+  private func configureCoordinateTapPriority(in view: UIView) {
+    for case let tap as UITapGestureRecognizer in view.gestureRecognizers ?? [] {
+      if tap !== coordinateTapGestureRecognizer { tap.require(toFail: coordinateTapGestureRecognizer) }
+    }
+    view.subviews.forEach { configureCoordinateTapPriority(in: $0) }
+  }
+
+  func cancelCoordinateRequest(error: Error = LoadError.cancelled) {
+    let pending = pendingPageCoords
+    pendingPageCoords = nil
+    coordinateTapGestureRecognizer.isEnabled = false
+    if pending?.target != nil { emitChange() }
+    pending?.result.reject(error)
+  }
+
+  @objc func handleCoordinateTap(_ recognizer: UITapGestureRecognizer) {
+    guard recognizer.state == .ended, !disposed,
+          let pending = pendingPageCoords,
+          let target = pending.target,
+          let document = documentCoordinator.document else { return }
+    guard coordinateTargetIsCurrent(target) else { cancelCoordinateRequest(); return }
+    let location = recognizer.location(in: documentView)
+    guard let page = documentView.page(for: location, nearest: false),
+          page === document.activePage.page else { return }
+    let index = document.activePageIndex
+    let targetPage = document.activePage
+    let point = documentView.convert(location, to: page)
+      .applying(targetPage.geometry.displayToPDFTransform.inverted())
+    let size = targetPage.geometry.displaySize
+    guard point.x.isFinite, point.y.isFinite,
+          point.x >= 0, point.x <= size.width,
+          point.y >= 0, point.y <= size.height else { return }
+    pendingPageCoords = nil
+    coordinateTapGestureRecognizer.isEnabled = false
+    emitChange()
+    pending.result.resolve(PageCoords(pageId: targetPage.id.uuidString, pageIndex: Double(index),
+                              x: Double(point.x), y: Double(point.y)))
+  }
+
+  func coordinateTargetIsCurrent(_ target: CoordinateTarget) -> Bool {
+    guard !disposed, let page = documentCoordinator.document?.activePage else { return false }
+    return documentCoordinator.generation == target.generation &&
+      page.id == target.pageID && page.geometryRevision == target.geometryRevision
+  }
+
   func applyPagerDirection() {
     performOnMain { [weak self] in self?.applyPagerDirectionNow() }
   }
@@ -213,6 +287,9 @@ extension InkSignView {
     }
     if pending.fitToPage, usableFitScale() == nil { return false }
     guard let target = openViewportTarget(for: pending) else { return false }
+    var completing = pending
+    completing.phase = .completing
+    pendingOpen = completing
     do {
       guard applyViewport(target: target),
             attachedOverlayPage == state.activePage.id,
@@ -220,15 +297,17 @@ extension InkSignView {
             pageToOverlayTransform != nil else {
         throw ViewportError.notReady
       }
+      guard pendingOpen?.operation.id == pending.operation.id,
+            documentCoordinator.isCurrent(pending.operation), !disposed else { return true }
       let pageInfo = toPublicPageInfo(try currentPageInfo())
-      setInteractionMode(editing: false)
+      applyInteractionMode(editing: false, interactionsEnabled: true)
       pendingOpen = nil
       documentCoordinator.settle(pending.operation, succeeded: true)
-      pending.promise.resolve(withResult: pageInfo)
+      pending.settlement.resolve(pageInfo)
       emitChange(force: true)
       return true
     } catch {
-      failOpenAttempt(error: error)
+      failOpenAttempt(error: error, pending: completing)
       return true
     }
   }
@@ -277,7 +356,7 @@ extension InkSignView {
     }
   }
 
-  private func viewportTarget(for request: ViewportRequest) -> ViewportTarget? {
+  func viewportTarget(for request: ViewportRequest) -> ViewportTarget? {
     let pageGeometry = documentCoordinator.document?.activePage.geometry ?? .empty
     switch request {
     case .preserve:

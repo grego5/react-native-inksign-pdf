@@ -25,6 +25,8 @@ namespace margelo::nitro::inksignpdf { struct TextSelection; }
 namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
+// Forward declaration of `PageCoords` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
@@ -80,6 +82,8 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "JAddPagesResult.hpp"
 #include "Viewport.hpp"
 #include "JViewport.hpp"
+#include "PageCoords.hpp"
+#include "JPageCoords.hpp"
 #include <memory>
 #include "HybridAnalyzedPageSpec.hpp"
 #include "JHybridAnalyzedPageSpec.hpp"
@@ -436,6 +440,22 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JViewport>()>("getViewport");
     auto __result = method(_javaPart);
     return __result->toCpp();
+  }
+  std::shared_ptr<Promise<PageCoords>> JHybridInkSignViewSpec::getPageCoords() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("getPageCoords");
+    auto __result = method(_javaPart);
+    return [&]() {
+      auto __promise = Promise<PageCoords>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
+        auto __result = jni::static_ref_cast<JPageCoords>(__boxedResult);
+        __promise->resolve(__result->toCpp());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
   }
   bool JHybridInkSignViewSpec::hasInk() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jboolean()>("hasInk");

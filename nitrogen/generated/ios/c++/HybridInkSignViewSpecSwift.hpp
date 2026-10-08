@@ -40,6 +40,8 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
+// Forward declaration of `PageCoords` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 // Forward declaration of `TextDirection` to properly resolve imports.
@@ -72,6 +74,7 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "ImagePageSize.hpp"
 #include "AddPagesActivePage.hpp"
 #include "Viewport.hpp"
+#include "PageCoords.hpp"
 #include <memory>
 #include "HybridAnalyzedPageSpec.hpp"
 #include "TextDirection.hpp"
@@ -316,6 +319,14 @@ namespace margelo::nitro::inksignpdf {
     }
     inline Viewport getViewport() override {
       auto __result = _swiftPart.getViewport();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<PageCoords>> getPageCoords() override {
+      auto __result = _swiftPart.getPageCoords();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

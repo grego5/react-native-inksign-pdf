@@ -37,6 +37,10 @@ final class InkSignPdfViewGestureDelegate: NSObject, UIGestureRecognizerDelegate
 
   func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                          shouldReceive touch: UITouch) -> Bool {
+    if let owner, gestureRecognizer === owner.coordinateTapGestureRecognizer {
+      return owner.isPickingPageCoords
+    }
+    if owner?.isPickingPageCoords == true { return false }
     guard let owner,
           gestureRecognizer === owner.doubleTapGestureRecognizer,
           let target = touch.view,
@@ -57,6 +61,7 @@ final class InkSignView: HybridInkSignViewSpec {
       case preparing
       case installing
       case awaitingReadiness
+      case completing
       case clearing
 
       var suppressesPresentationCallbacks: Bool {
@@ -65,11 +70,22 @@ final class InkSignView: HybridInkSignViewSpec {
     }
 
     let operation: InkSignPdfDocumentCoordinator.OperationToken
-    let promise: Promise<PageInfo>
+    let settlement: InkSignPdfOperationPromise<PageInfo>
     let zoom: Double?
     let focus: CGPoint?
     let fitToPage: Bool
     var phase: Phase = .preparing
+
+    init(operation: InkSignPdfDocumentCoordinator.OperationToken,
+         promise: Promise<PageInfo>, zoom: Double?, focus: CGPoint?, fitToPage: Bool,
+         phase: Phase = .preparing) {
+      self.operation = operation
+      self.settlement = InkSignPdfOperationPromise(promise: promise)
+      self.zoom = zoom
+      self.focus = focus
+      self.fitToPage = fitToPage
+      self.phase = phase
+    }
   }
 
   let container = UIView()
@@ -89,6 +105,8 @@ final class InkSignView: HybridInkSignViewSpec {
   var pageNavigationRequestID: UInt64 = 0
   var pendingPageSwitchID: UInt64?
   var pendingPageSwitchEditing = false
+  var pendingPageSwitchViewport: ViewportRequest?
+  var pendingStructuralPresentationPageID: UUID?
   var pendingPageSwitchCompletion: ((Result<PageInfo, Error>) -> Void)?
   var textKeyboardOcclusion: CGFloat = 0
   var pendingOpen: PendingOpen?
@@ -105,8 +123,24 @@ final class InkSignView: HybridInkSignViewSpec {
   var endedDrawingPageToOverlayTransform: CGAffineTransform?
   var endedDrawingTransactionID: UInt64?
   var nextDrawingTransactionID: UInt64 = 0
-  var lastChange: (Bool, Bool, Bool, String, String?)?
+  var lastChange: (Bool, Bool, Bool, String, String?, String?)?
   var documentID: String?
+  var loadError: String?
+  struct CoordinateTarget {
+    let generation: UInt64
+    let pageID: UUID
+    let geometryRevision: UInt64
+  }
+  final class CoordinateRequest {
+    let result = InkSignPdfOperationPromise<PageCoords>()
+    var target: CoordinateTarget?
+  }
+  var pendingPageCoords: CoordinateRequest?
+  var isPickingPageCoords: Bool { pendingPageCoords?.target != nil }
+
+  func interactionMode() -> InteractionMode {
+    isPickingPageCoords ? .pagecoords : textInteractionOverlay.interactionMode()
+  }
   var commandQueue: [ViewerCommand] = []
   var runningCommand: ViewerCommand?
 
@@ -137,6 +171,14 @@ final class InkSignView: HybridInkSignViewSpec {
     recognizer.numberOfTapsRequired = 2
     recognizer.delegate = pdfViewGestureDelegate
     recognizer.cancelsTouchesInView = true
+    return recognizer
+  }()
+
+  lazy var coordinateTapGestureRecognizer: UITapGestureRecognizer = {
+    let recognizer = UITapGestureRecognizer(target: self, action: #selector(handleCoordinateTap(_:)))
+    recognizer.delegate = pdfViewGestureDelegate
+    recognizer.cancelsTouchesInView = true
+    recognizer.isEnabled = false
     return recognizer
   }()
 
@@ -261,6 +303,7 @@ final class InkSignView: HybridInkSignViewSpec {
     ])
     documentView.pageOverlayViewProvider = overlayProvider
     documentView.addGestureRecognizer(doubleTapGestureRecognizer)
+    documentView.addGestureRecognizer(coordinateTapGestureRecognizer)
     documentView.addGestureRecognizer(textInteractionOverlay.placementTapRecognizer)
     configureDoubleTapGestureRecognition()
     overlayProvider.owner = self
@@ -296,6 +339,8 @@ final class InkSignView: HybridInkSignViewSpec {
 
   deinit {
     disposed = true
+    pendingPageCoords?.result.reject(LoadError.cancelled)
+    pendingPageCoords = nil
     pendingOpen = nil
     pageNavigationRequestID &+= 1
     textInteractionOverlay.discardForDisposal()
@@ -321,7 +366,7 @@ final class InkSignView: HybridInkSignViewSpec {
       self.cancelActiveStroke(clearLive: false)
       let pendingOpen = self.pendingOpen
       self.pendingOpen = nil
-      pendingOpen?.promise.reject(withError: LoadError.cancelled)
+      pendingOpen?.settlement.reject(LoadError.cancelled)
       self.pageSwitchRequestID &+= 1
       self.pageNavigationRequestID &+= 1
       self.documentView.document = nil

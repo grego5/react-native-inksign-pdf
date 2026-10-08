@@ -930,12 +930,11 @@ internal class TextInteractionOverlay(
   }
 
   internal fun interactionMode(): InteractionMode = when {
-    interactionState is InteractionState.Placing -> InteractionMode.TEXTPLACEMENT
-    interactionState is InteractionState.Editing -> InteractionMode.TEXTEDITING
-    interactionState is InteractionState.Selected -> InteractionMode.TEXTSELECTED
-    interactionState is InteractionState.Dragging ->
-      InteractionMode.TEXTSELECTED
-    surface.isEditMode -> InteractionMode.DRAW
+    interactionState is InteractionState.Placing -> InteractionMode.TEXTADD
+    interactionState is InteractionState.Editing -> InteractionMode.TEXTEDIT
+    interactionState is InteractionState.Selected -> InteractionMode.VIEW
+    interactionState is InteractionState.Dragging -> InteractionMode.VIEW
+    surface.isEditMode -> InteractionMode.INK
     else -> InteractionMode.VIEW
   }
 
@@ -1111,7 +1110,7 @@ internal class TextInteractionOverlay(
   private fun startViewportTouch(down: MotionEvent) {
     pauseCaretFollow()
     touchOwner = TouchOwner.VIEWPORT
-    surface.handleTextViewportTouch(down)
+    surface.handleViewportTouch(down)
   }
 
   private fun finishViewportTouch() {
@@ -1128,7 +1127,7 @@ internal class TextInteractionOverlay(
     if (touchOwner == TouchOwner.VIEWPORT && down != null) {
       val cancel = MotionEvent.obtain(down)
       cancel.action = MotionEvent.ACTION_CANCEL
-      surface.handleTextViewportTouch(cancel)
+      surface.handleViewportTouch(cancel)
       cancel.recycle()
     }
     finishViewportTouch()
@@ -1163,7 +1162,7 @@ internal class TextInteractionOverlay(
       startViewportTouch(down)
     }
     val handled = if (touchOwner == TouchOwner.VIEWPORT) {
-      surface.handleTextViewportTouch(event)
+      surface.handleViewportTouch(event)
       true
     } else super.dispatchTouchEvent(event)
     if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -1179,7 +1178,7 @@ internal class TextInteractionOverlay(
       viewportTouchPage = surface.textTransformSnapshot()?.let { it.generation to it.pageIndex }
     }
     val handled = when (touchOwner) {
-      TouchOwner.VIEWPORT -> { surface.handleTextViewportTouch(event); true }
+      TouchOwner.VIEWPORT -> { surface.handleViewportTouch(event); true }
       TouchOwner.DISCARD -> true
       TouchOwner.TEXT -> handleTextTouch(event)
     }
@@ -1197,7 +1196,7 @@ internal class TextInteractionOverlay(
       ) {
         pendingPlacementGesture = null
         startViewportTouch(down)
-        surface.handleTextViewportTouch(event)
+        surface.handleViewportTouch(event)
         return true
       }
       when (event.actionMasked) {
@@ -1284,7 +1283,7 @@ internal class TextInteractionOverlay(
       annotationGesture.cancel()
       startViewportTouch(touch.down)
       finishPendingTouch(touch)
-      surface.handleTextViewportTouch(event)
+      surface.handleViewportTouch(event)
       return true
     }
     if (annotation == null) {

@@ -14,6 +14,7 @@ const native = {
   setInkMode: async () => { calls.push('ink'); },
   setTextMode: async () => { calls.push('text'); },
   setViewMode: async () => { calls.push('view'); },
+  getPage: async () => { calls.push('page'); return { getTextEntries: () => [] }; },
 };
 
 function NativeView({ hybridRef }) {
@@ -136,5 +137,148 @@ test('mode promises are buffered before attachment and forward native rejection'
   } finally {
     native.setViewMode = originalViewMode;
     if (root) await act(async () => { root.unmount(); });
+  }
+});
+
+test('initialDocument opens before ref commands, ignores prop changes, and reloads on a new key', async () => {
+  calls.length = 0;
+  const ref = React.createRef();
+  const pages = [];
+  function Screen({ session, path }) {
+    React.useLayoutEffect(() => {
+      pages.push(ref.current.getPage());
+    }, [session]);
+    return React.createElement(InkSignView, { key: session, ref, initialDocument: path });
+  }
+  const render = (session, path) => React.createElement(React.StrictMode, null,
+    React.createElement(Screen, { session, path }));
+  let root;
+  try {
+    await act(async () => { root = create(render('first', '/session.pdf')); });
+    for (const page of await Promise.all(pages)) assert.deepEqual(page.getTextEntries(), []);
+    assert.equal(calls[0], '/session.pdf');
+    assert.equal(calls.filter(value => value === '/session.pdf').length, 1);
+    const firstHandle = ref.current;
+
+    await act(async () => { root.update(render('first', '/ignored.pdf')); });
+    assert.equal(ref.current, firstHandle);
+    assert.ok(!calls.includes('/ignored.pdf'));
+
+    await act(async () => { root.update(render('second', '/session.pdf')); });
+    await Promise.all(pages);
+    assert.notEqual(ref.current, firstHandle);
+    assert.equal(calls.filter(value => value === '/session.pdf').length, 2);
+    assert.ok(calls.lastIndexOf('/session.pdf') < calls.lastIndexOf('page'));
+    await assert.rejects(firstHandle.getPage(), { message: /^operation_cancelled:/ });
+  } finally {
+    if (root) await act(async () => { root.unmount(); });
+  }
+});
+
+test('initial load errors use the current callback and ignore retired sessions', async () => {
+  const originalOpen = native.open;
+  const pending = new Map();
+  native.open = path => new Promise((resolve, reject) => pending.set(path, { resolve, reject }));
+  const retiredErrors = [];
+  const firstErrors = [];
+  const latestErrors = [];
+  let root;
+  try {
+    await act(async () => {
+      root = create(React.createElement(InkSignView, {
+        key: 'old', initialDocument: '/old.pdf', onStateChange: state => retiredErrors.push(state),
+      }));
+    });
+    await act(async () => {
+      root.update(React.createElement(InkSignView, {
+        key: 'new', initialDocument: '/new.pdf', onStateChange: state => firstErrors.push(state),
+      }));
+    });
+    await act(async () => {
+      root.update(React.createElement(InkSignView, {
+        key: 'new', initialDocument: '/new.pdf', onStateChange: state => latestErrors.push(state),
+      }));
+    });
+    const failure = new Error('pdf_load_failed: unreadable PDF');
+    const snapshot = {
+      documentId: null, mode: 'view', canUndo: false, canRedo: false, isDirty: false,
+      error: failure.message,
+    };
+    await act(async () => {
+      pending.get('/old.pdf').reject(new Error('operation_cancelled: Retired session'));
+      // Native publishes the load failure before rejecting the initial open.
+      root.root.findByType(NativeView).props.onStateChange(snapshot);
+      pending.get('/new.pdf').reject(failure);
+    });
+    assert.deepEqual(retiredErrors, []);
+    assert.deepEqual(firstErrors, []);
+    assert.deepEqual(latestErrors, [snapshot]);
+  } finally {
+    native.open = originalOpen;
+    if (root) await act(async () => { root.unmount(); });
+  }
+});
+
+test('cancelled initial loading does not synthesize a viewer error', async () => {
+  const originalOpen = native.open;
+  const originalClose = native.close;
+  let rejectOpen;
+  native.open = () => new Promise((resolve, reject) => { rejectOpen = reject; });
+  native.close = async cancelPending => {
+    assert.equal(cancelPending, true);
+    rejectOpen(new Error('operation_cancelled: Immediate close'));
+  };
+  const ref = React.createRef();
+  const states = [];
+  let root;
+  try {
+    await act(async () => {
+      root = create(React.createElement(InkSignView, {
+        ref, initialDocument: '/cancelled.pdf', onStateChange: state => states.push(state),
+      }));
+    });
+    await act(async () => {
+      await ref.current.close(true);
+    });
+    assert.deepEqual(states, []);
+  } finally {
+    native.open = originalOpen;
+    native.close = originalClose;
+    if (root) await act(async () => { root.unmount(); });
+  }
+});
+
+test('view mode dispatches while the coordinate request is still waiting', async () => {
+  const ref = React.createRef();
+  let rejectRequest;
+  const sequence = [];
+  const originalSetViewMode = native.setViewMode;
+  native.getPageCoords = () => {
+    sequence.push('coords');
+    return new Promise((resolve, reject) => { rejectRequest = reject; });
+  };
+  native.setViewMode = async () => {
+    sequence.push('view');
+    rejectRequest(new Error('operation_cancelled: Coordinate request cancelled'));
+  };
+  let root;
+  try {
+    let waiting;
+    let cancelled;
+    function Screen() {
+      React.useLayoutEffect(() => {
+        waiting = ref.current.getPageCoords();
+        cancelled = assert.rejects(waiting, { message: /^operation_cancelled:/ });
+        void ref.current.setViewMode();
+      }, []);
+      return React.createElement(InkSignView, { ref });
+    }
+    await act(async () => { root = create(React.createElement(Screen)); });
+    await cancelled;
+    assert.deepEqual(sequence, ['coords', 'view']);
+  } finally {
+    if (root) await act(async () => { root.unmount(); });
+    delete native.getPageCoords;
+    native.setViewMode = originalSetViewMode;
   }
 });

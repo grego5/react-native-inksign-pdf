@@ -1,5 +1,7 @@
 package com.margelo.nitro.inksignpdf
 
+import android.net.Uri
+import java.io.File
 import java.util.LinkedHashSet
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -436,9 +438,19 @@ internal class MutableDocumentCoordinator(
       val preparedOpen: Pair<PdfSessionInfo, PdfFallbackFont?> = awaitUnlessSuperseded(request) {
         withContext(Dispatchers.IO) {
           val source = try {
-            java.io.File(sourcePath).canonicalFile
+            val uri = Uri.parse(sourcePath)
+            val path = if (uri.scheme.equals("file", ignoreCase = true)) {
+              val authority = uri.authority
+              if (!authority.isNullOrEmpty() && !authority.equals("localhost", ignoreCase = true)) {
+                throw IllegalArgumentException("File URI must refer to the local device")
+              }
+              uri.path ?: throw IllegalArgumentException("File URI has no path")
+            } else {
+              sourcePath
+            }
+            File(path).canonicalFile
           } catch (error: Exception) {
-            throw PdfSessionException("invalid_source_path", "Unable to resolve the PDF path", error)
+            throw PdfSessionException("invalid_source_path", "Unable to resolve the local PDF path", error)
           }
           if (!source.isFile || !source.canRead()) {
             throw PdfSessionException("invalid_source_path", "Unable to read the PDF")

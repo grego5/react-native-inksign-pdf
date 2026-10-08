@@ -8,7 +8,8 @@ and export.
 ## System boundaries
 
 - The public contract lives in
-  [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts). JavaScript
+  [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts), with React session props
+  in [`src/index.ts`](../../../../src/index.ts). JavaScript
   receives coarse state/page events plus prepared-page text metadata and text
   selection IDs, not PDF data or per-frame geometry.
 - [`src/index.ts`](../../../../src/index.ts) validates public arguments before
@@ -16,8 +17,11 @@ and export.
   command; loaders validate PDF, image, and OS data at ingress.
 - The React wrapper publishes a stable ref at mount and buffers asynchronous
   calls only until native attachment. Calls are forwarded in invocation order;
-  immediate close/unmount reject undelivered requests. Synchronous commands
-  require attachment. Suspense hiding preserves the connection.
+  immediate close and teardown reject undelivered requests. Synchronous commands
+  require attachment. Strict Mode replay preserves pending attachment and
+  initialization; Suspense hiding preserves the connection.
+- `initialDocument` accepts a local PDF path or `file://` URI and loads once per
+  keyed session; load failures appear in `onStateChange.error`.
 - Public placement and viewport inputs use displayed top-left page points. Direct insertion clips complete
   lines to its flow bounds; manual placement applies the same options to its
   editor and committed text. The editor admits fitting input, allows deletion,
@@ -96,7 +100,10 @@ and export.
   installation. Failed opening leaves the viewer empty. Prepared handles remain
   bound to their original document/page and reject after invalidation.
 - `onStateChange` emits complete, deduplicated viewer snapshots including an opaque
-  document ID. Successful opening creates identity; page mutations retain it.
+  document ID and nullable load-error message. Starting a load clears the error.
+  Modes are `view`, `ink`, `textAdd`, `textEdit`, and `pageCoords`; selection IDs are reported
+  separately by `onTextSelectionChange`. Successful opening creates identity;
+  page mutations retain it.
   Empty state uses null identity, view mode, and false dirty/undo/redo flags.
 - `finalize()` returns a temporary `file://` URI; internal artifact ownership uses
   filesystem paths. Finalized output survives close and remains view-owned.

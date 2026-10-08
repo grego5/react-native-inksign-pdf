@@ -208,6 +208,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun getPageCoords(): Promise<PageCoords>
+  
+  @DoNotStrip
+  @Keep
   abstract fun hasInk(): Boolean
   
   @DoNotStrip

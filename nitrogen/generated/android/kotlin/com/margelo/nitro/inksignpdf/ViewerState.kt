@@ -32,7 +32,10 @@ data class ViewerState(
   val isDirty: Boolean,
   @DoNotStrip
   @Keep
-  val mode: InteractionMode
+  val mode: InteractionMode,
+  @DoNotStrip
+  @Keep
+  val error: Variant_NullType_String?
 ) {
   /* primary constructor */
 
@@ -44,6 +47,7 @@ data class ViewerState(
       && Objects.deepEquals(this.canRedo, other.canRedo)
       && Objects.deepEquals(this.isDirty, other.isDirty)
       && Objects.deepEquals(this.mode, other.mode)
+      && Objects.deepEquals(this.error, other.error)
   }
 
   override fun hashCode(): Int {
@@ -52,7 +56,8 @@ data class ViewerState(
       canUndo,
       canRedo,
       isDirty,
-      mode
+      mode,
+      error
     ).contentDeepHashCode()
   }
 
@@ -64,8 +69,8 @@ data class ViewerState(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(documentId: Variant_NullType_String?, canUndo: Boolean, canRedo: Boolean, isDirty: Boolean, mode: InteractionMode): ViewerState {
-      return ViewerState(documentId, canUndo, canRedo, isDirty, mode)
+    private fun fromCpp(documentId: Variant_NullType_String?, canUndo: Boolean, canRedo: Boolean, isDirty: Boolean, mode: InteractionMode, error: Variant_NullType_String?): ViewerState {
+      return ViewerState(documentId, canUndo, canRedo, isDirty, mode, error)
     }
   }
 }

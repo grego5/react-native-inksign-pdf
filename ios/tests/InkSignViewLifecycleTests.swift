@@ -7,6 +7,81 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
+  func testCoordinateTapUsesDisplayedPagePointsAndConsumesOnlyOnce() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    try awaitRotationOperation(view.rotatePage(degrees: 90))
+    let request = try view.getPageCoords()
+    var requestError: Error?
+    request.catch { requestError = $0 }
+    // A later command completing proves the tap wait released the FIFO queue.
+    try awaitModeChange(view.enqueueViewerCommand { Promise<Void>.resolved() })
+    XCTAssertNil(requestError, "Coordinate selection failed before the user tapped")
+    XCTAssertTrue(view.isPickingPageCoords)
+    XCTAssertTrue(view.interactionMode() == .pagecoords)
+    let page = try XCTUnwrap(view.documentCoordinator.document?.activePage)
+    let point = CGPoint(x: 60, y: 90)
+    let location = view.documentView.convert(point.applying(page.geometry.displayToPDFTransform), from: page.page)
+    let tap = CoordinateTap(location: location)
+    var results: [PageCoords] = []
+    request.then { results.append($0) }
+    view.handleCoordinateTap(tap)
+    view.handleCoordinateTap(tap)
+    XCTAssertEqual(results.count, 1)
+    let result = try XCTUnwrap(results.first)
+    XCTAssertEqual(result.pageId, page.id.uuidString)
+    XCTAssertEqual(result.pageIndex, 0)
+    XCTAssertEqual(result.x, 60, accuracy: 0.001)
+    XCTAssertEqual(result.y, 90, accuracy: 0.001)
+    XCTAssertFalse(view.isPickingPageCoords)
+    XCTAssertTrue(view.interactionMode() == .view)
+    XCTAssertTrue(page.history.content.textAnnotations.isEmpty)
+    XCTAssertTrue(page.history.content.drawing.strokes.isEmpty)
+  }
+
+  func testCoordinateRequestsCancelOnModeChangeCloseAndDisposal() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    var errors: [Error] = []
+    try view.getPageCoords().catch { errors.append($0) }
+    try awaitModeChange(view.setViewMode(viewport: nil))
+    try awaitModeChange(view.setViewMode(viewport: nil))
+    try view.getPageCoords().catch { errors.append($0) }
+    try awaitRotationOperation(view.close(cancelPending: false))
+    XCTAssertEqual(errors.count, 2)
+    XCTAssertFalse(view.isPickingPageCoords)
+    XCTAssertNil(view.pendingPageCoords)
+    // Queue admission is deliberately held so disposal also covers a not-yet-armed request.
+    let held = Promise<Void>()
+    view.enqueueViewerCommand { held }
+    try view.getPageCoords().catch { errors.append($0) }
+    view.dispose()
+    XCTAssertEqual(errors.count, 3)
+    XCTAssertTrue(errors.allSatisfy { $0.localizedDescription.hasPrefix("operation_cancelled:") })
+  }
+
+  func testCoordinatePickerCancelsWhenItsCapturedPageChanges() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let firstPageID = try XCTUnwrap(view.documentCoordinator.document?.activePage.id)
+    var errors: [Error] = []
+    var coordinates: [PageCoords] = []
+    try view.getPageCoords().then { coordinates.append($0) }.catch { errors.append($0) }
+    try awaitModeChange(view.enqueueViewerCommand { Promise<Void>.resolved() })
+    XCTAssertTrue(view.interactionMode() == .pagecoords)
+    try view.switchPage(to: 1)
+    XCTAssertNotEqual(view.documentCoordinator.document?.activePage.id, firstPageID)
+    view.handleCoordinateTap(CoordinateTap(location: CGPoint(x: 100, y: 100)))
+    XCTAssertTrue(coordinates.isEmpty)
+    XCTAssertEqual(errors.count, 1)
+    XCTAssertTrue(errors[0].localizedDescription.hasPrefix("operation_cancelled:"))
+    XCTAssertNil(view.pendingPageCoords)
+    XCTAssertTrue(view.interactionMode() == .view)
+  }
+
   func testImmediateCloseRejectsRunningAndQueuedViewerCommands() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
@@ -663,6 +738,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
 
     let workingURLBefore = try XCTUnwrap(view.documentCoordinator.document?.workingURL)
     let workingBytesBefore = try Data(contentsOf: workingURLBefore)
+    try awaitModeChange(view.setInkMode(viewport: nil))
     let rotated = expectation(description: "rotate page")
     var rotatedInfo: PageInfo?
     var rotationError: Error?
@@ -676,6 +752,12 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(pageInfo.width, 400, accuracy: 0.01)
     XCTAssertEqual(pageInfo.height, 300, accuracy: 0.01)
     let afterRotation = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(view.attachedOverlayPage, pageID)
+    XCTAssertTrue(view.overlayProvider.isDisplaying(afterRotation.activePage.page))
+    XCTAssertTrue(view.canvasView === view.overlayProvider.canvasView(for: pageID))
+    XCTAssertTrue(view.documentView.isUserInteractionEnabled)
+    XCTAssertTrue(view.canvasView.drawingGestureRecognizer.isEnabled)
+    XCTAssertTrue(view.editMode)
     XCTAssertEqual(afterRotation.workingURL, workingURLBefore)
     XCTAssertEqual(try Data(contentsOf: afterRotation.workingURL), workingBytesBefore)
     XCTAssertEqual(afterRotation.activePage.sourceGeometry.rotation, 0)
@@ -1136,16 +1218,19 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     wait(for: [workerHeld], timeout: 5)
 
     let pageRequest = try view.getPage(pageIndex: nil)
-    let rotated = expectation(description: "rotation publishes while lookup is pending")
+    let rotated = expectation(description: "rotation follows prepared lookup")
+    var completionOrder: [String] = []
+    pageRequest.then { _ in completionOrder.append("prepared") }
     let rotation = try view.rotatePage(degrees: 90)
     var rotationError: Error?
-    rotation.then { _ in rotated.fulfill() }
+    rotation.then { _ in completionOrder.append("rotated"); rotated.fulfill() }
     rotation.catch { error in rotationError = error; rotated.fulfill() }
-    wait(for: [rotated], timeout: 5)
     releaseWorker.signal()
     let page = try awaitRotationOperation(pageRequest)
+    wait(for: [rotated], timeout: 10)
 
     XCTAssertNil(rotationError)
+    XCTAssertEqual(completionOrder, ["prepared", "rotated"])
     let document = try XCTUnwrap(view.documentCoordinator.document)
     XCTAssertEqual(document.activePage.geometryRevision, 1)
     XCTAssertTrue(document.activePage.history.content.textAnnotations.isEmpty)
@@ -1197,16 +1282,19 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     wait(for: [workerHeld], timeout: 5)
 
     let pageRequest = try view.getPage(pageIndex: nil)
-    let rotated = expectation(description: "rotation publishes while focus lookup is pending")
+    let rotated = expectation(description: "rotation follows prepared focus lookup")
+    var completionOrder: [String] = []
+    pageRequest.then { _ in completionOrder.append("prepared") }
     let rotation = try view.rotatePage(degrees: 90)
     var rotationError: Error?
-    rotation.then { _ in rotated.fulfill() }
+    rotation.then { _ in completionOrder.append("rotated"); rotated.fulfill() }
     rotation.catch { error in rotationError = error; rotated.fulfill() }
-    wait(for: [rotated], timeout: 5)
     releaseWorker.signal()
     let page = try awaitRotationOperation(pageRequest)
+    wait(for: [rotated], timeout: 10)
 
     XCTAssertNil(rotationError)
+    XCTAssertEqual(completionOrder, ["prepared", "rotated"])
     XCTAssertEqual(view.documentCoordinator.document?.activePage.geometryRevision, 1)
     XCTAssertTrue(view.documentCoordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
     XCTAssertThrowsError(try page.resolveText(options: ResolveTextOptions(
@@ -1240,8 +1328,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try awaitModeChange(blocked)
     try awaitModeChange(focus)
     try awaitModeChange(textMode)
-    let inkIndex = try XCTUnwrap(modes.firstIndex(of: "draw"))
-    let textIndex = try XCTUnwrap(modes.firstIndex(of: "textPlacement"))
+    let inkIndex = try XCTUnwrap(modes.firstIndex(of: "ink"))
+    let textIndex = try XCTUnwrap(modes.firstIndex(of: "textAdd"))
     XCTAssertLessThan(inkIndex, textIndex)
     XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
     XCTAssertFalse(view.editMode)
@@ -1911,6 +1999,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     promise.then { _ in resolutionCount += 1 }
     promise.catch { _ in rejectionCount += 1 }
     fixture.view.onStateChange = { _ in stateEventCount += 1 }
+    let initialStateEventCount = stateEventCount
     let operation = try XCTUnwrap(fixture.view.documentCoordinator.admit(.structural))
     fixture.view.pendingOpen = InkSignView.PendingOpen(
       operation: operation,
@@ -1925,7 +2014,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(resolutionCount, 0)
     XCTAssertEqual(rejectionCount, 0)
     fixture.view.emitChange(force: true)
-    XCTAssertEqual(stateEventCount, 0)
+    XCTAssertEqual(stateEventCount, initialStateEventCount)
 
     fixture.view.pendingOpen?.phase = .awaitingReadiness
     fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[0])
@@ -1933,7 +2022,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(fixture.view.documentView.scaleFactor, 2, accuracy: 0.0001)
     XCTAssertEqual(resolutionCount, 1)
     XCTAssertEqual(rejectionCount, 0)
-    XCTAssertEqual(stateEventCount, 1)
+    XCTAssertEqual(stateEventCount, initialStateEventCount + 1)
     XCTAssertNil(fixture.view.pendingOpen)
 
     fixture.view.documentView.layoutIfNeeded()
@@ -1971,4 +2060,18 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     completion?(.success(info))
   }
 
+}
+
+/// Supplies the recognizer's admitted location; UIKit owns tap-versus-pan recognition.
+private final class CoordinateTap: UITapGestureRecognizer {
+  private let tapLocation: CGPoint
+  init(location: CGPoint) {
+    tapLocation = location
+    super.init(target: nil, action: nil)
+  }
+  override var state: UIGestureRecognizer.State {
+    get { .ended }
+    set {}
+  }
+  override func location(in view: UIView?) -> CGPoint { tapLocation }
 }

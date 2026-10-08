@@ -30,10 +30,10 @@ namespace margelo::nitro::inksignpdf {
    */
   enum class InteractionMode {
     VIEW      SWIFT_NAME(view) = 0,
-    DRAW      SWIFT_NAME(draw) = 1,
-    TEXTPLACEMENT      SWIFT_NAME(textplacement) = 2,
-    TEXTSELECTED      SWIFT_NAME(textselected) = 3,
-    TEXTEDITING      SWIFT_NAME(textediting) = 4,
+    INK      SWIFT_NAME(ink) = 1,
+    TEXTADD      SWIFT_NAME(textadd) = 2,
+    TEXTEDIT      SWIFT_NAME(textedit) = 3,
+    PAGECOORDS      SWIFT_NAME(pagecoords) = 4,
   } CLOSED_ENUM;
 
 } // namespace margelo::nitro::inksignpdf
@@ -47,10 +47,10 @@ namespace margelo::nitro {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, arg);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
         case hashString("view"): return margelo::nitro::inksignpdf::InteractionMode::VIEW;
-        case hashString("draw"): return margelo::nitro::inksignpdf::InteractionMode::DRAW;
-        case hashString("textPlacement"): return margelo::nitro::inksignpdf::InteractionMode::TEXTPLACEMENT;
-        case hashString("textSelected"): return margelo::nitro::inksignpdf::InteractionMode::TEXTSELECTED;
-        case hashString("textEditing"): return margelo::nitro::inksignpdf::InteractionMode::TEXTEDITING;
+        case hashString("ink"): return margelo::nitro::inksignpdf::InteractionMode::INK;
+        case hashString("textAdd"): return margelo::nitro::inksignpdf::InteractionMode::TEXTADD;
+        case hashString("textEdit"): return margelo::nitro::inksignpdf::InteractionMode::TEXTEDIT;
+        case hashString("pageCoords"): return margelo::nitro::inksignpdf::InteractionMode::PAGECOORDS;
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert \"" + unionValue + "\" to enum InteractionMode - invalid value!");
       }
@@ -58,10 +58,10 @@ namespace margelo::nitro {
     static inline jsi::Value toJSI(jsi::Runtime& runtime, margelo::nitro::inksignpdf::InteractionMode arg) {
       switch (arg) {
         case margelo::nitro::inksignpdf::InteractionMode::VIEW: return JSIConverter<std::string>::toJSI(runtime, "view");
-        case margelo::nitro::inksignpdf::InteractionMode::DRAW: return JSIConverter<std::string>::toJSI(runtime, "draw");
-        case margelo::nitro::inksignpdf::InteractionMode::TEXTPLACEMENT: return JSIConverter<std::string>::toJSI(runtime, "textPlacement");
-        case margelo::nitro::inksignpdf::InteractionMode::TEXTSELECTED: return JSIConverter<std::string>::toJSI(runtime, "textSelected");
-        case margelo::nitro::inksignpdf::InteractionMode::TEXTEDITING: return JSIConverter<std::string>::toJSI(runtime, "textEditing");
+        case margelo::nitro::inksignpdf::InteractionMode::INK: return JSIConverter<std::string>::toJSI(runtime, "ink");
+        case margelo::nitro::inksignpdf::InteractionMode::TEXTADD: return JSIConverter<std::string>::toJSI(runtime, "textAdd");
+        case margelo::nitro::inksignpdf::InteractionMode::TEXTEDIT: return JSIConverter<std::string>::toJSI(runtime, "textEdit");
+        case margelo::nitro::inksignpdf::InteractionMode::PAGECOORDS: return JSIConverter<std::string>::toJSI(runtime, "pageCoords");
         default: [[unlikely]]
           throw std::invalid_argument("Cannot convert InteractionMode to JS - invalid value: "
                                     + std::to_string(static_cast<int>(arg)) + "!");
@@ -74,10 +74,10 @@ namespace margelo::nitro {
       std::string unionValue = JSIConverter<std::string>::fromJSI(runtime, value);
       switch (hashString(unionValue.c_str(), unionValue.size())) {
         case hashString("view"):
-        case hashString("draw"):
-        case hashString("textPlacement"):
-        case hashString("textSelected"):
-        case hashString("textEditing"):
+        case hashString("ink"):
+        case hashString("textAdd"):
+        case hashString("textEdit"):
+        case hashString("pageCoords"):
           return true;
         default:
           return false;

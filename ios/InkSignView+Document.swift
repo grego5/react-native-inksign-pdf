@@ -47,6 +47,7 @@ extension InkSignView {
 
   func cancelPresentationCommands() {
     performOnMain {
+      self.cancelCoordinateRequest()
       self.fieldFocusRequestID &+= 1
       self.pageNavigationRequestID &+= 1
       self.cancelPendingPageSwitch()
@@ -60,6 +61,7 @@ extension InkSignView {
   }
 
   func cancelViewerCommands() {
+    cancelCoordinateRequest()
     let retired = commandQueue
     commandQueue.removeAll()
     let running = runningCommand
@@ -85,7 +87,7 @@ extension InkSignView {
   }
 
   private func closePublishedDocument() {
-    pendingOpen?.promise.reject(withError: LoadError.cancelled)
+    pendingOpen?.settlement.reject(LoadError.cancelled)
     pendingOpen = nil
     pageInputCoordinator.cancelPending()
     textInteractionOverlay.discardForDocumentReplacement()
@@ -125,6 +127,8 @@ extension InkSignView {
   private func openNow(path: String, options: ViewportOptions?) throws -> Promise<PageInfo> {
     let promise = Promise<PageInfo>()
     performOnMain {
+      self.loadError = nil
+      self.emitChange()
       do {
         let viewport = Self.parseOpenViewport(options)
         self.beginLoad(
@@ -135,6 +139,8 @@ extension InkSignView {
           promise: promise
         )
       } catch {
+        self.loadError = error.localizedDescription
+        self.emitChange()
         promise.reject(withError: error)
       }
     }
@@ -225,7 +231,7 @@ extension InkSignView {
     let replacedOpen = pendingOpen
     pendingOpen = nil
     guard let operation = documentCoordinator.admit(.open) else {
-      replacedOpen?.promise.reject(withError: LoadError.cancelled)
+      replacedOpen?.settlement.reject(LoadError.cancelled)
       promise.reject(withError: LoadError.operationInProgress)
       return
     }
@@ -250,11 +256,19 @@ extension InkSignView {
                               zoom: zoom,
                               focus: focus,
                               fitToPage: fitToPage)
-    replacedOpen?.promise.reject(withError: LoadError.cancelled)
+    replacedOpen?.settlement.reject(LoadError.cancelled)
 
-    let url = URL(fileURLWithPath: path)
-      .standardizedFileURL
-      .resolvingSymlinksInPath()
+    let sourceURL: URL
+    if let fileURL = URL(string: path), fileURL.isFileURL {
+      if let host = fileURL.host, !host.isEmpty, host.lowercased() != "localhost" {
+        finishLoad(operation: operation, error: .invalidSourcePath)
+        return
+      }
+      sourceURL = fileURL
+    } else {
+      sourceURL = URL(fileURLWithPath: path)
+    }
+    let url = sourceURL.standardizedFileURL.resolvingSymlinksInPath()
     documentCoordinator.pdfQueue.async { [weak self, coordinator = documentCoordinator] in
       guard let self else { return }
       var workingURL: URL?
@@ -335,7 +349,7 @@ extension InkSignView {
 
     pending.phase = .installing
     pendingOpen = pending
-    textInteractionOverlay.finishForLifecycle()
+    finishInteractionForLifecycle()
     pageInputCoordinator.cancelPending()
     cancelActiveStroke(clearLive: false)
     applyInteractionMode(editing: false, interactionsEnabled: false)
@@ -392,7 +406,7 @@ extension InkSignView {
           (failed.map { $0.operation.id == pending.operation.id } ?? true) else { return }
     pending.phase = .clearing
     pendingOpen = pending
-    textInteractionOverlay.finishForLifecycle()
+    finishInteractionForLifecycle()
     cancelActiveStroke(clearLive: false)
     cancelPendingPageSwitch()
     pageNavigationRequestID &+= 1
@@ -406,13 +420,19 @@ extension InkSignView {
     attachedOverlayPage = nil
     invalidateOverlayTransformCache()
     pendingOpen = nil
+    loadError = error.localizedDescription
     emitChange(force: true)
-    pending.promise.reject(withError: error)
+    pending.settlement.reject(error)
+  }
+
+  func finishInteractionForLifecycle() {
+    if isPickingPageCoords { cancelCoordinateRequest() }
+    textInteractionOverlay.finishForLifecycle()
   }
 
   func setInteractionMode(editing: Bool, interactionsEnabled: Bool = true) {
     let editing = editing && documentCoordinator.document != nil
-    textInteractionOverlay.finishForLifecycle()
+    finishInteractionForLifecycle()
     if editMode && !editing { cancelActiveStroke() }
     applyInteractionMode(editing: editing, interactionsEnabled: interactionsEnabled)
     emitChange()

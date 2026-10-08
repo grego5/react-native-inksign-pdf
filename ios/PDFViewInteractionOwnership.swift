@@ -31,10 +31,17 @@ final class PDFViewInteractionOwnership {
               editing: Bool,
               interactionsEnabled: Bool,
               placementRecognizer: UIGestureRecognizer) {
-    if editing || !interactionsEnabled {
+    if !interactionsEnabled {
+      remember(pdfView)
+      pdfView.isUserInteractionEnabled = false
+      return
+    }
+
+    if editing {
+      restoreInteraction(for: pdfView)
       suppress(pdfView,
                isRoot: true,
-               editing: editing && interactionsEnabled,
+               editing: true,
                placementRecognizer: placementRecognizer)
       return
     }

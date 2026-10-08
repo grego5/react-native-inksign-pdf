@@ -1011,7 +1011,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertTrue(overlay.routePlacementTap(at: placementPoint))
     XCTAssertFalse(overlay.hasPendingPlacement())
     let firstEditor = try XCTUnwrap(textEditor(in: overlay))
-    XCTAssertTrue(overlay.interactionMode() == .textediting)
+    XCTAssertTrue(overlay.interactionMode() == .textedit)
 
     let secondPoint = CGPoint(x: 20, y: 380)
     _ = overlay.routeTap(at: secondPoint)
@@ -1066,7 +1066,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let editor = try XCTUnwrap(textEditor(in: overlay))
     editor.text = "signed"
     overlay.textViewDidChange(editor)
-    XCTAssertTrue(overlay.interactionMode() == .textediting)
+    XCTAssertTrue(overlay.interactionMode() == .textedit)
 
     _ = overlay.routeTap(at: CGPoint(x: 10, y: 390))
     let annotations = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history.content.textAnnotations)

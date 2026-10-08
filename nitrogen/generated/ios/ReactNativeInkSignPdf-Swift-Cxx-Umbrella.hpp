@@ -30,6 +30,8 @@ namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
+// Forward declaration of `PageCoords` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `PageType` to properly resolve imports.
@@ -77,6 +79,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "HybridInkSignViewSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
+#include "PageCoords.hpp"
 #include "PageInfo.hpp"
 #include "PageType.hpp"
 #include "PagerDirection.hpp"

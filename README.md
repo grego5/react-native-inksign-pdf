@@ -45,15 +45,10 @@ import {
   type PageInfo,
 } from '@grego5/react-native-inksign-pdf';
 
-export function SigningView({ pdfPath }: { pdfPath: string }) {
+export function SigningView({ pdfPath, sessionId }: { pdfPath: string; sessionId: string }) {
   const pdf = useRef<InkSignViewHandle>(null);
   const [page, setPage] = useState<PageInfo | null>(null);
   const [savedPath, setSavedPath] = useState('');
-
-  async function openPdf() {
-    const info = await pdf.current?.open(pdfPath);
-    if (info) setPage(info);
-  }
 
   async function savePdf() {
     const path = await pdf.current?.finalize();
@@ -62,13 +57,22 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
 
   return (
     <View style={{ flex: 1 }}>
-      <InkSignView ref={pdf} style={{ flex: 1 }} strokeColor="#111827" onPageChange={setPage} />
+      <InkSignView
+        key={sessionId}
+        ref={pdf}
+        initialDocument={pdfPath}
+        onStateChange={(state) => {
+          if (state.error) console.error(state.error);
+        }}
+        style={{ flex: 1 }}
+        strokeColor="#111827"
+        onPageChange={setPage}
+      />
       {page && (
         <Text>
           Page {page.pageIndex + 1} of {page.pageCount}
         </Text>
       )}
-      <Button title="Open PDF" onPress={() => void openPdf()} />
       <Button title="Draw" onPress={() => pdf.current?.setInkMode()} />
       <Button title="Place text" onPress={() => pdf.current?.setTextMode()} />
       <Button title="Undo" onPress={() => pdf.current?.undo()} />
@@ -79,17 +83,13 @@ export function SigningView({ pdfPath }: { pdfPath: string }) {
 }
 ```
 
-Use a normal React ref. You can call `open()` from an effect after mounting; it
-waits for native attachment. Async document commands run in call order.
-Use `close()` to close after them, or `close(true)` to cancel pending work.
+Load a PDF with `initialDocument` or call `open(path)` on the ref after mounting.
+Both accept a local path or `file://` URI. Choose **Draw** or **Place text** and
+sign the page. `finalize()` returns a temporary PDF `file://` URI; copy the file
+to persistent storage if you need it after closing the viewer.
 
-Tap the page after choosing **Draw** or **Place text**. `finalize()` returns a
-temporary PDF `file://` URI; copy the file if it needs to remain available after the
-signing view closes.
-
-On Android, an optional fallback font can use one shared local cache file. Set
-`uri` to the app's writable font file and `url` to its download source; a valid
-file already at `uri` is reused:
+On Android, `androidFallbackFont` reuses a valid font at `uri` or downloads it
+from `url` to that app-owned cache file:
 
 ```tsx
 <InkSignView androidFallbackFont={{ url: fontDownloadUrl, uri: fontCacheFileUri }} />
@@ -97,16 +97,23 @@ file already at `uri` is reused:
 
 ## Common actions
 
-Use `onZoomedInChange={setControlsHidden}` to hide your controls when zoom is
-above page fit. It reports after settling; fitted or smaller zoom reports `false`.
+Use `setViewMode()`, `setInkMode()`, and `setTextMode()` to switch modes. Omit
+options to keep the current viewport, pass `{}` to fit the page, or set values
+such as `{ zoom: 3, x: 200, y: 600 }` to zoom and focus. Text-mode viewport
+options take effect when you tap to place text. Finishing text returns to view
+mode; switching modes finishes any open text entry first.
 
-Use `setViewMode()`, `setInkMode()`, or `setTextMode()` to choose an input mode.
-They return promises and run in call order with document operations.
-Mode calls do nothing while the viewer has no document.
-Omit options to preserve the viewport; pass `{}` to fit the page, or
-`{ zoom: 3, x: 200, y: 600 }` to zoom and focus. Text-mode viewport changes
-apply after the placement tap. Text finishes in view mode; switching modes also
-finishes an open text draft.
+Call `getPageCoords()` and tap the page to get coordinates; the viewer returns
+to view mode afterward. Use `onZoomedInChange` to hide controls when zoom
+settles above page fit.
+
+```ts
+const target = await view.getPageCoords(); // pageId, pageIndex, x, y
+await view.setInkMode({ zoom: 3, x: target.x, y: target.y });
+```
+
+Use `setViewMode()` for Back. Page or mode changes, replacement, close, and
+unmount reject the request with `operation_cancelled`.
 
 Add local PDF or image pages:
 

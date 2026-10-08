@@ -97,3 +97,10 @@
   explicit `ltr`/`rtl` set the PDFView semantic content attribute. PDFKit owns
   physical page gesture behavior, so exact swipe-side behavior requires runtime
   validation on supported OS versions.
+
+- `getPageCoords()` admits in FIFO order and owns `pageCoords` mode, preserving
+  the viewport. Its request captures document generation, active page ID, and
+  geometry revision; the tap wait releases the command queue. UIKit distinguishes
+  one in-page tap from pan/pinch; text and ink input are inactive. Completion
+  returns to view mode. Page/geometry changes, mode changes, replacement, close,
+  or disposal reject with `operation_cancelled`; `setViewMode()` handles Back.

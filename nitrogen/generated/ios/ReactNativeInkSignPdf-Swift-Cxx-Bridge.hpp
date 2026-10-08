@@ -30,6 +30,8 @@ namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
+// Forward declaration of `PageCoords` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `PageType` to properly resolve imports.
@@ -79,6 +81,7 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 #include "HybridInkSignViewSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
+#include "PageCoords.hpp"
 #include "PageInfo.hpp"
 #include "PageType.hpp"
 #include "PagerDirection.hpp"
@@ -838,6 +841,40 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::shared_ptr<Promise<PageCoords>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<PageCoords>>`.
+   */
+  using std__shared_ptr_Promise_PageCoords__ = std::shared_ptr<Promise<PageCoords>>;
+  inline std::shared_ptr<Promise<PageCoords>> create_std__shared_ptr_Promise_PageCoords__() noexcept {
+    return Promise<PageCoords>::create();
+  }
+  inline PromiseHolder<PageCoords> wrap_std__shared_ptr_Promise_PageCoords__(std::shared_ptr<Promise<PageCoords>> promise) noexcept {
+    return PromiseHolder<PageCoords>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const PageCoords& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const PageCoords&)>`.
+   */
+  using Func_void_PageCoords = std::function<void(const PageCoords& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const PageCoords& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_PageCoords_Wrapper final {
+  public:
+    explicit Func_void_PageCoords_Wrapper(std::function<void(const PageCoords& /* result */)>&& func): _function(std::make_unique<std::function<void(const PageCoords& /* result */)>>(std::move(func))) {}
+    inline void call(PageCoords result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const PageCoords& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_PageCoords create_Func_void_PageCoords(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_PageCoords_Wrapper wrap_Func_void_PageCoords(Func_void_PageCoords value) noexcept {
+    return Func_void_PageCoords_Wrapper(std::move(value));
+  }
+  
   // pragma MARK: std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>>
   /**
    * Specialized version of `std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>>`.
@@ -958,6 +995,15 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline Result_Viewport_ create_Result_Viewport_(const std::exception_ptr& error) noexcept {
     return Result<Viewport>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<PageCoords>>>
+  using Result_std__shared_ptr_Promise_PageCoords___ = Result<std::shared_ptr<Promise<PageCoords>>>;
+  inline Result_std__shared_ptr_Promise_PageCoords___ create_Result_std__shared_ptr_Promise_PageCoords___(const std::shared_ptr<Promise<PageCoords>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<PageCoords>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_PageCoords___ create_Result_std__shared_ptr_Promise_PageCoords___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<PageCoords>>>::withError(error);
   }
   
   // pragma MARK: Result<bool>

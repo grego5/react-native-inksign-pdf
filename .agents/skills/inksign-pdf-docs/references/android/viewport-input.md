@@ -36,7 +36,7 @@
   `verticalAnchor` position text inside the rectangle without moving its edges.
   Dimensions are hard limits; `maxLines` caps complete lines without forcing a count.
   Preview and committed layout select the same complete lines.
-- `setTextMode()` arms placement and reports `textPlacement`. A valid tap opens
+- `setTextMode()` arms placement and reports `textAdd`. A valid tap opens
   the editor on finger-up; invalid taps keep it armed. Outside taps finish editing;
   commit/cancel returns to view mode.
 - Bounded editors admit fitting text. Rejection at a collapsed caret preserves
@@ -95,3 +95,10 @@
   A second finger cancels finger ink and owns viewport pan/pinch until all lift;
   stylus retains drawing ownership. Page/mode/lifecycle changes cancel viewport
   input and consume the retired stream through release.
+
+- `getPageCoords()` admits in FIFO order and owns `pageCoords` mode, preserving
+  the viewport. Its request captures document generation, active page ID, and
+  geometry revision; the tap wait releases the command queue. Root input routes
+  pan/pinch to the viewport and consumes one valid in-page tap. Completion returns
+  to view mode. Page/geometry changes, mode changes, replacement, close, detach,
+  or disposal reject with `operation_cancelled`; `setViewMode()` handles Back.
