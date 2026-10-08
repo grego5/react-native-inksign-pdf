@@ -45,11 +45,17 @@ export interface TextAnnotationOptions {
 
 /** One-shot text placement; viewport changes apply after the tap. Box dimensions are PDF page points. */
 export interface TextModeOptions extends ViewportOptions {
+  /** Defaults to `auto`, following the app's resolved layout direction. */
   direction?: TextDirection
+  /** Supply with `height` to define a fixed text box; omit both for automatic sizing. */
   width?: number
+  /** Supply with `width` to define a fixed text box; omit both for automatic sizing. */
   height?: number
+  /** Maximum complete lines; omission keeps every line that fits. */
   maxLines?: number
+  /** Omission aligns to `start`. */
   alignment?: TextAlignment
+  /** Omission anchors the initial text block at the top. */
   verticalAnchor?: TextVerticalAnchor
 }
 
@@ -108,15 +114,23 @@ export interface PageCoords {
 
 /** Prepared source analysis and synchronous text operations for one stable page. */
 export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
+  /** Creates or resolves a text target from page analysis and returns its ID. */
   resolveText(options: ResolveTextOptions): TextId
+  /** Returns the target's effective text value. */
   getTextValue(id: TextId): string
+  /** Sets the target's entered text. */
   setTextValue(id: TextId, text: string): void
+  /** Clears the target's entered text. */
   clearText(id: TextId): void
+  /** Updates the target's text options; omitted fields retain their current values. */
   setTextOptions(id: TextId, options: TextAnnotationOptions): void
   /** Adjusts the native font size by page points and returns the resulting size. */
   adjustTextSize(id: TextId, delta: number): number
+  /** Returns one target's value, source, and optional field metadata. */
   getTextEntry(id: TextId): TextEntry
+  /** Returns all text targets on this page. */
   getTextEntries(): TextEntry[]
+  /** Focuses the target; omitted options use zoom 2 and center it without changing input mode. */
   focusText(id: TextId, options?: FieldFocusOptions): Promise<void>
 }
 
@@ -185,6 +199,7 @@ export interface ViewportOptions {
 export interface AndroidFallbackFont {
   url: string
   uri: string
+  /** Font collection face index. Defaults to 0. */
   collectionIndex?: number
 }
 
@@ -233,30 +248,39 @@ export interface InkSignViewProps extends HybridViewProps {
 }
 
 export interface InkSignViewMethods extends HybridViewMethods {
-  /** FIFO document open; earlier document operations finish first. */
+  /** Opens a local PDF path or file:// URI; omitted options fit the page. */
   open(path: string, options?: ViewportOptions): Promise<PageInfo>
-  /** Closes in FIFO order. Pass true to cancel pending work and prevent late publication. */
+  /** Closes in FIFO order; omitted `cancelPending` is false. Pass true to cancel pending work. */
   close(cancelPending?: boolean): Promise<void>
+  /** Adds pages from `sources`, or opens the native picker when sources are omitted. */
   addPages(options?: AddPagesOptions): Promise<AddPagesResult>
+  /** Removes the active page. The document must retain at least one page. */
   removePage(): Promise<PageInfo>
+  /** Moves the active page to the zero-based destination index. */
   movePage(pageIndex: number): Promise<PageInfo>
   /** Rotates the active page clockwise by 90, 180, or 270 degrees and persists the rotation to export. */
   rotatePage(degrees: number): Promise<PageInfo>
+  /** Selects the next page; stays on the last page at the end. */
   nextPage(): void
+  /** Selects the previous page; stays on the first page at the beginning. */
   previousPage(): void
+  /** Returns the active page's current focus coordinates and zoom. */
   getViewport(): Viewport
   /** Enters pageCoords mode on the active page without changing the viewport. One tap resolves and returns to view mode; page/mode changes or teardown cancel it. */
   getPageCoords(): Promise<PageCoords>
   /** Returns whether the active page has committed ink; undo, redo, clear, and page changes are reflected. */
   hasInk(): boolean
-  /** Prepares source analysis for the captured or explicitly indexed page without navigating. */
+  /** Prepares analysis for `pageIndex`; omission selects the active page without navigating. */
   getPage(pageIndex?: number): Promise<AnalyzedPage>
   /** FIFO ink mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits. */
   setInkMode(viewport?: ViewportOptions): Promise<void>
   /** FIFO view mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits. */
   setViewMode(viewport?: ViewportOptions): Promise<void>
+  /** Undoes the last history change on the active page; no-op when history is empty. */
   undo(): void
+  /** Redoes the next history change on the active page; no-op when redo history is empty. */
   redo(): void
+  /** Clears editable ink and text from the active page. */
   clear(): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
