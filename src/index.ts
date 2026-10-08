@@ -1,4 +1,4 @@
-import React, { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useState } from 'react';
+import React, { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { callback, getHostComponent } from 'react-native-nitro-modules';
 import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConfig.json';
 import { createViewConnection } from './viewConnection';
@@ -312,6 +312,23 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
       onZoomedInChange,
       ...nativeProps
     } = props;
+    const callbacks = useRef({
+      onStateChange,
+      onPageChange,
+      onTextSelectionChange,
+      onZoomedInChange,
+    });
+    useLayoutEffect(() => {
+      callbacks.current = { onStateChange, onPageChange, onTextSelectionChange, onZoomedInChange };
+    });
+    const [nativeCallbacks] = useState(() => ({
+      onStateChange: callback((event: ViewerState) => callbacks.current.onStateChange?.(event)),
+      onPageChange: callback((event: PageInfo) => callbacks.current.onPageChange?.(event)),
+      onTextSelectionChange: callback((selection: TextSelection | null) =>
+        callbacks.current.onTextSelectionChange?.(selection)),
+      onZoomedInChange: callback((zoomedIn: boolean) =>
+        callbacks.current.onZoomedInChange?.(zoomedIn)),
+    }));
     const [connection] = useState(createViewConnection);
     const [handle] = useState(() => createValidatedHandle(connection));
     useLayoutEffect(() => {
@@ -324,21 +341,14 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
     useEffect(() => () => connection.unmount(), []);
     useImperativeHandle(ref, () => handle, []);
     const wrappedHybridRef = useMemo(() => callback(connection.attach), []);
-    const wrappedStateChange = useMemo(() => callback(onStateChange), [onStateChange]);
-    const wrappedPageChange = useMemo(() => callback(onPageChange), [onPageChange]);
-    const wrappedZoomedInChange = useMemo(() => callback(onZoomedInChange), [onZoomedInChange]);
-    const wrappedTextSelectionChange = useMemo(
-      () => callback(onTextSelectionChange),
-      [onTextSelectionChange],
-    );
 
     return React.createElement(NativeInkSignView, {
       ...nativeProps,
       hybridRef: wrappedHybridRef,
-      onStateChange: wrappedStateChange,
-      onPageChange: wrappedPageChange,
-      onZoomedInChange: wrappedZoomedInChange,
-      onTextSelectionChange: wrappedTextSelectionChange,
+      onStateChange: onStateChange ? nativeCallbacks.onStateChange : undefined,
+      onPageChange: onPageChange ? nativeCallbacks.onPageChange : undefined,
+      onZoomedInChange: onZoomedInChange ? nativeCallbacks.onZoomedInChange : undefined,
+      onTextSelectionChange: onTextSelectionChange ? nativeCallbacks.onTextSelectionChange : undefined,
     });
   },
 );

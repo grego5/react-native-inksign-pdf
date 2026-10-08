@@ -2,7 +2,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const Module = require('node:module');
 const React = require('react');
-const { act, create } = require('react-test-renderer');
+const { act } = React;
+const { create } = require('react-test-renderer');
 const viewConfig = require('../nitrogen/generated/shared/json/InkSignViewConfig.json');
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -42,6 +43,40 @@ try {
 } finally {
   Module._load = originalLoad;
 }
+
+test('native event subscriptions stay stable while forwarding to the latest committed callbacks', async () => {
+  const names = ['onStateChange', 'onPageChange', 'onTextSelectionChange', 'onZoomedInChange'];
+  const received = [];
+  const propsFor = version => Object.fromEntries(names.map(name =>
+    [name, value => received.push([version, name, value])]));
+  let root;
+  try {
+    await act(async () => { root = create(React.createElement(InkSignView, propsFor('first'))); });
+    const original = root.root.findByType(NativeView).props;
+    await act(async () => { root.update(React.createElement(InkSignView, propsFor('latest'))); });
+    const updated = root.root.findByType(NativeView).props;
+    for (const name of names) {
+      assert.equal(updated[name], original[name]);
+      updated[name](name);
+    }
+    assert.deepEqual(received, names.map(name => ['latest', name, name]));
+    await act(async () => { root.update(React.createElement(InkSignView)); });
+    for (const name of names) {
+      assert.equal(root.root.findByType(NativeView).props[name], undefined);
+      original[name]('late');
+    }
+    assert.equal(received.length, names.length);
+    await act(async () => { root.update(React.createElement(InkSignView, propsFor('resubscribed'))); });
+    for (const name of names) {
+      const subscribed = root.root.findByType(NativeView).props[name];
+      assert.equal(subscribed, original[name]);
+      subscribed(name);
+    }
+    assert.deepEqual(received.slice(names.length), names.map(name => ['resubscribed', name, name]));
+  } finally {
+    if (root) await act(async () => { root.unmount(); });
+  }
+});
 
 test('normal ref opens before attachment and keeps its handle through Suspense hide/reveal', async () => {
   calls.length = 0;
