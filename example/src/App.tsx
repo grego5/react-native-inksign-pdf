@@ -4,6 +4,7 @@ import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   InkSignView,
+  isOperationCancelled,
   type AddPagesOptions,
   type PageInfo,
   type ViewerState,
@@ -58,13 +59,10 @@ export default function App() {
       return;
     }
     try {
-      if (target === 'edit') {
-        await inkSignView.setInkMode(viewport);
-      } else {
-        await inkSignView.setViewMode(viewport);
-      }
+      const session = target === 'edit' ? inkSignView.setMode('ink') : inkSignView.setMode('view');
+      if (viewport !== undefined) await session.setViewport(viewport);
     } catch (error) {
-      Alert.alert('Mode change failed', String(error));
+      if (!isOperationCancelled(error)) Alert.alert('Mode change failed', String(error));
     }
   }
 
@@ -83,9 +81,9 @@ export default function App() {
 
     try {
       if (placementArmed) {
-        await inkSignView.setViewMode();
+        inkSignView.setMode('view');
       } else {
-        await inkSignView.setTextMode();
+        inkSignView.setMode('text');
       }
     } catch (error) {
       Alert.alert(
@@ -102,7 +100,7 @@ export default function App() {
     try {
       if (pageInfo === null) return;
       const page = await inkSignView.getPage(pageInfo.pageIndex);
-      if (delta === null) page.clearText(selection.textId);
+      if (delta === null) page.setTextValue(selection.textId, '');
       else page.adjustTextSize(selection.textId, delta);
     } catch (error) {
       Alert.alert('Update text failed', String(error));
@@ -118,7 +116,7 @@ export default function App() {
     }
     try {
       if (state.mode === 'ink') view.clearInk();
-      else if (state.mode === 'textAdd') await view.setViewMode();
+      else if (state.mode === 'textAdd') view.setMode('view');
     } catch (error) {
       Alert.alert('Clear failed', String(error));
     }

@@ -208,6 +208,83 @@ internal class HybridInkSignViewTextKeyTest {
     }
   }
 
+  @Test
+  fun modeSessionCancelsWorkerPreparationAndQueuedFocusButKeepsCommittedText() {
+    NativeTestRuntime.initialize()
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val source = File.createTempFile("mode-session-", ".pdf", context.cacheDir)
+      .apply { writeText("controlled source") }
+    val analysisStarted = CountDownLatch(1)
+    val releaseAnalysis = CountDownLatch(1)
+    val blockAnalysis = AtomicBoolean(false)
+    val worker = PdfSessionWorker(opener = PdfSessionOpener { path, generation ->
+      BlockingAnalysisResource(PdfSessionInfo(path, listOf(PdfPageDimensions(300.0, 300.0)), generation),
+        analysisStarted, releaseAnalysis, blockAnalysis)
+    })
+    val viewRef = AtomicReference<HybridInkSignView>()
+    try {
+      instrumentation.runOnMainSync {
+        val view = HybridInkSignView(context, worker)
+        viewRef.set(view)
+        val size = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
+        view.view.measure(size, size)
+        view.view.layout(0, 0, 300, 300)
+      }
+      val view = viewRef.get()
+      awaitOpen(instrumentation, view, source.absolutePath, expectedPageCount = 1.0)
+      val ordinary = awaitPreparedPage(view.getPage(null))
+      val session = view.setMode(InputMode.INK, null)
+      val scoped = awaitPreparedPage(session.getPage(null))
+      val id = scoped.resolveText(ResolveTextOptions(
+        fieldName = null, bounds = TextAnnotationBounds(50.0, 60.0, 100.0, 30.0),
+        occurrence = null, fontSize = null, color = null, direction = null,
+        maxLines = null, alignment = null, verticalAnchor = null,
+      ))
+      scoped.setTextValue(id, "Ada")
+      val before = view.getViewport()
+      blockAnalysis.set(true)
+      val pending = session.getPage(null)
+      assertTrue("analysis did not reach worker", analysisStarted.await(10, TimeUnit.SECONDS))
+      val cancelled = CountDownLatch(2)
+      val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+      pending.then { throw AssertionError("Cancelled acquisition returned a page") }
+        .catch { errors.add(it); cancelled.countDown() }
+      val focus = scoped.focusText(id, TextFocusOptions(3.0, null, null))
+      focus.then { throw AssertionError("Cancelled focus completed") }
+        .catch { errors.add(it); cancelled.countDown() }
+      view.setMode(InputMode.INK, null) // A repeated request still creates a new session.
+      assertTrue("mode cancellation must not wait for the worker", cancelled.await(5, TimeUnit.SECONDS))
+      assertEquals(2, errors.size)
+      assertTrue(errors.all { it is PdfSessionException && it.code == "operation_cancelled" })
+      try { scoped.setTextValue(id, "Stale"); throw AssertionError("Stale write admitted") }
+      catch (error: PdfSessionException) { assertEquals("operation_cancelled", error.code) }
+      assertEquals("Ada", ordinary.getTextValue(id))
+      releaseAnalysis.countDown()
+      awaitPreparedPage(view.getPage(null)) // Drain the held worker and cancelled focus.
+      val after = view.getViewport()
+      assertEquals(before.zoom, after.zoom, 0.001)
+      assertEquals(before.x, after.x, 0.001)
+      assertEquals(before.y, after.y, 0.001)
+      assertEquals("Ada", ordinary.getTextValue(id))
+    } finally {
+      releaseAnalysis.countDown()
+      instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
+      source.delete()
+    }
+  }
+
+  private fun awaitPreparedPage(promise: Promise<HybridAnalyzedPageSpec>): HybridAnalyzedPageSpec {
+    val settled = CountDownLatch(1)
+    val page = AtomicReference<HybridAnalyzedPageSpec>()
+    val failure = AtomicReference<Throwable>()
+    promise.then { page.set(it); settled.countDown() }
+      .catch { failure.set(it); settled.countDown() }
+    assertTrue("prepared page timed out", settled.await(20, TimeUnit.SECONDS))
+    failure.get()?.let { throw AssertionError("prepared page failed", it) }
+    return page.get()
+  }
+
   private fun pageHistoryStates(view: HybridInkSignView): List<PageHistoryState> =
     (0..1).map { pageIndex ->
       PageHistoryState(

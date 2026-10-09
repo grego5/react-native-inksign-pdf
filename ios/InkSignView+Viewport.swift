@@ -61,14 +61,31 @@ enum InkSignPdfTextViewportGeometry {
 }
 
 extension InkSignView {
-  func getPageCoords() throws -> Promise<PageCoords> {
+  func requestPageCoords() throws -> Promise<PageCoords> {
+    try performOnMainSync {
+      self.invalidateModeSession()
+      return try self.pickPageCoords(modeSession: nil)
+    }
+  }
+
+  func requestSessionPageCoords(_ token: InkSignPdfModeSessionToken) throws -> Promise<PageCoords> {
+    try performOnMainSync {
+      try self.requireModeSession(token)
+      return try self.pickPageCoords(modeSession: token)
+    }
+  }
+
+  private func pickPageCoords(modeSession: InkSignPdfModeSessionToken?) throws -> Promise<PageCoords> {
     try performOnMainSync {
       guard !self.disposed else { throw LoadError.cancelled }
       self.cancelCoordinateRequest()
+      if let modeSession { try self.requireModeSession(modeSession) }
+      else if self.currentModeSession != nil { throw LoadError.cancelled }
       let request = CoordinateRequest()
+      request.modeSession = modeSession
       self.pendingPageCoords = request
       // Admission follows FIFO; the interactive wait does not occupy that queue.
-      self.enqueueViewerCommand(presentation: true) {
+      self.enqueueViewerCommand(presentation: true, modeSession: modeSession) {
         guard self.pendingPageCoords === request else { throw LoadError.cancelled }
         guard self.documentCoordinator.document != nil else { throw TextError.documentNotOpen }
         try self.applyModeTransition(toEditing: false, request: .preserve)
@@ -101,8 +118,21 @@ extension InkSignView {
     let pending = pendingPageCoords
     pendingPageCoords = nil
     coordinateTapGestureRecognizer.isEnabled = false
+    if let pending { restoreCoordinateMode(pending) }
     if pending?.target != nil { emitChange() }
     pending?.result.reject(error)
+  }
+
+  private func restoreCoordinateMode(_ request: CoordinateRequest) {
+    guard request.target != nil, let token = request.modeSession, modeSessionIsCurrent(token) else { return }
+    do {
+      setInteractionMode(editing: token.mode == .ink)
+      try requireModeSession(token)
+      if token.mode == .text {
+        try textInteractionOverlay.armPlacement(generation: token.generation, options: token.textOptions)
+      }
+    }
+    catch { request.result.reject(error) }
   }
 
   @objc func handleCoordinateTap(_ recognizer: UITapGestureRecognizer) {
@@ -124,7 +154,10 @@ extension InkSignView {
           point.y >= 0, point.y <= size.height else { return }
     pendingPageCoords = nil
     coordinateTapGestureRecognizer.isEnabled = false
+    restoreCoordinateMode(pending)
     emitChange()
+    guard pending.modeSession.map(modeSessionIsCurrent) ?? true,
+          coordinateTargetIsCurrent(target) else { pending.result.reject(LoadError.cancelled); return }
     pending.result.resolve(PageCoords(pageId: targetPage.id.uuidString, pageIndex: Double(index),
                               x: Double(point.x), y: Double(point.y)))
   }

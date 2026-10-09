@@ -44,10 +44,14 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
-// Forward declaration of `TextDirection` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
+// Forward declaration of `InputMode` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class InputMode; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `TextAlignment` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
@@ -77,8 +81,10 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "PageCoords.hpp"
 #include <memory>
 #include "HybridAnalyzedPageSpec.hpp"
-#include "TextDirection.hpp"
+#include "HybridModeSessionSpec.hpp"
+#include "InputMode.hpp"
 #include "TextModeOptions.hpp"
+#include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
 
@@ -325,8 +331,8 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<PageCoords>> getPageCoords() override {
-      auto __result = _swiftPart.getPageCoords();
+    inline std::shared_ptr<Promise<PageCoords>> requestPageCoords() override {
+      auto __result = _swiftPart.requestPageCoords();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
@@ -349,16 +355,8 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<void>> setInkMode(const std::optional<ViewportOptions>& viewport) override {
-      auto __result = _swiftPart.setInkMode(viewport);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<void>> setViewMode(const std::optional<ViewportOptions>& viewport) override {
-      auto __result = _swiftPart.setViewMode(viewport);
+    inline std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) override {
+      auto __result = _swiftPart.setMode(static_cast<int>(mode), options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
@@ -394,14 +392,6 @@ namespace margelo::nitro::inksignpdf {
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
-    }
-    inline std::shared_ptr<Promise<void>> setTextMode(const std::optional<TextModeOptions>& options) override {
-      auto __result = _swiftPart.setTextMode(options);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
     }
     inline std::shared_ptr<Promise<std::string>> finalize() override {
       auto __result = _swiftPart.finalize();

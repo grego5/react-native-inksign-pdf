@@ -32,9 +32,6 @@ data class TextEntry(
   val bounds: TextAnnotationBounds?,
   @DoNotStrip
   @Keep
-  val hasValue: Boolean,
-  @DoNotStrip
-  @Keep
   val valueSource: TextValueSource
 ) {
   /* primary constructor */
@@ -46,7 +43,6 @@ data class TextEntry(
       && Objects.deepEquals(this.value, other.value)
       && Objects.deepEquals(this.fieldName, other.fieldName)
       && Objects.deepEquals(this.bounds, other.bounds)
-      && Objects.deepEquals(this.hasValue, other.hasValue)
       && Objects.deepEquals(this.valueSource, other.valueSource)
   }
 
@@ -56,7 +52,6 @@ data class TextEntry(
       value,
       fieldName,
       bounds,
-      hasValue,
       valueSource
     ).contentDeepHashCode()
   }
@@ -69,8 +64,8 @@ data class TextEntry(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(id: Double, value: String, fieldName: String?, bounds: TextAnnotationBounds?, hasValue: Boolean, valueSource: TextValueSource): TextEntry {
-      return TextEntry(id, value, fieldName, bounds, hasValue, valueSource)
+    private fun fromCpp(id: Double, value: String, fieldName: String?, bounds: TextAnnotationBounds?, valueSource: TextValueSource): TextEntry {
+      return TextEntry(id, value, fieldName, bounds, valueSource)
     }
   }
 }

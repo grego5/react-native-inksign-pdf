@@ -10,6 +10,7 @@
 // Include C++ implementation defined types
 #include "HybridAnalyzedPageSpecSwift.hpp"
 #include "HybridInkSignViewSpecSwift.hpp"
+#include "HybridModeSessionSpecSwift.hpp"
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
 #include <NitroModules/NitroDefines.hpp>
 
@@ -44,6 +45,38 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     }
     #endif
     ReactNativeInkSignPdf::HybridAnalyzedPageSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
+  }
+  
+  // pragma MARK: std::function<void(const std::shared_ptr<HybridAnalyzedPageSpec>& /* result */)>
+  Func_void_std__shared_ptr_HybridAnalyzedPageSpec_ create_Func_void_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeInkSignPdf::Func_void_std__shared_ptr_HybridAnalyzedPageSpec_::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const std::shared_ptr<HybridAnalyzedPageSpec>& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const PageCoords& /* result */)>
+  Func_void_PageCoords create_Func_void_PageCoords(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeInkSignPdf::Func_void_PageCoords::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const PageCoords& result) mutable -> void {
+      swiftClosure.call(result);
+    };
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridModeSessionSpec>
+  std::shared_ptr<HybridModeSessionSpec> create_std__shared_ptr_HybridModeSessionSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    ReactNativeInkSignPdf::HybridModeSessionSpec_cxx swiftPart = ReactNativeInkSignPdf::HybridModeSessionSpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::inksignpdf::HybridModeSessionSpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridModeSessionSpec_(std__shared_ptr_HybridModeSessionSpec_ cppType) {
+    std::shared_ptr<margelo::nitro::inksignpdf::HybridModeSessionSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::inksignpdf::HybridModeSessionSpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridModeSessionSpec\" is not implemented in Swift!");
+    }
+    #endif
+    ReactNativeInkSignPdf::HybridModeSessionSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
     return swiftPart.toUnsafe();
   }
   
@@ -83,22 +116,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   Func_void_AddPagesResult create_Func_void_AddPagesResult(void* NON_NULL swiftClosureWrapper) noexcept {
     auto swiftClosure = ReactNativeInkSignPdf::Func_void_AddPagesResult::fromUnsafe(swiftClosureWrapper);
     return [swiftClosure = std::move(swiftClosure)](const AddPagesResult& result) mutable -> void {
-      swiftClosure.call(result);
-    };
-  }
-  
-  // pragma MARK: std::function<void(const PageCoords& /* result */)>
-  Func_void_PageCoords create_Func_void_PageCoords(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_PageCoords::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const PageCoords& result) mutable -> void {
-      swiftClosure.call(result);
-    };
-  }
-  
-  // pragma MARK: std::function<void(const std::shared_ptr<HybridAnalyzedPageSpec>& /* result */)>
-  Func_void_std__shared_ptr_HybridAnalyzedPageSpec_ create_Func_void_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_std__shared_ptr_HybridAnalyzedPageSpec_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::shared_ptr<HybridAnalyzedPageSpec>& result) mutable -> void {
       swiftClosure.call(result);
     };
   }
