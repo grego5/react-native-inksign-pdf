@@ -102,6 +102,8 @@ final class InkSignView: HybridInkSignViewSpec {
   private lazy var pdfViewGestureDelegate = InkSignPdfViewGestureDelegate(owner: self)
   var pageSwitchRequestID: UInt64 = 0
   var fieldFocusRequestID: UInt64 = 0
+  let viewportMotion = InkSignPdfViewportMotion()
+  var isApplyingViewportFrame = false
   var pageNavigationRequestID: UInt64 = 0
   var pendingPageSwitchID: UInt64?
   var pendingPageSwitchEditing = false
@@ -109,6 +111,8 @@ final class InkSignView: HybridInkSignViewSpec {
   var pendingStructuralPresentationPageID: UUID?
   var pendingPageSwitchCompletion: ((Result<PageInfo, Error>) -> Void)?
   var textKeyboardOcclusion: CGFloat = 0
+  weak var textInsetScrollView: UIScrollView?
+  var textInsetAdjustment: (baseBottom: CGFloat, appliedBottom: CGFloat)?
   var pendingOpen: PendingOpen?
   var editMode = false
   var viewInteractionsEnabled = true
@@ -248,7 +252,7 @@ final class InkSignView: HybridInkSignViewSpec {
   private func queueZoomReport() {
     let work = DispatchWorkItem { [weak self] in
       guard let self, !self.disposed, let state = self.documentCoordinator.document else { return }
-      if self.hasActiveViewportGesture(in: self.documentView) {
+      if self.viewportMotion.isRunning || self.hasActiveViewportGesture(in: self.documentView) {
         self.queueZoomReport()
         return
       }
@@ -284,8 +288,7 @@ final class InkSignView: HybridInkSignViewSpec {
   func configureCanvasView(_ canvas: InkCanvasView) {
     canvas.owner = self
     canvas.delegate = canvasViewDelegate
-    canvas.isUserInteractionEnabled = editMode
-    canvas.drawingGestureRecognizer.isEnabled = false
+    configureCanvasInteraction(canvas)
     canvas.tool = PKInkingTool(.pen, color: currentPen.color,
                                width: CGFloat(currentPen.maxWidth))
   }
@@ -351,6 +354,7 @@ final class InkSignView: HybridInkSignViewSpec {
 
   deinit {
     disposed = true
+    viewportMotion.cancel()
     currentModeSession?.cancelled = true
     pendingPageCoords?.result.reject(LoadError.cancelled)
     pendingPageCoords = nil
@@ -373,6 +377,7 @@ final class InkSignView: HybridInkSignViewSpec {
       guard !self.disposed else { return }
       self.invalidateModeSession()
       self.disposed = true
+      self.viewportMotion.cancel()
       self.cancelViewerCommands()
       self.pageInputCoordinator.cancelPending()
       self.cancelPendingPageSwitch()

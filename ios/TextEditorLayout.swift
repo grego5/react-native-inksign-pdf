@@ -65,7 +65,11 @@ enum InkSignPdfTextEditorLayout {
     let widthFromAnchor = editor.textAlignment == .right
       ? editor.textContainer.size.width - textAndCaretBounds.minX
       : textAndCaretBounds.maxX
+    // A trailing newline has an empty line fragment even before UIKit updates
+    // the selection/caret to that line. Include its height, not its full width.
+    let extraLineBottom = editor.layoutManager.extraLineFragmentTextContainer === editor.textContainer
+      ? editor.layoutManager.extraLineFragmentRect.maxY : 0
     return CGSize(width: max(widthFromAnchor, 0),
-                  height: max(textAndCaretBounds.maxY, 0))
+                  height: max(max(textAndCaretBounds.maxY, extraLineBottom), 0))
   }
 }

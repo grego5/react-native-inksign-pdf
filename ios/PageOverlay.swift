@@ -54,9 +54,8 @@ final class InkCanvasView: PKCanvasView {
   }
 
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-    let hit = super.hitTest(point, with: event)
-    if owner?.editMode == false, hit === self { return nil }
-    return hit
+    guard owner?.editMode == true else { return nil }
+    return super.hitTest(point, with: event)
   }
 
   @objc private func drawingGestureDidChange(_ gestureRecognizer: UIGestureRecognizer) {
