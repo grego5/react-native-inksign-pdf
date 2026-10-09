@@ -1210,6 +1210,16 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertTrue(editor.bounds.insetBy(dx: -1, dy: -1).intersects(
       editor.selectedTextRange.map { editor.caretRect(for: $0.end) } ?? .zero))
 
+    editor.text = "Ada"
+    editor.selectedRange = NSRange(location: 3, length: 0)
+    overlay.textViewDidChange(editor)
+    let singleLineHeight = editor.bounds.height
+    editor.text = "Ada\n"
+    // Text changes can precede UIKit moving the caret into the empty next line.
+    editor.selectedRange = NSRange(location: 3, length: 0)
+    overlay.textViewDidChange(editor)
+    XCTAssertGreaterThan(editor.bounds.height, singleLineHeight)
+
     editor.text = ""
     overlay.textViewDidChange(editor)
     let emptyCaret = try XCTUnwrap(editor.selectedTextRange.map { editor.caretRect(for: $0.end) })

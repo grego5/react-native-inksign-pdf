@@ -200,11 +200,13 @@ extension InkSignView {
     let zoom = min(max(target.zoom, documentView.minScaleFactor), documentView.maxScaleFactor)
     let geometry = state.activePage.geometry
     documentView.scaleFactor = zoom
-    let destination = PDFDestination(
-      page: state.activePage.page,
-      at: target.focus.applying(geometry.displayToPDFTransform))
-    destination.zoom = zoom
-    documentView.go(to: destination)
+    documentView.layoutIfNeeded()
+    guard let scroll = pageViewportScrollView() else { return false }
+    reconcileTextViewportInset(scroll)
+    let focusInView = documentView.convert(
+      target.focus.applying(geometry.displayToPDFTransform), from: state.activePage.page)
+    guard movePageViewport(by: CGPoint(x: documentView.bounds.midX - focusInView.x,
+                                       y: documentView.bounds.midY - focusInView.y)) else { return false }
     invalidateOverlayTransformCache()
     refreshOverlayTransform(canvasView, for: state.activePage.id)
     return true
@@ -425,10 +427,12 @@ extension InkSignView {
 
   func setTextKeyboardOcclusion(_ bottom: CGFloat) {
     textKeyboardOcclusion = bottom
+    if let scroll = pageViewportScrollView() { reconcileTextViewportInset(scroll) }
   }
 
   func resetTextViewportAvoidance() {
     textKeyboardOcclusion = 0
+    restoreTextViewportInset()
   }
 
   /// Moves the PDF viewport by a screen-space delta while preserving zoom.
@@ -444,13 +448,58 @@ extension InkSignView {
           translation.x.isFinite,
           translation.y.isFinite else { return }
     cancelActiveStroke()
-    let center = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
-    let pdfFocus = documentView.convert(CGPoint(x: center.x - translation.x,
-                                                y: center.y - translation.y),
-                                        to: page)
-    let destination = PDFDestination(page: page, at: pdfFocus)
-    destination.zoom = documentView.scaleFactor
-    documentView.go(to: destination)
+    if movePageViewport(by: translation) { refreshActiveOverlayTransform() }
+  }
+
+  /// The document content's enclosing scroll view pans the page; its outer
+  /// page-controller scroll view owns paging and must keep its offset.
+  private func pageViewportScrollView() -> UIScrollView? {
+    guard let content = documentView.documentView else { return nil }
+    var ancestor = content.superview
+    while let view = ancestor, view !== documentView {
+      if let scroll = view as? UIScrollView { return scroll }
+      ancestor = view.superview
+    }
+    return nil
+  }
+
+  private func movePageViewport(by translation: CGPoint) -> Bool {
+    guard let scroll = pageViewportScrollView() else { return false }
+    reconcileTextViewportInset(scroll)
+    scroll.layoutIfNeeded()
+    let origin = scroll.convert(CGPoint.zero, from: documentView)
+    let moved = scroll.convert(translation, from: documentView)
+    let inset = scroll.adjustedContentInset
+    let minX = -inset.left
+    let minY = -inset.top
+    let maxX = max(minX, scroll.contentSize.width - scroll.bounds.width + inset.right)
+    let maxY = max(minY, scroll.contentSize.height - scroll.bounds.height + inset.bottom)
+    scroll.setContentOffset(CGPoint(
+      x: min(max(scroll.contentOffset.x - (moved.x - origin.x), minX), maxX),
+      y: min(max(scroll.contentOffset.y - (moved.y - origin.y), minY), maxY)), animated: false)
+    return true
+  }
+
+  private func reconcileTextViewportInset(_ scroll: UIScrollView) {
+    guard textKeyboardOcclusion > 0 else { restoreTextViewportInset(); return }
+    if textInsetScrollView !== scroll {
+      restoreTextViewportInset()
+      textInsetScrollView = scroll
+      textInsetBaseline = scroll.contentInset
+    }
+    guard var inset = textInsetBaseline else { return }
+    let origin = scroll.convert(CGPoint.zero, from: documentView)
+    let keyboard = scroll.convert(CGPoint(x: 0, y: textKeyboardOcclusion), from: documentView)
+    inset.bottom += abs(keyboard.y - origin.y)
+    if scroll.contentInset != inset { scroll.contentInset = inset }
+  }
+
+  private func restoreTextViewportInset() {
+    if let scroll = textInsetScrollView, let baseline = textInsetBaseline {
+      scroll.contentInset = baseline
+    }
+    textInsetScrollView = nil
+    textInsetBaseline = nil
   }
 
   func ensureTextVisible(outline: CGRect, caret: CGRect) {

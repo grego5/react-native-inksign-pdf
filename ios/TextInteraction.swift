@@ -597,7 +597,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   /// The page overlay owns the coordinate transform; this view only receives
   /// annotation-owned touches and lets the canvas handle all other input.
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-    if owner?.isPickingPageCoords == true { return nil }
+    if owner?.isPickingPageCoords == true || owner?.editMode == true { return nil }
     if let hit = super.hitTest(point, with: event), hit !== self { return hit }
     if hasPendingPlacement() {
       return owner?.canonicalPagePoint(fromOverlay: point) == nil ? nil : self
@@ -787,7 +787,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                          shouldReceive touch: UITouch) -> Bool {
-    if owner?.isPickingPageCoords == true { return false }
+    if owner?.isPickingPageCoords == true || owner?.editMode == true { return false }
     if gestureRecognizer === placementTapRecognizer {
       return placementRecognizerAdmits(at: touch.location(in: self))
     }
@@ -802,16 +802,16 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       guard let owner,
             otherGestureRecognizer !== owner.doubleTapGestureRecognizer,
             isPDFViewGesture(otherGestureRecognizer) else { return false }
-      return placementRecognizerAdmits(at: gestureRecognizer.location(in: self))
+      return true
     }
     guard isTextInputGesture(gestureRecognizer),
           !isTextInputGesture(otherGestureRecognizer),
           otherGestureRecognizer !== placementTapRecognizer,
           let owner,
           otherGestureRecognizer !== owner.doubleTapGestureRecognizer,
-          isPDFViewGesture(otherGestureRecognizer),
-          textInputRecognizerAdmits(gestureRecognizer,
-                                    at: gestureRecognizer.location(in: self)) else { return false }
+          isPDFViewGesture(otherGestureRecognizer) else { return false }
+    // shouldReceive admits touches over module text. Failure relationships
+    // must not repeat hit testing before the recognizer has a touch location.
     return true
   }
 

@@ -448,9 +448,7 @@ extension InkSignView {
     let enabled = interactionsEnabled && !structuralInteractionSuspended &&
       documentCoordinator.document != nil && !disposed
     viewInteractionsEnabled = enabled
-    canvasView.isHidden = documentCoordinator.document == nil
-    canvasView.isUserInteractionEnabled = enabled
-    canvasView.drawingGestureRecognizer.isEnabled = editing && enabled
+    configureCanvasInteraction(canvasView)
     pdfViewInteractionOwnership.update(
       pdfView: documentView,
       editing: editing,
@@ -459,11 +457,19 @@ extension InkSignView {
   }
 
   func updatePDFViewInteractionOwnership() {
+    configureCanvasInteraction(canvasView)
     pdfViewInteractionOwnership.update(
       pdfView: documentView,
       editing: editMode,
       interactionsEnabled: viewInteractionsEnabled,
       placementRecognizer: textInteractionOverlay.placementTapRecognizer)
+  }
+
+  func configureCanvasInteraction(_ canvas: InkCanvasView) {
+    let enabled = viewInteractionsEnabled && documentCoordinator.document != nil && !disposed
+    canvas.isHidden = documentCoordinator.document == nil
+    canvas.isUserInteractionEnabled = enabled
+    canvas.drawingGestureRecognizer.isEnabled = editMode && enabled
   }
 
   func currentPageInfo() throws -> InkSignPdfNativePageInfo {

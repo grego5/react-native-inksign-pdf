@@ -24,6 +24,7 @@ export default function App() {
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
   const [textSelected, setTextSelected] = useState(false);
   const [signingFieldName, setSigningFieldName] = useState<string | null>(null);
+  const [fieldRtl, setFieldRtl] = useState(false);
 
   const [state, setState] = useState<ViewerState>({
     documentId: null,
@@ -75,8 +76,20 @@ export default function App() {
     }
   }
 
-  function toggleMode() {
-    void transitionMode(state.mode === 'ink' ? 'view' : 'edit');
+  async function toggleMode() {
+    const view = inkSignViewRef.current;
+    if (!view || pageInfo === null) return;
+    try {
+      if (modeRef.current === 'ink' || modeRef.current === 'pageCoords') {
+        view.setMode('view');
+        return;
+      }
+      const session = view.setMode('ink');
+      const { x, y } = await session.requestPageCoords();
+      await session.setViewport({ zoom: 3, x, y });
+    } catch (error) {
+      if (!isOperationCancelled(error)) Alert.alert('Signing focus failed', String(error));
+    }
   }
 
   async function focusSigningField() {
@@ -87,7 +100,7 @@ export default function App() {
     try {
       const session = view.setMode('view');
       const page = await session.getPage();
-      const id = page.resolveText({ fieldName, direction: 'auto' });
+      const id = page.resolveText({ fieldName, direction: fieldRtl ? 'rtl' : 'auto' });
       await page.focusText(id, { zoom: 3, verticalAnchor: 'bottom', edgeOffset: 8 });
       view.setMode('ink');
     } catch (error) {
@@ -108,7 +121,7 @@ export default function App() {
       if (placementArmed) {
         inkSignView.setMode('view');
       } else {
-        inkSignView.setMode('text');
+        inkSignView.setMode('text', { zoom: 3 });
       }
     } catch (error) {
       Alert.alert(
@@ -139,7 +152,6 @@ export default function App() {
     }
     try {
       if (state.mode === 'ink') view.clearInk();
-      else if (state.mode === 'textAdd') view.setMode('view');
     } catch (error) {
       Alert.alert('Clear failed', String(error));
     }
@@ -277,8 +289,9 @@ export default function App() {
 
           <View style={styles.row}>
             <Action
-              label={state.mode === 'ink' ? 'View' : 'Sign'}
-              onPress={toggleMode}
+              label={state.mode === 'ink' || state.mode === 'pageCoords' ? 'View' : 'Sign'}
+              disabled={pageInfo === null}
+              onPress={() => void toggleMode()}
               onLongPress={state.mode === 'ink' || pageInfo === null
                 ? undefined : () => setSigningFieldName('')}
             />
@@ -293,9 +306,9 @@ export default function App() {
               disabled={!state.canRedo}
               onPress={() => inkSignViewRef.current?.redo()}
             />
-            {['ink', 'textEdit', 'textAdd'].includes(state.mode) && (
+            {['ink', 'textEdit'].includes(state.mode) && (
               <Action
-                label={state.mode === 'textAdd' ? 'Cancel text' : 'Clear'}
+                label="Clear"
                 disabled={state.mode === 'textEdit' && !textSelected}
                 onPress={() => void clearCurrentContent()}
               />
@@ -348,6 +361,13 @@ export default function App() {
                 onSubmitEditing={() => void focusSigningField()}
                 style={styles.dialogInput}
               />
+              <Pressable
+                accessibilityRole="checkbox"
+                accessibilityLabel="RTL field"
+                accessibilityState={{ checked: fieldRtl }}
+                onPress={() => setFieldRtl(value => !value)}>
+                <Text style={styles.pageIndicator}>{fieldRtl ? '☑' : '☐'} RTL</Text>
+              </Pressable>
               <View style={styles.row}>
                 <Action label="Cancel" onPress={() => setSigningFieldName(null)} />
                 <Action

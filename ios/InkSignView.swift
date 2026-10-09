@@ -109,6 +109,8 @@ final class InkSignView: HybridInkSignViewSpec {
   var pendingStructuralPresentationPageID: UUID?
   var pendingPageSwitchCompletion: ((Result<PageInfo, Error>) -> Void)?
   var textKeyboardOcclusion: CGFloat = 0
+  weak var textInsetScrollView: UIScrollView?
+  var textInsetBaseline: UIEdgeInsets?
   var pendingOpen: PendingOpen?
   var editMode = false
   var viewInteractionsEnabled = true
@@ -284,8 +286,7 @@ final class InkSignView: HybridInkSignViewSpec {
   func configureCanvasView(_ canvas: InkCanvasView) {
     canvas.owner = self
     canvas.delegate = canvasViewDelegate
-    canvas.isUserInteractionEnabled = editMode
-    canvas.drawingGestureRecognizer.isEnabled = false
+    configureCanvasInteraction(canvas)
     canvas.tool = PKInkingTool(.pen, color: currentPen.color,
                                width: CGFloat(currentPen.maxWidth))
   }
