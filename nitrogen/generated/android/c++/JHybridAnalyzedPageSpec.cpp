@@ -25,8 +25,8 @@ namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
-// Forward declaration of `FieldFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
+// Forward declaration of `TextFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
 // Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 
@@ -54,8 +54,8 @@ namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 #include "JTextVerticalAnchor.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "JTextAnnotationOptions.hpp"
-#include "FieldFocusOptions.hpp"
-#include "JFieldFocusOptions.hpp"
+#include "TextFocusOptions.hpp"
+#include "JTextFocusOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
 #include "JFieldFocusVerticalAnchor.hpp"
 
@@ -106,10 +106,6 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* id */, jni::alias_ref<jni::JString> /* text */)>("setTextValue");
     method(_javaPart, id, jni::make_jstring(text));
   }
-  void JHybridAnalyzedPageSpec::clearText(double id) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* id */)>("clearText");
-    method(_javaPart, id);
-  }
   void JHybridAnalyzedPageSpec::setTextOptions(double id, const TextAnnotationOptions& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* id */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("setTextOptions");
     method(_javaPart, id, JTextAnnotationOptions::fromCpp(options));
@@ -138,9 +134,9 @@ namespace margelo::nitro::inksignpdf {
       return __vector;
     }(__result);
   }
-  std::shared_ptr<Promise<void>> JHybridAnalyzedPageSpec::focusText(double id, const std::optional<FieldFocusOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(double /* id */, jni::alias_ref<JFieldFocusOptions> /* options */)>("focusText");
-    auto __result = method(_javaPart, id, options.has_value() ? JFieldFocusOptions::fromCpp(options.value()) : nullptr);
+  std::shared_ptr<Promise<void>> JHybridAnalyzedPageSpec::focusText(double id, const std::optional<TextFocusOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(double /* id */, jni::alias_ref<JTextFocusOptions> /* options */)>("focusText");
+    auto __result = method(_javaPart, id, options.has_value() ? JTextFocusOptions::fromCpp(options.value()) : nullptr);
     return [&]() {
       auto __promise = Promise<void>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {

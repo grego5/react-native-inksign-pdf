@@ -30,8 +30,8 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 namespace margelo::nitro::inksignpdf { struct TextEntry; }
 // Forward declaration of `TextValueSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
-// Forward declaration of `FieldFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
+// Forward declaration of `TextFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
 // Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 
@@ -48,7 +48,7 @@ namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 #include "TextValueSource.hpp"
 #include <vector>
 #include <NitroModules/Promise.hpp>
-#include "FieldFocusOptions.hpp"
+#include "TextFocusOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
@@ -123,12 +123,6 @@ namespace margelo::nitro::inksignpdf {
         std::rethrow_exception(__result.error());
       }
     }
-    inline void clearText(double id) override {
-      auto __result = _swiftPart.clearText(std::forward<decltype(id)>(id));
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
     inline void setTextOptions(double id, const TextAnnotationOptions& options) override {
       auto __result = _swiftPart.setTextOptions(std::forward<decltype(id)>(id), std::forward<decltype(options)>(options));
       if (__result.hasError()) [[unlikely]] {
@@ -159,7 +153,7 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<void>> focusText(double id, const std::optional<FieldFocusOptions>& options) override {
+    inline std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) override {
       auto __result = _swiftPart.focusText(std::forward<decltype(id)>(id), options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());

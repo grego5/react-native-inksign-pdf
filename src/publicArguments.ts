@@ -90,20 +90,16 @@ export function validateTextId(value: unknown): void {
   }
 }
 
-export function validateFieldFocusOptions(value: unknown): void {
+export function validateTextFocusOptions(value: unknown): void {
   if (value === undefined) return;
   if (!isRecord(value) ||
-    (value.occurrence !== undefined && value.occurrence !== 'first' && value.occurrence !== 'last') ||
-    (value.direction !== undefined && value.direction !== 'ltr' &&
-      value.direction !== 'rtl' && value.direction !== 'auto') ||
     (value.zoom !== undefined &&
       (typeof value.zoom !== 'number' || !Number.isFinite(value.zoom) || value.zoom <= 0)) ||
     (value.verticalAnchor !== undefined && value.verticalAnchor !== 'top' &&
       value.verticalAnchor !== 'bottom' && value.verticalAnchor !== 'center') ||
     (value.edgeOffset !== undefined &&
-      (typeof value.edgeOffset !== 'number' || !Number.isFinite(value.edgeOffset) || value.edgeOffset < 0)) ||
-    (value.setInkMode !== undefined && typeof value.setInkMode !== 'boolean')) {
-    throw argumentError('invalid_field_focus_options', 'Field focus options are invalid');
+      (typeof value.edgeOffset !== 'number' || !Number.isFinite(value.edgeOffset) || value.edgeOffset < 0))) {
+    throw argumentError('invalid_text_focus_options', 'Text focus options are invalid');
   }
 }
 

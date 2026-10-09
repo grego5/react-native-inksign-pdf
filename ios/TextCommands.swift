@@ -102,20 +102,6 @@ enum InkSignPdfKeyRuleSelector {
 }
 
 extension InkSignView {
-  func setTextMode(options: TextModeOptions?) throws -> Promise<Void> {
-    enqueueViewerCommand(presentation: true) {
-      guard !self.disposed else { throw TextError.cancelled }
-      guard self.documentCoordinator.document != nil else { return Promise<Void>.resolved() }
-      try self.requireViewportReady(request: .preserve)
-      self.fieldFocusRequestID &+= 1
-      self.finishInteractionForLifecycle()
-      self.setInteractionMode(editing: false)
-      try self.textInteractionOverlay.armPlacement(generation: self.documentCoordinator.generation,
-                                                  options: options)
-      return Promise<Void>.resolved()
-    }
-  }
-
   func setTextDirection(direction: TextDirection) throws {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
@@ -127,12 +113,28 @@ extension InkSignView {
     return enqueueViewerCommand { try self.getPageNow(pageIndex: pageIndex) }
   }
 
-  private func getPageNow(pageIndex: Double?) throws -> Promise<any HybridAnalyzedPageSpec> {
+  func getSessionPage(_ token: InkSignPdfModeSessionToken, pageIndex: Double?) throws -> Promise<any HybridAnalyzedPageSpec> {
+    try requireModeSession(token)
+    guard let document = documentCoordinator.document else { throw TextError.cancelled }
+    let index = pageIndex ?? Double(document.activePageIndex)
+    guard index.isFinite, index >= 0, index.rounded(.towardZero) == index,
+          index < Double(document.pages.count) else { throw TextError.pageNotFound }
+    let pageID = document.pages[Int(index)].id
+    return enqueueViewerCommand(modeSession: token) {
+      try self.getPageNow(pageIndex: nil, modeSession: token, capturedPageID: pageID)
+    }
+  }
+
+  private func getPageNow(pageIndex: Double?, modeSession: InkSignPdfModeSessionToken? = nil,
+                          capturedPageID: UUID? = nil) throws -> Promise<any HybridAnalyzedPageSpec> {
     let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect) in
       guard !self.disposed else { throw TextError.cancelled }
       guard let document = self.documentCoordinator.document else { throw TextError.documentNotOpen }
       let index: Int
-      if let pageIndex {
+      if let capturedPageID {
+        guard let found = document.pages.firstIndex(where: { $0.id == capturedPageID }) else { throw TextError.cancelled }
+        index = found
+      } else if let pageIndex {
         guard pageIndex.isFinite, pageIndex >= 0, pageIndex.rounded(.towardZero) == pageIndex else {
           throw TextError.pageNotFound
         }
@@ -169,9 +171,10 @@ extension InkSignView {
         }
         do {
           let analysis = try result.get()
+          if let modeSession { try self.requireModeSession(modeSession) }
           if !coordinator.textTargets(for: captured.3).isEmpty { coordinator.retainTextAnalysis(analysis) }
           settlement.resolve(HybridAnalyzedPage(owner: self, generation: captured.1,
-            pageID: captured.3, analysis: analysis))
+            pageID: captured.3, analysis: analysis, modeSession: modeSession))
         } catch {
           settlement.reject(error)
         }
@@ -292,14 +295,6 @@ extension InkSignView {
     }
   }
 
-  func clearPreparedText(_ handle: HybridAnalyzedPage, id: Double) throws {
-    let (page, target) = try preparedTarget(handle, id: id)
-    textInteractionOverlay.clearPreparedDraft(id: target.id, pageID: page.id)
-    if let current = page.history.content.textAnnotations.first(where: { $0.id == target.id }) {
-      try removeTextAnnotation(current, generation: handle.generation, pageID: page.id)
-    }
-  }
-
   func setPreparedTextOptions(_ handle: HybridAnalyzedPage, id: Double,
                               options: TextAnnotationOptions) throws {
     let (page, target) = try preparedTarget(handle, id: id)
@@ -340,7 +335,7 @@ extension InkSignView {
     return TextEntry(id: Double(target.id), value: value, fieldName: target.fieldName,
       bounds: TextAnnotationBounds(x: Double(bounds.minX), y: Double(bounds.minY),
         width: Double(bounds.width), height: Double(bounds.height)),
-      hasValue: !value.isEmpty, valueSource: source)
+      valueSource: source)
   }
 
   func adjustPreparedTextSize(_ handle: HybridAnalyzedPage, id: Double, delta: Double) throws -> Double {
@@ -365,14 +360,14 @@ extension InkSignView {
   }
 
   func focusPreparedText(_ handle: HybridAnalyzedPage, id: Double,
-                         options: FieldFocusOptions?) throws -> Promise<Void> {
-    return enqueueViewerCommand(presentation: true) {
+                         options: TextFocusOptions?) throws -> Promise<Void> {
+    return enqueueViewerCommand(presentation: true, modeSession: handle.modeSession) {
       try self.focusPreparedTextNow(handle, id: id, options: options)
     }
   }
 
   private func focusPreparedTextNow(_ handle: HybridAnalyzedPage, id: Double,
-                         options: FieldFocusOptions?) throws -> Promise<Void> {
+                         options: TextFocusOptions?) throws -> Promise<Void> {
     let (page, target) = try preparedTarget(handle, id: id)
     let rule = try displayedWritingRule(target, page: page)
     let bounds = displayedTargetBounds(target, page: page)
@@ -391,11 +386,14 @@ extension InkSignView {
           result.reject(TextError.cancelled); return
         }
         self.finishInteractionForLifecycle()
+        guard self.fieldFocusRequestID == requestID,
+              handle.modeSession.map(self.modeSessionIsCurrent) ?? true else {
+          result.reject(TextError.cancelled); return
+        }
         guard let viewportTarget = self.fieldFocusTarget(ruleY: rule?.y ?? bounds.midY,
           horizontalFocus: rule.map { ($0.minX + $0.maxX) / 2 } ?? bounds.midX, zoom: options?.zoom ?? 2,
           verticalAnchor: options?.verticalAnchor ?? .center, edgeOffset: options?.edgeOffset ?? 0),
           self.applyViewport(target: viewportTarget) else { result.reject(TextError.notReady); return }
-        if options?.setInkMode == true { self.setInteractionMode(editing: true) }
         result.resolve(())
       }
       if index == document.activePageIndex { runFocus() }
@@ -411,6 +409,7 @@ extension InkSignView {
   }
 
   private func validatePreparedHandle(_ handle: HybridAnalyzedPage) throws {
+    if let token = handle.modeSession { try requireModeSession(token) }
     guard !disposed, documentCoordinator.generation == handle.generation,
           documentCoordinator.document?.pages.contains(where: { $0.id == handle.pageID }) == true else {
       throw TextError.cancelled

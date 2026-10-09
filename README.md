@@ -73,8 +73,8 @@ export function SigningView({ pdfPath, sessionId }: { pdfPath: string; sessionId
           Page {page.pageIndex + 1} of {page.pageCount}
         </Text>
       )}
-      <Button title="Draw" onPress={() => pdf.current?.setInkMode()} />
-      <Button title="Place text" onPress={() => pdf.current?.setTextMode()} />
+      <Button title="Draw" onPress={() => pdf.current?.setMode('ink')} />
+      <Button title="Place text" onPress={() => pdf.current?.setMode('text')} />
       <Button title="Undo" onPress={() => pdf.current?.undo()} />
       <Button title="Save PDF" onPress={() => void savePdf()} />
       {savedPath !== '' && <Text>Saved to {savedPath}</Text>}
@@ -89,38 +89,119 @@ Both accept a local path or `file://` URI. Choose **Draw** or **Place text** and
 sign the page. `finalize()` returns a temporary PDF `file://` URI; copy the file
 to persistent storage if you need it after closing the viewer.
 
-On Android, `androidFallbackFont` reuses a valid font at `uri` or downloads it
-from `url` to that app-owned cache file:
+## Methods
 
-```tsx
-<InkSignView androidFallbackFont={{ url: fontDownloadUrl, uri: fontCacheFileUri }} />
-```
+### Viewer ref
 
-## Common actions
+- `open(path, options?)` — Open a local PDF or JPEG path or `file://` URI.
+  JPEG becomes one A4 page. Omitted viewport options fit the page.
+- `close(cancelPending?)` — Close after earlier operations finish. Pass `true`
+  to cancel pending work and close immediately.
+- `addPages(options?)` — Import local PDFs or images; omit `sources` to open the
+  native picker. Keeps the current page selected unless `activePage` is
+  `'firstAdded'` or `'lastAdded'`.
+- `removePage()` — Remove the current page, keeping at least one page.
+- `movePage(pageIndex)` — Reorder the current page to a zero-based index.
+- `rotatePage(degrees)` — Rotate the current page clockwise by 90, 180, or 270
+  degrees. Export preserves its orientation.
+- `nextPage()` — Select the next page.
+- `previousPage()` — Select the previous page.
+- `getViewport()` — Read the current page's focus coordinates and zoom.
+- `getPage(pageIndex?)` — Prepare a page for text operations; omission selects
+  the current page. The returned page stays bound to that page after navigation
+  or reordering, and becomes invalid when its page or document is removed.
+- `setMode(mode, options?)` — Enter `'view'`, `'ink'`, or `'text'` synchronously
+  once the document is ready. Preserves the viewport and returns a mode session.
+  Options apply only to text mode; viewport changes wait for a placement tap.
+  Switching modes finishes an open text entry or cancels untapped placement.
+- `requestPageCoords()` — Wait for one page tap and return `{ pageId, pageIndex,
+  x, y }`, then return to view mode. Page or mode changes and teardown cancel
+  the request. Use `setMode('view')` for Back.
+- `hasInk()` — Check whether the current page has committed ink.
+- `undo()` — Undo the last edit on the current page.
+- `redo()` — Redo an undone edit on the current page.
+- `clear()` — Remove editable ink and module text from the current page as one
+  undoable edit. Original PDF content is preserved.
+- `clearInk()` — Remove only editable ink from the current page as one undoable edit.
+- `setTextDirection(direction)` — Set the base text direction: `'ltr'`, `'rtl'`,
+  or `'auto'` to follow app direction.
+- `finalize()` — Export to a temporary PDF `file://` URI. Copy it to persistent
+  storage before closing the viewer if you need to retain it.
 
-Use `setViewMode()`, `setInkMode()`, and `setTextMode()` to switch modes. Omit
-options to keep the current viewport, pass `{}` to fit the page, or set values
-such as `{ zoom: 3, x: 200, y: 600 }` to zoom and focus. Text-mode viewport
-options take effect when you tap to place text. Finishing text returns to view
-mode; switching modes finishes any open text entry first.
+### Prepared page
 
-Call `getPageCoords()` and tap the page to get coordinates; the viewer returns
-to view mode afterward. `onZoomChange` reports settled zoom relative to page fit:
-`1` is fitted, above `1` is zoomed in, and below `1` is zoomed out.
+Prepare once with `getPage()`; text resolution and value operations are synchronous.
 
-Use `clearInk()` to clear the current page's editable ink, or
-`page.clearText(id)` to remove selected text. Both are undoable. Cancel pending
-text placement with `setViewMode()`. `clear()` clears both ink and text.
+- `resolveText(options)` — Resolve a complete printed field name or free
+  `bounds: { x, y, width, height }` to a numeric ID. Scanned labels need a text layer.
+- `getTextValue(id)` — Read entered text, falling back to embedded PDF text or `''`.
+- `setTextValue(id, text)` — Write module text. Pass `''` to remove it and reveal
+  any embedded value. Committed edits are undoable.
+- `setTextOptions(id, options)` — Update formatting; omitted options retain their values.
+- `adjustTextSize(id, delta)` — Increase or decrease font size by page points;
+  return the resulting size.
+- `getTextEntry(id)` — Read the value, value source, and target metadata.
+- `getTextEntries()` — Read all resolved text targets on the page.
+- `focusText(id, options?)` — Focus a resolved target without changing mode.
+  Options are `zoom`, `verticalAnchor` (`'top'`, `'bottom'`, or `'center'`), and
+  `edgeOffset` in page points. Defaults to zoom 2 and center.
+
+### Mode session
+
+Use the session returned by `setMode()` when a workflow awaits page preparation
+or a user tap before focusing. If the user switches modes while it waits, the
+session and its pages reject with `operation_cancelled`, preventing a delayed
+focus or write from taking over the new interaction. Catch cancellation once
+around the workflow with `isOperationCancelled(error)`.
+
+Sessions are optional. Use ordinary `view.getPage()` for text operations that
+should remain available across mode changes. Both kinds of handles become
+invalid when their document closes.
+
+- `session.getPage(pageIndex?)` — Prepare a page whose operations belong to this
+  mode session.
+- `session.requestPageCoords()` — Pick one point and return to the session's
+  mode. Page changes cancel the picker.
+- `session.setViewport(options?)` — Zoom or focus without changing mode. Pass
+  `{}` to fit; omit options to preserve the viewport.
+
+### Android debug recording
+
+Available in Android debug builds:
+
+- `startDebugRecording()` — Clear the bounded trace and start recording.
+- `stopDebugRecording()` — Stop recording.
+- `exportDebugRecording()` — Export the stopped trace as replayable CSV.
+
+## Events and paging
+
+- `onStateChange` — Viewer state, including mode, document identity, edit history,
+  and load error.
+- `onPageChange` — Current page information.
+- `onTextSelectionChange` — Selected text ID and page ID, or `null`.
+- `onZoomChange` — Settled zoom relative to page fit: `1` is fitted, above `1`
+  is zoomed in, below `1` is zoomed out.
+- `pagerDirection="rtl"` — Right-to-left paging; omission follows app direction.
+
+See the [public API](./src/InkSignView.nitro.ts) for all props and options.
+
+## Examples
+
+### Pick a signing location
 
 ```ts
-const target = await view.getPageCoords(); // pageId, pageIndex, x, y
-await view.setInkMode({ zoom: 3, x: target.x, y: target.y });
+import { isOperationCancelled } from '@grego5/react-native-inksign-pdf';
+
+try {
+  const session = view.setMode('ink');
+  const target = await session.requestPageCoords();
+  await session.setViewport({ zoom: 3, x: target.x, y: target.y });
+} catch (error) {
+  if (!isOperationCancelled(error)) throw error;
+}
 ```
 
-Use `setViewMode()` for Back. Page or mode changes, replacement, close, and
-unmount reject the request with `operation_cancelled`.
-
-Add local PDF or image pages:
+### Add image pages
 
 ```ts
 await pdf.current?.addPages({
@@ -130,10 +211,7 @@ await pdf.current?.addPages({
 });
 ```
 
-`addPages()` keeps the current page selected by default. Use `firstAdded` or
-`lastAdded` to select an imported page.
-
-Fill an empty field by its printed name:
+### Fill an empty field
 
 ```ts
 const page = await pdf.current?.getPage();
@@ -143,20 +221,11 @@ if (page) {
 }
 ```
 
-Use the full field name; scanned PDFs need a text layer. For free placement,
-pass `bounds: { x, y, width, height }` instead of `fieldName`.
-Set `pagerDirection="rtl"` for right-to-left paging.
-Use `page.adjustTextSize(id, 1)` or `-1` for relative text sizing.
+### Configure an Android fallback font
 
-Rotate the active page clockwise by 90, 180, or 270 degrees. The exported PDF
-keeps that orientation:
+A valid font at `uri` is reused; otherwise it is downloaded from `url` to that
+app-owned cache file.
 
-```ts
-await pdf.current?.rotatePage(90);
+```tsx
+<InkSignView androidFallbackFont={{ url: fontDownloadUrl, uri: fontCacheFileUri }} />
 ```
-
-Use `nextPage()`, `previousPage()`, `undo()`, `redo()`, and `clear()` for
-navigation and editing.
-`hasInk()` reports whether the active page has committed ink.
-See the [public API](./src/InkSignView.nitro.ts) for all props,
-options, and methods.

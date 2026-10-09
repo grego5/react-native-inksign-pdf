@@ -61,19 +61,14 @@ export interface TextModeOptions extends ViewportOptions {
   verticalAnchor?: TextVerticalAnchor
 }
 
-/** Focus a page on a matching label's adjacent rule without creating an annotation. */
-export interface FieldFocusOptions {
-  occurrence?: TextKeyOccurrence
-  /** Rule side follows text-placement direction policy: explicit LTR/RTL or auto app direction. */
-  direction?: TextDirection
+/** Focus an already resolved text target without creating an annotation. */
+export interface TextFocusOptions {
   /** Positive zoom factor; defaults to 2 and is clamped to the native viewport limits. */
   zoom?: number
   /** Positions the writing rule at the visible top or bottom edge; center ignores edgeOffset. Defaults to center. */
   verticalAnchor?: FieldFocusVerticalAnchor
   /** Distance inward from the selected viewport edge, in PDF page points. */
   edgeOffset?: number
-  /** Enables ink after successful focus. Omission or false preserves the current mode. */
-  setInkMode?: boolean
 }
 
 /** Options used to resolve a named field or reserve a free text placement. */
@@ -96,7 +91,6 @@ export interface TextEntry {
   value: string
   fieldName?: string
   bounds?: TextAnnotationBounds
-  hasValue: boolean
   valueSource: TextValueSource
 }
 
@@ -120,10 +114,8 @@ export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kot
   resolveText(options: ResolveTextOptions): TextId
   /** Returns the target's effective text value. */
   getTextValue(id: TextId): string
-  /** Sets the target's entered text. */
+  /** Sets the target's entered text; empty text removes module text and preserves source PDF text. */
   setTextValue(id: TextId, text: string): void
-  /** Clears the target's entered text. */
-  clearText(id: TextId): void
   /** Updates the target's text options; omitted fields retain their current values. */
   setTextOptions(id: TextId, options: TextAnnotationOptions): void
   /** Adjusts the native font size by page points and returns the resulting size. */
@@ -133,11 +125,22 @@ export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kot
   /** Returns all text targets on this page. */
   getTextEntries(): TextEntry[]
   /** Focuses the target; omitted options use zoom 2 and center it without changing input mode. */
-  focusText(id: TextId, options?: FieldFocusOptions): Promise<void>
+  focusText(id: TextId, options?: TextFocusOptions): Promise<void>
+}
+
+/** Operations scoped to one explicit mode request. Supersession rejects with operation_cancelled. */
+export interface ModeSession extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
+  /** Prepares a page bound to this session and its captured document. */
+  getPage(pageIndex?: number): Promise<AnalyzedPage>
+  /** Temporarily picks one page tap, then restores this session's input mode. */
+  requestPageCoords(): Promise<PageCoords>
+  /** Preserves the viewport when omitted; an empty object fits the current page. */
+  setViewport(options?: ViewportOptions): Promise<void>
 }
 
 export type PageType = 'pdf' | 'image'
 export type TextDirection = 'ltr' | 'rtl' | 'auto'
+export type InputMode = 'view' | 'ink' | 'text'
 export type TextAlignment = 'start' | 'end' | 'center'
 export type TextVerticalAnchor = 'top' | 'bottom'
 export type FieldFocusVerticalAnchor = 'top' | 'bottom' | 'center'
@@ -269,15 +272,13 @@ export interface InkSignViewMethods extends HybridViewMethods {
   /** Returns the active page's current focus coordinates and zoom. */
   getViewport(): Viewport
   /** Enters pageCoords mode on the active page without changing the viewport. One tap resolves and returns to view mode; page/mode changes or teardown cancel it. */
-  getPageCoords(): Promise<PageCoords>
+  requestPageCoords(): Promise<PageCoords>
   /** Returns whether the active page has committed ink; undo, redo, clear, and page changes are reflected. */
   hasInk(): boolean
-  /** Prepares analysis for `pageIndex`; omission selects the active page without navigating. */
+  /** Prepares a document-bound page that survives mode changes; omission selects the active page. */
   getPage(pageIndex?: number): Promise<AnalyzedPage>
-  /** FIFO ink mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits. */
-  setInkMode(viewport?: ViewportOptions): Promise<void>
-  /** FIFO view mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits. */
-  setViewMode(viewport?: ViewportOptions): Promise<void>
+  /** Synchronously enters a mode, preserves the viewport, and supersedes the previous session. Requires a ready document. Options apply only to text placement; their viewport changes wait for a valid tap. */
+  setMode(mode: InputMode, options?: TextModeOptions): ModeSession
   /** Undoes the last history change on the active page; no-op when history is empty. */
   undo(): void
   /** Redoes the next history change on the active page; no-op when redo history is empty. */
@@ -288,8 +289,6 @@ export interface InkSignViewMethods extends HybridViewMethods {
   clearInk(): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
-  /** FIFO text mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits after the tap. */
-  setTextMode(options?: TextModeOptions): Promise<void>
   /** Returns a temporary local PDF file URI (file://). */
   finalize(): Promise<string>
   /** Android debug builds only. Clears the bounded native trace and starts recording. */

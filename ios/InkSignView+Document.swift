@@ -7,17 +7,25 @@ import QuartzCore
 
 extension InkSignView {
   func enqueueViewerCommand<T>(presentation: Bool = false,
+                               modeSession: InkSignPdfModeSessionToken? = nil,
                                _ action: @escaping () throws -> Promise<T>) -> Promise<T> {
     let result = InkSignPdfOperationPromise<T>()
     performOnMain {
-      guard !self.disposed else { result.reject(LoadError.cancelled); return }
+      guard !self.disposed, modeSession.map(self.modeSessionIsCurrent) ?? true else {
+        result.reject(LoadError.cancelled); return
+      }
       let id = UUID()
-      let entry = ViewerCommand(id: id, presentation: presentation, start: { [weak self] in
+      let entry = ViewerCommand(id: id, presentation: presentation, modeSession: modeSession, start: { [weak self] in
         guard let self else { result.reject(LoadError.cancelled); return }
         do {
+          if let modeSession { try self.requireModeSession(modeSession) }
           let operation = try action()
           operation.then { value in
-            self.performOnMain { result.resolve(value); self.finishViewerCommand(id) }
+            self.performOnMain {
+              if let modeSession, !self.modeSessionIsCurrent(modeSession) { result.reject(LoadError.cancelled) }
+              else { result.resolve(value) }
+              self.finishViewerCommand(id)
+            }
           }.catch { error in
             self.performOnMain { result.reject(error); self.finishViewerCommand(id) }
           }
@@ -47,6 +55,7 @@ extension InkSignView {
 
   func cancelPresentationCommands() {
     performOnMain {
+      self.invalidateModeSession()
       self.cancelCoordinateRequest()
       self.fieldFocusRequestID &+= 1
       self.pageNavigationRequestID &+= 1
@@ -97,6 +106,7 @@ extension InkSignView {
     pageNavigationRequestID &+= 1
     pageSwitchRequestID &+= 1
     documentCoordinator.closeDocument()
+    structuralInteractionSuspended = false
     documentID = nil
     documentView.document = nil
     overlayProvider.reset()
@@ -194,27 +204,8 @@ extension InkSignView {
     }
   }
 
-  func setInkMode(viewport: ViewportOptions?) throws -> Promise<Void> {
-    enqueueViewerCommand(presentation: true) {
-      try self.transition(toEditing: true, viewport: viewport)
-      return Promise<Void>.resolved()
-    }
-  }
-
-  func setViewMode(viewport: ViewportOptions?) throws -> Promise<Void> {
-    enqueueViewerCommand(presentation: true) {
-      try self.transition(toEditing: false, viewport: viewport)
-      return Promise<Void>.resolved()
-    }
-  }
-
-  private func transition(toEditing: Bool, viewport: ViewportOptions?) throws {
-    guard !disposed else { throw ViewportError.cancelled }
-    guard documentCoordinator.document != nil else { return }
-    let request = Self.parseViewport(viewport)
-    cancelPendingPageSwitch()
-    try requireViewportReady(request: request)
-    try applyModeTransition(toEditing: toEditing, request: request)
+  func setMode(mode: InputMode, options: TextModeOptions?) throws -> any HybridModeSessionSpec {
+    try beginModeSession(mode, options: options)
   }
 
   func beginLoad(
@@ -229,12 +220,15 @@ extension InkSignView {
       return
     }
     let replacedOpen = pendingOpen
+    invalidateModeSession()
+    cancelCoordinateRequest()
     pendingOpen = nil
     guard let operation = documentCoordinator.admit(.open) else {
       replacedOpen?.settlement.reject(LoadError.cancelled)
       promise.reject(withError: LoadError.operationInProgress)
       return
     }
+    structuralInteractionSuspended = false
     textInteractionOverlay.discardForDocumentReplacement()
     pageInputCoordinator.cancelPending()
     cancelActiveStroke(clearLive: false)
@@ -451,7 +445,8 @@ extension InkSignView {
   func applyInteractionMode(editing: Bool, interactionsEnabled: Bool) {
     let editing = editing && documentCoordinator.document != nil
     editMode = editing
-    let enabled = interactionsEnabled && documentCoordinator.document != nil && !disposed
+    let enabled = interactionsEnabled && !structuralInteractionSuspended &&
+      documentCoordinator.document != nil && !disposed
     viewInteractionsEnabled = enabled
     canvasView.isHidden = documentCoordinator.document == nil
     canvasView.isUserInteractionEnabled = enabled

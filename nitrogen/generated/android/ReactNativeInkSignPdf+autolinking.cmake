@@ -34,10 +34,12 @@ target_sources(
   ../nitrogen/generated/android/ReactNativeInkSignPdfOnLoad.cpp
   # Shared Nitrogen C++ sources
   ../nitrogen/generated/shared/c++/HybridAnalyzedPageSpec.cpp
+  ../nitrogen/generated/shared/c++/HybridModeSessionSpec.cpp
   ../nitrogen/generated/shared/c++/HybridInkSignViewSpec.cpp
   ../nitrogen/generated/shared/c++/views/HybridInkSignViewComponent.cpp
   # Android-specific Nitrogen C++ sources
   ../nitrogen/generated/android/c++/JHybridAnalyzedPageSpec.cpp
+  ../nitrogen/generated/android/c++/JHybridModeSessionSpec.cpp
   ../nitrogen/generated/android/c++/JHybridInkSignViewSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_NullType_String.cpp
   ../nitrogen/generated/android/c++/JVariant_NullType_TextSelection.cpp

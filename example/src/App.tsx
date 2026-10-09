@@ -1,9 +1,12 @@
 import { useRef, useState } from 'react';
 import * as Sharing from 'expo-sharing';
-import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View,
+} from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   InkSignView,
+  isOperationCancelled,
   type AddPagesOptions,
   type PageInfo,
   type ViewerState,
@@ -11,7 +14,7 @@ import {
   type InkSignViewHandle,
   type TextSelection,
 } from '@grego5/react-native-inksign-pdf';
-import { ensureFallbackFont, fallbackFontPath } from './fallbackFont';
+import { androidFallbackFont, ensureFallbackFont } from './fallbackFont';
 import { DebugRecorder } from './DebugRecorder';
 
 export default function App() {
@@ -21,6 +24,7 @@ export default function App() {
   const modeRef = useRef<ViewerState['mode']>('view');
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
   const [textSelection, setTextSelection] = useState<TextSelection | null>(null);
+  const [signingFieldName, setSigningFieldName] = useState<string | null>(null);
 
   const [state, setState] = useState<ViewerState>({
     documentId: null,
@@ -58,18 +62,31 @@ export default function App() {
       return;
     }
     try {
-      if (target === 'edit') {
-        await inkSignView.setInkMode(viewport);
-      } else {
-        await inkSignView.setViewMode(viewport);
-      }
+      const session = target === 'edit' ? inkSignView.setMode('ink') : inkSignView.setMode('view');
+      if (viewport !== undefined) await session.setViewport(viewport);
     } catch (error) {
-      Alert.alert('Mode change failed', String(error));
+      if (!isOperationCancelled(error)) Alert.alert('Mode change failed', String(error));
     }
   }
 
   function toggleMode() {
     void transitionMode(state.mode === 'ink' ? 'view' : 'edit');
+  }
+
+  async function focusSigningField() {
+    const fieldName = signingFieldName?.trim();
+    const view = inkSignViewRef.current;
+    if (!fieldName || !view) return;
+    setSigningFieldName(null);
+    try {
+      const session = view.setMode('view');
+      const page = await session.getPage();
+      const id = page.resolveText({ fieldName, direction: 'auto' });
+      await page.focusText(id, { zoom: 3, verticalAnchor: 'bottom', edgeOffset: 8 });
+      view.setMode('ink');
+    } catch (error) {
+      if (!isOperationCancelled(error)) Alert.alert('Field focus failed', String(error));
+    }
   }
 
   function fitPage() {
@@ -83,9 +100,9 @@ export default function App() {
 
     try {
       if (placementArmed) {
-        await inkSignView.setViewMode();
+        inkSignView.setMode('view');
       } else {
-        await inkSignView.setTextMode();
+        inkSignView.setMode('text');
       }
     } catch (error) {
       Alert.alert(
@@ -102,7 +119,7 @@ export default function App() {
     try {
       if (pageInfo === null) return;
       const page = await inkSignView.getPage(pageInfo.pageIndex);
-      if (delta === null) page.clearText(selection.textId);
+      if (delta === null) page.setTextValue(selection.textId, '');
       else page.adjustTextSize(selection.textId, delta);
     } catch (error) {
       Alert.alert('Update text failed', String(error));
@@ -118,7 +135,7 @@ export default function App() {
     }
     try {
       if (state.mode === 'ink') view.clearInk();
-      else if (state.mode === 'textAdd') await view.setViewMode();
+      else if (state.mode === 'textAdd') view.setMode('view');
     } catch (error) {
       Alert.alert('Clear failed', String(error));
     }
@@ -188,7 +205,7 @@ export default function App() {
           <InkSignView
             ref={inkSignViewRef}
             style={styles.surface}
-            fallbackFont={Platform.OS === 'android' ? { path: fallbackFontPath } : undefined}
+            androidFallbackFont={Platform.OS === 'android' ? androidFallbackFont : undefined}
             strokeColor="#111111"
             strokeMinWidth={2.0}
             strokeMaxWidth={4.0}
@@ -255,7 +272,12 @@ export default function App() {
           </View>
 
           <View style={styles.row}>
-            <Action label={state.mode === 'ink' ? 'View' : 'Sign'} onPress={toggleMode} />
+            <Action
+              label={state.mode === 'ink' ? 'View' : 'Sign'}
+              onPress={toggleMode}
+              onLongPress={state.mode === 'ink' || pageInfo === null
+                ? undefined : () => setSigningFieldName('')}
+            />
             <Action label="Fit" onPress={fitPage} />
             <Action
               label="Undo"
@@ -301,6 +323,38 @@ export default function App() {
 
           {/* {__DEV__ ? <DebugRecorder inkSignViewRef={inkSignViewRef} /> : null} */}
         </View>
+        <Modal
+          visible={signingFieldName !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setSigningFieldName(null)}>
+          <KeyboardAvoidingView
+            style={styles.dialogBackdrop}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+            <View style={styles.dialog}>
+              <Text style={styles.dialogTitle}>Focus signing field</Text>
+              <TextInput
+                autoFocus
+                accessibilityLabel="Field name"
+                placeholder="Field name"
+                value={signingFieldName ?? ''}
+                onChangeText={setSigningFieldName}
+                autoCorrect={false}
+                returnKeyType="go"
+                onSubmitEditing={() => void focusSigningField()}
+                style={styles.dialogInput}
+              />
+              <View style={styles.row}>
+                <Action label="Cancel" onPress={() => setSigningFieldName(null)} />
+                <Action
+                  label="Focus and sign"
+                  disabled={!signingFieldName?.trim()}
+                  onPress={() => void focusSigningField()}
+                />
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -310,12 +364,14 @@ function Action({
   label,
   accessibilityLabel,
   onPress,
+  onLongPress,
   disabled = false,
   active = false,
 }: {
   label: string;
   accessibilityLabel?: string;
   onPress: () => void;
+  onLongPress?: () => void;
   disabled?: boolean;
   active?: boolean;
 }) {
@@ -325,6 +381,7 @@ function Action({
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
+      onLongPress={onLongPress}
       style={[
         styles.button,
         active && styles.buttonActive,
@@ -336,6 +393,14 @@ function Action({
 }
 
 const styles = StyleSheet.create({
+  dialogBackdrop: {
+    flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#0008',
+  },
+  dialog: { padding: 20, gap: 16, borderRadius: 12, backgroundColor: '#fff' },
+  dialogTitle: { fontSize: 18, fontWeight: '600', color: '#111' },
+  dialogInput: {
+    borderWidth: 1, borderColor: '#aaa', borderRadius: 6, padding: 12, color: '#111',
+  },
   safeArea: { flex: 1, backgroundColor: '#f5f5f5' },
   toolbar: { padding: 8, gap: 8 },
   title: { fontSize: 24, fontWeight: '700', color: '#111' },
