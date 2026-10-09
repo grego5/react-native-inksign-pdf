@@ -1,8 +1,14 @@
 import Foundation
 import NitroModules
 
+protocol InkSignPdfTextPageContext {
+  var generation: UInt64 { get }
+  var pageID: UUID { get }
+  var modeSession: InkSignPdfModeSessionToken? { get }
+}
+
 /** Retains immutable source analysis while keeping the owning view weak. */
-final class HybridAnalyzedPage: HybridAnalyzedPageSpec {
+final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContext {
   private weak var owner: InkSignView?
   let generation: UInt64
   let pageID: UUID

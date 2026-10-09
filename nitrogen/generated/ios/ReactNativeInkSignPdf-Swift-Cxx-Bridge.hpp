@@ -26,6 +26,8 @@ namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
+// Forward declaration of `HybridTextHandleSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
@@ -72,6 +74,8 @@ namespace ReactNativeInkSignPdf { class HybridAnalyzedPageSpec_cxx; }
 namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 // Forward declaration of `HybridModeSessionSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridModeSessionSpec_cxx; }
+// Forward declaration of `HybridTextHandleSpec_cxx` to properly resolve imports.
+namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 
 // Include C++ defined types
 #include "AddPagesActivePage.hpp"
@@ -83,6 +87,7 @@ namespace ReactNativeInkSignPdf { class HybridModeSessionSpec_cxx; }
 #include "HybridAnalyzedPageSpec.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "HybridModeSessionSpec.hpp"
+#include "HybridTextHandleSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
 #include "PageCoords.hpp"
@@ -387,6 +392,18 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<Promise<void>>>::withError(error);
   }
+  
+  // pragma MARK: std::shared_ptr<HybridTextHandleSpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridTextHandleSpec>`.
+   */
+  using std__shared_ptr_HybridTextHandleSpec_ = std::shared_ptr<HybridTextHandleSpec>;
+  std::shared_ptr<HybridTextHandleSpec> create_std__shared_ptr_HybridTextHandleSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridTextHandleSpec_(std__shared_ptr_HybridTextHandleSpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridTextHandleSpec>
+  using std__weak_ptr_HybridTextHandleSpec_ = std::weak_ptr<HybridTextHandleSpec>;
+  inline std__weak_ptr_HybridTextHandleSpec_ weakify_std__shared_ptr_HybridTextHandleSpec_(const std::shared_ptr<HybridTextHandleSpec>& strong) noexcept { return strong; }
   
   // pragma MARK: std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>>
   /**
@@ -944,6 +961,35 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>
+  /**
+   * Wrapper struct for `std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
+   */
+  struct std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_ final {
+    std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> variant;
+    std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_(std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> variant): variant(variant) { }
+    operator std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline std::shared_ptr<HybridTextHandleSpec> get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline nitro::NullType get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_ create_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_(const std::shared_ptr<HybridTextHandleSpec>& value) noexcept {
+    return std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_(value);
+  }
+  inline std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_ create_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_(nitro::NullType value) noexcept {
+    return std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_(value);
+  }
+  
   // pragma MARK: std::optional<TextModeOptions>
   /**
    * Specialized version of `std::optional<TextModeOptions>`.
@@ -1039,6 +1085,15 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline Result_bool_ create_Result_bool_(const std::exception_ptr& error) noexcept {
     return Result<bool>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>
+  using Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__ = Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>;
+  inline Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__ create_Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__(const std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>& value) noexcept {
+    return Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>::withValue(value);
+  }
+  inline Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__ create_Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__(const std::exception_ptr& error) noexcept {
+    return Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>::withError(error);
   }
   
   // pragma MARK: Result<std::shared_ptr<HybridModeSessionSpec>>

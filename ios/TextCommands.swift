@@ -184,7 +184,7 @@ extension InkSignView {
   }
 
   func resolvePreparedText(_ handle: HybridAnalyzedPage, options: ResolveTextOptions) throws -> Double {
-    try validatePreparedHandle(handle)
+    try validateTextPageContext(handle)
     guard let document = documentCoordinator.document,
           let page = document.pages.first(where: { $0.id == handle.pageID }) else { throw TextError.cancelled }
     let geometry = page.geometry
@@ -260,14 +260,23 @@ extension InkSignView {
     return Double(target.id)
   }
 
-  func preparedTextValue(_ handle: HybridAnalyzedPage, id: Double) throws -> String {
+  func getSelectedText() throws -> Variant__any_HybridTextHandleSpec__NullType {
+    try performOnMainSync {
+      guard !disposed, let selection = textInteractionOverlay.selectedText,
+            let pageID = UUID(uuidString: selection.pageId) else { return .second(.null) }
+      return .first(HybridTextHandle(owner: self, generation: documentCoordinator.generation,
+                                    pageID: pageID, textID: selection.textId))
+    }
+  }
+
+  func preparedTextValue(_ handle: any InkSignPdfTextPageContext, id: Double) throws -> String {
     let (page, target) = try preparedTarget(handle, id: id)
     return textInteractionOverlay.preparedDraftText(id: target.id, pageID: page.id)
       ?? page.history.content.textAnnotations.first(where: { $0.id == target.id })?.text
       ?? target.embeddedValue
   }
 
-  func setPreparedTextValue(_ handle: HybridAnalyzedPage, id: Double, text: String) throws {
+  func setPreparedTextValue(_ handle: any InkSignPdfTextPageContext, id: Double, text: String) throws {
     let (page, target) = try preparedTarget(handle, id: id)
     if text.isEmpty {
       textInteractionOverlay.clearPreparedDraft(id: target.id, pageID: page.id)
@@ -295,7 +304,7 @@ extension InkSignView {
     }
   }
 
-  func setPreparedTextOptions(_ handle: HybridAnalyzedPage, id: Double,
+  func setPreparedTextOptions(_ handle: any InkSignPdfTextPageContext, id: Double,
                               options: TextAnnotationOptions) throws {
     let (page, target) = try preparedTarget(handle, id: id)
     try documentCoordinator.updateTextTarget(target.id, pageID: page.id) {
@@ -324,7 +333,7 @@ extension InkSignView {
     }
   }
 
-  func preparedTextEntry(_ handle: HybridAnalyzedPage, id: Double) throws -> TextEntry {
+  func preparedTextEntry(_ handle: any InkSignPdfTextPageContext, id: Double) throws -> TextEntry {
     let (page, target) = try preparedTarget(handle, id: id)
     let draft = textInteractionOverlay.preparedDraftText(id: target.id, pageID: page.id)
     let annotation = page.history.content.textAnnotations.first(where: { $0.id == target.id })
@@ -338,7 +347,7 @@ extension InkSignView {
       valueSource: source)
   }
 
-  func adjustPreparedTextSize(_ handle: HybridAnalyzedPage, id: Double, delta: Double) throws -> Double {
+  func adjustPreparedTextSize(_ handle: any InkSignPdfTextPageContext, id: Double, delta: Double) throws -> Double {
     let (page, target) = try preparedTarget(handle, id: id)
     let size = textInteractionOverlay.preparedFontSize(id: target.id, pageID: page.id)
       ?? page.history.content.textAnnotations.first(where: { $0.id == target.id }).map { Double($0.fontSize) }
@@ -352,21 +361,21 @@ extension InkSignView {
     return adjusted
   }
 
-  func preparedTextEntries(_ handle: HybridAnalyzedPage) throws -> [TextEntry] {
-    try validatePreparedHandle(handle)
+  func preparedTextEntries(_ handle: any InkSignPdfTextPageContext) throws -> [TextEntry] {
+    try validateTextPageContext(handle)
     return try documentCoordinator.textTargets(for: handle.pageID).map {
       try preparedTextEntry(handle, id: Double($0.id))
     }
   }
 
-  func focusPreparedText(_ handle: HybridAnalyzedPage, id: Double,
+  func focusPreparedText(_ handle: any InkSignPdfTextPageContext, id: Double,
                          options: TextFocusOptions?) throws -> Promise<Void> {
     return enqueueViewerCommand(presentation: true, modeSession: handle.modeSession) {
       try self.focusPreparedTextNow(handle, id: id, options: options)
     }
   }
 
-  private func focusPreparedTextNow(_ handle: HybridAnalyzedPage, id: Double,
+  private func focusPreparedTextNow(_ handle: any InkSignPdfTextPageContext, id: Double,
                          options: TextFocusOptions?) throws -> Promise<Void> {
     let (page, target) = try preparedTarget(handle, id: id)
     let rule = try displayedWritingRule(target, page: page)
@@ -408,7 +417,7 @@ extension InkSignView {
     return result.promise
   }
 
-  private func validatePreparedHandle(_ handle: HybridAnalyzedPage) throws {
+  private func validateTextPageContext(_ handle: any InkSignPdfTextPageContext) throws {
     if let token = handle.modeSession { try requireModeSession(token) }
     guard !disposed, documentCoordinator.generation == handle.generation,
           documentCoordinator.document?.pages.contains(where: { $0.id == handle.pageID }) == true else {
@@ -416,8 +425,8 @@ extension InkSignView {
     }
   }
 
-  private func preparedTarget(_ handle: HybridAnalyzedPage, id: Double) throws -> (InkSignPdfPageState, InkSignPdfTextTarget) {
-    try validatePreparedHandle(handle)
+  private func preparedTarget(_ handle: any InkSignPdfTextPageContext, id: Double) throws -> (InkSignPdfPageState, InkSignPdfTextTarget) {
+    try validateTextPageContext(handle)
     guard id.isFinite, id >= 1, id.rounded(.towardZero) == id, id <= 9_007_199_254_740_991,
           let document = documentCoordinator.document,
           let page = document.pages.first(where: { $0.id == handle.pageID }) else { throw TextError.textNotFound }

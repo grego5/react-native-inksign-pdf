@@ -10,12 +10,14 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let attachments = 0;
 const calls = [];
+let selectedText = null;
 const nativeSession = {
   getPage: async () => { calls.push('session-page'); return { getTextEntries: () => [] }; },
   requestPageCoords: async () => ({ pageId: 'page', pageIndex: 0, x: 10, y: 20 }),
   setViewport: async options => { calls.push(['viewport', options]); },
 };
 const native = {
+  getSelectedText: () => selectedText,
   open: async path => { calls.push(path); return { pageIndex: 0 }; },
   setMode: mode => { calls.push(mode); return nativeSession; },
   getPage: async () => { calls.push('page'); return { getTextEntries: () => [] }; },
@@ -46,6 +48,37 @@ try {
 } finally {
   Module._load = originalLoad;
 }
+
+test('selected text commands use native selection without preparing a page', async () => {
+  const ref = React.createRef();
+  const edits = [];
+  let root;
+  try {
+    await act(async () => { root = create(React.createElement(InkSignView, { ref })); });
+    const callsBefore = calls.length;
+    assert.equal(ref.current.getSelectedText(), null);
+    let value = 'first';
+    selectedText = {
+      getValue: () => value,
+      setValue: text => { value = text; },
+      setOptions: options => edits.push(options),
+      adjustSize: delta => 16 + delta,
+    };
+    const text = ref.current.getSelectedText();
+    assert.equal(text.getValue(), 'first');
+    selectedText = null;
+    assert.equal(ref.current.getSelectedText(), null);
+    text.setOptions({ alignment: 'center' });
+    assert.deepEqual(edits, [{ alignment: 'center' }]);
+    assert.equal(text.adjustSize(1), 17);
+    text.setValue('');
+    assert.equal(text.getValue(), '');
+    assert.equal(calls.length, callsBefore);
+  } finally {
+    selectedText = null;
+    if (root) await act(async () => { root.unmount(); });
+  }
+});
 
 test('native event subscriptions stay stable while forwarding to the latest committed callbacks', async () => {
   const names = ['onStateChange', 'onPageChange', 'onTextSelectionChange', 'onZoomChange'];

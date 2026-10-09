@@ -27,6 +27,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
+// Forward declaration of `HybridTextHandleSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
@@ -89,6 +91,9 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "PageCoords.hpp"
 #include "JPageCoords.hpp"
 #include <memory>
+#include "HybridTextHandleSpec.hpp"
+#include "JVariant_HybridTextHandleSpec_NullType.hpp"
+#include "JHybridTextHandleSpec.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
 #include "JHybridAnalyzedPageSpec.hpp"
 #include "HybridModeSessionSpec.hpp"
@@ -469,6 +474,11 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jboolean()>("hasInk");
     auto __result = method(_javaPart);
     return static_cast<bool>(__result);
+  }
+  std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> JHybridInkSignViewSpec::getSelectedText() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JVariant_HybridTextHandleSpec_NullType>()>("getSelectedText");
+    auto __result = method(_javaPart);
+    return __result->toCpp();
   }
   std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> JHybridInkSignViewSpec::getPage(std::optional<double> pageIndex) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JDouble> /* pageIndex */)>("getPage");

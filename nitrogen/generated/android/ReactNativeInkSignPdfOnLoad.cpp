@@ -16,6 +16,7 @@
 #include <NitroModules/HybridObjectRegistry.hpp>
 
 #include "JHybridAnalyzedPageSpec.hpp"
+#include "JHybridTextHandleSpec.hpp"
 #include "JHybridModeSessionSpec.hpp"
 #include "JHybridInkSignViewSpec.hpp"
 #include "JFunc_void_ViewerState.hpp"
@@ -56,6 +57,7 @@ void registerAllNatives() {
 
   // Register native JNI methods
   margelo::nitro::inksignpdf::JHybridAnalyzedPageSpec::CxxPart::registerNatives();
+  margelo::nitro::inksignpdf::JHybridTextHandleSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridModeSessionSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridInkSignViewSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JFunc_void_ViewerState_cxx::registerNatives();

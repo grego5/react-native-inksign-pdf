@@ -1375,6 +1375,38 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(textEditor(in: overlay)?.text, "note")
   }
 
+  func testSelectedTextHandleSurvivesDeselectionAndNavigationAndRejectsDisposal() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    guard case .second = try view.getSelectedText() else {
+      return XCTFail("An idle viewer has no selected text")
+    }
+    let annotation = try appendTextAnnotationForTest(
+      makeCenteredTextAnnotation(id: 1, text: "note", fontSize: 16,
+                                 pageSize: view.activePageSize()),
+      in: view, pageIndex: 0)
+    let point = CGPoint(x: annotation.bounds.midX, y: annotation.bounds.midY)
+    let overlay = view.textInteractionOverlay
+    XCTAssertTrue(overlay.routeDrag(.began, at: point, selectedOnly: false))
+    XCTAssertTrue(overlay.routeDrag(.ended, at: point, selectedOnly: false))
+    guard case .first(let text) = try view.getSelectedText() else {
+      return XCTFail("Selected module text must expose a handle")
+    }
+    XCTAssertEqual(try text.getValue(), "note")
+    overlay.finishForLifecycle()
+    XCTAssertTrue(view.documentCoordinator.selectPage(at: 1))
+    try text.setValue(text: "updated")
+    let document = try XCTUnwrap(view.documentCoordinator.document)
+    XCTAssertEqual(document.pages[0].history.content.textAnnotations.first?.text, "updated")
+    XCTAssertTrue(document.pages[1].history.content.textAnnotations.isEmpty)
+    try text.setValue(text: "")
+    XCTAssertEqual(try text.getValue(), "")
+    XCTAssertTrue(document.pages[0].history.content.textAnnotations.isEmpty)
+    view.dispose()
+    XCTAssertThrowsError(try text.getValue())
+  }
+
   func testTextTargetIDsAreMonotonicAndUnique() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }

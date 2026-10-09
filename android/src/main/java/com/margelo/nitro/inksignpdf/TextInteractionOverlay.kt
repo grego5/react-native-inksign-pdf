@@ -2169,20 +2169,22 @@ internal class TextInteractionOverlay(
 
   private fun transitionTo(next: InteractionState) {
     interactionState = next
-    val selection = when (next) {
-      is InteractionState.Editing -> TextSelection(next.id.toDouble(), next.pageId)
-      is InteractionState.Selected -> TextSelection(
-        next.annotation.id.toDouble(), surface.documentCoordinator.page(next.pageIndex).id,
-      )
-      is InteractionState.Dragging -> TextSelection(
-        next.original.id.toDouble(), surface.documentCoordinator.page(next.pageIndex).id,
-      )
-      else -> null
-    }
+    val selection = selectedText()
     if (selection != emittedSelection) {
       emittedSelection = selection
       onTextSelectionChange?.invoke(selection)
     }
+  }
+
+  internal fun selectedText(): TextSelection? = when (val state = interactionState) {
+    is InteractionState.Editing -> TextSelection(state.id.toDouble(), state.pageId)
+    is InteractionState.Selected -> TextSelection(
+      state.annotation.id.toDouble(), surface.documentCoordinator.page(state.pageIndex).id,
+    )
+    is InteractionState.Dragging -> TextSelection(
+      state.original.id.toDouble(), surface.documentCoordinator.page(state.pageIndex).id,
+    )
+    else -> null
   }
 
   private class TextEntryView(context: Context) : EditText(context) {

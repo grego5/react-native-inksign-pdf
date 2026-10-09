@@ -128,6 +128,16 @@ export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kot
   focusText(id: TextId, options?: TextFocusOptions): Promise<void>
 }
 
+/** Document-bound text target; remains usable after selection or page changes. */
+export interface TextHandle extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
+  getValue(): string
+  /** Empty text removes module text while preserving embedded PDF content. */
+  setValue(text: string): void
+  setOptions(options: TextAnnotationOptions): void
+  /** Adjusts font size by page points and returns the resulting size. */
+  adjustSize(delta: number): number
+}
+
 /** Operations scoped to one explicit mode request. Supersession rejects with operation_cancelled. */
 export interface ModeSession extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   /** Prepares a page bound to this session and its captured document. */
@@ -275,6 +285,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   requestPageCoords(): Promise<PageCoords>
   /** Returns whether the active page has committed ink; undo, redo, clear, and page changes are reflected. */
   hasInk(): boolean
+  /** Reads native selection synchronously; null when no text is selected. Handle operations reject after document/page/target invalidation. */
+  getSelectedText(): TextHandle | null
   /** Prepares a document-bound page that survives mode changes; omission selects the active page. */
   getPage(pageIndex?: number): Promise<AnalyzedPage>
   /** Synchronously enters a mode, preserves the viewport, and supersedes the previous session. Requires a ready document. Options apply only to text placement; their viewport changes wait for a valid tap. */
