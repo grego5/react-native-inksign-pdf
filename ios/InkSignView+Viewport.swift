@@ -193,21 +193,89 @@ extension InkSignView {
   }
 
   @discardableResult
-  func applyViewport(target: ViewportTarget) -> Bool {
+  func applyViewport(target: ViewportTarget, preservingMotion: Bool = false) -> Bool {
+    if !preservingMotion { viewportMotion.cancel() }
     guard let state = documentCoordinator.document,
-          documentView.currentPage === state.activePage.page else { return false }
+          documentView.currentPage === state.activePage.page,
+          documentView.bounds.width > 0, documentView.bounds.height > 0,
+          let scroll = pageViewportScrollView(),
+          scroll.bounds.width > 0, scroll.bounds.height > 0,
+          let content = scroll.delegate?.viewForZooming?(in: scroll) else { return false }
     documentView.autoScales = false
     let zoom = min(max(target.zoom, documentView.minScaleFactor), documentView.maxScaleFactor)
     let geometry = state.activePage.geometry
-    documentView.scaleFactor = zoom
-    let destination = PDFDestination(
-      page: state.activePage.page,
-      at: target.focus.applying(geometry.displayToPDFTransform))
-    destination.zoom = zoom
-    documentView.go(to: destination)
-    invalidateOverlayTransformCache()
-    refreshOverlayTransform(canvasView, for: state.activePage.id)
+    func contentPoint(_ point: CGPoint) -> CGPoint {
+      content.convert(documentView.convert(point.applying(geometry.displayToPDFTransform),
+                                            from: state.activePage.page), from: documentView)
+    }
+    let focus = contentPoint(target.focus)
+    let unitX = contentPoint(CGPoint(x: target.focus.x + 1, y: target.focus.y))
+    let contentScale = hypot(unitX.x - focus.x, unitX.y - focus.y)
+    guard contentScale.isFinite, contentScale > 0,
+          focus.x.isFinite, focus.y.isFinite else { return false }
+    let nativeZoom = zoom / contentScale
+    let size = CGSize(width: scroll.bounds.width / nativeZoom,
+                      height: scroll.bounds.height / nativeZoom)
+    let rect = CGRect(x: focus.x - size.width / 2, y: focus.y - size.height / 2,
+                      width: size.width, height: size.height)
+    isApplyingViewportFrame = true
+    UIView.performWithoutAnimation {
+      scroll.minimumZoomScale = documentView.minScaleFactor / contentScale
+      scroll.maximumZoomScale = documentView.maxScaleFactor / contentScale
+      // Let PDFKit calculate its zoom-dependent insets before adding keyboard space.
+      restoreTextViewportInset()
+      scroll.zoom(to: rect, animated: false)
+      scroll.layoutIfNeeded()
+      documentView.layoutIfNeeded()
+      reconcileTextViewportInset(scroll)
+      let focusedPoint = documentView.convert(target.focus.applying(geometry.displayToPDFTransform),
+                                              from: state.activePage.page)
+      _ = movePageViewport(by: CGPoint(x: documentView.bounds.midX - focusedPoint.x,
+                                       y: documentView.bounds.midY - focusedPoint.y))
+      refreshOverlayTransform(canvasView, for: state.activePage.id)
+    }
+    isApplyingViewportFrame = false
+    textInteractionOverlay.followCaretForViewportChange()
     return true
+  }
+
+  func animateViewport(target: ViewportTarget,
+                       modeSession: InkSignPdfModeSessionToken? = nil,
+                       completion: @escaping (Result<Void, Error>) -> Void) {
+    guard let page = documentCoordinator.document?.activePage,
+          let scroll = pageViewportScrollView() else {
+      completion(.failure(ViewportError.notReady)); return
+    }
+    let start: Viewport
+    do { start = try currentViewportSnapshot() }
+    catch { completion(.failure(error)); return }
+    let generation = documentCoordinator.generation
+    let pageID = page.id
+    let geometryRevision = page.geometryRevision
+    let requestID = fieldFocusRequestID
+    cancelActiveStroke()
+    viewportMotion.start(
+      from: ViewportTarget(zoom: CGFloat(start.zoom), focus: CGPoint(x: start.x, y: start.y)),
+      to: target,
+      update: { [weak self, weak scroll] frame in
+        guard let self, let scroll, !self.disposed,
+              self.documentView.window != nil,
+              self.documentCoordinator.generation == generation,
+              self.documentCoordinator.document?.activePage.id == pageID,
+              self.documentCoordinator.document?.activePage.geometryRevision == geometryRevision,
+              self.fieldFocusRequestID == requestID,
+              modeSession.map(self.modeSessionIsCurrent) ?? true,
+              self.pageViewportScrollView() === scroll else { throw ViewportError.cancelled }
+        let gestures = [scroll.panGestureRecognizer, scroll.pinchGestureRecognizer].compactMap { $0 }
+        guard !gestures.contains(where: { $0.state == .began || $0.state == .changed }) else {
+          throw ViewportError.cancelled
+        }
+        guard self.applyViewport(target: frame, preservingMotion: true) else { throw ViewportError.notReady }
+      },
+      completion: { [weak self] outcome in
+        self?.refreshActiveOverlayTransform()
+        completion(outcome)
+      })
   }
 
   func fieldFocusTarget(ruleY: CGFloat,
@@ -425,16 +493,19 @@ extension InkSignView {
 
   func setTextKeyboardOcclusion(_ bottom: CGFloat) {
     textKeyboardOcclusion = bottom
+    reconcileTextViewportInset()
   }
 
   func resetTextViewportAvoidance() {
     textKeyboardOcclusion = 0
+    restoreTextViewportInset()
   }
 
   /// Moves the PDF viewport by a screen-space delta while preserving zoom.
   /// Positive deltas follow the user's finger, so the page content moves in
   /// the same direction as the supplied translation.
-  func panViewport(by translation: CGPoint) {
+  func panViewport(by translation: CGPoint, preservingMotion: Bool = false) {
+    if !preservingMotion { viewportMotion.cancel() }
     guard !disposed,
           let state = documentCoordinator.document,
           let page = documentView.currentPage,
@@ -444,23 +515,87 @@ extension InkSignView {
           translation.x.isFinite,
           translation.y.isFinite else { return }
     cancelActiveStroke()
-    let center = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
-    let pdfFocus = documentView.convert(CGPoint(x: center.x - translation.x,
-                                                y: center.y - translation.y),
-                                        to: page)
-    let destination = PDFDestination(page: page, at: pdfFocus)
-    destination.zoom = documentView.scaleFactor
-    documentView.go(to: destination)
+    if movePageViewport(by: translation) { refreshActiveOverlayTransform() }
+  }
+
+  /// The document content's enclosing scroll view pans the page; its outer
+  /// page-controller scroll view owns paging and must keep its offset.
+  private func pageViewportScrollView() -> UIScrollView? {
+    guard let pageID = documentCoordinator.document?.activePage.id,
+          attachedOverlayPage == pageID else { return nil }
+    // Start above the page overlay, skipping its PKCanvasView scroll view.
+    var ancestor = overlayProvider.overlayView.superview
+    while let view = ancestor, view !== documentView {
+      if let scroll = view as? UIScrollView { return scroll }
+      ancestor = view.superview
+    }
+    return nil
+  }
+
+  private func movePageViewport(by translation: CGPoint) -> Bool {
+    guard let scroll = pageViewportScrollView() else { return false }
+    scroll.layoutIfNeeded()
+    reconcileTextViewportInset(scroll)
+    let origin = scroll.convert(CGPoint.zero, from: documentView)
+    let moved = scroll.convert(translation, from: documentView)
+    let inset = scroll.adjustedContentInset
+    let minX = -inset.left
+    let minY = -inset.top
+    let maxX = max(minX, scroll.contentSize.width - scroll.bounds.width + inset.right)
+    let maxY = max(minY, scroll.contentSize.height - scroll.bounds.height + inset.bottom)
+    scroll.setContentOffset(CGPoint(
+      x: min(max(scroll.contentOffset.x - (moved.x - origin.x), minX), maxX),
+      y: min(max(scroll.contentOffset.y - (moved.y - origin.y), minY), maxY)), animated: false)
+    return true
+  }
+
+  func reconcileTextViewportInset() {
+    guard !isApplyingViewportFrame else { return }
+    if let scroll = pageViewportScrollView() { reconcileTextViewportInset(scroll) }
+    else { restoreTextViewportInset() }
+  }
+
+  private func reconcileTextViewportInset(_ scroll: UIScrollView) {
+    guard textKeyboardOcclusion > 0 else { restoreTextViewportInset(); return }
+    if textInsetScrollView !== scroll {
+      restoreTextViewportInset()
+      textInsetScrollView = scroll
+    }
+    var inset = scroll.contentInset
+    // Only our last bottom-inset write contains the recorded keyboard addition.
+    // A changed bottom inset belongs to PDFKit's current page geometry.
+    if let adjustment = textInsetAdjustment, inset.bottom == adjustment.appliedBottom {
+      inset.bottom = adjustment.baseBottom
+    }
+    let baseBottom = inset.bottom
+    let origin = scroll.convert(CGPoint.zero, from: documentView)
+    let keyboard = scroll.convert(CGPoint(x: 0, y: textKeyboardOcclusion), from: documentView)
+    inset.bottom += abs(keyboard.y - origin.y)
+    textInsetAdjustment = (baseBottom: baseBottom, appliedBottom: inset.bottom)
+    if scroll.contentInset != inset { scroll.contentInset = inset }
+  }
+
+  private func restoreTextViewportInset() {
+    let scroll = textInsetScrollView
+    let adjustment = textInsetAdjustment
+    textInsetScrollView = nil
+    textInsetAdjustment = nil
+    if let scroll, let adjustment, scroll.contentInset.bottom == adjustment.appliedBottom {
+      var inset = scroll.contentInset
+      inset.bottom = adjustment.baseBottom
+      scroll.contentInset = inset
+    }
   }
 
   func ensureTextVisible(outline: CGRect, caret: CGRect) {
+    guard !isApplyingViewportFrame else { return }
     let visible = container.bounds.inset(by: UIEdgeInsets(
       top: 0, left: 0, bottom: textKeyboardOcclusion, right: 0))
     let delta = InkSignPdfTextViewportGeometry.panDelta(outline: outline,
                                                        caret: caret,
                                                        visibleBounds: visible)
     guard abs(delta.x) > 0.5 || abs(delta.y) > 0.5 else { return }
-    panViewport(by: delta)
+    panViewport(by: delta, preservingMotion: true)
   }
 
   @objc func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
@@ -468,7 +603,11 @@ extension InkSignView {
           documentCoordinator.document != nil else { return }
     if !isFittedToPage() {
       fieldFocusRequestID &+= 1
-      applyViewport(request: .fit)
+      if let target = viewportTarget(for: .fit) {
+        animateViewport(target: target, modeSession: currentModeSession) { [weak self] outcome in
+          if case .failure(let error) = outcome { self?.reportPageNavigationFailure(error) }
+        }
+      }
       return
     }
     let targetZoom = doubleTap?.zoom ?? 2.0
@@ -486,9 +625,19 @@ extension InkSignView {
     let focus = tappedPoint
 
     let entersEditMode = doubleTap?.enterEditMode == true
-    guard applyViewport(target: ViewportTarget(zoom: clampedTargetZoom, focus: focus)) else { return }
     fieldFocusRequestID &+= 1
-    if entersEditMode { setInteractionMode(editing: true) }
+    animateViewport(target: ViewportTarget(zoom: clampedTargetZoom, focus: focus),
+                    modeSession: currentModeSession) { [weak self] outcome in
+      guard let self else { return }
+      switch outcome {
+      case .success:
+        if entersEditMode {
+          self.invalidateModeSession()
+          self.setInteractionMode(editing: true)
+        }
+      case .failure(let error): self.reportPageNavigationFailure(error)
+      }
+    }
   }
 
   func isFittedToPage() -> Bool {
@@ -546,13 +695,21 @@ extension InkSignView {
 
   func applyTextPlacementViewport(_ options: TextModeOptions?, editorFocus: CGPoint) {
     guard let options else { return }
+    let target: ViewportTarget?
     if options.x != nil || options.y != nil || options.zoom != nil {
       let focus = options.x.map { CGPoint(x: $0, y: options.y!) } ?? editorFocus
-      _ = applyViewport(target: ViewportTarget(
-        zoom: CGFloat(options.zoom ?? Double(documentView.scaleFactor)), focus: focus))
+      target = ViewportTarget(zoom: CGFloat(options.zoom ?? Double(documentView.scaleFactor)),
+                              focus: focus)
     } else if options.direction == nil && options.width == nil && options.height == nil &&
       options.maxLines == nil && options.alignment == nil && options.verticalAnchor == nil {
-      applyViewport(request: .fit)
+      target = viewportTarget(for: .fit)
+    } else {
+      target = nil
+    }
+    if let target {
+      animateViewport(target: target, modeSession: currentModeSession) { [weak self] outcome in
+        if case .failure(let error) = outcome { self?.reportPageNavigationFailure(error) }
+      }
     }
   }
 

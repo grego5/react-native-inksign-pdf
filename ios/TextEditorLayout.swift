@@ -1,6 +1,6 @@
 import UIKit
 
-/// Measures the live TextKit layout and sizes its text container to that result.
+/// Chooses the wrapping width and asks UIKit for the live editor's fitting height.
 enum InkSignPdfTextEditorLayout {
   static func measure(_ editor: UITextView,
                       maximumWidth: CGFloat,
@@ -10,52 +10,38 @@ enum InkSignPdfTextEditorLayout {
     let availableWidth = max(1, maximumWidth - insets.left - insets.right)
     let font = editor.font ?? InkSignPdfTextStyle.font(size: fallbackFontSize)
 
-    func layout(at contentWidth: CGFloat) -> CGSize {
+    func layout(at contentWidth: CGFloat) -> CGFloat {
       editor.textContainer.size = CGSize(width: contentWidth,
                                          height: .greatestFiniteMagnitude)
-      editor.bounds.size = CGSize(width: contentWidth + insets.left + insets.right,
-                                  height: max(editor.bounds.height, font.lineHeight))
-      editor.setContentOffset(.zero, animated: false)
       editor.layoutManager.ensureLayout(for: editor.textContainer)
-      editor.layoutIfNeeded()
-      return extent(of: editor, insets: insets)
+      return contentWidthExtent(of: editor, insets: insets)
     }
 
+    var contentWidth: CGFloat
     if let fixedContentWidth {
-      let fixedWidth = min(availableWidth, max(1, fixedContentWidth))
-      let finalLayout = layout(at: fixedWidth)
-      let size = CGSize(width: fixedWidth + insets.left + insets.right,
-                        height: max(finalLayout.height, font.lineHeight) +
-                          insets.top + insets.bottom)
-      editor.bounds.size = size
-      editor.setContentOffset(.zero, animated: false)
-      editor.layoutManager.ensureLayout(for: editor.textContainer)
-      editor.layoutIfNeeded()
-      return size
+      contentWidth = min(availableWidth, max(1, fixedContentWidth))
+      _ = layout(at: contentWidth)
+    } else {
+      let availableContentWidth = layout(at: availableWidth)
+      contentWidth = editor.text.isEmpty
+        ? min(availableWidth, font.pointSize)
+        : min(availableWidth, max(1, availableContentWidth))
+      let requiredWidth = layout(at: contentWidth)
+      if contentWidth < availableWidth, requiredWidth > contentWidth {
+        contentWidth = min(availableWidth, requiredWidth)
+        _ = layout(at: contentWidth)
+      }
     }
 
-    let availableLayout = layout(at: availableWidth)
-    var contentWidth = editor.text.isEmpty
-      ? min(availableWidth, font.pointSize)
-      : min(availableWidth, availableLayout.width)
-    var finalLayout = layout(at: contentWidth)
-    if contentWidth < availableWidth, finalLayout.width > contentWidth {
-      contentWidth = min(availableWidth, finalLayout.width)
-      finalLayout = layout(at: contentWidth)
-    }
-
-    let size = CGSize(width: contentWidth + insets.left + insets.right,
-                      height: max(finalLayout.height, font.lineHeight) +
-                        insets.top + insets.bottom)
-    editor.bounds.size = size
-    editor.setContentOffset(.zero, animated: false)
-    editor.layoutManager.ensureLayout(for: editor.textContainer)
-    editor.layoutIfNeeded()
-    return size
+    let width = contentWidth + insets.left + insets.right
+    let fittingSize = editor.sizeThatFits(
+      CGSize(width: width, height: .greatestFiniteMagnitude))
+    return CGSize(width: width,
+                  height: max(fittingSize.height, font.lineHeight + insets.top + insets.bottom))
   }
 
-  private static func extent(of editor: UITextView,
-                             insets: UIEdgeInsets) -> CGSize {
+  private static func contentWidthExtent(of editor: UITextView,
+                                        insets: UIEdgeInsets) -> CGFloat {
     let glyphBounds = editor.layoutManager.usedRect(for: editor.textContainer)
     let caretInView = editor.selectedTextRange.map { editor.caretRect(for: $0.end) } ?? .null
     let caretInContainer = caretInView.offsetBy(
@@ -65,7 +51,6 @@ enum InkSignPdfTextEditorLayout {
     let widthFromAnchor = editor.textAlignment == .right
       ? editor.textContainer.size.width - textAndCaretBounds.minX
       : textAndCaretBounds.maxX
-    return CGSize(width: max(widthFromAnchor, 0),
-                  height: max(textAndCaretBounds.maxY, 0))
+    return max(widthFromAnchor, 0)
   }
 }

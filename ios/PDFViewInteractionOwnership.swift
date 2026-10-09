@@ -31,6 +31,8 @@ final class PDFViewInteractionOwnership {
               editing: Bool,
               interactionsEnabled: Bool,
               placementRecognizer: UIGestureRecognizer) {
+    // PDFKit must hit-test page overlays before their canvas/editor can own input.
+    pdfView.isInMarkupMode = interactionsEnabled
     if !interactionsEnabled {
       remember(pdfView)
       pdfView.isUserInteractionEnabled = false

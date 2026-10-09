@@ -66,6 +66,7 @@ extension InkSignView {
   }
 
   func canvasGestureWillBegin(_ canvas: InkCanvasView) -> UInt64? {
+    viewportMotion.cancel()
     guard canvas === canvasView, editMode, documentCoordinator.document != nil,
           pageToOverlayTransform != nil else {
       return nil

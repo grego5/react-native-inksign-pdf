@@ -7,6 +7,9 @@
   to finish.
 - iOS maps supported stroke settings to PencilKit. PencilKit owns pressure,
   smoothing, caps, joins, and prediction.
+- Pen width is in screen points, converted by the canvas-to-view scale before
+  PencilKit receives a touch. The tool stays fixed during a drawing transaction;
+  committed page-space ink scales with the viewport.
 - The module owns temporary artifacts; the host app can configure their cache
   directory.
 

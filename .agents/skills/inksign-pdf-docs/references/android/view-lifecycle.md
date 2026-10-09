@@ -14,6 +14,8 @@
 - The app owns `androidFallbackFont.uri`. Android validates/reuses it or downloads
   to a temporary sibling, validates, and publishes atomically. React preloading
   also requires atomic publication; native cleanup preserves the app's font file.
+  `open()` and document creation through `addPages()` resolve the configured font;
+  later imports retain the document's resolved font.
 - Each worker-owned session shares text geometry/rules between placement paths.
   Its LRU cache holds at most eight pages and 8 MiB estimated storage; navigation
   retains entries, session replacement/closure releases them.

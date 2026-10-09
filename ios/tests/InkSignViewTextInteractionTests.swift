@@ -965,6 +965,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     func place() throws {
       let tap = CGPoint(x: 150, y: 200).applying(try XCTUnwrap(view.pageToOverlayTransform))
       XCTAssertTrue(overlay.routePlacementTap(at: tap))
+      let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+        !view.viewportMotion.isRunning
+      }, object: nil)
+      wait(for: [settled], timeout: 3)
     }
     try view.setMode(mode: .text, options: nil)
     try place()
@@ -1209,6 +1213,19 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                    accuracy: 0.001)
     XCTAssertTrue(editor.bounds.insetBy(dx: -1, dy: -1).intersects(
       editor.selectedTextRange.map { editor.caretRect(for: $0.end) } ?? .zero))
+
+    editor.text = "Ada"
+    editor.selectedRange = NSRange(location: 3, length: 0)
+    overlay.textViewDidChange(editor)
+    let singleLineHeight = editor.bounds.height
+    editor.insertText("\n")
+    XCTAssertEqual(editor.text, "Ada\n")
+    XCTAssertGreaterThan(editor.bounds.height, singleLineHeight)
+    editor.text = "Ada\n"
+    // Text changes can precede UIKit moving the caret into the empty next line.
+    editor.selectedRange = NSRange(location: 3, length: 0)
+    overlay.textViewDidChange(editor)
+    XCTAssertGreaterThan(editor.bounds.height, singleLineHeight)
 
     editor.text = ""
     overlay.textViewDidChange(editor)

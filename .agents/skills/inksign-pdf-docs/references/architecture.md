@@ -24,6 +24,8 @@ and export.
   Dimensions are hard limits; `maxLines` caps complete lines without forcing a
   count. Preview/export share retained lines. Bounded editors admit fitting input,
   allow deletion, and retain text through reflow; programmatic values clip overflow.
+  Text placement with both dimensions omitted auto-sizes the live editor as text
+  wraps or new lines are entered.
 - `addPages()` selects the current, first added, or last added page through
   `activePage`; the default keeps the current page, or selects the first page
   when creating a document. Empty and cancelled imports leave document state

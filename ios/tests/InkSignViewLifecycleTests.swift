@@ -7,6 +7,44 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
+  func testAnimatedViewportCentersRequestedPointBeforeCompletion() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let view = fixture.view
+    defer { view.dispose(); fixture.window.isHidden = true }
+    let session = try view.setMode(mode: .view, options: nil)
+    _ = try awaitRotationOperation(session.setViewport(
+      options: ViewportOptions(x: 170, y: 120, zoom: 3)))
+    XCTAssertFalse(view.viewportMotion.isRunning)
+    let viewport = try view.getViewport()
+    XCTAssertEqual(viewport.zoom, 3, accuracy: 0.01)
+    let page = try XCTUnwrap(view.documentCoordinator.document?.activePage)
+    let focused = view.documentView.convert(
+      CGPoint(x: 170, y: 120).applying(page.geometry.displayToPDFTransform), from: page.page)
+    XCTAssertEqual(focused.x, view.documentView.bounds.midX, accuracy: 1)
+    XCTAssertEqual(focused.y, view.documentView.bounds.midY, accuracy: 1)
+  }
+
+  func testModeReplacementCancelsPendingViewportMotion() throws {
+    guard !UIAccessibility.isReduceMotionEnabled else {
+      throw XCTSkip("Reduced motion applies the viewport immediately")
+    }
+    let fixture = makeFixture(pageCount: 1)
+    let view = fixture.view
+    defer { view.dispose(); fixture.window.isHidden = true }
+    let session = try view.setMode(mode: .view, options: nil)
+    let cancelled = expectation(description: "superseded viewport rejects")
+    let motion = try session.setViewport(options: ViewportOptions(x: 170, y: 120, zoom: 3))
+    motion.then { _ in XCTFail("superseded motion must not complete"); cancelled.fulfill() }
+    motion.catch { error in
+      XCTAssertTrue(error.localizedDescription.hasPrefix("operation_cancelled"))
+      cancelled.fulfill()
+    }
+    _ = try view.setMode(mode: .ink, options: nil)
+    wait(for: [cancelled], timeout: 3)
+    XCTAssertTrue(view.editMode)
+    XCTAssertFalse(view.viewportMotion.isRunning)
+  }
+
   func testZoomReportsSettledFitRelativeScaleAndEachPage() throws {
     let fixture = makeFixture(pageCount: 2)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
@@ -1464,6 +1502,13 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(view.canvasView.drawingGestureRecognizer.isEnabled)
     let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
     XCTAssertNoThrow(try page.getTextEntries())
+    let canvas = view.canvasView
+    let canvasPoint = CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY)
+    let pointInPDF = canvas.convert(canvasPoint, to: view.documentView)
+    let inkHit = try XCTUnwrap(view.documentView.hitTest(pointInPDF, with: nil))
+    XCTAssertTrue(inkHit === canvas || inkHit.isDescendant(of: canvas))
+    _ = try view.setMode(mode: .view, options: nil)
+    XCTAssertNil(canvas.hitTest(canvasPoint, with: nil))
   }
 
   func testReplacementCancelsProductionTextLookupAndIgnoresLateWorkerResult() throws {
