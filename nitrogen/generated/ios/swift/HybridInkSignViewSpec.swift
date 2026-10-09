@@ -26,7 +26,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   var pagerDirection: PagerDirection? { get set }
   var onStateChange: ((_ event: ViewerState) -> Void)? { get set }
   var onPageChange: ((_ event: PageInfo) -> Void)? { get set }
-  var onZoomedInChange: ((_ zoomedIn: Bool) -> Void)? { get set }
+  var onZoomChange: ((_ zoom: Double) -> Void)? { get set }
   var onTextSelectionChange: ((_ selection: Variant_NullType_TextSelection?) -> Void)? { get set }
 
   // Methods
@@ -47,6 +47,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func undo() throws -> Void
   func redo() throws -> Void
   func clear() throws -> Void
+  func clearInk() throws -> Void
   func setTextDirection(direction: TextDirection) throws -> Void
   func setTextMode(options: TextModeOptions?) throws -> Promise<Void>
   func finalize() throws -> Promise<String>

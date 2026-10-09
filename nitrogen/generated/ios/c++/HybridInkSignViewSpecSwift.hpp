@@ -240,12 +240,12 @@ namespace margelo::nitro::inksignpdf {
     inline void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) noexcept override {
       _swiftPart.setOnPageChange(onPageChange);
     }
-    inline std::optional<std::function<void(bool /* zoomedIn */)>> getOnZoomedInChange() noexcept override {
-      auto __result = _swiftPart.getOnZoomedInChange();
+    inline std::optional<std::function<void(double /* zoom */)>> getOnZoomChange() noexcept override {
+      auto __result = _swiftPart.getOnZoomChange();
       return __result;
     }
-    inline void setOnZoomedInChange(const std::optional<std::function<void(bool /* zoomedIn */)>>& onZoomedInChange) noexcept override {
-      _swiftPart.setOnZoomedInChange(onZoomedInChange);
+    inline void setOnZoomChange(const std::optional<std::function<void(double /* zoom */)>>& onZoomChange) noexcept override {
+      _swiftPart.setOnZoomChange(onZoomChange);
     }
     inline std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> getOnTextSelectionChange() noexcept override {
       auto __result = _swiftPart.getOnTextSelectionChange();
@@ -379,6 +379,12 @@ namespace margelo::nitro::inksignpdf {
     }
     inline void clear() override {
       auto __result = _swiftPart.clear();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void clearInk() override {
+      auto __result = _swiftPart.clearInk();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

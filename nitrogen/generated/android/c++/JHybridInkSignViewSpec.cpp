@@ -70,7 +70,7 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "PageInfo.hpp"
 #include "JFunc_void_PageInfo.hpp"
 #include "JPageInfo.hpp"
-#include "JFunc_void_bool.hpp"
+#include "JFunc_void_double.hpp"
 #include "TextSelection.hpp"
 #include "JFunc_void_std__optional_std__variant_nitro__NullType__TextSelection__.hpp"
 #include "JVariant_NullType_TextSelection.hpp"
@@ -297,22 +297,22 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_PageInfo::javaobject> /* onPageChange */)>("setOnPageChange_cxx");
     method(_javaPart, onPageChange.has_value() ? JFunc_void_PageInfo_cxx::fromCpp(onPageChange.value()) : nullptr);
   }
-  std::optional<std::function<void(bool /* zoomedIn */)>> JHybridInkSignViewSpec::getOnZoomedInChange() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_bool::javaobject>()>("getOnZoomedInChange_cxx");
+  std::optional<std::function<void(double /* zoom */)>> JHybridInkSignViewSpec::getOnZoomChange() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_double::javaobject>()>("getOnZoomChange_cxx");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(bool /* zoomedIn */)> {
-      if (__result->isInstanceOf(JFunc_void_bool_cxx::javaClassStatic())) [[likely]] {
-        auto downcast = jni::static_ref_cast<JFunc_void_bool_cxx::javaobject>(__result);
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(double /* zoom */)> {
+      if (__result->isInstanceOf(JFunc_void_double_cxx::javaClassStatic())) [[likely]] {
+        auto downcast = jni::static_ref_cast<JFunc_void_double_cxx::javaobject>(__result);
         return downcast->cthis()->getFunction();
       } else {
         auto __resultRef = jni::make_global(__result);
-        return JNICallable<JFunc_void_bool, void(bool)>(std::move(__resultRef));
+        return JNICallable<JFunc_void_double, void(double)>(std::move(__resultRef));
       }
     }()) : std::nullopt;
   }
-  void JHybridInkSignViewSpec::setOnZoomedInChange(const std::optional<std::function<void(bool /* zoomedIn */)>>& onZoomedInChange) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_bool::javaobject> /* onZoomedInChange */)>("setOnZoomedInChange_cxx");
-    method(_javaPart, onZoomedInChange.has_value() ? JFunc_void_bool_cxx::fromCpp(onZoomedInChange.value()) : nullptr);
+  void JHybridInkSignViewSpec::setOnZoomChange(const std::optional<std::function<void(double /* zoom */)>>& onZoomChange) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_double::javaobject> /* onZoomChange */)>("setOnZoomChange_cxx");
+    method(_javaPart, onZoomChange.has_value() ? JFunc_void_double_cxx::fromCpp(onZoomChange.value()) : nullptr);
   }
   std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> JHybridInkSignViewSpec::getOnTextSelectionChange() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_std__optional_std__variant_nitro__NullType__TextSelection__::javaobject>()>("getOnTextSelectionChange_cxx");
@@ -518,6 +518,10 @@ namespace margelo::nitro::inksignpdf {
   }
   void JHybridInkSignViewSpec::clear() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clear");
+    method(_javaPart);
+  }
+  void JHybridInkSignViewSpec::clearInk() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clearInk");
     method(_javaPart);
   }
   void JHybridInkSignViewSpec::setTextDirection(TextDirection direction) {

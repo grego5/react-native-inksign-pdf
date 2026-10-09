@@ -36,7 +36,7 @@ namespace margelo::nitro::inksignpdf::views {
     pagerDirection(nitro::ReactProp<std::optional<PagerDirection>>::fromRawValue("InkSignView", "pagerDirection", rawProps, sourceProps.pagerDirection)),
     onStateChange(nitro::ReactProp<std::optional<std::function<void(const ViewerState& /* event */)>>>::fromRawValue("InkSignView", "onStateChange", rawProps, sourceProps.onStateChange)),
     onPageChange(nitro::ReactProp<std::optional<std::function<void(const PageInfo& /* event */)>>>::fromRawValue("InkSignView", "onPageChange", rawProps, sourceProps.onPageChange)),
-    onZoomedInChange(nitro::ReactProp<std::optional<std::function<void(bool /* zoomedIn */)>>>::fromRawValue("InkSignView", "onZoomedInChange", rawProps, sourceProps.onZoomedInChange)),
+    onZoomChange(nitro::ReactProp<std::optional<std::function<void(double /* zoom */)>>>::fromRawValue("InkSignView", "onZoomChange", rawProps, sourceProps.onZoomChange)),
     onTextSelectionChange(nitro::ReactProp<std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>>::fromRawValue("InkSignView", "onTextSelectionChange", rawProps, sourceProps.onTextSelectionChange)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridInkSignViewSpec>& /* ref */)>>>::fromRawValue("InkSignView", "hybridRef", rawProps, sourceProps.hybridRef)) { }
 
@@ -58,7 +58,7 @@ namespace margelo::nitro::inksignpdf::views {
       case hashString("pagerDirection"): return true;
       case hashString("onStateChange"): return true;
       case hashString("onPageChange"): return true;
-      case hashString("onZoomedInChange"): return true;
+      case hashString("onZoomChange"): return true;
       case hashString("onTextSelectionChange"): return true;
       case hashString("hybridRef"): return true;
       default: return false;

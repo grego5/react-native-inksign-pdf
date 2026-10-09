@@ -69,7 +69,7 @@ extension InkSignView {
   }
 
   func refreshActiveOverlayTransform() {
-    scheduleZoomedInReport()
+    scheduleZoomReport()
     guard let state = documentCoordinator.document,
           let canvas = overlayProvider.canvasView(for: state.activePage.id) else { return }
     refreshOverlayTransform(canvas, for: state.activePage.id)
@@ -78,7 +78,7 @@ extension InkSignView {
   /// Reports a completed gesture mutation. Presentation callbacks only refresh
   /// dependent state; they never issue another viewport mutation.
   func refreshOverlayTransform(_ overlay: InkCanvasView, for pageID: UUID) {
-    scheduleZoomedInReport()
+    scheduleZoomReport()
     guard isSupportedPage(pageID), attachedOverlayPage == pageID,
           let state = documentCoordinator.document,
           let page = documentView.currentPage,

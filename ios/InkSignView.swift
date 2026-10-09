@@ -221,36 +221,44 @@ final class InkSignView: HybridInkSignViewSpec {
     didSet { performOnMain { self.emitChange(force: true) } }
   }
   var onPageChange: ((PageInfo) -> Void)?
-  var onZoomedInChange: ((Bool) -> Void)?
+  var onZoomChange: ((Double) -> Void)?
   private var zoomReportWork: DispatchWorkItem?
   private var zoomReportSample: (UUID, CGFloat, CGFloat)?
   private var reportedZoomGeneration: UInt64?
-  private var reportedZoomedIn: Bool?
+  private var reportedZoomPage: UUID?
+  private var reportedZoom: Double?
 
-  func scheduleZoomedInReport() {
+  func scheduleZoomReport() {
     guard !disposed, let state = documentCoordinator.document,
           let fit = usableFitScale() else { return }
     let sample = (state.activePage.id, documentView.scaleFactor, fit)
     if let previous = zoomReportSample, previous == sample,
-       reportedZoomGeneration == documentCoordinator.generation { return }
+       reportedZoomGeneration == documentCoordinator.generation,
+       reportedZoomPage == state.activePage.id,
+       reportedZoom == Double(sample.1 / sample.2) { return }
     zoomReportSample = sample
     zoomReportWork?.cancel()
-    queueZoomedInReport()
+    queueZoomReport()
   }
 
-  private func queueZoomedInReport() {
+  private func queueZoomReport() {
     let work = DispatchWorkItem { [weak self] in
       guard let self, !self.disposed, let state = self.documentCoordinator.document else { return }
       if self.hasActiveViewportGesture(in: self.documentView) {
-        self.queueZoomedInReport()
+        self.queueZoomReport()
         return
       }
       guard let fit = self.usableFitScale() else { return }
-      let zoomedIn = self.documentView.scaleFactor > fit * 1.001
-      if self.reportedZoomGeneration != self.documentCoordinator.generation || self.reportedZoomedIn != zoomedIn {
+      guard self.documentView.currentPage === state.activePage.page,
+            self.attachedOverlayPage == state.activePage.id,
+            self.pageToOverlayTransform != nil else { return }
+      let zoom = Double(self.documentView.scaleFactor / fit)
+      if self.reportedZoomGeneration != self.documentCoordinator.generation ||
+         self.reportedZoomPage != state.activePage.id || self.reportedZoom != zoom {
         self.reportedZoomGeneration = self.documentCoordinator.generation
-        self.reportedZoomedIn = zoomedIn
-        self.onZoomedInChange?(zoomedIn)
+        self.reportedZoomPage = state.activePage.id
+        self.reportedZoom = zoom
+        self.onZoomChange?(zoom)
       }
       self.zoomReportSample = (state.activePage.id, self.documentView.scaleFactor, fit)
     }
@@ -397,7 +405,7 @@ final class InkSignView: HybridInkSignViewSpec {
       self.onStateChange = nil
       self.onPageChange = nil
       self.zoomReportWork?.cancel()
-      self.onZoomedInChange = nil
+      self.onZoomChange = nil
     }
   }
 

@@ -2,10 +2,9 @@
 
 ## Viewport and modes
 
-- `onZoomedInChange(boolean)` reports settled zoom above fitted scale with a
-  0.1% tolerance. Native deduplicates results per document and reevaluates after
-  page/size changes. Reporting waits 120 ms after scale/fit changes and for
-  PDFView scroll/zoom gestures to finish; continuous updates stay native.
+- `onZoomChange(number)` reports settled scale divided by page fit.
+  Emit on initial presentation and page/size changes; deduplicate per page.
+  Wait 120 ms after scale/fit changes and for PDFView gestures to finish.
 
 - **Mode commands:** Commands return promises and execute in the native FIFO.
   `setViewMode()` and `setInkMode()` finish text interaction and apply viewport

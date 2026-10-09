@@ -128,7 +128,7 @@ internal class InkHistory {
       val before: PageContent,
       val after: PageContent,
     ) : HistoryAction
-    class Clear(val content: List<PageContent>) : HistoryAction
+    class Clear(val before: List<PageContent>, val after: List<PageContent>) : HistoryAction
   }
 
   private val completed = ArrayList<PageContent>()
@@ -211,8 +211,9 @@ internal class InkHistory {
         InkHistoryMutation.Replaced(contentSnapshot())
       }
       is HistoryAction.Clear -> {
-        check(completed.isEmpty())
-        completed.addAll(action.content)
+        check(completed == action.after)
+        completed.clear()
+        completed.addAll(action.before)
         redoStack += action
         revision += 1L
         InkHistoryMutation.Replaced(contentSnapshot())
@@ -246,9 +247,11 @@ internal class InkHistory {
       }
       is HistoryAction.Clear -> {
         completed.clear()
+        completed.addAll(action.after)
         undoStack += action
         revision += 1L
-        InkHistoryMutation.Cleared(action.content)
+        if (action.after.isEmpty()) InkHistoryMutation.Cleared(action.before)
+        else InkHistoryMutation.Replaced(contentSnapshot())
       }
     }
   }
@@ -256,11 +259,23 @@ internal class InkHistory {
   fun clearMutation(): InkHistoryMutation {
     if (completed.isEmpty()) return InkHistoryMutation.NoOp
     val content = contentSnapshot()
-    undoStack += HistoryAction.Clear(content)
+    undoStack += HistoryAction.Clear(content, emptyList())
     completed.clear()
     redoStack.clear()
     revision += 1L
     return InkHistoryMutation.Cleared(content)
+  }
+
+  fun clearInkMutation(): InkHistoryMutation {
+    if (!hasInk()) return InkHistoryMutation.NoOp
+    val before = contentSnapshot()
+    val after = completed.filterNot { it is PageContent.Ink }
+    undoStack += HistoryAction.Clear(before, after)
+    completed.clear()
+    completed.addAll(after)
+    redoStack.clear()
+    revision += 1L
+    return InkHistoryMutation.Replaced(contentSnapshot())
   }
 
   fun reset() {

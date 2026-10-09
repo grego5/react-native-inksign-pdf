@@ -14,9 +14,9 @@
   controls double taps.
 - Open/page changes fit unless viewport options override. Page callbacks follow
   installation; newer navigation requests replace pending ones.
-- `onZoomedInChange(boolean)` reports zoom above fit with 0.1% tolerance,
-  deduplicated per document. Page/size changes reevaluate fit. Notify after touch/
-  navigation ends and 120 ms without a zoom/fit change; continuous updates stay native.
+- `onZoomChange(number)` reports settled viewport zoom divided by page fit.
+  Emit on initial presentation and page/size changes; deduplicate per page.
+  Wait for touch/navigation to end and 120 ms without zoom/fit changes.
 
 ## Text
 

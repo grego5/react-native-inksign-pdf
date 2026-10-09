@@ -230,39 +230,46 @@ internal class SurfaceView(
   var textAnnotationBeingEdited: (() -> Long?)? = null
   var onStateChange: ((InkState) -> Unit)? = null
   var onPageChange: ((PdfPageInfo) -> Unit)? = null
-  var onZoomedInChange: ((Boolean) -> Unit)? = null
+  var onZoomChange: ((Double) -> Unit)? = null
   private var zoomReportSample: Triple<String, Double, Double>? = null
   private var reportedZoomDocument: Long? = null
-  private var reportedZoomedIn: Boolean? = null
+  private var reportedZoomPage: String? = null
+  private var reportedZoom: Double? = null
   private var zoomTouchActive = false
   private val reportSettledZoom = object : Runnable {
     override fun run() {
       if (disposed) return
+      if (!documentCoordinator.hasDocument) return
       if (zoomTouchActive || pageNavigationController.state() != NavigationState.Idle) {
         postDelayed(this, 120L)
         return
       }
-      val sample = zoomReportSample ?: return
-      val zoomedIn = sample.second > sample.third * 1.001
+      val sample = currentZoomReportSample() ?: return
+      val zoom = sample.second / sample.third
       val generation = documentCoordinator.generation
-      if (reportedZoomDocument != generation || reportedZoomedIn != zoomedIn) {
+      if (reportedZoomDocument != generation || reportedZoomPage != sample.first || reportedZoom != zoom) {
         reportedZoomDocument = generation
-        reportedZoomedIn = zoomedIn
-        onZoomedInChange?.invoke(zoomedIn)
+        reportedZoomPage = sample.first
+        reportedZoom = zoom
+        onZoomChange?.invoke(zoom)
       }
     }
   }
 
   private fun observeZoomForReporting() {
-    if (!documentCoordinator.hasDocument) return
-    val page = documentCoordinator.page(documentCoordinator.activePageIndex)
-    val viewport = documentController.viewportSnapshot() ?: return
-    val fit = documentController.usableFitZoomFor(page.dimensions) ?: return
-    val sample = Triple(page.id, viewport.zoom, fit)
-    if (sample == zoomReportSample && reportedZoomDocument == documentCoordinator.generation) return
+    val sample = currentZoomReportSample() ?: return
+    if (sample == zoomReportSample && reportedZoomDocument == documentCoordinator.generation &&
+      reportedZoomPage == sample.first && reportedZoom == sample.second / sample.third) return
     zoomReportSample = sample
     removeCallbacks(reportSettledZoom)
     postDelayed(reportSettledZoom, 120L)
+  }
+  private fun currentZoomReportSample(): Triple<String, Double, Double>? {
+    if (!documentCoordinator.hasDocument) return null
+    val page = documentCoordinator.page(documentCoordinator.activePageIndex)
+    val viewport = documentController.viewportSnapshot() ?: return null
+    val fit = documentController.usableFitZoomFor(page.dimensions) ?: return null
+    return Triple(page.id, viewport.zoom, fit)
   }
   var onTextContentChanged: (() -> Unit)? = null
   var onTextTransformChanged: (() -> Unit)? = null
@@ -1106,6 +1113,15 @@ internal class SurfaceView(
     }
   }
 
+  fun clearInk() {
+    runOnUi {
+      if (disposed) return@runOnUi
+      pageNavigationController.cancelGesture()
+      cancelInputGesture()
+      presentHistoryMutation(documentCoordinator.clearActiveInk())
+    }
+  }
+
   fun completedPagesSnapshot(): List<PdfPageContentSnapshot> {
     requireOnUiThread()
     return documentCoordinator.completedPagesSnapshot()
@@ -1392,7 +1408,7 @@ internal class SurfaceView(
     clearSnapCandidateMeasurement()
     onPageChange = null
     removeCallbacks(reportSettledZoom)
-    onZoomedInChange = null
+    onZoomChange = null
     resetDocumentHistories()
     pageSwitchRequestId += 1L
     lastReportedState = InkState(false, false, false)

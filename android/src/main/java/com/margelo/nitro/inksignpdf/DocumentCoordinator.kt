@@ -357,6 +357,7 @@ internal class MutableDocumentCoordinator(
     synchronizeTextPlacement(page(activePageIndex))
   }
   fun clearActiveHistory(): InkHistoryMutation = activeHistory().clearMutation()
+  fun clearActiveInk(): InkHistoryMutation = activeHistory().clearInkMutation()
   fun resetHistories() = mutablePages.forEach { it.history.reset() }
 
   fun completedPagesSnapshot(): List<PdfPageContentSnapshot> =

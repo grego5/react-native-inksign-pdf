@@ -82,8 +82,8 @@ namespace margelo::nitro::inksignpdf {
     void setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) override;
     std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() override;
     void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) override;
-    std::optional<std::function<void(bool /* zoomedIn */)>> getOnZoomedInChange() override;
-    void setOnZoomedInChange(const std::optional<std::function<void(bool /* zoomedIn */)>>& onZoomedInChange) override;
+    std::optional<std::function<void(double /* zoom */)>> getOnZoomChange() override;
+    void setOnZoomChange(const std::optional<std::function<void(double /* zoom */)>>& onZoomChange) override;
     std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> getOnTextSelectionChange() override;
     void setOnTextSelectionChange(const std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>& onTextSelectionChange) override;
 
@@ -106,6 +106,7 @@ namespace margelo::nitro::inksignpdf {
     void undo() override;
     void redo() override;
     void clear() override;
+    void clearInk() override;
     void setTextDirection(TextDirection direction) override;
     std::shared_ptr<Promise<void>> setTextMode(const std::optional<TextModeOptions>& options) override;
     std::shared_ptr<Promise<std::string>> finalize() override;

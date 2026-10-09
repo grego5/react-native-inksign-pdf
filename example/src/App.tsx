@@ -100,11 +100,27 @@ export default function App() {
     const selection = textSelection;
     if (inkSignView === null || selection === null) return;
     try {
-      const page = await inkSignView.getPage();
+      if (pageInfo === null) return;
+      const page = await inkSignView.getPage(pageInfo.pageIndex);
       if (delta === null) page.clearText(selection.textId);
       else page.adjustTextSize(selection.textId, delta);
     } catch (error) {
       Alert.alert('Update text failed', String(error));
+    }
+  }
+
+  async function clearCurrentContent() {
+    const view = inkSignViewRef.current;
+    if (!view) return;
+    if (state.mode === 'textEdit') {
+      await updateSelectedText(null);
+      return;
+    }
+    try {
+      if (state.mode === 'ink') view.clearInk();
+      else if (state.mode === 'textAdd') await view.setViewMode();
+    } catch (error) {
+      Alert.alert('Clear failed', String(error));
     }
   }
 
@@ -251,11 +267,13 @@ export default function App() {
               disabled={!state.canRedo}
               onPress={() => inkSignViewRef.current?.redo()}
             />
-            <Action
-              label="Clear"
-              disabled={!state.canUndo}
-              onPress={() => inkSignViewRef.current?.clear()}
-            />
+            {['ink', 'textEdit', 'textAdd'].includes(state.mode) && (
+              <Action
+                label={state.mode === 'textAdd' ? 'Cancel text' : 'Clear'}
+                disabled={state.mode === 'textEdit' && textSelection === null}
+                onPress={() => void clearCurrentContent()}
+              />
+            )}
           </View>
 
           <View style={styles.row}>
@@ -264,13 +282,6 @@ export default function App() {
               disabled={pageInfo === null}
               active={state.mode === 'textAdd'}
               onPress={() => void toggleTextPlacement()}
-            />
-            <Action
-              label="Text −"
-              disabled={
-                pageInfo === null || textSelection === null
-              }
-              onPress={() => void updateSelectedText(null)}
             />
             <Action
               label="Size +"

@@ -45,7 +45,7 @@ try {
 }
 
 test('native event subscriptions stay stable while forwarding to the latest committed callbacks', async () => {
-  const names = ['onStateChange', 'onPageChange', 'onTextSelectionChange', 'onZoomedInChange'];
+  const names = ['onStateChange', 'onPageChange', 'onTextSelectionChange', 'onZoomChange'];
   const received = [];
   const propsFor = version => Object.fromEntries(names.map(name =>
     [name, value => received.push([version, name, value])]));
