@@ -123,8 +123,8 @@ namespace margelo::nitro::inksignpdf {
       virtual void setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) = 0;
       virtual std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() = 0;
       virtual void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) = 0;
-      virtual std::optional<std::function<void(bool /* zoomedIn */)>> getOnZoomedInChange() = 0;
-      virtual void setOnZoomedInChange(const std::optional<std::function<void(bool /* zoomedIn */)>>& onZoomedInChange) = 0;
+      virtual std::optional<std::function<void(double /* zoom */)>> getOnZoomChange() = 0;
+      virtual void setOnZoomChange(const std::optional<std::function<void(double /* zoom */)>>& onZoomChange) = 0;
       virtual std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> getOnTextSelectionChange() = 0;
       virtual void setOnTextSelectionChange(const std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>& onTextSelectionChange) = 0;
 
@@ -147,6 +147,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void undo() = 0;
       virtual void redo() = 0;
       virtual void clear() = 0;
+      virtual void clearInk() = 0;
       virtual void setTextDirection(TextDirection direction) = 0;
       virtual std::shared_ptr<Promise<void>> setTextMode(const std::optional<TextModeOptions>& options) = 0;
       virtual std::shared_ptr<Promise<std::string>> finalize() = 0;

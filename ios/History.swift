@@ -40,6 +40,19 @@ extension InkSignView {
     }
   }
 
+  func clearInk() throws {
+    try performOnMainSync {
+      self.cancelActiveStroke()
+      guard let page = self.documentCoordinator.document?.activePage else { return }
+      let before = page.history.content
+      guard !before.drawing.strokes.isEmpty else { return }
+      guard page.history.record(type: .clear, before: before,
+                                after: before.replacingDrawing(PKDrawing())) else { return }
+      self.installCommittedDrawing()
+      self.emitChange()
+    }
+  }
+
   func emitChange(force: Bool = false) {
     guard !disposed else { return }
     guard !suppressesOpenPresentationCallbacks else { return }

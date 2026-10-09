@@ -39,6 +39,38 @@ class SurfaceViewTest {
   }
 
   @Test
+  fun zoomReportsSettledFitRelativeScaleAndEachPage() {
+    val reports = java.util.concurrent.LinkedBlockingQueue<Double>()
+    val scenario = androidx.test.core.app.ActivityScenario.launch(LowLatencyInkSmokeActivity::class.java)
+    try {
+      scenario.onActivity { activity ->
+        harness.surface.onZoomChange = { reports.add(it) }
+        activity.content.addView(harness.surface, android.widget.FrameLayout.LayoutParams(300, 300))
+        harness.setDocument(harness.documentInfo())
+      }
+      assertEquals(1.0, reports.poll(5, TimeUnit.SECONDS)!!, 0.000001)
+      fun change(relative: Double) {
+        harness.runOnMain {
+          val info = harness.documentInfo()
+          val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density.toDouble()
+          val fit = PageViewport(info.pages[0], ViewportSize(300.0, 300.0, density)).fitZoom()
+          harness.surface.installDocumentPresentation(fit * relative, null, false)
+          assertTrue(reports.isEmpty())
+        }
+        assertEquals(relative, reports.poll(5, TimeUnit.SECONDS)!!, 0.000001)
+      }
+      change(2.0)
+      change(0.75)
+      harness.runOnMain { harness.surface.switchPage(1) }
+      assertEquals(1.0, reports.poll(5, TimeUnit.SECONDS)!!, 0.000001)
+      harness.runOnMain { harness.surface.switchPage(0) }
+      assertEquals(1.0, reports.poll(5, TimeUnit.SECONDS)!!, 0.000001)
+    } finally {
+      scenario.close()
+    }
+  }
+
+  @Test
   fun surfaceSwitchesPagesWithoutChangingDocumentGeneration() {
     var first: PdfPageInfo? = null
     var second: PdfPageInfo? = null

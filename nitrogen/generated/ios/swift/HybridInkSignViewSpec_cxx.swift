@@ -500,14 +500,14 @@ open class HybridInkSignViewSpec_cxx {
     }
   }
   
-  public final var onZoomedInChange: bridge.std__optional_std__function_void_bool____zoomedIn______ {
+  public final var onZoomChange: bridge.std__optional_std__function_void_double____zoom______ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_std__function_void_bool____zoomedIn______ in
-        if let __unwrappedValue = self.__implementation.onZoomedInChange {
-          return bridge.create_std__optional_std__function_void_bool____zoomedIn______({ () -> bridge.Func_void_bool in
-            let __closureWrapper = Func_void_bool(__unwrappedValue)
-            return bridge.create_Func_void_bool(__closureWrapper.toUnsafe())
+      return { () -> bridge.std__optional_std__function_void_double____zoom______ in
+        if let __unwrappedValue = self.__implementation.onZoomChange {
+          return bridge.create_std__optional_std__function_void_double____zoom______({ () -> bridge.Func_void_double in
+            let __closureWrapper = Func_void_double(__unwrappedValue)
+            return bridge.create_Func_void_double(__closureWrapper.toUnsafe())
           }())
         } else {
           return .init()
@@ -516,13 +516,13 @@ open class HybridInkSignViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.onZoomedInChange = { () -> ((_ zoomedIn: Bool) -> Void)? in
-        if bridge.has_value_std__optional_std__function_void_bool____zoomedIn______(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__function_void_bool____zoomedIn______(newValue)
-          return { () -> (Bool) -> Void in
-            let __wrappedFunction = bridge.wrap_Func_void_bool(__unwrapped)
-            return { (__zoomedIn: Bool) -> Void in
-              __wrappedFunction.call(__zoomedIn)
+      self.__implementation.onZoomChange = { () -> ((_ zoom: Double) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_double____zoom______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_double____zoom______(newValue)
+          return { () -> (Double) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_double(__unwrapped)
+            return { (__zoom: Double) -> Void in
+              __wrappedFunction.call(__zoom)
             }
           }()
         } else {
@@ -857,6 +857,17 @@ open class HybridInkSignViewSpec_cxx {
   public final func clear() -> bridge.Result_void_ {
     do {
       try self.__implementation.clear()
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func clearInk() -> bridge.Result_void_ {
+    do {
+      try self.__implementation.clearInk()
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()

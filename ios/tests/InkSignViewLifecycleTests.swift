@@ -7,6 +7,35 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
+  func testZoomReportsSettledFitRelativeScaleAndEachPage() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    var reports: [Double] = []
+    var pending: XCTestExpectation?
+    view.onZoomChange = { zoom in reports.append(zoom); pending?.fulfill() }
+    func expectZoom(_ expected: Double, change: () throws -> Void) throws {
+      let next = expectation(description: "settled normalized zoom \(expected)")
+      pending = next
+      let count = reports.count
+      try change()
+      XCTAssertEqual(reports.count, count)
+      wait(for: [next], timeout: 5)
+      pending = nil
+      XCTAssertEqual(try XCTUnwrap(reports.last), expected, accuracy: 0.000001)
+    }
+    try expectZoom(1) { view.scheduleZoomReport() }
+    let fit = try XCTUnwrap(view.usableFitScale())
+    try expectZoom(2) {
+      view.applyViewport(request: .focus(nil, zoom: Double(fit * 2)))
+    }
+    try expectZoom(0.75) {
+      view.applyViewport(request: .focus(nil, zoom: Double(fit * 0.75)))
+    }
+    try expectZoom(1) { _ = try view.switchPage(to: 1); view.applyViewport(request: .fit) }
+    try expectZoom(1) { _ = try view.switchPage(to: 0); view.applyViewport(request: .fit) }
+  }
+
   func testOpenDetectsJpegWithoutExtensionAndCreatesOnePdfPage() throws {
     let fixture = makeFixture(pageCount: 1)
     let source = FileManager.default.temporaryDirectory

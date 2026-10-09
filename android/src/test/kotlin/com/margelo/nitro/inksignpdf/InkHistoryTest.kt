@@ -6,6 +6,27 @@ import org.junit.Test
 
 class InkHistoryTest {
   @Test
+  fun clearInkPreservesTextAndRestoresOrderInOneUndoStep() {
+    val history = InkHistory()
+    val first = outline(0f)
+    val annotation = text(1L, "Keep", 24.0, 40.0)
+    val second = outline(20f)
+    history.append(first)
+    history.appendText(annotation)
+    history.append(second)
+    val original = history.contentSnapshot()
+    history.clearInkMutation()
+    assertEquals(listOf(PageContent.Text(annotation)), history.contentSnapshot())
+    val revision = history.revision
+    assertEquals(InkHistoryMutation.NoOp, history.clearInkMutation())
+    assertEquals(revision, history.revision)
+    history.undoMutation()
+    assertEquals(original, history.contentSnapshot())
+    history.redoMutation()
+    assertEquals(listOf(PageContent.Text(annotation)), history.contentSnapshot())
+  }
+
+  @Test
   fun documentPagesKeepHistoryAndDirtyStateIndependent() {
     val document = MutableDocumentCoordinator(
       sourcePath = "multi-page.pdf",
@@ -26,6 +47,11 @@ class InkHistoryTest {
     assertEquals(listOf(second), document.page(1).history.snapshot())
     assertTrue(document.pages.any { it.history.state().isDirty })
 
+    document.clearActiveInk()
+    assertTrue(document.page(0).history.snapshot().isEmpty())
+    assertEquals(listOf(second), document.page(1).history.snapshot())
+    document.page(0).history.undoMutation()
+    assertEquals(listOf(first), document.page(0).history.snapshot())
     document.page(0).history.clearMutation()
     assertTrue(document.page(1).history.state().isDirty)
   }

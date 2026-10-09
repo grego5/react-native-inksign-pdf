@@ -141,18 +141,18 @@ abstract class HybridInkSignViewSpec: HybridView() {
       onPageChange = value?.let { it }
     }
   
-  abstract var onZoomedInChange: ((zoomedIn: Boolean) -> Unit)?
+  abstract var onZoomChange: ((zoom: Double) -> Unit)?
   
-  private var onZoomedInChange_cxx: Func_void_bool?
+  private var onZoomChange_cxx: Func_void_double?
     @Keep
     @DoNotStrip
     get() {
-      return onZoomedInChange?.let { Func_void_bool_java(it) }
+      return onZoomChange?.let { Func_void_double_java(it) }
     }
     @Keep
     @DoNotStrip
     set(value) {
-      onZoomedInChange = value?.let { it }
+      onZoomChange = value?.let { it }
     }
   
   abstract var onTextSelectionChange: ((selection: Variant_NullType_TextSelection?) -> Unit)?
@@ -237,6 +237,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @DoNotStrip
   @Keep
   abstract fun clear(): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun clearInk(): Unit
   
   @DoNotStrip
   @Keep

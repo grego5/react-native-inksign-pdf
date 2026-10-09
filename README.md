@@ -105,8 +105,12 @@ options take effect when you tap to place text. Finishing text returns to view
 mode; switching modes finishes any open text entry first.
 
 Call `getPageCoords()` and tap the page to get coordinates; the viewer returns
-to view mode afterward. Use `onZoomedInChange` to hide controls when zoom
-settles above page fit.
+to view mode afterward. `onZoomChange` reports settled zoom relative to page fit:
+`1` is fitted, above `1` is zoomed in, and below `1` is zoomed out.
+
+Use `clearInk()` to clear the current page's editable ink, or
+`page.clearText(id)` to remove selected text. Both are undoable. Cancel pending
+text placement with `setViewMode()`. `clear()` clears both ink and text.
 
 ```ts
 const target = await view.getPageCoords(); // pageId, pageIndex, x, y

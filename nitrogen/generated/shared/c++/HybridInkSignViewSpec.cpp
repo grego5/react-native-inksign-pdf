@@ -46,8 +46,8 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridSetter("onStateChange", &HybridInkSignViewSpec::setOnStateChange);
       prototype.registerHybridGetter("onPageChange", &HybridInkSignViewSpec::getOnPageChange);
       prototype.registerHybridSetter("onPageChange", &HybridInkSignViewSpec::setOnPageChange);
-      prototype.registerHybridGetter("onZoomedInChange", &HybridInkSignViewSpec::getOnZoomedInChange);
-      prototype.registerHybridSetter("onZoomedInChange", &HybridInkSignViewSpec::setOnZoomedInChange);
+      prototype.registerHybridGetter("onZoomChange", &HybridInkSignViewSpec::getOnZoomChange);
+      prototype.registerHybridSetter("onZoomChange", &HybridInkSignViewSpec::setOnZoomChange);
       prototype.registerHybridGetter("onTextSelectionChange", &HybridInkSignViewSpec::getOnTextSelectionChange);
       prototype.registerHybridSetter("onTextSelectionChange", &HybridInkSignViewSpec::setOnTextSelectionChange);
       prototype.registerHybridMethod("open", &HybridInkSignViewSpec::open);
@@ -67,6 +67,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("undo", &HybridInkSignViewSpec::undo);
       prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
       prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
+      prototype.registerHybridMethod("clearInk", &HybridInkSignViewSpec::clearInk);
       prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);
       prototype.registerHybridMethod("setTextMode", &HybridInkSignViewSpec::setTextMode);
       prototype.registerHybridMethod("finalize", &HybridInkSignViewSpec::finalize);

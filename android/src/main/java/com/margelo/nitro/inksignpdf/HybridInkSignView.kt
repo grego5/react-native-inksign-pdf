@@ -180,7 +180,7 @@ class HybridInkSignView internal constructor(
       runOnMainSync { emitState() }
     }
   override var onPageChange: ((PageInfo) -> Unit)? = null
-  override var onZoomedInChange: ((Boolean) -> Unit)? = null
+  override var onZoomChange: ((Double) -> Unit)? = null
   override var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Unit)? = null
     set(value) {
       field = value
@@ -248,7 +248,7 @@ class HybridInkSignView internal constructor(
       pendingPageCoords?.target?.let { if (!coordinateTargetIsCurrent(it)) cancelCoordinateRequest() }
       if (!disposed && !surface.isOpenHandoffInProgress) onPageChange?.invoke(toPublicPageInfo(page))
     }
-    surface.onZoomedInChange = { zoomedIn -> if (!disposed) onZoomedInChange?.invoke(zoomedIn) }
+    surface.onZoomChange = { zoom -> if (!disposed) onZoomChange?.invoke(zoom) }
   }
 
   private val commandMutex = Mutex()
@@ -606,6 +606,9 @@ class HybridInkSignView internal constructor(
   }
   override fun clear() {
     runOnMainSync { runHistoryCommand(surface::clear) }
+  }
+  override fun clearInk() {
+    runOnMainSync { surface.clearInk() }
   }
 
   override fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec> = launchPromise {
@@ -1360,7 +1363,7 @@ class HybridInkSignView internal constructor(
     coordinator.closeSession(outputs + workingFiles, artifactPolicy::deleteExact)
     onStateChange = null
     onPageChange = null
-    onZoomedInChange = null
+    onZoomChange = null
     textOverlay.onInteractionModeChanged = null
   }
 

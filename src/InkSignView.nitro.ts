@@ -13,7 +13,9 @@ export type TextColor = string
 
 /** Zero-based current page metadata returned by open and page navigation. */
 export interface PageInfo {
+  /** Zero-based index of the active page; the first page is 0. */
   pageIndex: number
+  /** Total number of pages in the document. */
   pageCount: number
   width: number
   height: number
@@ -242,8 +244,8 @@ export interface InkSignViewProps extends HybridViewProps {
   pagerDirection?: PagerDirection
   onStateChange?: (event: ViewerState) => void
   onPageChange?: (event: PageInfo) => void
-  /** Reports settled zoom above fitted scale; at or below fit reports false. */
-  onZoomedInChange?: (zoomedIn: boolean) => void
+  /** Settled zoom relative to page fit: 1 is fitted, below 1 is zoomed out. */
+  onZoomChange?: (zoom: number) => void
   onTextSelectionChange?: (selection: TextSelection | null) => void
 }
 
@@ -282,6 +284,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   redo(): void
   /** Clears editable ink and text from the active page. */
   clear(): void
+  /** Clears only editable ink on the active page as one undoable change. */
+  clearInk(): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
   /** FIFO text mode; empty viewers resolve unchanged. Omission preserves the viewport; an empty object fits after the tap. */

@@ -63,11 +63,11 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     };
   }
   
-  // pragma MARK: std::function<void(bool /* zoomedIn */)>
-  Func_void_bool create_Func_void_bool(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_bool::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](bool zoomedIn) mutable -> void {
-      swiftClosure.call(zoomedIn);
+  // pragma MARK: std::function<void(double /* zoom */)>
+  Func_void_double create_Func_void_double(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeInkSignPdf::Func_void_double::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](double zoom) mutable -> void {
+      swiftClosure.call(zoom);
     };
   }
   

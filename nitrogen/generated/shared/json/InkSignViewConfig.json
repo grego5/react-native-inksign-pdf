@@ -20,7 +20,7 @@
     "pagerDirection": true,
     "onStateChange": true,
     "onPageChange": true,
-    "onZoomedInChange": true,
+    "onZoomChange": true,
     "onTextSelectionChange": true,
     "hybridRef": true
   }

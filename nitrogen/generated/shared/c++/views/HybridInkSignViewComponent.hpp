@@ -67,7 +67,7 @@ namespace margelo::nitro::inksignpdf::views {
     nitro::ReactProp<std::optional<PagerDirection>> pagerDirection;
     nitro::ReactProp<std::optional<std::function<void(const ViewerState& /* event */)>>> onStateChange;
     nitro::ReactProp<std::optional<std::function<void(const PageInfo& /* event */)>>> onPageChange;
-    nitro::ReactProp<std::optional<std::function<void(bool /* zoomedIn */)>>> onZoomedInChange;
+    nitro::ReactProp<std::optional<std::function<void(double /* zoom */)>>> onZoomChange;
     nitro::ReactProp<std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>> onTextSelectionChange;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridInkSignViewSpec>& /* ref */)>>> hybridRef;
 
@@ -89,7 +89,7 @@ namespace margelo::nitro::inksignpdf::views {
              pagerDirection.hasSameValue(other.pagerDirection) &&
              onStateChange.hasSameValue(other.onStateChange) &&
              onPageChange.hasSameValue(other.onPageChange) &&
-             onZoomedInChange.hasSameValue(other.onZoomedInChange) &&
+             onZoomChange.hasSameValue(other.onZoomChange) &&
              onTextSelectionChange.hasSameValue(other.onTextSelectionChange) &&
              hybridRef.hasSameValue(other.hybridRef);
     }
@@ -112,7 +112,7 @@ namespace margelo::nitro::inksignpdf::views {
              pagerDirection.isProvided() ||
              onStateChange.isProvided() ||
              onPageChange.isProvided() ||
-             onZoomedInChange.isProvided() ||
+             onZoomChange.isProvided() ||
              onTextSelectionChange.isProvided() ||
              hybridRef.isProvided();
     }

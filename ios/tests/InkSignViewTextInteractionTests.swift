@@ -33,6 +33,24 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                                      after: before.replacingDrawing(PKDrawing(strokes: [stroke]))))
     XCTAssertTrue(try view.hasInk())
 
+    let annotation = makeCenteredTextAnnotation(id: 42, text: "Keep", fontSize: 16,
+                                                pageSize: page.geometry.displaySize)
+    XCTAssertTrue(page.history.appendText(annotation))
+    let original = page.history.content
+    try view.clearInk()
+    XCTAssertFalse(try view.hasInk())
+    XCTAssertEqual(page.history.content.textAnnotations, [annotation])
+    let revision = page.history.revision
+    try view.clearInk()
+    XCTAssertEqual(page.history.revision, revision)
+    try view.undo()
+    XCTAssertTrue(page.history.content.equals(original))
+    try view.redo()
+    XCTAssertFalse(try view.hasInk())
+    XCTAssertEqual(page.history.content.textAnnotations, [annotation])
+    try view.undo()
+    try view.undo() // Restore the original ink-only fixture before navigation checks.
+
     _ = try view.switchPage(to: 0)
     XCTAssertFalse(try view.hasInk())
     _ = try view.switchPage(to: 1)

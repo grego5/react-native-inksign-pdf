@@ -47,6 +47,8 @@
   source bytes/geometry, page identity, targets, and history. Prepared source analysis
   projects into current display; assembly retains pending orientation and
   [export](export.md) writes PDF rotation metadata.
+- `clearInk()` cancels live ink and removes committed ink as one undoable
+  page-local change, preserving text and source PDF content.
 - `hasInk()` reads active-page committed ink history, reflecting navigation,
   undo, redo, and clear.
 - Reopen assembled candidates to validate page count, order, and source geometry.

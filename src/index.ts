@@ -98,13 +98,13 @@ const NativeInkSignView = getHostComponent<InkSignViewNativeProps, InkSignViewMe
 type NativeInkSignViewProps = React.ComponentProps<typeof NativeInkSignView>;
 export type InkSignViewProps = Omit<
   NativeInkSignViewProps,
-  'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomedInChange'
+  'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomChange'
 > & {
   /** Local PDF or JPEG path/file:// URI. JPEG becomes one contain-fitted A4 page. */
   initialDocument?: string;
   onStateChange?: InkSignViewNativeProps['onStateChange'];
   onPageChange?: InkSignViewNativeProps['onPageChange'];
-  onZoomedInChange?: InkSignViewNativeProps['onZoomedInChange'];
+  onZoomChange?: InkSignViewNativeProps['onZoomChange'];
   onTextSelectionChange?: InkSignViewNativeProps['onTextSelectionChange'];
 };
 
@@ -272,6 +272,7 @@ function createValidatedHandle(
     undo: () => getNative().undo(),
     redo: () => getNative().redo(),
     clear: () => getNative().clear(),
+    clearInk: () => getNative().clearInk(),
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
         throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');
@@ -309,25 +310,25 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
       onStateChange,
       onPageChange,
       onTextSelectionChange,
-      onZoomedInChange,
+      onZoomChange,
       ...nativeProps
     } = props;
     const callbacks = useRef({
       onStateChange,
       onPageChange,
       onTextSelectionChange,
-      onZoomedInChange,
+      onZoomChange,
     });
     useLayoutEffect(() => {
-      callbacks.current = { onStateChange, onPageChange, onTextSelectionChange, onZoomedInChange };
+      callbacks.current = { onStateChange, onPageChange, onTextSelectionChange, onZoomChange };
     });
     const [nativeCallbacks] = useState(() => ({
       onStateChange: callback((event: ViewerState) => callbacks.current.onStateChange?.(event)),
       onPageChange: callback((event: PageInfo) => callbacks.current.onPageChange?.(event)),
       onTextSelectionChange: callback((selection: TextSelection | null) =>
         callbacks.current.onTextSelectionChange?.(selection)),
-      onZoomedInChange: callback((zoomedIn: boolean) =>
-        callbacks.current.onZoomedInChange?.(zoomedIn)),
+      onZoomChange: callback((zoom: number) =>
+        callbacks.current.onZoomChange?.(zoom)),
     }));
     const [connection] = useState(createViewConnection);
     const [handle] = useState(() => createValidatedHandle(connection));
@@ -347,7 +348,7 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
       hybridRef: wrappedHybridRef,
       onStateChange: onStateChange ? nativeCallbacks.onStateChange : undefined,
       onPageChange: onPageChange ? nativeCallbacks.onPageChange : undefined,
-      onZoomedInChange: onZoomedInChange ? nativeCallbacks.onZoomedInChange : undefined,
+      onZoomChange: onZoomChange ? nativeCallbacks.onZoomChange : undefined,
       onTextSelectionChange: onTextSelectionChange ? nativeCallbacks.onTextSelectionChange : undefined,
     });
   },
