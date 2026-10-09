@@ -3,15 +3,21 @@ package com.margelo.nitro.inksignpdf
 import com.facebook.proguard.annotations.DoNotStrip
 import java.lang.ref.WeakReference
 
+internal interface TextPageContext {
+  val generation: Long
+  val pageId: String
+  val modeSession: ModeSessionToken?
+}
+
 internal class PreparedPageContext(
-  val generation: Long,
-  val pageId: String,
+  override val generation: Long,
+  override val pageId: String,
   val geometryRevision: Long,
   val pageIndexAtPreparation: Int,
   sourceAnalysis: PdfiumPreparedPageAnalysis,
   sourceDimensions: PdfPageDimensions = PdfPageDimensions(sourceAnalysis.width, sourceAnalysis.height),
-  val modeSession: ModeSessionToken? = null,
-) {
+  override val modeSession: ModeSessionToken? = null,
+) : TextPageContext {
   val sourceToCanonical = PageCoordinates(sourceDimensions).displayToRawTransform()
   val analysis = CanonicalPreparedPageAnalysis(
     sourceAnalysis.glyphs.map { glyph ->

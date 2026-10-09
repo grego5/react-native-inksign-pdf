@@ -765,6 +765,28 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
+  public final func getSelectedText() -> bridge.Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__ {
+    do {
+      let __result = try self.__implementation.getSelectedText()
+      let __resultCpp = { () -> bridge.std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_ in
+        switch __result {
+          case .first(let __value):
+            return bridge.create_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_({ () -> bridge.std__shared_ptr_HybridTextHandleSpec_ in
+              let __cxxWrapped = __value.getCxxWrapper()
+              return __cxxWrapped.getCxxPart()
+            }())
+          case .second(let __value):
+            return bridge.create_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType_(margelo.nitro.NullType.null)
+        }
+      }().variant
+      return bridge.create_Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func getPage(pageIndex: bridge.std__optional_double_) -> bridge.Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____ {
     do {
       let __result = try self.__implementation.getPage(pageIndex: { () -> Double? in

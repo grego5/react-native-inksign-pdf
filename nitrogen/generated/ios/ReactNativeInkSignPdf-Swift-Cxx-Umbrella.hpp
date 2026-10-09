@@ -26,6 +26,8 @@ namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
+// Forward declaration of `HybridTextHandleSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InputMode` to properly resolve imports.
@@ -81,6 +83,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "HybridAnalyzedPageSpec.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "HybridModeSessionSpec.hpp"
+#include "HybridTextHandleSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InputMode.hpp"
 #include "InteractionMode.hpp"
@@ -130,6 +133,8 @@ namespace ReactNativeInkSignPdf { class HybridAnalyzedPageSpec_cxx; }
 namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 // Forward declaration of `HybridModeSessionSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridModeSessionSpec_cxx; }
+// Forward declaration of `HybridTextHandleSpec_cxx` to properly resolve imports.
+namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 
 // Include Swift defined types
 #if __has_include("ReactNativeInkSignPdf-Swift.h")

@@ -42,6 +42,8 @@ namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
+// Forward declaration of `HybridTextHandleSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
@@ -80,6 +82,7 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "Viewport.hpp"
 #include "PageCoords.hpp"
 #include <memory>
+#include "HybridTextHandleSpec.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
 #include "HybridModeSessionSpec.hpp"
 #include "InputMode.hpp"
@@ -341,6 +344,14 @@ namespace margelo::nitro::inksignpdf {
     }
     inline bool hasInk() override {
       auto __result = _swiftPart.hasInk();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() override {
+      auto __result = _swiftPart.getSelectedText();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

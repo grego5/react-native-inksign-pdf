@@ -22,6 +22,7 @@ import type {
   TextEntry,
   TextId,
   TextSelection,
+  TextHandle,
   TextValueSource,
   PagerDirection,
   TextFocusOptions,
@@ -86,6 +87,7 @@ export type {
   TextEntry,
   TextId,
   TextSelection,
+  TextHandle,
   TextValueSource,
   PagerDirection,
   InkSignViewMethods,
@@ -154,6 +156,32 @@ function createValidatedModeSession(native: ModeSession): ModeSession {
     requestPageCoords: () => native.requestPageCoords(),
     setViewport(options) {
       return callAsync(() => validateViewportOptions(options), () => native.setViewport(options));
+    },
+  };
+}
+
+function createValidatedTextHandle(native: TextHandle): TextHandle {
+  return {
+    __type: native.__type,
+    name: native.name,
+    toString: () => native.toString(),
+    equals: other => native.equals(other),
+    dispose: () => native.dispose(),
+    getValue: () => native.getValue(),
+    setValue(text) {
+      if (typeof text !== 'string') throw argumentError('invalid_text', 'Text must be a string');
+      native.setValue(text);
+    },
+    setOptions(options) {
+      if (options === undefined)
+        throw argumentError('invalid_text_options', 'Text options are required');
+      validateTextAnnotationOptions(options);
+      native.setOptions(options);
+    },
+    adjustSize(delta) {
+      if (!Number.isFinite(delta))
+        throw argumentError('invalid_text_size_delta', 'Text size delta must be finite');
+      return native.adjustSize(delta);
     },
   };
 }
@@ -280,6 +308,10 @@ function createValidatedHandle(
     previousPage: () => getNative().previousPage(),
     getViewport: () => getNative().getViewport(),
     hasInk: () => getNative().hasInk(),
+    getSelectedText() {
+      const text = getNative().getSelectedText();
+      return text === null ? null : createValidatedTextHandle(text);
+    },
     getPage(pageIndex) {
       return callAsync(
         () => validatePageIndex(pageIndex),

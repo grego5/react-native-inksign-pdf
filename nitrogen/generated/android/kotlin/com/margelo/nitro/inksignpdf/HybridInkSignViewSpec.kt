@@ -216,6 +216,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
+  abstract fun getSelectedText(): Variant_HybridTextHandleSpec_NullType
+  
+  @DoNotStrip
+  @Keep
   abstract fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec>
   
   @DoNotStrip

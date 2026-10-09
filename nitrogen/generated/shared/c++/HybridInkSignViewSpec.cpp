@@ -61,6 +61,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("getViewport", &HybridInkSignViewSpec::getViewport);
       prototype.registerHybridMethod("requestPageCoords", &HybridInkSignViewSpec::requestPageCoords);
       prototype.registerHybridMethod("hasInk", &HybridInkSignViewSpec::hasInk);
+      prototype.registerHybridMethod("getSelectedText", &HybridInkSignViewSpec::getSelectedText);
       prototype.registerHybridMethod("getPage", &HybridInkSignViewSpec::getPage);
       prototype.registerHybridMethod("setMode", &HybridInkSignViewSpec::setMode);
       prototype.registerHybridMethod("undo", &HybridInkSignViewSpec::undo);
