@@ -98,14 +98,17 @@ extension InkSignView {
     pendingPageSwitchEditing = false
     let completion = pendingPageSwitchCompletion
     pendingPageSwitchCompletion = nil
+    let isStructural = structuralInteractionSuspended
     if let viewport, !applyViewport(target: viewport) {
       pendingStructuralPresentationPageID = nil
+      if isStructural { resumeStructuralInteraction() }
       completion?(.failure(ViewportError.notReady))
       return
     }
     pendingStructuralPresentationPageID = nil
     installCommittedDrawing()
-    setInteractionMode(editing: wasEditing)
+    if isStructural { resumeStructuralInteraction() }
+    else { setInteractionMode(editing: wasEditing) }
     if let completion {
       do {
         completion(.success(toPublicPageInfo(try currentPageInfo())))

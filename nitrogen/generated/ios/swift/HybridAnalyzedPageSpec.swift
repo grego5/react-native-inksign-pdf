@@ -16,12 +16,11 @@ public protocol HybridAnalyzedPageSpec_protocol: HybridObject {
   func resolveText(options: ResolveTextOptions) throws -> Double
   func getTextValue(id: Double) throws -> String
   func setTextValue(id: Double, text: String) throws -> Void
-  func clearText(id: Double) throws -> Void
   func setTextOptions(id: Double, options: TextAnnotationOptions) throws -> Void
   func adjustTextSize(id: Double, delta: Double) throws -> Double
   func getTextEntry(id: Double) throws -> TextEntry
   func getTextEntries() throws -> [TextEntry]
-  func focusText(id: Double, options: FieldFocusOptions?) throws -> Promise<Void>
+  func focusText(id: Double, options: TextFocusOptions?) throws -> Promise<Void>
 }
 
 public extension HybridAnalyzedPageSpec_protocol {

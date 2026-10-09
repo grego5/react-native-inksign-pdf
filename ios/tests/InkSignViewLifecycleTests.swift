@@ -66,7 +66,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     try awaitRotationOperation(view.rotatePage(degrees: 90))
-    let request = try view.getPageCoords()
+    let session = try view.setMode(mode: .ink, options: nil)
+    let request = try session.requestPageCoords()
     var requestError: Error?
     request.catch { requestError = $0 }
     // A later command completing proves the tap wait released the FIFO queue.
@@ -89,7 +90,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(result.x, 60, accuracy: 0.001)
     XCTAssertEqual(result.y, 90, accuracy: 0.001)
     XCTAssertFalse(view.isPickingPageCoords)
-    XCTAssertTrue(view.interactionMode() == .view)
+    XCTAssertTrue(view.interactionMode() == .ink)
     XCTAssertTrue(page.history.content.textAnnotations.isEmpty)
     XCTAssertTrue(page.history.content.drawing.strokes.isEmpty)
   }
@@ -99,10 +100,10 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     var errors: [Error] = []
-    try view.getPageCoords().catch { errors.append($0) }
-    try awaitModeChange(view.setViewMode(viewport: nil))
-    try awaitModeChange(view.setViewMode(viewport: nil))
-    try view.getPageCoords().catch { errors.append($0) }
+    try view.requestPageCoords().catch { errors.append($0) }
+    try view.setMode(mode: .view, options: nil)
+    try view.setMode(mode: .view, options: nil)
+    try view.requestPageCoords().catch { errors.append($0) }
     try awaitRotationOperation(view.close(cancelPending: false))
     XCTAssertEqual(errors.count, 2)
     XCTAssertFalse(view.isPickingPageCoords)
@@ -110,7 +111,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     // Queue admission is deliberately held so disposal also covers a not-yet-armed request.
     let held = Promise<Void>()
     view.enqueueViewerCommand { held }
-    try view.getPageCoords().catch { errors.append($0) }
+    try view.requestPageCoords().catch { errors.append($0) }
     view.dispose()
     XCTAssertEqual(errors.count, 3)
     XCTAssertTrue(errors.allSatisfy { $0.localizedDescription.hasPrefix("operation_cancelled:") })
@@ -121,9 +122,10 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let firstPageID = try XCTUnwrap(view.documentCoordinator.document?.activePage.id)
+    let session = try view.setMode(mode: .ink, options: nil)
     var errors: [Error] = []
     var coordinates: [PageCoords] = []
-    try view.getPageCoords().then { coordinates.append($0) }.catch { errors.append($0) }
+    try session.requestPageCoords().then { coordinates.append($0) }.catch { errors.append($0) }
     try awaitModeChange(view.enqueueViewerCommand { Promise<Void>.resolved() })
     XCTAssertTrue(view.interactionMode() == .pagecoords)
     try view.switchPage(to: 1)
@@ -133,7 +135,9 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(errors.count, 1)
     XCTAssertTrue(errors[0].localizedDescription.hasPrefix("operation_cancelled:"))
     XCTAssertNil(view.pendingPageCoords)
-    XCTAssertTrue(view.interactionMode() == .view)
+    XCTAssertTrue(view.interactionMode() == .ink)
+    let nextPage = try awaitRotationOperation(session.getPage(pageIndex: 1))
+    XCTAssertNoThrow(try nextPage.getTextEntries())
   }
 
   func testImmediateCloseRejectsRunningAndQueuedViewerCommands() throws {
@@ -143,17 +147,18 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let running = fixture.view.enqueueViewerCommand { neverFinishes }
     let queued = fixture.view.enqueueViewerCommand { Promise<PageInfo>.resolved(withResult:
       PageInfo(pageIndex: 0, pageCount: 1, width: 300, height: 400)) }
-    let queuedMode = try fixture.view.setInkMode(viewport: nil)
+    let session = try fixture.view.setMode(mode: .ink, options: nil)
+    let queuedPage = try session.getPage(pageIndex: nil)
     var cancellationCount = 0
     running.catch { _ in cancellationCount += 1 }
     queued.catch { _ in cancellationCount += 1 }
-    queuedMode.catch { _ in cancellationCount += 1 }
+    queuedPage.catch { _ in cancellationCount += 1 }
     try awaitRotationOperation(fixture.view.close(cancelPending: true))
     XCTAssertEqual(cancellationCount, 3)
     XCTAssertNil(fixture.view.documentCoordinator.document)
-    try awaitModeChange(fixture.view.setInkMode(viewport: nil))
-    try awaitModeChange(fixture.view.setTextMode(options: nil))
-    try awaitModeChange(fixture.view.setViewMode(viewport: nil))
+    XCTAssertThrowsError(try fixture.view.setMode(mode: .ink, options: nil))
+    XCTAssertThrowsError(try fixture.view.setMode(mode: .text, options: nil))
+    XCTAssertThrowsError(try fixture.view.setMode(mode: .view, options: nil))
     XCTAssertNil(fixture.view.documentCoordinator.document)
     XCTAssertFalse(fixture.view.editMode)
     XCTAssertFalse(fixture.view.textInteractionOverlay.hasPendingPlacement())
@@ -792,7 +797,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
 
     let workingURLBefore = try XCTUnwrap(view.documentCoordinator.document?.workingURL)
     let workingBytesBefore = try Data(contentsOf: workingURLBefore)
-    try awaitModeChange(view.setInkMode(viewport: nil))
+    try view.setMode(mode: .ink, options: nil)
     let rotated = expectation(description: "rotate page")
     var rotatedInfo: PageInfo?
     var rotationError: Error?
@@ -950,8 +955,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       XCTAssertLessThanOrEqual(annotation.bounds.maxY, ruleY)
       for anchor in [FieldFocusVerticalAnchor.top, .bottom] {
         _ = try awaitRotationOperation(page.focusText(id: textID,
-          options: FieldFocusOptions(occurrence: nil, direction: .ltr, zoom: 5,
-                                     verticalAnchor: anchor, edgeOffset: 8, setInkMode: false)))
+          options: TextFocusOptions(zoom: 5,
+                                     verticalAnchor: anchor, edgeOffset: 8)))
         view.documentView.layoutIfNeeded()
         let viewport = view.documentView.bounds
         let pdfCenter = view.documentView.convert(CGPoint(x: viewport.midX, y: viewport.midY),
@@ -1358,39 +1363,107 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
   }
 
-  func testQueuedFocusAndModeExecuteInSubmissionOrder() throws {
+  func testModeSessionCancelsQueuedFocusAndRetainsCommittedText() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
-    let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
+    let ordinaryPage = try awaitRotationOperation(view.getPage(pageIndex: nil))
+    let session = try view.setMode(mode: .ink, options: nil)
+    let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
     let textID = try page.resolveText(options: ResolveTextOptions(
       fieldName: nil, bounds: TextAnnotationBounds(x: 50, y: 60, width: 100, height: 30),
       occurrence: nil, fontSize: nil, color: nil, direction: nil, maxLines: nil,
       alignment: nil, verticalAnchor: nil))
     var modes: [String] = []
     view.onStateChange = { modes.append($0.mode.stringValue) }
+    try page.setTextValue(id: textID, text: "Ada")
+    let beforeFocus = try view.currentViewportSnapshot().zoom
     let gate = Promise<Void>()
     let blocked = view.enqueueViewerCommand { gate }
     let focus = try page.focusText(id: textID,
-      options: FieldFocusOptions(occurrence: nil, direction: nil, zoom: 3,
-        verticalAnchor: nil, edgeOffset: nil, setInkMode: true))
-    let textMode = try view.setTextMode(options: nil)
+      options: TextFocusOptions(zoom: 3,
+        verticalAnchor: nil, edgeOffset: nil))
+    let cancelled = expectation(description: "queued session focus cancels promptly")
+    focus.catch { error in
+      XCTAssertTrue(error.localizedDescription.hasPrefix("operation_cancelled"))
+      cancelled.fulfill()
+    }
+    try view.setMode(mode: .text, options: nil)
     XCTAssertFalse(view.editMode)
-    XCTAssertFalse(view.textInteractionOverlay.hasPendingPlacement())
+    XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
+    wait(for: [cancelled], timeout: 2)
+    XCTAssertThrowsError(try page.setTextValue(id: textID, text: "Stale"))
+    XCTAssertEqual(try ordinaryPage.getTextValue(id: textID), "Ada")
 
     gate.resolve()
     try awaitModeChange(blocked)
-    try awaitModeChange(focus)
-    try awaitModeChange(textMode)
-    let inkIndex = try XCTUnwrap(modes.firstIndex(of: "ink"))
-    let textIndex = try XCTUnwrap(modes.firstIndex(of: "textAdd"))
-    XCTAssertLessThan(inkIndex, textIndex)
+    try awaitModeChange(view.enqueueViewerCommand { Promise<Void>.resolved() })
     XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
     XCTAssertFalse(view.editMode)
-    XCTAssertEqual(try view.currentViewportSnapshot().zoom, 3, accuracy: 0.01)
-    try awaitModeChange(view.setViewMode(viewport: nil))
+    XCTAssertEqual(try view.currentViewportSnapshot().zoom, beforeFocus, accuracy: 0.01)
+    try view.setMode(mode: .view, options: nil)
     XCTAssertFalse(view.textInteractionOverlay.hasPendingPlacement())
     XCTAssertEqual(modes.last, "view")
+  }
+
+  func testModeSessionCancelsPendingPreparationWithoutReleasingWorkerQueue() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let view = fixture.view
+    let releaseWorker = DispatchSemaphore(value: 0)
+    defer { releaseWorker.signal(); view.dispose(); fixture.window.isHidden = true }
+    let workerEntered = DispatchSemaphore(value: 0)
+    view.documentCoordinator.pdfQueue.async {
+      workerEntered.signal()
+      releaseWorker.wait()
+    }
+    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
+    let session = try view.setMode(mode: .ink, options: nil)
+    let preparing = try session.getPage(pageIndex: nil)
+    let cancelled = expectation(description: "mode replacement cancels pending preparation")
+    var rejectionCount = 0
+    preparing.then { _ in XCTFail("Cancelled acquisition returned a page") }
+    preparing.catch { error in
+      XCTAssertTrue(error.localizedDescription.hasPrefix("operation_cancelled"))
+      rejectionCount += 1
+      cancelled.fulfill()
+    }
+    try view.setMode(mode: .ink, options: nil) // The same mode still starts a new session.
+    wait(for: [cancelled], timeout: 2)
+    let independent = try view.getPage(pageIndex: nil)
+    releaseWorker.signal()
+    let page = try awaitRotationOperation(independent)
+    XCTAssertEqual(rejectionCount, 1)
+    XCTAssertNoThrow(try page.getTextEntries())
+    XCTAssertThrowsError(try session.getPage(pageIndex: nil))
+  }
+
+  func testStructuralCompletionKeepsLatestModeAndSuspendsInputUntilReady() throws {
+    let fixture = makeFixture(pageCount: 2)
+    let view = fixture.view
+    let pageID = try XCTUnwrap(view.documentCoordinator.document?.activePageID)
+    let releaseWorker = DispatchSemaphore(value: 0)
+    defer { releaseWorker.signal(); view.dispose(); fixture.window.isHidden = true }
+    let workerEntered = DispatchSemaphore(value: 0)
+    view.documentCoordinator.pdfQueue.async {
+      workerEntered.signal()
+      releaseWorker.wait()
+    }
+    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
+
+    let moving = try view.movePage(pageIndex: 1)
+    let session = try view.setMode(mode: .ink, options: nil)
+    XCTAssertTrue(view.editMode)
+    XCTAssertFalse(view.documentView.isUserInteractionEnabled)
+    XCTAssertFalse(view.canvasView.drawingGestureRecognizer.isEnabled)
+
+    releaseWorker.signal()
+    _ = try awaitRotationOperation(moving)
+    XCTAssertEqual(view.documentCoordinator.document?.activePageID, pageID)
+    XCTAssertTrue(view.editMode)
+    XCTAssertTrue(view.documentView.isUserInteractionEnabled)
+    XCTAssertTrue(view.canvasView.drawingGestureRecognizer.isEnabled)
+    let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
+    XCTAssertNoThrow(try page.getTextEntries())
   }
 
   func testReplacementCancelsProductionTextLookupAndIgnoresLateWorkerResult() throws {

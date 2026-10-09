@@ -208,7 +208,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun getPageCoords(): Promise<PageCoords>
+  abstract fun requestPageCoords(): Promise<PageCoords>
   
   @DoNotStrip
   @Keep
@@ -220,11 +220,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun setInkMode(viewport: ViewportOptions?): Promise<Unit>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun setViewMode(viewport: ViewportOptions?): Promise<Unit>
+  abstract fun setMode(mode: InputMode, options: TextModeOptions?): HybridModeSessionSpec
   
   @DoNotStrip
   @Keep
@@ -245,10 +241,6 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @DoNotStrip
   @Keep
   abstract fun setTextDirection(direction: TextDirection): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun setTextMode(options: TextModeOptions?): Promise<Unit>
   
   @DoNotStrip
   @Keep

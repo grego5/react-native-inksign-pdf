@@ -5,7 +5,7 @@ import { createViewConnection } from './viewConnection';
 import {
   argumentError,
   validateAddPagesOptions,
-  validateFieldFocusOptions,
+  validateTextFocusOptions,
   validatePageIndex,
   validatePagerDirection,
   validateResolveTextOptions,
@@ -16,13 +16,15 @@ import {
 } from './publicArguments';
 import type {
   AnalyzedPage,
+  ModeSession,
+  InputMode,
   ResolveTextOptions,
   TextEntry,
   TextId,
   TextSelection,
   TextValueSource,
   PagerDirection,
-  FieldFocusOptions,
+  TextFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
   PageCoords,
@@ -54,7 +56,9 @@ import type {
 
 export type {
   AnalyzedPage,
-  FieldFocusOptions,
+  ModeSession,
+  InputMode,
+  TextFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
   PageCoords,
@@ -87,7 +91,10 @@ export type {
   InkSignViewMethods,
 };
 
-export type InkSignViewHandle = InkSignViewMethods &
+export type InkSignViewHandle = Omit<InkSignViewMethods, 'setMode'> & {
+  setMode(mode: 'view' | 'ink'): ModeSession;
+  setMode(mode: 'text', options?: TextModeOptions): ModeSession;
+} &
   Pick<InkSignViewNativeHandle, '__type' | 'name' | 'toString' | 'equals' | 'dispose'>;
 
 const NativeInkSignView = getHostComponent<InkSignViewNativeProps, InkSignViewMethods>(
@@ -125,6 +132,32 @@ function callAsync<T>(validate: () => void, invoke: () => Promise<T>): Promise<T
 
 const nativeHandles = new WeakMap<object, () => InkSignViewNativeHandle>();
 
+/** Expected cancellation of a superseded mode or document operation. */
+export function isOperationCancelled(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const failure = error as { code?: unknown; message?: unknown };
+  return failure.code === 'operation_cancelled' ||
+    (typeof failure.message === 'string' && /\boperation_cancelled\b/.test(failure.message));
+}
+
+function createValidatedModeSession(native: ModeSession): ModeSession {
+  return {
+    __type: native.__type,
+    name: native.name,
+    toString: () => native.toString(),
+    equals: other => native.equals(other),
+    dispose: () => native.dispose(),
+    getPage(pageIndex) {
+      return callAsync(() => validatePageIndex(pageIndex), async () =>
+        createValidatedAnalyzedPage(await native.getPage(pageIndex)));
+    },
+    requestPageCoords: () => native.requestPageCoords(),
+    setViewport(options) {
+      return callAsync(() => validateViewportOptions(options), () => native.setViewport(options));
+    },
+  };
+}
+
 function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): AnalyzedPage {
   return {
     __type: native.__type,
@@ -144,10 +177,6 @@ function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): Analyzed
       validateTextId(id);
       if (typeof text !== 'string') throw argumentError('invalid_text', 'Text must be a string');
       native.setTextValue(id, text);
-    },
-    clearText(id) {
-      validateTextId(id);
-      native.clearText(id);
     },
     setTextOptions(id, options) {
       validateTextId(id);
@@ -170,7 +199,7 @@ function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): Analyzed
     focusText(id, options) {
       validateTextId(id);
       return callAsync(
-        () => validateFieldFocusOptions(options),
+        () => validateTextFocusOptions(options),
         () => native.focusText(id, options),
       );
     },
@@ -209,7 +238,7 @@ function createValidatedHandle(
         }
       }, () => connection.invoke(native => native.close(cancelPending), cancelPending === true));
     },
-    getPageCoords: () => connection.invoke(native => native.getPageCoords()),
+    requestPageCoords: () => connection.invoke(native => native.requestPageCoords()),
     addPages(options) {
       return callAsync(
         () => validateAddPagesOptions(options),
@@ -257,17 +286,15 @@ function createValidatedHandle(
         async () => createValidatedAnalyzedPage(await connection.invoke(native => native.getPage(pageIndex))),
       );
     },
-    setInkMode(viewport) {
-      return callAsync(
-        () => validateViewportOptions(viewport),
-        () => connection.invoke(native => native.setInkMode(viewport)),
-      );
-    },
-    setViewMode(viewport) {
-      return callAsync(
-        () => validateViewportOptions(viewport),
-        () => connection.invoke(native => native.setViewMode(viewport)),
-      );
+    setMode(mode: InputMode, options?: TextModeOptions) {
+      if (mode !== 'view' && mode !== 'ink' && mode !== 'text') {
+        throw argumentError('invalid_input_mode', 'Mode must be view, ink, or text');
+      }
+      if (mode !== 'text' && options !== undefined) {
+        throw argumentError('invalid_mode_options', 'Placement options apply only to text mode');
+      }
+      if (mode === 'text') validateTextModeOptions(options);
+      return createValidatedModeSession(getNative().setMode(mode, options));
     },
     undo: () => getNative().undo(),
     redo: () => getNative().redo(),
@@ -278,12 +305,6 @@ function createValidatedHandle(
         throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');
       }
       getNative().setTextDirection(direction);
-    },
-    setTextMode(options) {
-      return callAsync(
-        () => validateTextModeOptions(options),
-        () => connection.invoke(native => native.setTextMode(options)),
-      );
     },
     finalize: () =>
       callAsync(

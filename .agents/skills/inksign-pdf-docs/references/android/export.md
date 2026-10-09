@@ -23,11 +23,9 @@
 
 - Store the annotation's base direction and logical Unicode text. Export uses that
   direction for shaping and placement; it does not reverse the source string.
-- Resolve logical start/end alignment against direction, then align each PDF
-  line inside the fixed physical flow rectangle. Preview and export retain the
-  same complete lines.
-- Export and preview share complete-line selection within the saved flow region
-  and `maxLines`. Vertical anchoring positions the retained block inside that region.
+- Resolve logical start/end alignment against direction within the saved flow
+  region. Preview/export share complete-line selection under flow/maxLines limits;
+  vertical anchoring positions the retained block.
 - On API 31+, Android system fallback selects fonts and supplies font resources.
   PDFium's HarfBuzz shapes runs with cluster mappings and explicit positions.
   `ToUnicode` maps glyphs to characters; line-level `/ActualText` records logical

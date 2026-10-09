@@ -19,8 +19,8 @@ namespace margelo::nitro::inksignpdf { struct ResolveTextOptions; }
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextEntry` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextEntry; }
-// Forward declaration of `FieldFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
+// Forward declaration of `TextFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
 
 #include "ResolveTextOptions.hpp"
 #include <string>
@@ -28,7 +28,7 @@ namespace margelo::nitro::inksignpdf { struct FieldFocusOptions; }
 #include "TextEntry.hpp"
 #include <vector>
 #include <NitroModules/Promise.hpp>
-#include "FieldFocusOptions.hpp"
+#include "TextFocusOptions.hpp"
 #include <optional>
 
 namespace margelo::nitro::inksignpdf {
@@ -65,12 +65,11 @@ namespace margelo::nitro::inksignpdf {
       virtual double resolveText(const ResolveTextOptions& options) = 0;
       virtual std::string getTextValue(double id) = 0;
       virtual void setTextValue(double id, const std::string& text) = 0;
-      virtual void clearText(double id) = 0;
       virtual void setTextOptions(double id, const TextAnnotationOptions& options) = 0;
       virtual double adjustTextSize(double id, double delta) = 0;
       virtual TextEntry getTextEntry(double id) = 0;
       virtual std::vector<TextEntry> getTextEntries() = 0;
-      virtual std::shared_ptr<Promise<void>> focusText(double id, const std::optional<FieldFocusOptions>& options) = 0;
+      virtual std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) = 0;
 
     protected:
       // Hybrid Setup

@@ -49,12 +49,11 @@ namespace margelo::nitro::inksignpdf {
     std::string value     SWIFT_PRIVATE;
     std::optional<std::string> fieldName     SWIFT_PRIVATE;
     std::optional<TextAnnotationBounds> bounds     SWIFT_PRIVATE;
-    bool hasValue     SWIFT_PRIVATE;
     TextValueSource valueSource     SWIFT_PRIVATE;
 
   public:
     TextEntry() = default;
-    explicit TextEntry(double id, std::string value, std::optional<std::string> fieldName, std::optional<TextAnnotationBounds> bounds, bool hasValue, TextValueSource valueSource): id(id), value(value), fieldName(fieldName), bounds(bounds), hasValue(hasValue), valueSource(valueSource) {}
+    explicit TextEntry(double id, std::string value, std::optional<std::string> fieldName, std::optional<TextAnnotationBounds> bounds, TextValueSource valueSource): id(id), value(value), fieldName(fieldName), bounds(bounds), valueSource(valueSource) {}
 
   public:
     friend bool operator==(const TextEntry& lhs, const TextEntry& rhs) = default;
@@ -74,7 +73,6 @@ namespace margelo::nitro {
         JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "value"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fieldName"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAnnotationBounds>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "bounds"))),
-        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasValue"))),
         JSIConverter<margelo::nitro::inksignpdf::TextValueSource>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "valueSource")))
       );
     }
@@ -84,7 +82,6 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "value"), JSIConverter<std::string>::toJSI(runtime, arg.value));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "fieldName"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.fieldName));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "bounds"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAnnotationBounds>>::toJSI(runtime, arg.bounds));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "hasValue"), JSIConverter<bool>::toJSI(runtime, arg.hasValue));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "valueSource"), JSIConverter<margelo::nitro::inksignpdf::TextValueSource>::toJSI(runtime, arg.valueSource));
       return obj;
     }
@@ -100,7 +97,6 @@ namespace margelo::nitro {
       if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "value")))) return false;
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fieldName")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAnnotationBounds>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "bounds")))) return false;
-      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasValue")))) return false;
       if (!JSIConverter<margelo::nitro::inksignpdf::TextValueSource>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "valueSource")))) return false;
       return true;
     }

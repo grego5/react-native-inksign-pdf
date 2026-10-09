@@ -33,9 +33,9 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                                      after: before.replacingDrawing(PKDrawing(strokes: [stroke]))))
     XCTAssertTrue(try view.hasInk())
 
-    let annotation = makeCenteredTextAnnotation(id: 42, text: "Keep", fontSize: 16,
-                                                pageSize: page.geometry.displaySize)
-    XCTAssertTrue(page.history.appendText(annotation))
+    let annotationDraft = makeCenteredTextAnnotation(id: 42, text: "Keep", fontSize: 16,
+                                                     pageSize: page.geometry.displaySize)
+    let annotation = try appendTextAnnotationForTest(annotationDraft, in: view, pageIndex: 1)
     let original = page.history.content
     try view.clearInk()
     XCTAssertFalse(try view.hasInk())
@@ -269,7 +269,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                                         maxLines: 2,
                                         alignment: .start,
                                         verticalAnchor: .bottom, x: nil, y: nil, zoom: nil)
-    try awaitModeChange(view.setTextMode(options: options))
+    try view.setMode(mode: .text, options: options)
     XCTAssertFalse(overlay.routePlacementTap(
       at: CGPoint(x: 300, y: 300).applying(try XCTUnwrap(view.pageToOverlayTransform))))
     XCTAssertTrue(overlay.hasPendingPlacement())
@@ -332,13 +332,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let overlay = view.textInteractionOverlay
-    try awaitModeChange(view.setTextMode(options: TextModeOptions(
+    try view.setMode(mode: .text, options: TextModeOptions(
       direction: .ltr,
       width: nil,
       height: nil,
       maxLines: 2,
       alignment: .start,
-      verticalAnchor: .top, x: nil, y: nil, zoom: nil)))
+      verticalAnchor: .top, x: nil, y: nil, zoom: nil))
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 40, y: 60)))
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
@@ -375,13 +375,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     let flowBounds = CGRect(x: 50, y: 160, width: 160, height: 120)
-    try awaitModeChange(view.setTextMode(options: TextModeOptions(
+    try view.setMode(mode: .text, options: TextModeOptions(
       direction: .ltr,
       width: 160,
       height: 120,
       maxLines: 2,
       alignment: .start,
-      verticalAnchor: .bottom, x: nil, y: nil, zoom: nil)))
+      verticalAnchor: .bottom, x: nil, y: nil, zoom: nil))
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 50, y: 160)))
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
@@ -438,13 +438,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     try view.setTextDirection(direction: .ltr)
-    try awaitModeChange(view.setTextMode(options: TextModeOptions(
+    try view.setMode(mode: .text, options: TextModeOptions(
       direction: nil,
       width: nil,
       height: nil,
       maxLines: 2,
       alignment: .start,
-      verticalAnchor: nil, x: nil, y: nil, zoom: nil)))
+      verticalAnchor: nil, x: nil, y: nil, zoom: nil))
     try view.setTextDirection(direction: .rtl)
 
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 180, y: 100)))
@@ -960,41 +960,41 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { view.dispose(); fixture.window.isHidden = true }
     let overlay = view.textInteractionOverlay
     view.doubleTap = DoubleTapOptions(zoom: 6, enterEditMode: false)
-    try awaitModeChange(view.setViewMode(viewport: ViewportOptions(x: 150, y: 200, zoom: 3)))
+    try awaitModeChange(view.setMode(mode: .view, options: nil).setViewport(options: ViewportOptions(x: 150, y: 200, zoom: 3)))
 
     func place() throws {
       let tap = CGPoint(x: 150, y: 200).applying(try XCTUnwrap(view.pageToOverlayTransform))
       XCTAssertTrue(overlay.routePlacementTap(at: tap))
     }
-    try awaitModeChange(view.setTextMode(options: nil))
+    try view.setMode(mode: .text, options: nil)
     try place()
     XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
     let editor = try XCTUnwrap(textEditor(in: overlay))
     editor.text = "draft"
     overlay.textViewDidChange(editor)
-    try awaitModeChange(view.setInkMode(viewport: nil))
+    try view.setMode(mode: .ink, options: nil)
     XCTAssertEqual(view.documentCoordinator.document?.activePage.history.content.textAnnotations.first?.text, "draft")
     XCTAssertNil(textEditor(in: overlay))
 
-    try awaitModeChange(view.setTextMode(options: TextModeOptions(
+    try view.setMode(mode: .text, options: TextModeOptions(
       direction: nil, width: nil, height: nil, maxLines: 1,
-      alignment: nil, verticalAnchor: nil, x: nil, y: nil, zoom: nil)))
+      alignment: nil, verticalAnchor: nil, x: nil, y: nil, zoom: nil))
     try place()
     XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
 
-    try awaitModeChange(view.setTextMode(options: TextModeOptions(
+    try view.setMode(mode: .text, options: TextModeOptions(
       direction: nil, width: nil, height: nil, maxLines: nil,
-      alignment: nil, verticalAnchor: nil, x: 150, y: 200, zoom: 2)))
+      alignment: nil, verticalAnchor: nil, x: 150, y: 200, zoom: 2))
     XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
     try place()
     XCTAssertEqual(try view.getViewport().zoom, 2, accuracy: 0.01)
 
-    try awaitModeChange(view.setViewMode(viewport: ViewportOptions(x: nil, y: nil, zoom: nil)))
+    try awaitModeChange(view.setMode(mode: .view, options: nil).setViewport(options: ViewportOptions(x: nil, y: nil, zoom: nil)))
     let fittedZoom = try view.getViewport().zoom
-    try awaitModeChange(view.setInkMode(viewport: ViewportOptions(x: nil, y: nil, zoom: 3)))
-    try awaitModeChange(view.setTextMode(options: TextModeOptions(
+    try awaitModeChange(view.setMode(mode: .ink, options: nil).setViewport(options: ViewportOptions(x: nil, y: nil, zoom: 3)))
+    try view.setMode(mode: .text, options: TextModeOptions(
       direction: nil, width: nil, height: nil, maxLines: nil,
-      alignment: nil, verticalAnchor: nil, x: nil, y: nil, zoom: nil)))
+      alignment: nil, verticalAnchor: nil, x: nil, y: nil, zoom: nil))
     XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
     try place()
     XCTAssertEqual(try view.getViewport().zoom, fittedZoom, accuracy: 0.01)
@@ -1007,13 +1007,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
 
-    try awaitModeChange(fixture.view.setTextMode(options: nil))
-    try awaitModeChange(fixture.view.setTextMode(options: nil))
+    try fixture.view.setMode(mode: .text, options: nil)
+    try fixture.view.setMode(mode: .text, options: nil)
     XCTAssertTrue(overlay.hasPendingPlacement())
     XCTAssertNil(textEditor(in: overlay))
 
-    try awaitModeChange(fixture.view.setViewMode(viewport: nil))
-    try awaitModeChange(fixture.view.setViewMode(viewport: nil))
+    try fixture.view.setMode(mode: .view, options: nil)
+    try fixture.view.setMode(mode: .view, options: nil)
     XCTAssertFalse(overlay.hasPendingPlacement())
     XCTAssertNil(textEditor(in: overlay))
   }

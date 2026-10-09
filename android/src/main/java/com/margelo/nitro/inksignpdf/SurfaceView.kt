@@ -605,11 +605,11 @@ internal class SurfaceView(
     return true
   }
 
-  fun setEditMode(enabled: Boolean) {
+  fun setEditMode(enabled: Boolean, cancelNavigation: Boolean = true) {
     runOnUi {
       if (disposed) return@runOnUi
       if (editMode == enabled) return@runOnUi
-      pageNavigationController.cancelGesture()
+      if (cancelNavigation) pageNavigationController.cancelGesture()
       if (!enabled) cancelInputGesture()
       editMode = enabled
       documentController.onEditModeChanged(enabled)
@@ -863,7 +863,6 @@ internal class SurfaceView(
 
   internal fun focusField(
     request: ViewportRequest,
-    enterEditMode: Boolean,
     isCurrent: () -> Boolean,
     completion: () -> Unit,
     cancelled: () -> Unit,
@@ -873,7 +872,6 @@ internal class SurfaceView(
     cancelInputGesture()
     documentController.applyViewport(request, animated = true, completion = {
       if (isCurrent()) {
-        if (enterEditMode) enterEditModeFromDoubleTap()
         completion()
       } else {
         cancelled()

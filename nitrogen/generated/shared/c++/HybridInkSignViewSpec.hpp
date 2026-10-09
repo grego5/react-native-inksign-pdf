@@ -37,10 +37,14 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
-// Forward declaration of `TextDirection` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
+// Forward declaration of `InputMode` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class InputMode; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
 #include "AndroidFallbackFont.hpp"
 #include <optional>
@@ -61,8 +65,10 @@ namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 #include "PageCoords.hpp"
 #include <memory>
 #include "HybridAnalyzedPageSpec.hpp"
-#include "TextDirection.hpp"
+#include "HybridModeSessionSpec.hpp"
+#include "InputMode.hpp"
 #include "TextModeOptions.hpp"
+#include "TextDirection.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -139,17 +145,15 @@ namespace margelo::nitro::inksignpdf {
       virtual void nextPage() = 0;
       virtual void previousPage() = 0;
       virtual Viewport getViewport() = 0;
-      virtual std::shared_ptr<Promise<PageCoords>> getPageCoords() = 0;
+      virtual std::shared_ptr<Promise<PageCoords>> requestPageCoords() = 0;
       virtual bool hasInk() = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) = 0;
-      virtual std::shared_ptr<Promise<void>> setInkMode(const std::optional<ViewportOptions>& viewport) = 0;
-      virtual std::shared_ptr<Promise<void>> setViewMode(const std::optional<ViewportOptions>& viewport) = 0;
+      virtual std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) = 0;
       virtual void undo() = 0;
       virtual void redo() = 0;
       virtual void clear() = 0;
       virtual void clearInk() = 0;
       virtual void setTextDirection(TextDirection direction) = 0;
-      virtual std::shared_ptr<Promise<void>> setTextMode(const std::optional<TextModeOptions>& options) = 0;
       virtual std::shared_ptr<Promise<std::string>> finalize() = 0;
       virtual void startDebugRecording() = 0;
       virtual void stopDebugRecording() = 0;

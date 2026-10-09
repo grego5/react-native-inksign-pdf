@@ -86,9 +86,18 @@ extension InkSignView {
                                            },
                                            imageTargetDpi: options?.targetDpi,
                                            imageJpegQuality: options?.jpegQuality,
-                                           settlement: settlement) { pageInfo, count in
+                                           settlement: settlement) { [weak self] pageInfo, count in
+            let state = self?.documentCoordinator.document
+            let pageID = state?.activePage.id
+            let geometryRevision = state?.activePage.geometryRevision
             settlement.resolve(AddPagesResult(pageInfo: pageInfo,
                                                addedPageCount: Double(count)))
+            if let self, let state, !self.disposed,
+               self.documentCoordinator.document === state,
+               state.activePage.id == pageID,
+               state.activePage.geometryRevision == geometryRevision {
+              self.onPageChange?(pageInfo)
+            }
           }
         }
       }
@@ -198,8 +207,7 @@ extension InkSignView {
       }
       state.activePage.page.rotation = state.activePage.geometry.rotation
       self.installStructuralPresentation(state, generation: context.coordinator.generation,
-                                         viewport: context.viewport, fitPage: true,
-                                         wasEditing: context.wasEditing) { outcome in
+                                         viewport: context.viewport, fitPage: true) { outcome in
         guard context.coordinator.isCurrent(context.operation) else {
           settlement.reject(MutablePageError.operationCancelled)
           return
@@ -226,7 +234,6 @@ extension InkSignView {
     let activePageIndex: Int
     let activeGeometry: PageGeometry
     let viewport: Viewport?
-    let wasEditing: Bool
     var prepared = false
 
     init(operation: InkSignPdfDocumentCoordinator.OperationToken,
@@ -234,7 +241,7 @@ extension InkSignView {
          oldState: InkSignPdfDocumentState?,
          pages: [InkSignPdfPageState], activePageID: UUID,
          activePageIndex: Int, activeGeometry: PageGeometry,
-         viewport: Viewport?, wasEditing: Bool) {
+         viewport: Viewport?) {
       self.operation = operation
       self.coordinator = coordinator
       self.oldState = oldState
@@ -243,7 +250,6 @@ extension InkSignView {
       self.activePageIndex = activePageIndex
       self.activeGeometry = activeGeometry
       self.viewport = viewport
-      self.wasEditing = wasEditing
     }
   }
 
@@ -277,7 +283,6 @@ extension InkSignView {
       return nil
     }
     let viewport = try? currentViewportSnapshot()
-    let wasEditing = editMode
     let pages = oldState?.pages ?? []
     let activePageID = oldState?.activePageID ?? UUID()
     let activePageIndex = oldState?.activePageIndex ?? 0
@@ -290,8 +295,7 @@ extension InkSignView {
                              activePageID: activePageID,
                              activePageIndex: activePageIndex,
                              activeGeometry: activeGeometry,
-                             viewport: viewport,
-                             wasEditing: wasEditing)
+                             viewport: viewport)
   }
 
   private func prepareStructuralMutation<T>(_ context: StructuralContext,
@@ -305,8 +309,9 @@ extension InkSignView {
       return false
     }
     cancelPendingPageSwitch()
+    structuralInteractionSuspended = true
     finishInteractionForLifecycle()
-    setInteractionMode(editing: context.wasEditing, interactionsEnabled: false)
+    applyInteractionMode(editing: editMode, interactionsEnabled: false)
     context.prepared = true
     return true
   }
@@ -358,8 +363,7 @@ extension InkSignView {
             return
           }
           self.installStructuralPresentation(candidate, generation: coordinator.generation,
-                                             viewport: context.viewport,
-                                             wasEditing: context.wasEditing) { outcome in
+                                             viewport: context.viewport) { outcome in
             guard coordinator.isCurrent(context.operation) else {
               settlement.reject(MutablePageError.operationCancelled)
               return
@@ -400,10 +404,9 @@ extension InkSignView {
       if context.prepared, let oldState = context.oldState {
         restoreStructuralPresentation(oldState,
                                       generation: context.operation.generation,
-                                      viewport: context.viewport,
-                                      wasEditing: context.wasEditing)
+                                      viewport: context.viewport)
       } else if context.prepared {
-        setInteractionMode(editing: false, interactionsEnabled: true)
+        resumeStructuralInteraction()
       }
     }
     settlement.reject(isCurrent ? error : MutablePageError.operationCancelled)
@@ -411,8 +414,7 @@ extension InkSignView {
 
   private func restoreStructuralPresentation(_ state: InkSignPdfDocumentState,
                                              generation: UInt64,
-                                             viewport: Viewport?,
-                                             wasEditing: Bool) {
+                                             viewport: Viewport?) {
     let page = state.activePage
     invalidateOverlayTransformCache()
     textInteractionOverlay.clearPlacementRules()
@@ -420,14 +422,13 @@ extension InkSignView {
     documentView.document = state.document
     documentView.go(to: page.page)
     applyStructuralViewport(viewport)
-    restoreInteractionMode(wasEditing)
+    resumeStructuralInteraction()
   }
 
   private func installStructuralPresentation(_ state: InkSignPdfDocumentState,
                                              generation: UInt64,
                                              viewport: Viewport?,
                                              fitPage: Bool = false,
-                                             wasEditing: Bool,
                                              completion: @escaping (Result<PageInfo, Error>) -> Void) {
     pageSwitchRequestID &+= 1
     pendingPageSwitchID = nil
@@ -443,7 +444,6 @@ extension InkSignView {
     documentView.go(to: page.page)
     configureDoubleTapGestureRecognition()
     pendingPageSwitchID = pageSwitchRequestID
-    pendingPageSwitchEditing = wasEditing
     pendingPageSwitchCompletion = completion
     if fitPage {
       pendingPageSwitchViewport = .fit
@@ -465,9 +465,12 @@ extension InkSignView {
                                              focus: CGPoint(x: viewport.x, y: viewport.y)))
   }
 
-  private func restoreInteractionMode(_ wasEditing: Bool) {
-    setInteractionMode(editing: wasEditing, interactionsEnabled: true)
+  func resumeStructuralInteraction() {
+    structuralInteractionSuspended = false
+    applyInteractionMode(editing: editMode, interactionsEnabled: true)
+    emitChange()
   }
+
 }
 
 private extension InkSignPdfPageInputType {

@@ -17,7 +17,6 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("resolveText", &HybridAnalyzedPageSpec::resolveText);
       prototype.registerHybridMethod("getTextValue", &HybridAnalyzedPageSpec::getTextValue);
       prototype.registerHybridMethod("setTextValue", &HybridAnalyzedPageSpec::setTextValue);
-      prototype.registerHybridMethod("clearText", &HybridAnalyzedPageSpec::clearText);
       prototype.registerHybridMethod("setTextOptions", &HybridAnalyzedPageSpec::setTextOptions);
       prototype.registerHybridMethod("adjustTextSize", &HybridAnalyzedPageSpec::adjustTextSize);
       prototype.registerHybridMethod("getTextEntry", &HybridAnalyzedPageSpec::getTextEntry);
