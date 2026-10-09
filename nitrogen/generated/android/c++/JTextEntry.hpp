@@ -44,8 +44,6 @@ namespace margelo::nitro::inksignpdf {
       jni::local_ref<jni::JString> fieldName = this->getFieldValue(fieldFieldName);
       static const auto fieldBounds = clazz->getField<JTextAnnotationBounds>("bounds");
       jni::local_ref<JTextAnnotationBounds> bounds = this->getFieldValue(fieldBounds);
-      static const auto fieldHasValue = clazz->getField<jboolean>("hasValue");
-      jboolean hasValue = this->getFieldValue(fieldHasValue);
       static const auto fieldValueSource = clazz->getField<JTextValueSource>("valueSource");
       jni::local_ref<JTextValueSource> valueSource = this->getFieldValue(fieldValueSource);
       return TextEntry(
@@ -53,7 +51,6 @@ namespace margelo::nitro::inksignpdf {
         value->toStdString(),
         fieldName != nullptr ? std::make_optional(fieldName->toStdString()) : std::nullopt,
         bounds != nullptr ? std::make_optional(bounds->toCpp()) : std::nullopt,
-        static_cast<bool>(hasValue),
         valueSource->toCpp()
       );
     }
@@ -64,7 +61,7 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JTextEntry::javaobject> fromCpp(const TextEntry& value) {
-      using JSignature = JTextEntry(double, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<JTextAnnotationBounds>, jboolean, jni::alias_ref<JTextValueSource>);
+      using JSignature = JTextEntry(double, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<JTextAnnotationBounds>, jni::alias_ref<JTextValueSource>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -73,7 +70,6 @@ namespace margelo::nitro::inksignpdf {
         jni::make_jstring(value.value),
         value.fieldName.has_value() ? jni::make_jstring(value.fieldName.value()) : nullptr,
         value.bounds.has_value() ? JTextAnnotationBounds::fromCpp(value.bounds.value()) : nullptr,
-        value.hasValue,
         JTextValueSource::fromCpp(value.valueSource)
       );
     }

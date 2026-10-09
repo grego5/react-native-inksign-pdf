@@ -7,7 +7,7 @@ const {
   validateTextModeOptions,
   validateResolveTextOptions,
   validateTextId,
-  validateFieldFocusOptions,
+  validateTextFocusOptions,
   validatePagerDirection,
 } = require('../lib/commonjs/publicArguments.js');
 
@@ -79,9 +79,9 @@ test('prepared text options require a named label or bounded free target and saf
 });
 
 test('focus and pager direction validate their supported values', () => {
-  assert.doesNotThrow(() => validateFieldFocusOptions({ occurrence: 'last', zoom: 3, setInkMode: true }));
-  assert.throws(() => validateFieldFocusOptions({ verticalAnchor: 'middle' }), {
-    message: /^invalid_field_focus_options:/,
+  assert.doesNotThrow(() => validateTextFocusOptions({ zoom: 3 }));
+  assert.throws(() => validateTextFocusOptions({ verticalAnchor: 'middle' }), {
+    message: /^invalid_text_focus_options:/,
   });
   for (const direction of [undefined, 'auto', 'ltr', 'rtl']) {
     assert.doesNotThrow(() => validatePagerDirection(direction));

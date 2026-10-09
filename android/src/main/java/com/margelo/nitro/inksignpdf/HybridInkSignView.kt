@@ -77,8 +77,10 @@ class HybridInkSignView internal constructor(
   @Volatile private var viewportRequestID = 0L
   private var pageNavigationRequestID = 0L
   @Volatile private var disposed = false
+  private var currentModeSession: ModeSessionToken? = null
   private data class CoordinateTarget(val generation: Long, val pageId: String, val geometryRevision: Long)
-  private data class CoordinateRequest(val promise: Promise<PageCoords>, var target: CoordinateTarget? = null)
+  private data class CoordinateRequest(val promise: Promise<PageCoords>, val session: ModeSessionToken? = null,
+                                       var target: CoordinateTarget? = null)
   private var pendingPageCoords: CoordinateRequest? = null
   private val isPickingPageCoords: Boolean get() = pendingPageCoords?.target != null
   private var coordinateTouchActive = false
@@ -94,13 +96,18 @@ class HybridInkSignView internal constructor(
       val coordinates = surface.pageCoordinatesAt(event.x.toDouble(), event.y.toDouble()) ?: return false
       pendingPageCoords = null
       surface.setCoordinatePicking(false)
+      restoreCoordinateMode(pending)
       emitState()
+      if (!coordinateTargetIsCurrent(target) || (pending.session != null && !modeSessionIsCurrent(pending.session))) {
+        pending.promise.reject(operationCancelled())
+        return true
+      }
       pending.promise.resolve(coordinates)
       return true
     }
   })
   private var editMode = false
-  private data class PendingPromise(val presentation: Boolean, var job: Job? = null)
+  private data class PendingPromise(val presentation: Boolean, val modeSession: ModeSessionToken?, var job: Job? = null)
   private val pendingPromises = IdentityHashMap<Promise<*>, PendingPromise>()
 
   override val view: View
@@ -408,12 +415,7 @@ class HybridInkSignView internal constructor(
             surface.validateStructuralCandidate(info, pageCandidate.pages, pageCandidate.activePageId)
           },
           present = {
-            val pageInfo = if (oldPageCount == 0) {
-              surface.installDocumentPresentation(notifyState = true)
-              surface.currentPageInfo()
-            } else {
-              surface.installStructuralPresentation()
-            }
+            val pageInfo = surface.installStructuralPresentation()
             AddPagesResult(
               pageInfo = toPublicPageInfo(pageInfo),
               addedPageCount = (coordinator.pageCount - oldPageCount).toDouble(),
@@ -539,23 +541,35 @@ class HybridInkSignView internal constructor(
     coordinator.activePageHasInk()
   }
 
-  override fun setInkMode(viewport: ViewportOptions?): Promise<Unit> =
-    launchPromise(presentation = true) { enterMode(edit = true, viewport) }
+  override fun setMode(mode: InputMode, options: TextModeOptions?): HybridModeSessionSpec =
+    beginModeSession(mode, options)
 
-  override fun setViewMode(viewport: ViewportOptions?): Promise<Unit> =
-    launchPromise(presentation = true) { enterMode(edit = false, viewport) }
+  override fun requestPageCoords(): Promise<PageCoords> = runOnMainSync {
+    invalidateModeSession()
+    pickPageCoords(null)
+  }
 
-  override fun getPageCoords(): Promise<PageCoords> = runOnMainSync {
+  internal fun requestSessionPageCoords(session: ModeSessionToken): Promise<PageCoords> = runOnMainSync {
+    requireModeSession(session)
+    pickPageCoords(session)
+  }
+
+  private fun pickPageCoords(session: ModeSessionToken?): Promise<PageCoords> {
     val result = Promise<PageCoords>()
     if (disposed) {
       result.reject(operationCancelled())
-      return@runOnMainSync result
+      return result
     }
     cancelCoordinateRequest()
-    val request = CoordinateRequest(result)
+    if ((session == null && currentModeSession != null) ||
+      (session != null && !modeSessionIsCurrent(session))) {
+      result.reject(operationCancelled())
+      return result
+    }
+    val request = CoordinateRequest(result, session)
     pendingPageCoords = request
     // Only admission is queued. Waiting for the tap must not block replacement/close.
-    launchPromise(presentation = true) {
+    launchPromise(presentation = true, modeSession = session) {
       if (pendingPageCoords !== request) throw operationCancelled()
       if (!coordinator.hasDocument) throw PdfSessionException(
         "document_not_open", "A document must be open before selecting page coordinates",
@@ -573,7 +587,7 @@ class HybridInkSignView internal constructor(
         }
       }
     }
-    result
+    return result
   }
 
   private fun cancelCoordinateRequest(error: Throwable = operationCancelled()) {
@@ -584,8 +598,20 @@ class HybridInkSignView internal constructor(
     val cancel = MotionEvent.obtain(time, time, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
     coordinateTapDetector.onTouchEvent(cancel)
     cancel.recycle()
+    pending?.let(::restoreCoordinateMode)
     if (pending?.target != null) emitState()
     pending?.promise?.reject(error)
+  }
+
+  private fun restoreCoordinateMode(request: CoordinateRequest) {
+    val session = request.session ?: return
+    if (request.target == null || !modeSessionIsCurrent(session)) return
+    surface.withStateTransaction {
+      surface.setEditMode(session.mode == InputMode.INK, cancelNavigation = false)
+      if (session.mode == InputMode.TEXT && modeSessionIsCurrent(session)) {
+        textOverlay.armPlacement(session.generation, session.textOptions)
+      }
+    }
   }
 
   private fun coordinateTargetIsCurrent(target: CoordinateTarget): Boolean =
@@ -611,13 +637,27 @@ class HybridInkSignView internal constructor(
     runOnMainSync { surface.clearInk() }
   }
 
-  override fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec> = launchPromise {
+  override fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec> = preparePage(pageIndex)
+
+  internal fun getSessionPage(session: ModeSessionToken, pageIndex: Double?): Promise<HybridAnalyzedPageSpec> = runOnMainSync {
+    requireModeSession(session)
+    val index = pageIndex ?: coordinator.activePageIndex.toDouble()
+    if (!index.isFinite() || index < 0 || index % 1.0 != 0.0 || index >= coordinator.pageCount) {
+      throw PdfSessionException("page_not_found", "The requested page index is outside the document")
+    }
+    preparePage(null, session, coordinator.page(index.toInt()).id)
+  }
+
+  private fun preparePage(pageIndex: Double?, session: ModeSessionToken? = null,
+                          capturedPageId: String? = null): Promise<HybridAnalyzedPageSpec> = launchPromise(modeSession = session) {
     checkMainThread()
     if (disposed) throw operationCancelled()
     if (!coordinator.hasDocument) throw PdfSessionException(
       "document_not_open", "A document must be open before acquiring a prepared page",
     )
-    val index = if (pageIndex == null) coordinator.activePageIndex else {
+    val index = if (capturedPageId != null) {
+      coordinator.pageIndexForId(capturedPageId) ?: throw operationCancelled()
+    } else if (pageIndex == null) coordinator.activePageIndex else {
       if (!pageIndex.isFinite() || pageIndex < 0.0 || pageIndex % 1.0 != 0.0) {
         throw PdfSessionException("invalid_page_index", "The page index must be a non-negative integer")
       }
@@ -635,9 +675,11 @@ class HybridInkSignView internal constructor(
       generation, page.id, page.geometryRevision, index,
       awaitWorkerResult { completion -> coordinator.preparePageAnalysis(generation, index, completion) },
       page.sourceDimensions,
+      session,
     )
     checkMainThread()
-    if (disposed || coordinator.generation != generation || coordinator.pageForId(page.id) == null) {
+    if (disposed || coordinator.generation != generation || coordinator.pageForId(page.id) == null ||
+      (session != null && !modeSessionIsCurrent(session))) {
       throw operationCancelled()
     }
     if (coordinator.textTargetsForPage(page.id).isNotEmpty()) {
@@ -773,13 +815,6 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  internal fun clearPreparedText(context: PreparedPageContext, rawId: Double) {
-    withPreparedPage(context) { page ->
-      val slot = requireTextTarget(context, rawId)
-      clearPreparedTextOnPage(slot, page, context.generation)
-    }
-  }
-
   private fun clearPreparedTextOnPage(slot: TextTargetSlot, page: InkPageState, generation: Long) {
     textOverlay.cancelPreparedDraft(slot.id)
     val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id } ?: return
@@ -848,7 +883,7 @@ class HybridInkSignView internal constructor(
         slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
         else -> TextValueSource.EMPTY
       }
-      TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), value.isNotEmpty(), source)
+      TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
     }
 
   internal fun preparedTextEntries(context: PreparedPageContext): Array<TextEntry> =
@@ -862,15 +897,15 @@ class HybridInkSignView internal constructor(
           slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
           else -> TextValueSource.EMPTY
         }
-        TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), value.isNotEmpty(), source)
+        TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
       }.toTypedArray()
     }
 
   internal fun focusPreparedText(
     context: PreparedPageContext,
     rawId: Double,
-    options: FieldFocusOptions?,
-  ): Promise<Unit> = launchPromise(presentation = true) {
+    options: TextFocusOptions?,
+  ): Promise<Unit> = launchPromise(presentation = true, modeSession = context.modeSession) {
     val target = withPreparedPage(context) { page ->
       val slot = requireTextTarget(context, rawId)
       page to slot
@@ -882,7 +917,11 @@ class HybridInkSignView internal constructor(
     viewportRequestID += 1L
     val requestId = viewportRequestID
     finishInteractionForLifecycle()
+    withPreparedPage(context) { }
+    if (viewportRequestID != requestId) throw operationCancelled()
     surface.switchPage(checkNotNull(coordinator.pageIndexForId(page.id)))
+    withPreparedPage(context) { }
+    if (viewportRequestID != requestId) throw operationCancelled()
     val center = rule?.let { (it.left + it.right) / 2.0 } ?: (bounds.left + bounds.right) / 2.0
     val request = ViewportRequest.FocusRule(
       x = center,
@@ -892,9 +931,10 @@ class HybridInkSignView internal constructor(
       edgeOffset = options?.edgeOffset ?: 0.0,
     )
     suspendCancellableCoroutine<Unit> { continuation ->
-      surface.focusField(request, options?.setInkMode == true,
+      surface.focusField(request,
         isCurrent = { !disposed && coordinator.generation == context.generation &&
-          coordinator.pageForId(context.pageId) != null && viewportRequestID == requestId },
+          coordinator.pageForId(context.pageId) != null && viewportRequestID == requestId &&
+          (context.modeSession == null || modeSessionIsCurrent(context.modeSession)) },
         completion = { if (continuation.isActive) continuation.resume(Unit) },
         cancelled = { if (continuation.isActive) continuation.resumeWithException(operationCancelled()) })
     }
@@ -903,6 +943,7 @@ class HybridInkSignView internal constructor(
   private fun <T> withPreparedPage(context: PreparedPageContext, action: (InkPageState) -> T): T =
     runOnMainSync {
       checkMainThread()
+      context.modeSession?.let(::requireModeSession)
       if (disposed || coordinator.generation != context.generation) throw operationCancelled()
       val page = coordinator.pageForId(context.pageId) ?: throw operationCancelled()
       action(page)
@@ -979,25 +1020,6 @@ class HybridInkSignView internal constructor(
       command()
     }
   }
-
-  override fun setTextMode(options: TextModeOptions?): Promise<Unit> =
-    launchPromise(presentation = true) {
-      checkMainThread()
-      if (disposed) throw operationCancelled()
-      if (!coordinator.hasDocument) return@launchPromise
-      surface.requireModeTransitionReady()
-      viewportRequestID += 1L
-      val requestID = viewportRequestID
-      val generation = coordinator.generation
-      val pageIndex = surface.currentPageInfo().pageIndex
-      surface.withStateTransaction {
-        finishInteractionForLifecycle()
-        surface.transitionToMode(enabled = false, viewport = ViewportRequest.Preserve)
-        if (disposed || requestID != viewportRequestID) throw operationCancelled()
-        textOverlay.armPlacement(generation, options)
-      }
-      loadSnapCandidatesForTextPlacement(generation, pageIndex)
-    }
 
   private fun loadSnapCandidatesForTextPlacement(generation: Long, pageIndex: Int) {
     if (surface.hasSnapCandidateMeasurement(generation, pageIndex)) return
@@ -1100,20 +1122,32 @@ class HybridInkSignView internal constructor(
 
   private fun <T> launchPromise(
     presentation: Boolean = false,
+    modeSession: ModeSessionToken? = null,
     operation: suspend () -> T,
   ): Promise<T> {
     val promise = Promise<T>()
-    val pending = PendingPromise(presentation)
-    synchronized(this) {
-      if (disposed) {
-        promise.reject(operationCancelled())
-        return promise
+    val pending = PendingPromise(presentation, modeSession)
+    val register = {
+      synchronized(this) {
+        if (disposed) throw operationCancelled()
+        pendingPromises[promise] = pending
       }
-      pendingPromises[promise] = pending
+    }
+    try {
+      if (modeSession == null) register()
+      else runOnMainSync { requireModeSession(modeSession); register() }
+    } catch (error: Throwable) {
+      promise.reject(error)
+      return promise
     }
     val job = mainScope.launch(start = CoroutineStart.LAZY) {
       try {
-        commandMutex.withLock { resolvePromise(promise, operation()) }
+        commandMutex.withLock {
+          modeSession?.let(::requireModeSession)
+          val value = operation()
+          modeSession?.let(::requireModeSession)
+          resolvePromise(promise, value)
+        }
       } catch (error: Throwable) {
         rejectPromise(promise, error)
       } finally {
@@ -1129,6 +1163,7 @@ class HybridInkSignView internal constructor(
 
   private fun cancelPresentationRequests() {
     runOnMainSync {
+      invalidateModeSession()
       cancelCoordinateRequest()
       viewportRequestID += 1L
       pageNavigationRequestID += 1L
@@ -1318,6 +1353,78 @@ class HybridInkSignView internal constructor(
     }
   }
 
+  private fun beginModeSession(mode: InputMode, options: TextModeOptions? = null): HybridModeSessionSpec =
+    runOnMainSync {
+      if (disposed) throw operationCancelled()
+      if (!coordinator.hasDocument) {
+        if (mode != InputMode.VIEW) throw viewNotReady()
+        val token = ModeSessionToken(coordinator.generation, InputMode.VIEW)
+        token.cancelled = true
+        return@runOnMainSync HybridModeSession(this, token)
+      }
+      surface.requireModeTransitionReady()
+      invalidateModeSession()
+      val token = ModeSessionToken(coordinator.generation, mode, options)
+      currentModeSession = token
+      cancelCoordinateRequest()
+      requireModeSession(token)
+      applySessionMode(token)
+      requireModeSession(token)
+      HybridModeSession(this, token)
+    }
+
+  private fun applySessionMode(token: ModeSessionToken) {
+    requireModeSession(token)
+    surface.withStateTransaction {
+      enterMode(token.mode == InputMode.INK, null)
+      requireModeSession(token)
+      if (token.mode == InputMode.TEXT) {
+        textOverlay.armPlacement(token.generation, token.textOptions)
+      }
+    }
+    if (token.mode == InputMode.TEXT) {
+      loadSnapCandidatesForTextPlacement(token.generation, coordinator.activePageIndex)
+    }
+  }
+
+  internal fun modeSessionIsCurrent(token: ModeSessionToken): Boolean =
+    !disposed && !token.cancelled && currentModeSession === token &&
+      coordinator.hasDocument && coordinator.generation == token.generation
+
+  internal fun requireModeSession(token: ModeSessionToken) {
+    checkMainThread()
+    if (!modeSessionIsCurrent(token)) throw operationCancelled()
+  }
+
+  private fun invalidateModeSession() {
+    checkMainThread()
+    val token = currentModeSession ?: return
+    currentModeSession = null
+    token.cancelled = true
+    viewportRequestID += 1L
+    val retired = synchronized(this) {
+      pendingPromises.filterValues { it.modeSession === token }.keys.toList()
+    }
+    // Reject callers immediately, but retain the coroutine's queue slot until its worker returns.
+    retired.forEach { rejectPromise(it, operationCancelled()) }
+  }
+
+  internal fun setSessionViewport(token: ModeSessionToken, options: ViewportOptions?): Promise<Unit> =
+    launchPromise(presentation = true, modeSession = token) {
+      surface.requireModeTransitionReady()
+      val request = ViewportRequestParser.parse(options)
+      viewportRequestID += 1L
+      val requestID = viewportRequestID
+      finishInteractionForLifecycle()
+      requireModeSession(token)
+      suspendCancellableCoroutine<Unit> { continuation ->
+        surface.focusField(request,
+          isCurrent = { modeSessionIsCurrent(token) && viewportRequestID == requestID },
+          completion = { if (continuation.isActive) continuation.resume(Unit) },
+          cancelled = { if (continuation.isActive) continuation.resumeWithException(operationCancelled()) })
+      }
+    }
+
   private fun viewNotReady(): PdfSessionException {
     return PdfSessionException(
       "view_not_ready",
@@ -1336,6 +1443,7 @@ class HybridInkSignView internal constructor(
 
   override fun onDropView() {
     checkMainThread()
+    invalidateModeSession()
     val promises = synchronized(this) {
       if (disposed) return
       disposed = true

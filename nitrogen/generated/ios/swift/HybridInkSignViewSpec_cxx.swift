@@ -734,9 +734,9 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func getPageCoords() -> bridge.Result_std__shared_ptr_Promise_PageCoords___ {
+  public final func requestPageCoords() -> bridge.Result_std__shared_ptr_Promise_PageCoords___ {
     do {
-      let __result = try self.__implementation.getPageCoords()
+      let __result = try self.__implementation.requestPageCoords()
       let __resultCpp = { () -> bridge.std__shared_ptr_Promise_PageCoords__ in
         let __promise = bridge.create_std__shared_ptr_Promise_PageCoords__()
         let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_PageCoords__(__promise)
@@ -794,40 +794,17 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func setInkMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
+  public final func setMode(mode: Int32, options: bridge.std__optional_TextModeOptions_) -> bridge.Result_std__shared_ptr_HybridModeSessionSpec__ {
     do {
-      let __result = try self.__implementation.setInkMode(viewport: viewport.value)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
-        let __promise = bridge.create_std__shared_ptr_Promise_void__()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
-        __result
-          .then({ __result in __promiseHolder.resolve() })
-          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
-        return __promise
+      let __result = try self.__implementation.setMode(mode: margelo.nitro.inksignpdf.InputMode(rawValue: mode)!, options: options.value)
+      let __resultCpp = { () -> bridge.std__shared_ptr_HybridModeSessionSpec_ in
+        let __cxxWrapped = __result.getCxxWrapper()
+        return __cxxWrapped.getCxxPart()
       }()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
+      return bridge.create_Result_std__shared_ptr_HybridModeSessionSpec__(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func setViewMode(viewport: bridge.std__optional_ViewportOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
-    do {
-      let __result = try self.__implementation.setViewMode(viewport: viewport.value)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
-        let __promise = bridge.create_std__shared_ptr_Promise_void__()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
-        __result
-          .then({ __result in __promiseHolder.resolve() })
-          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
-        return __promise
-      }()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_HybridModeSessionSpec__(__exceptionPtr)
     }
   }
   
@@ -883,25 +860,6 @@ open class HybridInkSignViewSpec_cxx {
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
       return bridge.create_Result_void_(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func setTextMode(options: bridge.std__optional_TextModeOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
-    do {
-      let __result = try self.__implementation.setTextMode(options: options.value)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
-        let __promise = bridge.create_std__shared_ptr_Promise_void__()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
-        __result
-          .then({ __result in __promiseHolder.resolve() })
-          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
-        return __promise
-      }()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
     }
   }
   

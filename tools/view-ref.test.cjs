@@ -10,11 +10,14 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let attachments = 0;
 const calls = [];
+const nativeSession = {
+  getPage: async () => { calls.push('session-page'); return { getTextEntries: () => [] }; },
+  requestPageCoords: async () => ({ pageId: 'page', pageIndex: 0, x: 10, y: 20 }),
+  setViewport: async options => { calls.push(['viewport', options]); },
+};
 const native = {
   open: async path => { calls.push(path); return { pageIndex: 0 }; },
-  setInkMode: async () => { calls.push('ink'); },
-  setTextMode: async () => { calls.push('text'); },
-  setViewMode: async () => { calls.push('view'); },
+  setMode: mode => { calls.push(mode); return nativeSession; },
   getPage: async () => { calls.push('page'); return { getTextEntries: () => [] }; },
 };
 
@@ -147,30 +150,35 @@ test('Strict Mode effect replay leaves the normal ref attached', async () => {
   }
 });
 
-test('mode promises are buffered before attachment and forward native rejection', async () => {
+test('mode entry is synchronous and page acquisition can use either path', async () => {
   calls.length = 0;
   const ref = React.createRef();
-  const requests = [];
   function Screen() {
     React.useLayoutEffect(() => {
-      requests.push(ref.current.open('/modes.pdf'));
-      requests.push(ref.current.setInkMode());
-      requests.push(ref.current.setTextMode());
-      requests.push(ref.current.setViewMode());
+      assert.throws(() => ref.current.setMode('ink'), /not attached/);
     }, []);
     return React.createElement(InkSignView, { ref });
   }
   let root;
-  const originalViewMode = native.setViewMode;
+  const originalSetMode = native.setMode;
   try {
     await act(async () => { root = create(React.createElement(Screen)); });
-    await Promise.all(requests);
-    assert.deepEqual(calls, ['/modes.pdf', 'ink', 'text', 'view']);
+    const session = ref.current.setMode('ink');
+    assert.deepEqual(calls, ['ink']);
+    assert.deepEqual((await session.getPage()).getTextEntries(), []);
+    assert.deepEqual((await ref.current.getPage()).getTextEntries(), []);
+    await session.setViewport({ zoom: 3 });
+    assert.deepEqual(calls, ['ink', 'session-page', 'page', ['viewport', { zoom: 3 }]]);
+    const textOptions = { maxLines: 2 };
+    let modeRequest;
+    native.setMode = (mode, options) => { modeRequest = { mode, options }; return nativeSession; };
+    ref.current.setMode('text', textOptions);
+    assert.deepEqual(modeRequest, { mode: 'text', options: textOptions });
     const failure = new Error('operation_cancelled: Document replaced');
-    native.setViewMode = async () => { throw failure; };
-    await assert.rejects(ref.current.setViewMode(), error => error === failure);
+    native.setMode = () => { throw failure; };
+    assert.throws(() => ref.current.setMode('view'), error => error === failure);
   } finally {
-    native.setViewMode = originalViewMode;
+    native.setMode = originalSetMode;
     if (root) await act(async () => { root.unmount(); });
   }
 });
@@ -287,24 +295,25 @@ test('view mode dispatches while the coordinate request is still waiting', async
   const ref = React.createRef();
   let rejectRequest;
   const sequence = [];
-  const originalSetViewMode = native.setViewMode;
-  native.getPageCoords = () => {
+  const originalSetMode = native.setMode;
+  native.requestPageCoords = () => {
     sequence.push('coords');
     return new Promise((resolve, reject) => { rejectRequest = reject; });
   };
-  native.setViewMode = async () => {
+  native.setMode = () => {
     sequence.push('view');
     rejectRequest(new Error('operation_cancelled: Coordinate request cancelled'));
+    return nativeSession;
   };
   let root;
   try {
     let waiting;
     let cancelled;
     function Screen() {
-      React.useLayoutEffect(() => {
-        waiting = ref.current.getPageCoords();
+      React.useEffect(() => {
+        waiting = ref.current.requestPageCoords();
         cancelled = assert.rejects(waiting, { message: /^operation_cancelled:/ });
-        void ref.current.setViewMode();
+        void ref.current.setMode('view');
       }, []);
       return React.createElement(InkSignView, { ref });
     }
@@ -313,7 +322,7 @@ test('view mode dispatches while the coordinate request is still waiting', async
     assert.deepEqual(sequence, ['coords', 'view']);
   } finally {
     if (root) await act(async () => { root.unmount(); });
-    delete native.getPageCoords;
-    native.setViewMode = originalSetViewMode;
+    delete native.requestPageCoords;
+    native.setMode = originalSetMode;
   }
 });

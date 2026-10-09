@@ -29,6 +29,8 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
+// Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `AddPagesOptions` to properly resolve imports.
@@ -39,10 +41,12 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `AddPagesActivePage` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
-// Forward declaration of `TextDirection` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class TextDirection; }
+// Forward declaration of `InputMode` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class InputMode; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `TextAlignment` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
@@ -87,6 +91,8 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include <memory>
 #include "HybridAnalyzedPageSpec.hpp"
 #include "JHybridAnalyzedPageSpec.hpp"
+#include "HybridModeSessionSpec.hpp"
+#include "JHybridModeSessionSpec.hpp"
 #include "ViewportOptions.hpp"
 #include "JViewportOptions.hpp"
 #include "AddPagesOptions.hpp"
@@ -98,10 +104,12 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "JImagePageSize.hpp"
 #include "AddPagesActivePage.hpp"
 #include "JAddPagesActivePage.hpp"
-#include "TextDirection.hpp"
-#include "JTextDirection.hpp"
+#include "InputMode.hpp"
+#include "JInputMode.hpp"
 #include "TextModeOptions.hpp"
 #include "JTextModeOptions.hpp"
+#include "TextDirection.hpp"
+#include "JTextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "JTextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
@@ -441,8 +449,8 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart);
     return __result->toCpp();
   }
-  std::shared_ptr<Promise<PageCoords>> JHybridInkSignViewSpec::getPageCoords() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("getPageCoords");
+  std::shared_ptr<Promise<PageCoords>> JHybridInkSignViewSpec::requestPageCoords() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("requestPageCoords");
     auto __result = method(_javaPart);
     return [&]() {
       auto __promise = Promise<PageCoords>::create();
@@ -478,35 +486,10 @@ namespace margelo::nitro::inksignpdf {
       return __promise;
     }();
   }
-  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::setInkMode(const std::optional<ViewportOptions>& viewport) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JViewportOptions> /* viewport */)>("setInkMode");
-    auto __result = method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);
-    return [&]() {
-      auto __promise = Promise<void>::create();
-      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
-        __promise->resolve();
-      });
-      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
-        jni::JniException __jniError(__throwable);
-        __promise->reject(std::make_exception_ptr(__jniError));
-      });
-      return __promise;
-    }();
-  }
-  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::setViewMode(const std::optional<ViewportOptions>& viewport) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JViewportOptions> /* viewport */)>("setViewMode");
-    auto __result = method(_javaPart, viewport.has_value() ? JViewportOptions::fromCpp(viewport.value()) : nullptr);
-    return [&]() {
-      auto __promise = Promise<void>::create();
-      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
-        __promise->resolve();
-      });
-      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
-        jni::JniException __jniError(__throwable);
-        __promise->reject(std::make_exception_ptr(__jniError));
-      });
-      return __promise;
-    }();
+  std::shared_ptr<HybridModeSessionSpec> JHybridInkSignViewSpec::setMode(InputMode mode, const std::optional<TextModeOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JHybridModeSessionSpec::JavaPart>(jni::alias_ref<JInputMode> /* mode */, jni::alias_ref<JTextModeOptions> /* options */)>("setMode");
+    auto __result = method(_javaPart, JInputMode::fromCpp(mode), options.has_value() ? JTextModeOptions::fromCpp(options.value()) : nullptr);
+    return __result->getJHybridModeSessionSpec();
   }
   void JHybridInkSignViewSpec::undo() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("undo");
@@ -527,21 +510,6 @@ namespace margelo::nitro::inksignpdf {
   void JHybridInkSignViewSpec::setTextDirection(TextDirection direction) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextDirection> /* direction */)>("setTextDirection");
     method(_javaPart, JTextDirection::fromCpp(direction));
-  }
-  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::setTextMode(const std::optional<TextModeOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JTextModeOptions> /* options */)>("setTextMode");
-    auto __result = method(_javaPart, options.has_value() ? JTextModeOptions::fromCpp(options.value()) : nullptr);
-    return [&]() {
-      auto __promise = Promise<void>::create();
-      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
-        __promise->resolve();
-      });
-      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
-        jni::JniException __jniError(__throwable);
-        __promise->reject(std::make_exception_ptr(__jniError));
-      });
-      return __promise;
-    }();
   }
   std::shared_ptr<Promise<std::string>> JHybridInkSignViewSpec::finalize() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("finalize");

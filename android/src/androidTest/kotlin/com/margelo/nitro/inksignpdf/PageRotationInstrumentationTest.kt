@@ -72,7 +72,7 @@ class PageRotationInstrumentationTest {
         assertEquals(90.0, editor.rotation.toDouble(), 0.001)
         assertTrue("Editing must retain the original horizontal layout width", editor.width > editor.height)
         editor.setText("Edited")
-        view.setViewMode(null)
+        view.setMode(InputMode.VIEW, null)
         val edited = checkNotNull(view.coordinator.pageSnapshot(0).content.single().textAnnotationOrNull())
         assertEquals(annotation.flowBounds, edited.flowBounds)
         assertEquals(annotation.layoutPage, edited.layoutPage)
@@ -153,13 +153,10 @@ class PageRotationInstrumentationTest {
       capturedPage.setTextValue(id, "OK")
       val currentPage = awaitPreparedPage(instrumentation, viewRef.get())
       assertEquals(id, currentPage.resolveText(fieldResolutionOptions()), 0.0)
-      await(instrumentation, currentPage.focusText(id, FieldFocusOptions(
-        occurrence = TextKeyOccurrence.FIRST,
-        direction = TextDirection.LTR,
+      await(instrumentation, currentPage.focusText(id, TextFocusOptions(
         zoom = 5.0,
         verticalAnchor = FieldFocusVerticalAnchor.BOTTOM,
         edgeOffset = 8.0,
-        setInkMode = false,
       )))
       instrumentation.runOnMainSync {
         val annotation = checkNotNull(
@@ -205,13 +202,10 @@ class PageRotationInstrumentationTest {
             assertEquals("text_rule_not_found", error.code)
           }
           try {
-            await(instrumentation, page.focusText(checkNotNull(stableId), FieldFocusOptions(
-              occurrence = TextKeyOccurrence.FIRST,
-              direction = TextDirection.LTR,
+            await(instrumentation, page.focusText(checkNotNull(stableId), TextFocusOptions(
               zoom = 5.0,
               verticalAnchor = FieldFocusVerticalAnchor.BOTTOM,
               edgeOffset = 8.0,
-              setInkMode = true,
             )))
             throw AssertionError("A vertical rule must not accept focus")
           } catch (error: AssertionError) {
@@ -240,13 +234,10 @@ class PageRotationInstrumentationTest {
           assertEquals(angle / 90, annotation.layoutPage?.rotation)
         }
         for (anchor in listOf(FieldFocusVerticalAnchor.TOP, FieldFocusVerticalAnchor.BOTTOM)) {
-          await(instrumentation, page.focusText(id, FieldFocusOptions(
-            occurrence = TextKeyOccurrence.FIRST,
-            direction = TextDirection.LTR,
+          await(instrumentation, page.focusText(id, TextFocusOptions(
             zoom = 5.0,
             verticalAnchor = anchor,
             edgeOffset = 8.0,
-            setInkMode = false,
           )))
           instrumentation.runOnMainSync {
             val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView

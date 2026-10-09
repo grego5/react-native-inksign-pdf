@@ -10,6 +10,7 @@ internal class PreparedPageContext(
   val pageIndexAtPreparation: Int,
   sourceAnalysis: PdfiumPreparedPageAnalysis,
   sourceDimensions: PdfPageDimensions = PdfPageDimensions(sourceAnalysis.width, sourceAnalysis.height),
+  val modeSession: ModeSessionToken? = null,
 ) {
   val sourceToCanonical = PageCoordinates(sourceDimensions).displayToRawTransform()
   val analysis = CanonicalPreparedPageAnalysis(
@@ -64,10 +65,6 @@ internal class HybridAnalyzedPage(
     withOwner { it.setPreparedTextValue(context, id, text) }
   }
 
-  override fun clearText(id: Double) {
-    withOwner { it.clearPreparedText(context, id) }
-  }
-
   override fun setTextOptions(id: Double, options: TextAnnotationOptions) {
     withOwner { it.setPreparedTextOptions(context, id, options) }
   }
@@ -78,7 +75,7 @@ internal class HybridAnalyzedPage(
   override fun getTextEntries(): Array<TextEntry> =
     withOwner { it.preparedTextEntries(context) }
 
-  override fun focusText(id: Double, options: FieldFocusOptions?): com.margelo.nitro.core.Promise<Unit> =
+  override fun focusText(id: Double, options: TextFocusOptions?): com.margelo.nitro.core.Promise<Unit> =
     withOwner { it.focusPreparedText(context, id, options) }
 
   private inline fun <T> withOwner(action: (HybridInkSignView) -> T): T =

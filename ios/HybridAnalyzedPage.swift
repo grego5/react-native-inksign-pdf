@@ -7,6 +7,7 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec {
   let generation: UInt64
   let pageID: UUID
   let analysis: InkSignPdfPageAnalysis
+  let modeSession: InkSignPdfModeSessionToken?
 
   /** Nitrogen requires a default factory for returned HybridObjects. Handles
    * created through the public API use the owner-backed initializer below. */
@@ -14,6 +15,7 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec {
     let pageID = UUID()
     self.owner = nil
     self.generation = 0
+    self.modeSession = nil
     self.pageID = pageID
     self.analysis = InkSignPdfPageAnalysis(generation: 0,
       pageID: pageID, pageIndex: 0, sourceText: "", characterBounds: [],
@@ -25,11 +27,13 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec {
   init(owner: InkSignView,
        generation: UInt64,
        pageID: UUID,
-       analysis: InkSignPdfPageAnalysis) {
+       analysis: InkSignPdfPageAnalysis,
+       modeSession: InkSignPdfModeSessionToken? = nil) {
     self.owner = owner
     self.generation = generation
     self.pageID = pageID
     self.analysis = analysis
+    self.modeSession = modeSession
     super.init()
   }
 
@@ -43,10 +47,6 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec {
 
   func setTextValue(id: Double, text: String) throws {
     try withOwner { try $0.setPreparedTextValue(self, id: id, text: text) }
-  }
-
-  func clearText(id: Double) throws {
-    try withOwner { try $0.clearPreparedText(self, id: id) }
   }
 
   func setTextOptions(id: Double, options: TextAnnotationOptions) throws {
@@ -65,13 +65,14 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec {
     try withOwner { try $0.preparedTextEntries(self) }
   }
 
-  func focusText(id: Double, options: FieldFocusOptions?) throws -> Promise<Void> {
+  func focusText(id: Double, options: TextFocusOptions?) throws -> Promise<Void> {
     try withOwner { try $0.focusPreparedText(self, id: id, options: options) }
   }
 
   private func withOwner<T>(_ action: (InkSignView) throws -> T) throws -> T {
     guard let owner else { throw InkSignView.TextError.cancelled }
     return try owner.performOnMainSync {
+      if let modeSession { try owner.requireModeSession(modeSession) }
       guard !owner.disposed,
             owner.documentCoordinator.generation == generation,
             owner.documentCoordinator.document?.pages.contains(where: { $0.id == pageID }) == true else {

@@ -18,7 +18,7 @@ public extension TextEntry {
   /**
    * Create a new instance of `TextEntry`.
    */
-  init(id: Double, value: String, fieldName: String?, bounds: TextAnnotationBounds?, hasValue: Bool, valueSource: TextValueSource) {
+  init(id: Double, value: String, fieldName: String?, bounds: TextAnnotationBounds?, valueSource: TextValueSource) {
     self.init(id, std.string(value), { () -> bridge.std__optional_std__string_ in
       if let __unwrappedValue = fieldName {
         return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
@@ -31,7 +31,7 @@ public extension TextEntry {
       } else {
         return .init()
       }
-    }(), hasValue, valueSource)
+    }(), valueSource)
   }
 
   @inline(__always)
@@ -59,11 +59,6 @@ public extension TextEntry {
   @inline(__always)
   var bounds: TextAnnotationBounds? {
     return self.__bounds.value
-  }
-  
-  @inline(__always)
-  var hasValue: Bool {
-    return self.__hasValue
   }
   
   @inline(__always)

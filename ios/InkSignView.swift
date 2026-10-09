@@ -112,6 +112,7 @@ final class InkSignView: HybridInkSignViewSpec {
   var pendingOpen: PendingOpen?
   var editMode = false
   var viewInteractionsEnabled = true
+  var structuralInteractionSuspended = false
   var doubleTap: DoubleTapOptions?
   var currentPen = PenValue()
   var queuedPen: PenValue?
@@ -134,8 +135,10 @@ final class InkSignView: HybridInkSignViewSpec {
   final class CoordinateRequest {
     let result = InkSignPdfOperationPromise<PageCoords>()
     var target: CoordinateTarget?
+    var modeSession: InkSignPdfModeSessionToken?
   }
   var pendingPageCoords: CoordinateRequest?
+  var currentModeSession: InkSignPdfModeSessionToken?
   var isPickingPageCoords: Bool { pendingPageCoords?.target != nil }
 
   func interactionMode() -> InteractionMode {
@@ -147,6 +150,7 @@ final class InkSignView: HybridInkSignViewSpec {
   struct ViewerCommand {
     let id: UUID
     let presentation: Bool
+    let modeSession: InkSignPdfModeSessionToken?
     let start: () -> Void
     let cancel: () -> Void
   }
@@ -347,6 +351,7 @@ final class InkSignView: HybridInkSignViewSpec {
 
   deinit {
     disposed = true
+    currentModeSession?.cancelled = true
     pendingPageCoords?.result.reject(LoadError.cancelled)
     pendingPageCoords = nil
     pendingOpen = nil
@@ -366,6 +371,7 @@ final class InkSignView: HybridInkSignViewSpec {
   func dispose() {
     performOnMain {
       guard !self.disposed else { return }
+      self.invalidateModeSession()
       self.disposed = true
       self.cancelViewerCommands()
       self.pageInputCoordinator.cancelPending()
