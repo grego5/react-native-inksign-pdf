@@ -7,6 +7,11 @@ on:
         description: Immutable GitHub release tag for the ink-engine artifacts
         required: true
         default: ink-engine-1.0.0
+      reuse_run_id:
+        description: Existing successful InkEngine run ID whose ABI artifacts should be republished (leave empty to build)
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -17,8 +22,51 @@ env:
   INK_ENGINE_RELEASE_TAG: ${{ inputs.release_tag }}
 
 jobs:
+  resolve-source:
+    name: Resolve artifact source
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      run_id: ${{ steps.source.outputs.run_id }}
+      source_revision: ${{ steps.source.outputs.source_revision }}
+    steps:
+      - name: Resolve the current or existing successful run
+        id: source
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REUSE_RUN_ID: ${{ inputs.reuse_run_id }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$REUSE_RUN_ID" ]]; then
+            run_id="$GITHUB_RUN_ID"
+            source_revision="$GITHUB_SHA"
+          else
+            [[ "$REUSE_RUN_ID" =~ ^[1-9][0-9]*$ ]] || {
+              echo "reuse_run_id must be a positive numeric workflow run ID" >&2
+              exit 1
+            }
+            run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$REUSE_RUN_ID")"
+            jq -e '
+              .status == "completed" and .conclusion == "success" and
+              .event == "workflow_dispatch" and
+              .path == ".github/workflows/build-and-publish-ink-engine.yml"
+            ' <<< "$run_json" >/dev/null || {
+              echo "reuse_run_id must identify a successful InkEngine workflow run in this repository" >&2
+              exit 1
+            }
+            run_id="$REUSE_RUN_ID"
+            source_revision="$(jq -r '.head_sha' <<< "$run_json")"
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "source_revision=$source_revision" >> "$GITHUB_OUTPUT"
+
   native-tests:
     name: Source-linked native tests
+    needs: resolve-source
+    if: ${{ inputs.reuse_run_id == '' }}
     runs-on: ubuntu-24.04
     steps:
       - name: Check out the full source repository
@@ -117,13 +165,19 @@ jobs:
 
   publish-release:
     name: Publish InkEngine release
-    needs: [build-archive]
+    needs: [resolve-source, build-archive]
+    if: ${{ !cancelled() && needs.resolve-source.result == 'success' && (needs.build-archive.result == 'success' || inputs.reuse_run_id != '') }}
     runs-on: ubuntu-24.04
     permissions:
+      actions: read
       contents: write
+    env:
+      INK_ENGINE_SOURCE_REVISION: ${{ needs.resolve-source.outputs.source_revision }}
     steps:
       - name: Check out the full source repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-source.outputs.source_revision }}
 
       - name: Download all verified ABI artifacts
         uses: actions/download-artifact@v8
@@ -131,6 +185,8 @@ jobs:
           pattern: ink-engine-static-*
           path: release-input
           merge-multiple: true
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.resolve-source.outputs.run_id }}
 
       - name: Assemble the immutable release bundle
         shell: bash
@@ -156,6 +212,18 @@ jobs:
             metadata="$archive.json"
             test -f "$archive"
             test -f "$metadata"
+            jq -e \
+              --arg abi "$abi" \
+              --arg archive "libinkengine_${abi}.a" \
+              --arg source "$INK_ENGINE_SOURCE_REVISION" \
+              --arg ndk "$INK_ENGINE_NDK" \
+              --argjson api "$INK_ENGINE_API_VERSION" \
+              --argjson size "$(stat -c %s "$archive")" \
+              --arg sha "$(sha256sum "$archive" | cut -d ' ' -f 1)" \
+              '.format == 1 and .abi == $abi and .archive == $archive and
+               .sourceRevision == $source and .ndkVersion == $ndk and
+               .apiVersion == $api and .perfettoTrace == false and
+               .sizeBytes == $size and .sha256 == $sha' "$metadata" >/dev/null
             cp "$archive" "release-assets/libinkengine_${abi}.a"
             cp "$metadata" "release-assets/libinkengine_${abi}.a.json"
           done
@@ -163,15 +231,21 @@ jobs:
           cp -R release-input/android release-assets/android
           cp release-input/THIRD_PARTY_NOTICES.md release-assets/
           cp release-input/CREDITS.md release-assets/
-          cp core/third_party/google-ink/LICENSE release-assets/GOOGLE_INK_LICENSE
-          cp core/third_party/abseil-cpp/LICENSE release-assets/ABSEIL_LICENSE
+          copy_dependency_license() {
+            local license
+            license="$(git ls-files -- "*/$1/LICENSE")"
+            test -f "$license"
+            cp "$license" "release-assets/$2"
+          }
+          copy_dependency_license google-ink GOOGLE_INK_LICENSE
+          copy_dependency_license abseil-cpp ABSEIL_LICENSE
 
           metadata_files=(release-input/android/*/*.json)
           test "${#metadata_files[@]}" -eq "${#expected_abis[@]}"
           artifact_json="$(jq -cs 'map(del(.archive))' "${metadata_files[@]}")"
           jq -n \
             --arg tag "$INK_ENGINE_RELEASE_TAG" \
-            --arg source "$GITHUB_SHA" \
+            --arg source "$INK_ENGINE_SOURCE_REVISION" \
             --arg ndk "$INK_ENGINE_NDK" \
             --argjson api "$INK_ENGINE_API_VERSION" \
             --argjson artifacts "$artifact_json" \
@@ -193,9 +267,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euxo pipefail
+          tag_ref="$(git ls-remote --tags origin "refs/tags/$INK_ENGINE_RELEASE_TAG")"
+          release_target=(--target "$INK_ENGINE_SOURCE_REVISION")
+          if [[ -n "$tag_ref" ]]; then
+            git fetch --no-tags origin "refs/tags/$INK_ENGINE_RELEASE_TAG"
+            tag_revision="$(git rev-parse 'FETCH_HEAD^{commit}')"
+            if [[ "$tag_revision" != "$INK_ENGINE_SOURCE_REVISION" ]]; then
+              echo "Release tag $INK_ENGINE_RELEASE_TAG does not match artifact source $INK_ENGINE_SOURCE_REVISION" >&2
+              exit 1
+            fi
+            # An explicit historical target can require workflows:write even
+            # when the existing tag already points to that commit.
+            release_target=(--verify-tag)
+          fi
           gh release create "$INK_ENGINE_RELEASE_TAG" \
             release-assets/*.a release-assets/*.json release-assets/*.zip \
             release-assets/SHA256SUMS release-assets/*.md release-assets/*_LICENSE \
-            --target "$GITHUB_SHA" \
+            "${release_target[@]}" \
             --title "InkEngine $INK_ENGINE_RELEASE_TAG" \
-            --notes "Verified Android ink-engine archives. Source: $GITHUB_SHA; NDK: $INK_ENGINE_NDK; tracing/debug instrumentation is compiled out of normal artifacts."
+            --notes "Verified Android ink-engine archives. Source: $INK_ENGINE_SOURCE_REVISION; NDK: $INK_ENGINE_NDK; tracing/debug instrumentation is compiled out of normal artifacts."

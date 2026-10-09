@@ -54,9 +54,10 @@ final class InkCanvasView: PKCanvasView {
   }
 
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-    let hit = super.hitTest(point, with: event)
-    if owner?.editMode == false, hit === self { return nil }
-    return hit
+    guard owner?.interaction.acceptsInkInput == true else { return nil }
+    // Set the tool before PencilKit receives the touch, using the live PDFKit scale.
+    owner?.updateCanvasPen(self)
+    return super.hitTest(point, with: event)
   }
 
   @objc private func drawingGestureDidChange(_ gestureRecognizer: UIGestureRecognizer) {

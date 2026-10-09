@@ -6,6 +6,7 @@ import QuartzCore
 
 extension InkSignView {
   func overlayProviderWillReset() {
+    viewportMotion.cancel()
     textInteractionOverlay.finishForLifecycle()
     textInteractionOverlay.removeFromSuperview()
     cancelActiveStroke()
@@ -69,6 +70,7 @@ extension InkSignView {
   }
 
   func refreshActiveOverlayTransform() {
+    reconcileTextViewportInset()
     scheduleZoomReport()
     guard let state = documentCoordinator.document,
           let canvas = overlayProvider.canvasView(for: state.activePage.id) else { return }
@@ -111,7 +113,8 @@ extension InkSignView {
     }
     if overlayTransformPage == pageID,
        overlayTransformBounds == overlay.bounds,
-       overlayTransformMediaBox == mediaBox {
+       overlayTransformMediaBox == mediaBox,
+       pageToOverlayTransform == transform {
       return
     }
     if hasDrawingTransaction { cancelActiveStroke() }

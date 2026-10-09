@@ -360,6 +360,7 @@ class HybridInkSignView internal constructor(
   override fun addPages(options: AddPagesOptions?): Promise<AddPagesResult> {
     return launchPromise {
       val fontFallbackSnapshot = coordinator.fallbackFont
+      val initialFontConfig = if (!coordinator.hasDocument) androidFallbackFont else null
       val requestedImageSize = options?.imagePageSize?.let {
         PdfPageDimensions(it.width, it.height)
       }
@@ -378,6 +379,9 @@ class HybridInkSignView internal constructor(
             addedPageCount = 0.0,
           )
         }
+        val resolvedFontFallback = initialFontConfig?.let { fallbackFontResolver.resolve(it) }
+          ?: fontFallbackSnapshot
+        ensureCurrentStructural(generation)
         prepareStructuralMutation(creatingDocument = activePage == null)
         val inputs = withContext(Dispatchers.IO) {
           staged.map { input ->
@@ -421,7 +425,7 @@ class HybridInkSignView internal constructor(
               addedPageCount = (coordinator.pageCount - oldPageCount).toDouble(),
             )
           },
-          fontFallback = fontFallbackSnapshot,
+          fontFallback = resolvedFontFallback,
         )
       } finally {
         pageInputCoordinator.release(staged)

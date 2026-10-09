@@ -62,6 +62,7 @@ extension InkSignView {
     guard let token = currentModeSession else { return }
     currentModeSession = nil
     token.cancelled = true
+    viewportMotion.cancel()
     fieldFocusRequestID &+= 1
     let retired = commandQueue.filter { $0.modeSession === token }
     commandQueue.removeAll { $0.modeSession === token }
@@ -111,9 +112,16 @@ extension InkSignView {
       self.cancelPendingPageSwitch()
       self.finishInteractionForLifecycle()
       try self.requireModeSession(token)
-      self.applyViewport(request: request)
-      try self.requireModeSession(token)
-      return Promise<Void>.resolved()
+      if case .preserve = request { return Promise<Void>.resolved() }
+      guard let target = self.viewportTarget(for: request) else { throw ViewportError.notReady }
+      let result = InkSignPdfOperationPromise<Void>()
+      self.animateViewport(target: target, modeSession: token) { outcome in
+        switch outcome {
+        case .success: result.resolve(())
+        case .failure(let error): result.reject(error)
+        }
+      }
+      return result.promise
     }
   }
 }

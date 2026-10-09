@@ -75,7 +75,23 @@ extension InkSignView {
 
   func installPen(_ value: PenValue) {
     currentPen = value
-    canvasView.tool = PKInkingTool(.pen, color: value.color,
-                                   width: CGFloat(value.maxWidth))
+    updateCanvasPen(canvasView)
+  }
+
+  func updateCanvasPen(_ canvas: InkCanvasView) {
+    guard !hasDrawingTransaction else { return }
+    var width = CGFloat(currentPen.maxWidth)
+    if canvas.isDescendant(of: documentView) {
+      let origin = canvas.convert(.zero, to: documentView)
+      let axis = canvas.convert(CGPoint(x: 1, y: 0), to: documentView)
+      let scale = hypot(axis.x - origin.x, axis.y - origin.y) * canvas.zoomScale
+      guard scale.isFinite, scale > 0 else { return }
+      width /= scale
+    }
+    if let tool = canvas.tool as? PKInkingTool,
+       tool.inkType == .pen, tool.color == currentPen.color, tool.width == width {
+      return
+    }
+    canvas.tool = PKInkingTool(.pen, color: currentPen.color, width: width)
   }
 }

@@ -49,9 +49,9 @@ export interface TextAnnotationOptions {
 export interface TextModeOptions extends ViewportOptions {
   /** Defaults to `auto`, following the app's resolved layout direction. */
   direction?: TextDirection
-  /** Supply with `height` to define a fixed text box; omit both for automatic sizing. */
+  /** Supply both dimensions for a fixed hard-bounded box; omit both to auto-size as text grows. */
   width?: number
-  /** Supply with `width` to define a fixed text box; omit both for automatic sizing. */
+  /** Supply both dimensions for a fixed hard-bounded box; omit both to auto-size as text grows. */
   height?: number
   /** Maximum complete lines; omission keeps every line that fits. */
   maxLines?: number

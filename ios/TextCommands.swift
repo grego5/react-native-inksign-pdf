@@ -401,9 +401,14 @@ extension InkSignView {
         }
         guard let viewportTarget = self.fieldFocusTarget(ruleY: rule?.y ?? bounds.midY,
           horizontalFocus: rule.map { ($0.minX + $0.maxX) / 2 } ?? bounds.midX, zoom: options?.zoom ?? 2,
-          verticalAnchor: options?.verticalAnchor ?? .center, edgeOffset: options?.edgeOffset ?? 0),
-          self.applyViewport(target: viewportTarget) else { result.reject(TextError.notReady); return }
-        result.resolve(())
+          verticalAnchor: options?.verticalAnchor ?? .center, edgeOffset: options?.edgeOffset ?? 0)
+          else { result.reject(TextError.notReady); return }
+        self.animateViewport(target: viewportTarget, modeSession: handle.modeSession) { outcome in
+          switch outcome {
+          case .success: result.resolve(())
+          case .failure(let error): result.reject(error)
+          }
+        }
       }
       if index == document.activePageIndex { runFocus() }
       else {
