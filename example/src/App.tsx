@@ -12,7 +12,6 @@ import {
   type ViewerState,
   type ViewportOptions,
   type InkSignViewHandle,
-  type TextSelection,
 } from '@grego5/react-native-inksign-pdf';
 import { androidFallbackFont, ensureFallbackFont } from './fallbackFont';
 import { DebugRecorder } from './DebugRecorder';
@@ -23,7 +22,7 @@ export default function App() {
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
   const modeRef = useRef<ViewerState['mode']>('view');
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
-  const [textSelection, setTextSelection] = useState<TextSelection | null>(null);
+  const [textSelected, setTextSelected] = useState(false);
   const [signingFieldName, setSigningFieldName] = useState<string | null>(null);
 
   const [state, setState] = useState<ViewerState>({
@@ -61,11 +60,18 @@ export default function App() {
       Alert.alert('Mode change failed', 'The InkSignView is not available');
       return;
     }
+    let operation = 'setMode';
     try {
       const session = target === 'edit' ? inkSignView.setMode('ink') : inkSignView.setMode('view');
-      if (viewport !== undefined) await session.setViewport(viewport);
+      if (viewport !== undefined) {
+        operation = 'session.setViewport';
+        await session.setViewport(viewport);
+      }
     } catch (error) {
-      if (!isOperationCancelled(error)) Alert.alert('Mode change failed', String(error));
+      if (!isOperationCancelled(error)) {
+        console.error(`[InkSign example] ${operation} failed`, error instanceof Error ? error.stack : error);
+        Alert.alert('Mode change failed', `${operation}: ${String(error)}`);
+      }
     }
   }
 
@@ -112,25 +118,23 @@ export default function App() {
     }
   }
 
-  async function updateSelectedText(delta: number | null) {
+  function updateSelectedText(delta: number | null) {
     const inkSignView = inkSignViewRef.current;
-    const selection = textSelection;
-    if (inkSignView === null || selection === null) return;
+    if (inkSignView === null) return;
     try {
-      if (pageInfo === null) return;
-      const page = await inkSignView.getPage(pageInfo.pageIndex);
-      if (delta === null) page.setTextValue(selection.textId, '');
-      else page.adjustTextSize(selection.textId, delta);
+      const text = inkSignView.getSelectedText();
+      if (delta === null) text?.setValue('');
+      else text?.adjustSize(delta);
     } catch (error) {
       Alert.alert('Update text failed', String(error));
     }
   }
 
-  async function clearCurrentContent() {
+  function clearCurrentContent() {
     const view = inkSignViewRef.current;
     if (!view) return;
     if (state.mode === 'textEdit') {
-      await updateSelectedText(null);
+      updateSelectedText(null);
       return;
     }
     try {
@@ -143,7 +147,7 @@ export default function App() {
 
   function handlePageChange(next: PageInfo) {
     setPageInfo(next);
-    setTextSelection(null);
+    setTextSelected(false);
   }
 
   function navigatePage(direction: 'next' | 'previous') {
@@ -213,7 +217,7 @@ export default function App() {
             defaultTextFontSize={16}
             onStateChange={handleStateChange}
             onPageChange={handlePageChange}
-            onTextSelectionChange={setTextSelection}
+            onTextSelectionChange={selection => setTextSelected(selection !== null)}
           />
         </View>
 
@@ -292,7 +296,7 @@ export default function App() {
             {['ink', 'textEdit', 'textAdd'].includes(state.mode) && (
               <Action
                 label={state.mode === 'textAdd' ? 'Cancel text' : 'Clear'}
-                disabled={state.mode === 'textEdit' && textSelection === null}
+                disabled={state.mode === 'textEdit' && !textSelected}
                 onPress={() => void clearCurrentContent()}
               />
             )}
@@ -308,14 +312,14 @@ export default function App() {
             <Action
               label="Size +"
               disabled={
-                pageInfo === null || textSelection === null
+                pageInfo === null || !textSelected
               }
               onPress={() => void updateSelectedText(1)}
             />
             <Action
               label="Size −"
               disabled={
-                pageInfo === null || textSelection === null
+                pageInfo === null || !textSelected
               }
               onPress={() => void updateSelectedText(-1)}
             />

@@ -751,15 +751,16 @@ internal class TextPlacementInstrumentationTest {
       assertTrue(overlay.hasPendingPlacement())
       val outsidePage = checkNotNull(harness.surface.textPresentationSnapshot())
         .transform.map(PagePoint(-1.0, -1.0))
-      assertFalse(dispatch(overlay, MotionEvent.ACTION_DOWN, outsidePage.x.toFloat(), outsidePage.y.toFloat(), 990L))
+      assertFalse(dispatchTouch(overlay, MotionEvent.ACTION_DOWN, outsidePage.x.toFloat(), outsidePage.y.toFloat(), 990L, 990L))
+      dispatchTouch(overlay, MotionEvent.ACTION_UP, outsidePage.x.toFloat(), outsidePage.y.toFloat(), 990L, 995L)
       assertTrue(overlay.hasPendingPlacement())
 
-      assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_000L))
+      assertTrue(dispatchTouch(overlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_000L, 1_000L))
       assertEquals(InteractionMode.TEXTADD, overlay.interactionMode())
       assertEquals(0, editorCount(overlay))
-      assertTrue(dispatch(overlay, MotionEvent.ACTION_MOVE, 151.0f, 151.0f, 1_010L))
+      assertTrue(dispatchTouch(overlay, MotionEvent.ACTION_MOVE, 151.0f, 151.0f, 1_000L, 1_010L))
       assertEquals(0, editorCount(overlay))
-      assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 1_020L))
+      assertTrue(dispatchTouch(overlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 1_000L, 1_020L))
       assertFalse(overlay.hasPendingPlacement())
       assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
       assertNotNull(overlay.editingAnnotationId())
@@ -778,8 +779,8 @@ internal class TextPlacementInstrumentationTest {
       assertTrue(modes.contains(InteractionMode.TEXTADD))
       assertTrue(modes.contains(InteractionMode.TEXTEDIT))
 
-      assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 290.0f, 290.0f, 1_040L))
-      assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 290.0f, 290.0f, 1_060L))
+      assertTrue(dispatchTouch(overlay, MotionEvent.ACTION_DOWN, 290.0f, 290.0f, 1_040L, 1_040L))
+      assertTrue(dispatchTouch(overlay, MotionEvent.ACTION_UP, 290.0f, 290.0f, 1_040L, 1_060L))
       assertEquals(InteractionMode.VIEW, overlay.interactionMode())
       assertEquals(0, editorCount(overlay))
       assertTrue(
@@ -1576,11 +1577,16 @@ internal class TextPlacementInstrumentationTest {
     lateinit var overlay: TextInteractionOverlay
     var awayFocus = PagePoint(0.0, 0.0)
     harness.runOnMain {
+      val density = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics.density
+      // Keep the viewport large enough for the zoomed line and 24 dp margins on any density.
+      val viewportExtentPx = kotlin.math.ceil(300.0 * density).toInt()
+      harness.setSurfaceSize(viewportExtentPx, viewportExtentPx)
       harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       overlay = harness.createOverlay()
       overlay.armPlacement(1L)
-      dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 5_000L)
-      dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 5_010L)
+      val center = viewportExtentPx / 2f
+      dispatchTouch(overlay, MotionEvent.ACTION_DOWN, center, center, 5_000L, 5_000L)
+      dispatchTouch(overlay, MotionEvent.ACTION_UP, center, center, 5_000L, 5_010L)
       editorView(overlay).setText("Ada")
       editorView(overlay).setSelection(3)
     }
@@ -1594,9 +1600,9 @@ internal class TextPlacementInstrumentationTest {
         try { assertTrue(overlay.dispatchTouchEvent(down)) } finally { down.recycle() }
         dispatchEditorFingers(overlay, MotionEvent.ACTION_POINTER_DOWN or
           (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), x, y, 5_120L)
-        dispatchEditorFingers(overlay, MotionEvent.ACTION_MOVE, x + 300f, y, 5_150L)
-        dispatchEditorFingers(overlay, MotionEvent.ACTION_MOVE, x + 600f, y, 5_180L)
-        dispatchEditorFingers(overlay, MotionEvent.ACTION_CANCEL, x + 600f, y, 5_200L)
+        dispatchEditorFingers(overlay, MotionEvent.ACTION_MOVE, x + overlay.width, y, 5_150L)
+        dispatchEditorFingers(overlay, MotionEvent.ACTION_MOVE, x + 2f * overlay.width, y, 5_180L)
+        dispatchEditorFingers(overlay, MotionEvent.ACTION_CANCEL, x + 2f * overlay.width, y, 5_200L)
         awayFocus = harness.surface.currentViewportState().focus
         assertEquals("Ada", editor.text.toString())
         assertEquals(3, editor.selectionStart)
@@ -2300,6 +2306,22 @@ internal class TextPlacementInstrumentationTest {
       } finally {
         overlay.dispose()
       }
+    }
+  }
+
+  private fun dispatchTouch(
+    overlay: TextInteractionOverlay,
+    action: Int,
+    x: Float,
+    y: Float,
+    downTime: Long,
+    eventTime: Long,
+  ): Boolean {
+    val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
+    return try {
+      overlay.dispatchTouchEvent(event)
+    } finally {
+      event.recycle()
     }
   }
 

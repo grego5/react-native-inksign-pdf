@@ -11,6 +11,7 @@
 #include "HybridAnalyzedPageSpecSwift.hpp"
 #include "HybridInkSignViewSpecSwift.hpp"
 #include "HybridModeSessionSpecSwift.hpp"
+#include "HybridTextHandleSpecSwift.hpp"
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
 #include <NitroModules/NitroDefines.hpp>
 
@@ -45,6 +46,22 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     }
     #endif
     ReactNativeInkSignPdf::HybridAnalyzedPageSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
+    return swiftPart.toUnsafe();
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridTextHandleSpec>
+  std::shared_ptr<HybridTextHandleSpec> create_std__shared_ptr_HybridTextHandleSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
+    ReactNativeInkSignPdf::HybridTextHandleSpec_cxx swiftPart = ReactNativeInkSignPdf::HybridTextHandleSpec_cxx::fromUnsafe(swiftUnsafePointer);
+    return std::make_shared<margelo::nitro::inksignpdf::HybridTextHandleSpecSwift>(swiftPart);
+  }
+  void* NON_NULL get_std__shared_ptr_HybridTextHandleSpec_(std__shared_ptr_HybridTextHandleSpec_ cppType) {
+    std::shared_ptr<margelo::nitro::inksignpdf::HybridTextHandleSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::inksignpdf::HybridTextHandleSpecSwift>(cppType);
+    #ifdef NITRO_DEBUG
+    if (swiftWrapper == nullptr) [[unlikely]] {
+      throw std::runtime_error("Class \"HybridTextHandleSpec\" is not implemented in Swift!");
+    }
+    #endif
+    ReactNativeInkSignPdf::HybridTextHandleSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
     return swiftPart.toUnsafe();
   }
   
