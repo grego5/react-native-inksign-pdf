@@ -1,6 +1,7 @@
 package com.margelo.nitro.inksignpdf
 
 import android.graphics.Bitmap
+import android.view.MotionEvent
 import android.view.View
 import android.widget.FrameLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -125,6 +126,112 @@ internal class HybridInkSignViewTextKeyTest {
       releaseAnalysis.countDown()
       instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
       source.delete()
+    }
+  }
+
+  @Test
+  fun selectedTextHandleSurvivesDeselectionAndNavigationAndRejectsReplacement() {
+    NativeTestRuntime.initialize()
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val sourceA = File.createTempFile("selected-text-handle-a-", ".pdf", context.cacheDir)
+      .apply { writeText("controlled source A") }
+    val sourceB = File.createTempFile("selected-text-handle-b-", ".pdf", context.cacheDir)
+      .apply { writeText("controlled source B") }
+    val analysisStarted = CountDownLatch(1)
+    val releaseAnalysis = CountDownLatch(1)
+    val blockAnalysis = AtomicBoolean(false)
+    val worker = PdfSessionWorker(
+      opener = PdfSessionOpener { path, generation ->
+        BlockingAnalysisResource(
+          PdfSessionInfo(
+            sourcePath = path,
+            pages = listOf(PdfPageDimensions(300.0, 300.0), PdfPageDimensions(300.0, 300.0)),
+            generation = generation,
+          ),
+          analysisStarted,
+          releaseAnalysis,
+          blockAnalysis,
+        )
+      },
+    )
+    val viewRef = AtomicReference<HybridInkSignView>()
+    try {
+      instrumentation.runOnMainSync {
+        val view = HybridInkSignView(context, worker)
+        viewRef.set(view)
+        val size = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
+        view.view.measure(size, size)
+        view.view.layout(0, 0, 300, 300)
+      }
+      val view = viewRef.get()
+      awaitOpen(instrumentation, view, sourceA.absolutePath)
+      val page = awaitPreparedPage(view.getPage(0.0))
+      val bounds = TextAnnotationBounds(40.0, 60.0, 160.0, 40.0)
+      val textId = setPreparedText(page, bounds, "note")
+      val host = view.view as FrameLayout
+      val surface = host.getChildAt(0) as SurfaceView
+      val overlay = host.getChildAt(2) as TextInteractionOverlay
+      assertTrue("an idle view must return null", view.getSelectedText().isSecond)
+
+      val selected = AtomicReference<Variant_HybridTextHandleSpec_NullType>()
+      instrumentation.runOnMainSync {
+        val presentation = checkNotNull(surface.textPresentationSnapshot())
+        val annotation = presentation.annotations.single { it.id.toDouble() == textId }
+        val point = presentation.forAnnotation(annotation).transform.map(PagePoint(
+          (annotation.bounds.left + annotation.bounds.right) / 2.0,
+          (annotation.bounds.top + annotation.bounds.bottom) / 2.0,
+        ))
+        val down = MotionEvent.obtain(1_000L, 1_000L, MotionEvent.ACTION_DOWN,
+          point.x.toFloat(), point.y.toFloat(), 0)
+        val up = MotionEvent.obtain(1_000L, 1_010L, MotionEvent.ACTION_UP,
+          point.x.toFloat(), point.y.toFloat(), 0)
+        try {
+          assertTrue(overlay.onTouchEvent(down))
+          assertTrue(overlay.onTouchEvent(up))
+          selected.set(view.getSelectedText())
+        } finally {
+          down.recycle()
+          up.recycle()
+        }
+      }
+      val handle = checkNotNull(selected.get().asFirstOrNull())
+      assertEquals("note", handle.getValue())
+
+      instrumentation.runOnMainSync {
+        overlay.finishForLifecycle()
+        surface.switchPage(1)
+      }
+      handle.setValue("updated")
+      handle.setOptions(TextAnnotationOptions(
+        fontSize = null,
+        color = null,
+        direction = null,
+        maxLines = null,
+        alignment = TextAlignment.CENTER,
+        verticalAnchor = null,
+      ))
+      assertTrue("font size adjustment must return a positive size", handle.adjustSize(1.0) > 0.0)
+      assertEquals("updated", handle.getValue())
+      assertEquals("updated", page.getTextValue(textId))
+      handle.setValue("")
+      assertEquals("", handle.getValue())
+
+      awaitOpen(instrumentation, view, sourceB.absolutePath)
+      try {
+        handle.getValue()
+        throw AssertionError("replacement must invalidate the old handle")
+      } catch (error: PdfSessionException) {
+        assertEquals("operation_cancelled", error.code)
+      }
+      assertTrue("replacement must clear selection", view.getSelectedText().isSecond)
+      assertTrue("replacement must not inherit old text targets",
+        awaitPreparedPage(view.getPage(0.0)).getTextEntries().isEmpty())
+    } finally {
+      releaseAnalysis.countDown()
+      instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
+      sourceA.delete()
+      sourceB.delete()
     }
   }
 

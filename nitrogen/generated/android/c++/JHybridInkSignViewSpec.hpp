@@ -100,6 +100,7 @@ namespace margelo::nitro::inksignpdf {
     Viewport getViewport() override;
     std::shared_ptr<Promise<PageCoords>> requestPageCoords() override;
     bool hasInk() override;
+    std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() override;
     std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) override;
     std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) override;
     void undo() override;

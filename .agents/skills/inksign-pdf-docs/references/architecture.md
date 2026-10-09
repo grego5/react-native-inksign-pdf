@@ -54,6 +54,11 @@ and export.
 - Value precedence: draft → committed module text → embedded text → empty.
   `setTextValue(id, '')` removes module text and reveals preserved source text.
   Re-resolution preserves formatting.
+- `getSelectedText()` reads overlay selection on the UI thread, returning null
+  or a document/page/text-bound handle. It needs no source analysis, retains the
+  view weakly, and uses the same value/formatting mutations as prepared pages.
+  Deselection/navigation do not invalidate it; document/page/target invalidation
+  rejects operations. Selection callbacks remain UI-availability notifications.
 - Named detection/adoption uses rule width and one label-height band above a
   bottom-anchored rule, below a top-anchored rule; exclude only selected label
   glyphs. Free targets use placement bounds. Competing module annotations reject

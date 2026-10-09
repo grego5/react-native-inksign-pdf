@@ -118,6 +118,9 @@ to persistent storage if you need it after closing the viewer.
   x, y }`, then return to view mode. Page or mode changes and teardown cancel
   the request. Use `setMode('view')` for Back.
 - `hasInk()` — Check whether the current page has committed ink.
+- `getSelectedText()` — Read the current native selection as a text handle, or
+  `null`. Use it when executing actions; keep `onTextSelectionChange` for button
+  availability.
 - `undo()` — Undo the last edit on the current page.
 - `redo()` — Redo an undone edit on the current page.
 - `clear()` — Remove editable ink and module text from the current page as one
@@ -165,6 +168,17 @@ invalid when their document closes.
 - `session.setViewport(options?)` — Zoom or focus without changing mode. Pass
   `{}` to fit; omit options to preserve the viewport.
 
+### Selected text handle
+
+The handle binds its page and text ID. Selection/navigation changes do not
+retarget it; document closure, page deletion, or target invalidation rejects
+operations.
+
+- `getValue()` — Read the current value.
+- `setValue(text)` — Update text; `''` removes module text.
+- `setOptions(options)` — Update formatting.
+- `adjustSize(delta)` — Adjust font size by page points and return the result.
+
 ### Android debug recording
 
 Available in Android debug builds:
@@ -186,6 +200,15 @@ Available in Android debug builds:
 See the [public API](./src/InkSignView.nitro.ts) for all props and options.
 
 ## Examples
+
+### Update selected text
+
+```ts
+const text = pdf.current?.getSelectedText();
+text?.setOptions({ alignment: 'center' });
+// Remove module text:
+text?.setValue('');
+```
 
 ### Pick a signing location
 

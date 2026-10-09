@@ -100,11 +100,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       let isPlacing: Bool
       if case .placing = interactionState { isPlacing = true } else { isPlacing = false }
       if wasPlacing != isPlacing { placementTapRecognizer.isEnabled = isPlacing }
-      let selection = selectedAnnotationID.flatMap { id -> TextSelection? in
-        guard let owner, let document = owner.documentCoordinator.document,
-              document.pages.indices.contains(document.activePageIndex) else { return nil }
-        return TextSelection(textId: Double(id), pageId: document.activePage.id.uuidString)
-      }
+      let selection = selectedText
       let identity = selection.map { "\($0.textId):\($0.pageId)" }
       if identity != lastEmittedSelectionIdentity {
         lastEmittedSelectionIdentity = identity
@@ -1528,6 +1524,13 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     return (owner.documentCoordinator.generation, state.activePageIndex, state.activePage.id,
             state.activePage.geometry.displaySize,
             state.activePage.history.content.textAnnotations)
+  }
+
+  var selectedText: TextSelection? {
+    guard let id = selectedAnnotationID,
+          let document = owner?.documentCoordinator.document,
+          document.pages.indices.contains(document.activePageIndex) else { return nil }
+    return TextSelection(textId: Double(id), pageId: document.activePage.id.uuidString)
   }
 
   private var selectedAnnotationID: UInt64? {

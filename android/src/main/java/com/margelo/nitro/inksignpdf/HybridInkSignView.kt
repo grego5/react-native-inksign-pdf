@@ -694,7 +694,7 @@ class HybridInkSignView internal constructor(
   }
 
   internal fun resolvePreparedText(context: PreparedPageContext, options: ResolveTextOptions): Double =
-    withPreparedPage(context) { page ->
+    withTextPage(context) { page ->
       coordinator.retainTextSourceGlyphs(page.id, context.analysis.glyphs)
       val coordinates = PageCoordinates(page.dimensions)
       val transform = coordinates.canonicalToDisplayTransform()
@@ -782,21 +782,32 @@ class HybridInkSignView internal constructor(
       selected.id.toDouble()
     }
 
-  internal fun readPreparedTextValue(context: PreparedPageContext, rawId: Double): String =
-    withPreparedPage(context) { page ->
+  override fun getSelectedText(): Variant_HybridTextHandleSpec_NullType = runOnMainSync {
+    if (disposed || coordinator.pageCount == 0) {
+      return@runOnMainSync Variant_HybridTextHandleSpec_NullType.create(NullType.NULL)
+    }
+    val selection = textOverlay.selectedText()
+      ?: return@runOnMainSync Variant_HybridTextHandleSpec_NullType.create(NullType.NULL)
+    Variant_HybridTextHandleSpec_NullType.create(
+      HybridTextHandle(this, coordinator.generation, selection.pageId, selection.textId),
+    )
+  }
+
+  internal fun readPreparedTextValue(context: TextPageContext, rawId: Double): String =
+    withTextPage(context) { page ->
       val slot = requireTextTarget(context, rawId)
       textOverlay.draftText(slot.id) ?: moduleAnnotations(page.id)
         .firstOrNull { it.id == slot.id }?.text ?: slot.embeddedValue
     }
 
-  internal fun setPreparedTextValue(context: PreparedPageContext, rawId: Double, text: String) {
-    withPreparedPage(context) { page ->
+  internal fun setPreparedTextValue(context: TextPageContext, rawId: Double, text: String) {
+    withTextPage(context) { page ->
       val slot = requireTextTarget(context, rawId)
       if (text.isEmpty()) {
         clearPreparedTextOnPage(slot, page, context.generation)
-        return@withPreparedPage
+        return@withTextPage
       }
-      if (textOverlay.setPreparedDraftText(slot.id, text)) return@withPreparedPage
+      if (textOverlay.setPreparedDraftText(slot.id, text)) return@withTextPage
       val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
       if (current == null) {
         val bounds = displayedTargetBounds(slot, page).toPublicBounds()
@@ -805,9 +816,9 @@ class HybridInkSignView internal constructor(
           bounds, text, slot.options, capturedPage = CapturedTextPage(context.generation, page.id, page.dimensions),
           targetId = slot.id,
         )
-        return@withPreparedPage
+        return@withTextPage
       }
-      if (current.text == text) return@withPreparedPage
+      if (current.text == text) return@withTextPage
       val candidate = current.copy(text = text)
       val updated = current.flowBounds?.let { flow ->
         candidate.copy(bounds = TextLayoutSpec.visibleBounds(candidate, flow))
@@ -827,11 +838,11 @@ class HybridInkSignView internal constructor(
   }
 
   internal fun setPreparedTextOptions(
-    context: PreparedPageContext,
+    context: TextPageContext,
     rawId: Double,
     options: TextAnnotationOptions,
   ) {
-    withPreparedPage(context) { page ->
+    withTextPage(context) { page ->
       val slot = requireTextTarget(context, rawId)
       val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
       val previous = slot.options
@@ -840,8 +851,8 @@ class HybridInkSignView internal constructor(
         options.direction ?: previous?.direction, options.maxLines ?: previous?.maxLines,
         options.alignment ?: previous?.alignment, options.verticalAnchor ?: previous?.verticalAnchor,
       )
-      if (textOverlay.setPreparedDraftOptions(slot.id, options)) return@withPreparedPage
-      if (current == null) return@withPreparedPage
+      if (textOverlay.setPreparedDraftOptions(slot.id, options)) return@withTextPage
+      if (current == null) return@withTextPage
       val fontSize = options.fontSize ?: current.fontSize
       val color = parseTextColor(options.color, current.textColor)
       val directionRtl = options.direction?.let(textOverlay::resolveDirection) ?: current.directionRtl
@@ -863,8 +874,8 @@ class HybridInkSignView internal constructor(
     }
   }
 
-  internal fun adjustPreparedTextSize(context: PreparedPageContext, rawId: Double, delta: Double): Double =
-    withPreparedPage(context) { page ->
+  internal fun adjustPreparedTextSize(context: TextPageContext, rawId: Double, delta: Double): Double =
+    withTextPage(context) { page ->
       val slot = requireTextTarget(context, rawId)
       val size = textOverlay.preparedDraftFontSize(slot.id)
         ?: moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.fontSize
@@ -877,8 +888,8 @@ class HybridInkSignView internal constructor(
       adjusted
     }
 
-  internal fun preparedTextEntry(context: PreparedPageContext, rawId: Double): TextEntry =
-    withPreparedPage(context) { page ->
+  internal fun preparedTextEntry(context: TextPageContext, rawId: Double): TextEntry =
+    withTextPage(context) { page ->
       val slot = requireTextTarget(context, rawId)
       val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
       val draft = textOverlay.draftText(slot.id)
@@ -891,8 +902,8 @@ class HybridInkSignView internal constructor(
       TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
     }
 
-  internal fun preparedTextEntries(context: PreparedPageContext): Array<TextEntry> =
-    withPreparedPage(context) { page ->
+  internal fun preparedTextEntries(context: TextPageContext): Array<TextEntry> =
+    withTextPage(context) { page ->
       coordinator.textTargetsForPage(page.id).map { slot ->
         val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
         val draft = textOverlay.draftText(slot.id)
@@ -907,11 +918,11 @@ class HybridInkSignView internal constructor(
     }
 
   internal fun focusPreparedText(
-    context: PreparedPageContext,
+    context: TextPageContext,
     rawId: Double,
     options: TextFocusOptions?,
   ): Promise<Unit> = launchPromise(presentation = true, modeSession = context.modeSession) {
-    val target = withPreparedPage(context) { page ->
+    val target = withTextPage(context) { page ->
       val slot = requireTextTarget(context, rawId)
       page to slot
     }
@@ -922,10 +933,10 @@ class HybridInkSignView internal constructor(
     viewportRequestID += 1L
     val requestId = viewportRequestID
     finishInteractionForLifecycle()
-    withPreparedPage(context) { }
+    withTextPage(context) { }
     if (viewportRequestID != requestId) throw operationCancelled()
     surface.switchPage(checkNotNull(coordinator.pageIndexForId(page.id)))
-    withPreparedPage(context) { }
+    withTextPage(context) { }
     if (viewportRequestID != requestId) throw operationCancelled()
     val center = rule?.let { (it.left + it.right) / 2.0 } ?: (bounds.left + bounds.right) / 2.0
     val request = ViewportRequest.FocusRule(
@@ -935,17 +946,18 @@ class HybridInkSignView internal constructor(
       verticalAnchor = options?.verticalAnchor ?: FieldFocusVerticalAnchor.CENTER,
       edgeOffset = options?.edgeOffset ?: 0.0,
     )
+    val capturedModeSession = context.modeSession
     suspendCancellableCoroutine<Unit> { continuation ->
       surface.focusField(request,
         isCurrent = { !disposed && coordinator.generation == context.generation &&
           coordinator.pageForId(context.pageId) != null && viewportRequestID == requestId &&
-          (context.modeSession == null || modeSessionIsCurrent(context.modeSession)) },
+          (capturedModeSession == null || modeSessionIsCurrent(capturedModeSession)) },
         completion = { if (continuation.isActive) continuation.resume(Unit) },
         cancelled = { if (continuation.isActive) continuation.resumeWithException(operationCancelled()) })
     }
   }
 
-  private fun <T> withPreparedPage(context: PreparedPageContext, action: (InkPageState) -> T): T =
+  private fun <T> withTextPage(context: TextPageContext, action: (InkPageState) -> T): T =
     runOnMainSync {
       checkMainThread()
       context.modeSession?.let(::requireModeSession)
@@ -954,7 +966,7 @@ class HybridInkSignView internal constructor(
       action(page)
     }
 
-  private fun requireTextTarget(context: PreparedPageContext, rawId: Double): TextTargetSlot {
+  private fun requireTextTarget(context: TextPageContext, rawId: Double): TextTargetSlot {
     if (!rawId.isFinite() || rawId <= 0.0 || rawId % 1.0 != 0.0 ||
       rawId > 9_007_199_254_740_991.0) {
       throw PdfSessionException("invalid_text_id", "Text IDs must be positive safe integers")
