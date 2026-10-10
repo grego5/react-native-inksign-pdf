@@ -69,7 +69,7 @@ extension InkSignView {
     case .selectedBackgroundColor(let value):
       textInteractionOverlay.setSelectedBackgroundColor(value)
     case .keyboardAvoidanceEnabled(let value):
-      textInteractionOverlay.setKeyboardAvoidanceEnabled(value)
+      interaction.viewport.setKeyboardAvoidanceEnabled(value)
     }
   }
 

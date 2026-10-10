@@ -4,9 +4,10 @@ import PencilKit
 extension InkSignView {
   func undo() throws {
     try performOnMainSync {
-      self.cancelActiveStroke()
-      self.finishInteractionForLifecycle()
-      guard let page = self.documentCoordinator.document?.activePage else { return }
+      let pageID = self.documentCoordinator.document?.activePage.id
+      let generation = self.documentCoordinator.generation
+      guard self.interaction.finishInteraction(), self.documentCoordinator.generation == generation,
+            let page = self.documentCoordinator.document?.activePage, page.id == pageID else { return }
       guard page.history.undo() else { return }
       self.documentCoordinator.synchronizeTextPlacement(on: page)
       self.installCommittedDrawing()
@@ -17,9 +18,10 @@ extension InkSignView {
 
   func redo() throws {
     try performOnMainSync {
-      self.cancelActiveStroke()
-      self.finishInteractionForLifecycle()
-      guard let page = self.documentCoordinator.document?.activePage else { return }
+      let pageID = self.documentCoordinator.document?.activePage.id
+      let generation = self.documentCoordinator.generation
+      guard self.interaction.finishInteraction(), self.documentCoordinator.generation == generation,
+            let page = self.documentCoordinator.document?.activePage, page.id == pageID else { return }
       guard page.history.redo() else { return }
       self.documentCoordinator.synchronizeTextPlacement(on: page)
       self.installCommittedDrawing()
@@ -30,9 +32,10 @@ extension InkSignView {
 
   func clear() throws {
     try performOnMainSync {
-      self.cancelActiveStroke()
-      self.finishInteractionForLifecycle()
-      guard let page = self.documentCoordinator.document?.activePage else { return }
+      let pageID = self.documentCoordinator.document?.activePage.id
+      let generation = self.documentCoordinator.generation
+      guard self.interaction.finishInteraction(), self.documentCoordinator.generation == generation,
+            let page = self.documentCoordinator.document?.activePage, page.id == pageID else { return }
       page.history.clear()
       self.installCommittedDrawing()
       self.textInteractionOverlay.syncContent()
@@ -56,6 +59,7 @@ extension InkSignView {
   func emitChange(force: Bool = false) {
     guard !disposed else { return }
     guard !suppressesOpenPresentationCallbacks else { return }
+    guard !interaction.deferStateChange(force: force) else { return }
     guard let state = documentCoordinator.document else {
       documentID = nil
       let mode = interactionMode()

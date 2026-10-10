@@ -114,7 +114,7 @@ extension InkSignView {
   }
 
   func getSessionPage(_ token: InkSignPdfModeSessionToken, pageIndex: Double?) throws -> Promise<any HybridAnalyzedPageSpec> {
-    try requireModeSession(token)
+    try interaction.requireSession(token)
     guard let document = documentCoordinator.document else { throw TextError.cancelled }
     let index = pageIndex ?? Double(document.activePageIndex)
     guard index.isFinite, index >= 0, index.rounded(.towardZero) == index,
@@ -171,7 +171,7 @@ extension InkSignView {
         }
         do {
           let analysis = try result.get()
-          if let modeSession { try self.requireModeSession(modeSession) }
+          if let modeSession { try self.interaction.requireSession(modeSession) }
           if !coordinator.textTargets(for: captured.3).isEmpty { coordinator.retainTextAnalysis(analysis) }
           settlement.resolve(HybridAnalyzedPage(owner: self, generation: captured.1,
             pageID: captured.3, analysis: analysis, modeSession: modeSession))
@@ -380,6 +380,7 @@ extension InkSignView {
     let (page, target) = try preparedTarget(handle, id: id)
     let rule = try displayedWritingRule(target, page: page)
     let bounds = displayedTargetBounds(target, page: page)
+    let geometryRevision = page.geometryRevision
     let result = InkSignPdfOperationPromise<Void>()
     performOnMain {
       guard !self.disposed, self.documentCoordinator.generation == handle.generation else {
@@ -387,23 +388,25 @@ extension InkSignView {
       }
       guard let document = self.documentCoordinator.document,
             let index = document.index(of: handle.pageID) else { result.reject(TextError.cancelled); return }
-      self.fieldFocusRequestID &+= 1
-      let requestID = self.fieldFocusRequestID
+      let requestID = self.interaction.viewport.supersede()
       let runFocus = {
-        guard !self.disposed, self.fieldFocusRequestID == requestID,
+        guard !self.disposed, self.interaction.viewport.requestID == requestID,
+              handle.modeSession.map(self.interaction.sessionIsCurrent) ?? true,
               self.documentCoordinator.document?.activePage.id == handle.pageID else {
           result.reject(TextError.cancelled); return
         }
-        self.finishInteractionForLifecycle()
-        guard self.fieldFocusRequestID == requestID,
-              handle.modeSession.map(self.modeSessionIsCurrent) ?? true else {
+        guard self.interaction.finishInteraction(), self.interaction.viewport.requestID == requestID,
+              self.documentCoordinator.generation == handle.generation,
+              self.documentCoordinator.document?.activePage.id == handle.pageID,
+              page.geometryRevision == geometryRevision,
+              handle.modeSession.map(self.interaction.sessionIsCurrent) ?? true else {
           result.reject(TextError.cancelled); return
         }
-        guard let viewportTarget = self.fieldFocusTarget(ruleY: rule?.y ?? bounds.midY,
+        guard let viewportTarget = self.interaction.viewport.fieldFocusTarget(ruleY: rule?.y ?? bounds.midY,
           horizontalFocus: rule.map { ($0.minX + $0.maxX) / 2 } ?? bounds.midX, zoom: options?.zoom ?? 2,
           verticalAnchor: options?.verticalAnchor ?? .center, edgeOffset: options?.edgeOffset ?? 0)
           else { result.reject(TextError.notReady); return }
-        self.animateViewport(target: viewportTarget, modeSession: handle.modeSession) { outcome in
+        self.interaction.viewport.animateViewport(target: viewportTarget, modeSession: handle.modeSession) { outcome in
           switch outcome {
           case .success: result.resolve(())
           case .failure(let error): result.reject(error)
@@ -423,7 +426,7 @@ extension InkSignView {
   }
 
   private func validateTextPageContext(_ handle: any InkSignPdfTextPageContext) throws {
-    if let token = handle.modeSession { try requireModeSession(token) }
+    if let token = handle.modeSession { try interaction.requireSession(token) }
     guard !disposed, documentCoordinator.generation == handle.generation,
           documentCoordinator.document?.pages.contains(where: { $0.id == handle.pageID }) == true else {
       throw TextError.cancelled

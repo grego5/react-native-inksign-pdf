@@ -10,121 +10,86 @@ extension InkSignView {
   }
 
   func documentViewDidNavigate(to page: PDFPage) {
-    guard !suppressesOpenPresentationCallbacks else { return }
-    guard let state = documentCoordinator.document else { return }
+    guard !suppressesOpenPresentationCallbacks,
+          let state = documentCoordinator.document else { return }
     let index = state.document.index(for: page)
-    guard index >= 0, index < state.pages.count else { return }
-    if let target = pendingStructuralPresentationPageID, state.pages[index].id != target {
-      return
-    }
-
+    guard state.pages.indices.contains(index) else { return }
+    if let request = interaction.presentation, request.structural,
+       state.pages[index].id != request.pageID { return }
     if index != state.activePageIndex {
-      cancelPendingPageSwitch()
-      finishInteractionForLifecycle()
-      let wasEditing = editMode
-      cancelActiveStroke()
-      setInteractionMode(editing: false, interactionsEnabled: false)
+      let activePageID = state.activePage.id
+      guard interaction.finishInteraction(), documentCoordinator.document === state,
+            state.activePage.id == activePageID else { return }
       attachedOverlayPage = nil
       documentCoordinator.selectPage(id: state.pages[index].id)
+      let request = interaction.beginPresentation(page: state.activePage) { [weak self] result in
+        if case .success(let info) = result { self?.onPageChange?(info) }
+      }
+      guard interaction.presentation === request else { return }
       textInteractionOverlay.clearPlacementRules()
       invalidateOverlayTransformCache()
       textInteractionOverlay.syncContent()
-      pageSwitchRequestID &+= 1
-      pendingPageSwitchID = pageSwitchRequestID
-      pendingPageSwitchEditing = wasEditing
-      pendingPageSwitchCompletion = { [weak self] result in
-        if case .success(let info) = result { self?.onPageChange?(info) }
-      }
     }
-
     guard let active = documentCoordinator.document?.activePage,
-          active.page === page,
-          overlayProvider.isDisplaying(page),
+          active.page === page, overlayProvider.isDisplaying(page),
           let canvas = overlayProvider.canvasView(for: active.id) else { return }
     overlayDidDisplay(canvas, for: active.id)
   }
 
   @discardableResult
-  func switchPage(
-    to pageIndex: Int,
-    completion: ((Result<PageInfo, Error>) -> Void)? = nil
-  ) throws -> InkSignPdfNativePageInfo {
+  func switchPage(to pageIndex: Int,
+                  completion: ((Result<PageInfo, Error>) -> Void)? = nil) throws -> InkSignPdfNativePageInfo {
     guard let state = documentCoordinator.document else { throw ViewportError.notReady }
-    try requireViewportReady(request: .preserve)
+    try interaction.viewport.requireViewportReady(request: .preserve)
     guard state.pages.indices.contains(pageIndex) else {
       throw ViewportError.invalidOptions("page index is out of range")
     }
     if pageIndex == state.activePageIndex { return try currentPageInfo() }
-
-    cancelPendingPageSwitch()
-    finishInteractionForLifecycle()
-    let wasEditing = editMode
-    cancelActiveStroke()
-    setInteractionMode(editing: false, interactionsEnabled: false)
+    let activePageID = state.activePage.id
+    guard interaction.finishInteraction(), documentCoordinator.document === state,
+          state.activePage.id == activePageID else { throw ViewportError.cancelled }
     attachedOverlayPage = nil
-    pendingPageSwitchEditing = wasEditing
-    pendingPageSwitchCompletion = completion
-    pageSwitchRequestID &+= 1
-    pendingPageSwitchID = pageSwitchRequestID
     guard documentCoordinator.selectPage(id: state.pages[pageIndex].id) != nil else {
-      cancelPendingPageSwitch()
       throw ViewportError.notReady
     }
+    let request = interaction.beginPresentation(page: state.activePage, completion: completion)
+    guard interaction.presentation === request else { throw ViewportError.cancelled }
     textInteractionOverlay.clearPlacementRules()
     invalidateOverlayTransformCache()
     textInteractionOverlay.syncContent()
-
-    let page = state.pages[pageIndex].page
-    documentView.go(to: page)
-    if documentView.currentPage === page {
-      documentViewDidNavigate(to: page)
+    interaction.viewport.navigate(to: state.activePage.page)
+    if documentView.currentPage === state.activePage.page {
+      documentViewDidNavigate(to: state.activePage.page)
     }
     return try currentPageInfo()
   }
 
-  func finishPageSwitchIfReady(requestID: UInt64) {
-    guard pendingPageSwitchID == requestID,
+  func finishPagePresentationIfReady() {
+    guard let request = interaction.presentation,
           let state = documentCoordinator.document,
-          documentView.currentPage === state.activePage.page,
-          attachedOverlayPage == state.activePage.id,
-          overlayTransformPage == state.activePage.id,
-          pageToOverlayTransform != nil else { return }
-
-    let viewport = pendingPageSwitchViewport.flatMap { viewportTarget(for: $0) }
-    if pendingPageSwitchViewport != nil && viewport == nil { return }
-    pendingPageSwitchID = nil
-    pendingPageSwitchViewport = nil
-    let wasEditing = pendingPageSwitchEditing
-    pendingPageSwitchEditing = false
-    let completion = pendingPageSwitchCompletion
-    pendingPageSwitchCompletion = nil
-    let isStructural = structuralInteractionSuspended
-    if let viewport, !applyViewport(target: viewport) {
-      pendingStructuralPresentationPageID = nil
-      if isStructural { resumeStructuralInteraction() }
-      completion?(.failure(ViewportError.notReady))
+          documentCoordinator.generation == request.generation,
+          state.activePage.id == request.pageID,
+          state.activePage.geometryRevision == request.geometryRevision,
+          interaction.viewport.viewportReadiness().allowsCommand(fitToPage: false) else { return }
+    let target = request.viewport.flatMap { interaction.viewport.viewportTarget(for: $0) }
+    if request.viewport != nil && target == nil { return }
+    guard interaction.claimPresentation(request) else { return }
+    if let target, !interaction.viewport.applyViewport(target: target) {
+      if interaction.presentationIsCurrent(request) { interaction.resumePresentation(publish: false) }
+      request.finish(.failure(ViewportError.notReady))
+      if interaction.presentationIsCurrent(request) { emitChange() }
       return
     }
-    pendingStructuralPresentationPageID = nil
-    installCommittedDrawing()
-    if isStructural { resumeStructuralInteraction() }
-    else { setInteractionMode(editing: wasEditing) }
-    if let completion {
-      do {
-        completion(.success(toPublicPageInfo(try currentPageInfo())))
-      } catch {
-        completion(.failure(error))
-      }
+    guard interaction.presentationIsCurrent(request) else {
+      request.finish(.failure(ViewportError.cancelled)); return
     }
-  }
-
-  func cancelPendingPageSwitch() {
-    let completion = pendingPageSwitchCompletion
-    pendingPageSwitchCompletion = nil
-    pendingPageSwitchID = nil
-    pendingPageSwitchEditing = false
-    pendingPageSwitchViewport = nil
-    pendingStructuralPresentationPageID = nil
-    completion?(.failure(ViewportError.cancelled))
+    installCommittedDrawing()
+    interaction.resumePresentation(publish: false)
+    guard interaction.presentationIsCurrent(request) else {
+      request.finish(.failure(ViewportError.cancelled)); return
+    }
+    do { request.finish(.success(toPublicPageInfo(try currentPageInfo()))) }
+    catch { request.finish(.failure(error)) }
+    if interaction.presentationIsCurrent(request) { emitChange() }
   }
 }
