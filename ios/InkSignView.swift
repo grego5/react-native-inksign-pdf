@@ -100,23 +100,9 @@ final class InkSignView: HybridInkSignViewSpec {
   let documentCoordinator: InkSignPdfDocumentCoordinator
   lazy var textInteractionOverlay = InkSignPdfTextInteractionOverlay(frame: .zero)
   private lazy var pdfViewGestureDelegate = InkSignPdfViewGestureDelegate(owner: self)
-  var pageSwitchRequestID: UInt64 = 0
-  var fieldFocusRequestID: UInt64 = 0
-  let viewportMotion = InkSignPdfViewportMotion()
-  var isApplyingViewportFrame = false
+  private(set) lazy var interaction = ViewerInteractionCoordinator(host: self)
   var pageNavigationRequestID: UInt64 = 0
-  var pendingPageSwitchID: UInt64?
-  var pendingPageSwitchEditing = false
-  var pendingPageSwitchViewport: ViewportRequest?
-  var pendingStructuralPresentationPageID: UUID?
-  var pendingPageSwitchCompletion: ((Result<PageInfo, Error>) -> Void)?
-  var textKeyboardOcclusion: CGFloat = 0
-  weak var textInsetScrollView: UIScrollView?
-  var textInsetAdjustment: (baseBottom: CGFloat, appliedBottom: CGFloat)?
   var pendingOpen: PendingOpen?
-  var editMode = false
-  var viewInteractionsEnabled = true
-  var structuralInteractionSuspended = false
   var doubleTap: DoubleTapOptions?
   var currentPen = PenValue()
   var queuedPen: PenValue?
@@ -131,23 +117,8 @@ final class InkSignView: HybridInkSignViewSpec {
   var lastChange: (Bool, Bool, Bool, String, String?, String?)?
   var documentID: String?
   var loadError: String?
-  struct CoordinateTarget {
-    let generation: UInt64
-    let pageID: UUID
-    let geometryRevision: UInt64
-  }
-  final class CoordinateRequest {
-    let result = InkSignPdfOperationPromise<PageCoords>()
-    var target: CoordinateTarget?
-    var modeSession: InkSignPdfModeSessionToken?
-  }
-  var pendingPageCoords: CoordinateRequest?
-  var currentModeSession: InkSignPdfModeSessionToken?
-  var isPickingPageCoords: Bool { pendingPageCoords?.target != nil }
-
-  func interactionMode() -> InteractionMode {
-    isPickingPageCoords ? .pagecoords : textInteractionOverlay.interactionMode()
-  }
+  var isPickingPageCoords: Bool { interaction.isPickingCoordinates }
+  func interactionMode() -> InteractionMode { interaction.mode }
   var commandQueue: [ViewerCommand] = []
   var runningCommand: ViewerCommand?
 
@@ -230,57 +201,7 @@ final class InkSignView: HybridInkSignViewSpec {
   }
   var onPageChange: ((PageInfo) -> Void)?
   var onZoomChange: ((Double) -> Void)?
-  private var zoomReportWork: DispatchWorkItem?
-  private var zoomReportSample: (UUID, CGFloat, CGFloat)?
-  private var reportedZoomGeneration: UInt64?
-  private var reportedZoomPage: UUID?
-  private var reportedZoom: Double?
 
-  func scheduleZoomReport() {
-    guard !disposed, let state = documentCoordinator.document,
-          let fit = usableFitScale() else { return }
-    let sample = (state.activePage.id, documentView.scaleFactor, fit)
-    if let previous = zoomReportSample, previous == sample,
-       reportedZoomGeneration == documentCoordinator.generation,
-       reportedZoomPage == state.activePage.id,
-       reportedZoom == Double(sample.1 / sample.2) { return }
-    zoomReportSample = sample
-    zoomReportWork?.cancel()
-    queueZoomReport()
-  }
-
-  private func queueZoomReport() {
-    let work = DispatchWorkItem { [weak self] in
-      guard let self, !self.disposed, let state = self.documentCoordinator.document else { return }
-      if self.viewportMotion.isRunning || self.hasActiveViewportGesture(in: self.documentView) {
-        self.queueZoomReport()
-        return
-      }
-      guard let fit = self.usableFitScale() else { return }
-      guard self.documentView.currentPage === state.activePage.page,
-            self.attachedOverlayPage == state.activePage.id,
-            self.pageToOverlayTransform != nil else { return }
-      let zoom = Double(self.documentView.scaleFactor / fit)
-      if self.reportedZoomGeneration != self.documentCoordinator.generation ||
-         self.reportedZoomPage != state.activePage.id || self.reportedZoom != zoom {
-        self.reportedZoomGeneration = self.documentCoordinator.generation
-        self.reportedZoomPage = state.activePage.id
-        self.reportedZoom = zoom
-        self.onZoomChange?(zoom)
-      }
-      self.zoomReportSample = (state.activePage.id, self.documentView.scaleFactor, fit)
-    }
-    zoomReportWork = work
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.12, execute: work)
-  }
-
-  private func hasActiveViewportGesture(in view: UIView) -> Bool {
-    if let scroll = view as? UIScrollView,
-       scroll.isTracking || scroll.isDragging || scroll.isDecelerating || scroll.isZooming || scroll.isZoomBouncing {
-      return true
-    }
-    return view.subviews.contains { hasActiveViewportGesture(in: $0) }
-  }
   var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Void)?
 
   var canvasView: InkCanvasView { overlayProvider.canvasView }
@@ -302,7 +223,7 @@ final class InkSignView: HybridInkSignViewSpec {
     documentView.displayMode = .singlePage
     documentView.displayDirection = .horizontal
     documentView.usePageViewController(true, withViewOptions: nil)
-    applyPagerDirectionNow()
+    interaction.viewport.applyPagerDirectionNow()
     documentView.displayBox = .mediaBox
     documentView.displaysPageBreaks = false
     documentView.minScaleFactor = 0.1
@@ -325,7 +246,7 @@ final class InkSignView: HybridInkSignViewSpec {
     canvasView.owner = self
     textInteractionOverlay.owner = self
     textInteractionOverlay.onInteractionModeChanged = { [weak self] in
-      self?.emitChange()
+      self?.interaction.textActivityChanged()
     }
     textInteractionOverlay.onTextSelectionChange = { [weak self] selection in
       guard let self else { return }
@@ -341,7 +262,7 @@ final class InkSignView: HybridInkSignViewSpec {
       queue: .main) { [weak self] _ in
         self?.cancelActiveStroke()
       }
-    setInteractionMode(editing: false)
+    interaction.setBaseMode(ink: false)
     pdfPageObserver = NotificationCenter.default.addObserver(
       forName: .PDFViewPageChanged,
       object: documentView,
@@ -354,10 +275,7 @@ final class InkSignView: HybridInkSignViewSpec {
 
   deinit {
     disposed = true
-    viewportMotion.cancel()
-    currentModeSession?.cancelled = true
-    pendingPageCoords?.result.reject(LoadError.cancelled)
-    pendingPageCoords = nil
+    interaction.dispose()
     pendingOpen = nil
     pageNavigationRequestID &+= 1
     textInteractionOverlay.discardForDisposal()
@@ -375,23 +293,21 @@ final class InkSignView: HybridInkSignViewSpec {
   func dispose() {
     performOnMain {
       guard !self.disposed else { return }
-      self.invalidateModeSession()
       self.disposed = true
-      self.viewportMotion.cancel()
+      self.interaction.dispose()
       self.cancelViewerCommands()
       self.pageInputCoordinator.cancelPending()
-      self.cancelPendingPageSwitch()
       self.textInteractionOverlay.discardForDisposal()
       self.cancelActiveStroke(clearLive: false)
       let pendingOpen = self.pendingOpen
       self.pendingOpen = nil
       pendingOpen?.settlement.reject(LoadError.cancelled)
-      self.pageSwitchRequestID &+= 1
+
       self.pageNavigationRequestID &+= 1
       self.documentView.document = nil
       self.overlayProvider.dispose()
       self.documentCoordinator.dispose()
-      self.applyInteractionMode(editing: false, interactionsEnabled: false)
+      self.interaction.setBaseMode(ink: false, enabled: false, finish: false)
       self.attachedOverlayPage = nil
       self.invalidateOverlayTransformCache()
       self.activeDrawingBaseline = nil
@@ -415,7 +331,6 @@ final class InkSignView: HybridInkSignViewSpec {
       }
       self.onStateChange = nil
       self.onPageChange = nil
-      self.zoomReportWork?.cancel()
       self.onZoomChange = nil
     }
   }

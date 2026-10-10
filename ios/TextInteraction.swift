@@ -109,14 +109,10 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     }
   }
   private var editor: UITextView?
+  var hasActiveEditor: Bool { editor != nil }
   private var settlingEditor = false
   private var lastEditorContentSize = CGSize.zero
-  private var keyboardAvoidanceEnabled = true
   private var caretFollowEnabled = false
-  private var keyboardFrameInScreen: CGRect?
-  private var keyboardScreen: UIScreen?
-  private var keyboardObserver: NSObjectProtocol?
-  private var keyboardHideObserver: NSObjectProtocol?
   private enum PlacementRuleCache {
     case scanning(generation: UInt64, pageID: UUID, requestID: UInt64)
     case ready(generation: UInt64, pageID: UUID, rules: [InkSignPdfPlacementRule], labels: [InkSignPdfKeyTextMatch])
@@ -180,40 +176,18 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     addGestureRecognizer(selectedDragRecognizer)
     tapRecognizer.require(toFail: dragRecognizer)
     tapRecognizer.require(toFail: selectedDragRecognizer)
-    keyboardObserver = NotificationCenter.default.addObserver(
-      forName: UIResponder.keyboardWillChangeFrameNotification,
-      object: nil,
-      queue: .main) { [weak self] notification in
-        self?.keyboardFrameChanged(notification)
-      }
-    keyboardHideObserver = NotificationCenter.default.addObserver(
-      forName: UIResponder.keyboardWillHideNotification,
-      object: nil,
-      queue: .main) { [weak self] notification in
-        self?.keyboardFrameChanged(notification)
-      }
+
   }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-  deinit {
-    if let keyboardObserver { NotificationCenter.default.removeObserver(keyboardObserver) }
-    if let keyboardHideObserver { NotificationCenter.default.removeObserver(keyboardHideObserver) }
-  }
 
   internal func interactionMode() -> InteractionMode {
     switch interactionState {
     case .placing: return .textadd
     case .editing: return .textedit
     case .dragging, .selected: return .view
-    case .idle: return owner?.editMode == true ? .ink : .view
+    case .idle: return .view
     }
-  }
-
-  internal func setKeyboardAvoidanceEnabled(_ enabled: Bool) {
-    keyboardAvoidanceEnabled = enabled
-    updateKeyboardOcclusion()
-    if editor != nil { followCaretIfNeeded() }
   }
 
   func setDefaultFontSize(_ value: Double?) {
@@ -554,13 +528,13 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   func finishForLifecycle() {
-    if case .placing = interactionState { interactionState = .idle }
     if editor != nil {
-      finishEditing()
+      finishEditing(keepingSelection: false)
     } else if case .dragging = interactionState {
-      commitDrag()
+      commitDrag(keepingSelection: false)
+    } else {
+      clearSelection()
     }
-    clearSelection()
   }
 
   func discardForDocumentReplacement() {
@@ -601,7 +575,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   /// The page overlay owns the coordinate transform; this view only receives
   /// annotation-owned touches and lets the canvas handle all other input.
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-    if owner?.isPickingPageCoords == true || owner?.editMode == true { return nil }
+    guard owner?.interaction.acceptsTextInput == true else { return nil }
     if let hit = super.hitTest(point, with: event), hit !== self { return hit }
     if hasPendingPlacement() {
       return owner?.canonicalPagePoint(fromOverlay: point) == nil ? nil : self
@@ -696,7 +670,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     let editorFocus = flowBounds.map { CGPoint(x: $0.midX, y: $0.midY) } ??
       editor.flatMap { displayedPagePoint(fromOverlay:
         CGPoint(x: $0.frame.midX, y: $0.frame.midY)) } ?? pagePoint
-    owner?.applyTextPlacementViewport(placement.options, editorFocus: editorFocus)
+    owner?.interaction.viewport.applyTextPlacementViewport(placement.options, editorFocus: editorFocus)
     return true
   }
 
@@ -791,7 +765,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                          shouldReceive touch: UITouch) -> Bool {
-    if owner?.isPickingPageCoords == true || owner?.editMode == true { return false }
+    guard owner?.interaction.acceptsTextInput == true else { return false }
     if gestureRecognizer === placementTapRecognizer {
       return placementRecognizerAdmits(at: touch.location(in: self))
     }
@@ -1077,7 +1051,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     layoutEditor()
     addSubview(textView)
     textView.becomeFirstResponder()
-    updateKeyboardOcclusion()
+    owner?.interaction.viewport.textEditingChanged()
     caretFollowEnabled = true
     followCaretIfNeeded()
     emitInteractionModeChanged()
@@ -1198,7 +1172,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     syncPresentation()
   }
 
-  private func commitDrag() {
+  private func commitDrag(keepingSelection: Bool = true) {
     guard case .dragging(let drag) = interactionState else { return }
     guard let owner,
           owner.documentCoordinator.generation == drag.generation,
@@ -1208,52 +1182,48 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       syncPresentation()
       return
     }
-    if drag.position != drag.original.position {
-      let updated = drag.original.moving(to: drag.position,
-                                         pageSize: layoutPageSize(rotation: drag.original.layoutRotation))
+    let updated = drag.position != drag.original.position
+      ? drag.original.moving(to: drag.position,
+                             pageSize: layoutPageSize(rotation: drag.original.layoutRotation)) : nil
+    interactionState = keepingSelection ? .selected(id: drag.original.id) : .idle
+    if let updated {
       owner.replaceTextAnnotation(drag.original,
                                   with: updated,
                                   type: .textMove,
                                   generation: drag.generation,
                                   pageIndex: drag.pageIndex)
     }
-    interactionState = .selected(id: drag.original.id)
     syncPresentation()
   }
 
-  private func finishEditing() {
+  private func finishEditing(keepingSelection: Bool = true) {
     guard case .editing = interactionState, let textView = editor else { return }
     textView.layoutManager.ensureLayout(for: textView.textContainer)
     lastEditorContentSize = textView.bounds.size
     guard case .editing(let state) = interactionState else { return }
     let text = textView.text ?? ""
     let original = state.original
-    var finishedID: UInt64?
+    let annotation = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+      ? nil : settledAnnotation(state: state, text: text)
+    let finishedID = keepingSelection ? annotation?.id : nil
+    closeEditor(endingState: finishedID.map { .selected(id: $0) } ?? .idle)
     if let original {
-      if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-        owner?.removeTextAnnotation(original,
-                                    generation: state.generation,
-                                    pageIndex: state.pageIndex)
-        finishedID = nil
-      } else if owner != nil {
-        let updated = settledAnnotation(state: state, text: text)
+      if let annotation {
         owner?.replaceTextAnnotation(original,
-                                     with: updated,
+                                     with: annotation,
                                      type: .textEdit,
                                      generation: state.generation,
                                      pageIndex: state.pageIndex)
-        finishedID = original.id
+      } else {
+        owner?.removeTextAnnotation(original,
+                                    generation: state.generation,
+                                    pageIndex: state.pageIndex)
       }
-    } else if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              owner != nil {
-      let annotation = settledAnnotation(state: state, text: text)
+    } else if let annotation {
       owner?.appendTextAnnotation(annotation,
                                   generation: state.generation,
                                   pageIndex: state.pageIndex)
-      finishedID = annotation.id
     }
-    closeEditor()
-    interactionState = finishedID.map { .selected(id: $0) } ?? .idle
     syncPresentation()
   }
 
@@ -1333,17 +1303,19 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     return Double(fontSize)
   }
 
-  private func closeEditor() {
+  private func closeEditor(endingState: InteractionState? = nil) {
     guard let editor else { return }
     settlingEditor = true
-    editor.resignFirstResponder()
-    editor.delegate = nil
-    editor.removeFromSuperview()
     self.editor = nil
-    settlingEditor = false
     caretFollowEnabled = false
     lastEditorContentSize = .zero
-    owner?.resetTextViewportAvoidance()
+    editor.delegate = nil
+    // Retire the captured activity before selection or first-responder callbacks.
+    if let endingState { interactionState = endingState }
+    editor.resignFirstResponder()
+    editor.removeFromSuperview()
+    settlingEditor = false
+    owner?.interaction.viewport.textEditingChanged()
   }
 
   private func clearSelection() {
@@ -1437,34 +1409,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       .insetBy(dx: -outlineStrokeWidth / 2, dy: -outlineStrokeWidth / 2)
     let outline = convert(outlineInOverlay, to: owner.container)
     let caret = editor.convert(editor.caretRect(for: range.end), to: owner.container)
-    owner.ensureTextVisible(outline: outline, caret: caret)
-  }
-
-  private func keyboardFrameChanged(_ notification: Notification) {
-    if notification.name == UIResponder.keyboardWillHideNotification {
-      keyboardFrameInScreen = nil
-      keyboardScreen = nil
-    } else if let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue {
-      keyboardFrameInScreen = frameValue.cgRectValue
-      keyboardScreen = notification.object as? UIScreen
-    }
-    updateKeyboardOcclusion()
-    if editor != nil { followCaretIfNeeded() }
-  }
-
-  private func updateKeyboardOcclusion() {
-    guard keyboardAvoidanceEnabled, editor != nil,
-          let frame = keyboardFrameInScreen,
-          let window,
-          let owner else {
-      owner?.resetTextViewportAvoidance()
-      return
-    }
-    let keyboardFrame = (keyboardScreen ?? window.screen).coordinateSpace.convert(
-      frame, to: owner.container)
-    let overlap = owner.container.bounds.intersection(keyboardFrame)
-    owner.setTextKeyboardOcclusion(overlap.isNull
-      ? 0 : max(0, owner.container.bounds.maxY - overlap.minY))
+    owner.interaction.viewport.ensureTextVisible(outline: outline, caret: caret)
   }
 
   private func selectedAnnotation() -> InkSignPdfTextAnnotation? {

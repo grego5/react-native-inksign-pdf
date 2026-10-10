@@ -27,7 +27,7 @@ extension InkSignView {
   /// receives the coordinator's ID through canvasGestureWillBegin.
   func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
     guard canvasView === self.canvasView,
-          editMode, documentCoordinator.document != nil,
+          interaction.acceptsInkInput, documentCoordinator.document != nil,
           pageToOverlayTransform != nil,
           activeDrawingTransactionID == nil,
           endedDrawingTransactionID == nil else {
@@ -66,8 +66,8 @@ extension InkSignView {
   }
 
   func canvasGestureWillBegin(_ canvas: InkCanvasView) -> UInt64? {
-    viewportMotion.cancel()
-    guard canvas === canvasView, editMode, documentCoordinator.document != nil,
+    interaction.viewport.cancelMotion()
+    guard canvas === canvasView, interaction.acceptsInkInput, documentCoordinator.document != nil,
           pageToOverlayTransform != nil else {
       return nil
     }

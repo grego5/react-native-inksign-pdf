@@ -6,10 +6,8 @@ import QuartzCore
 
 extension InkSignView {
   func overlayProviderWillReset() {
-    viewportMotion.cancel()
-    textInteractionOverlay.finishForLifecycle()
+    interaction.finishInteraction()
     textInteractionOverlay.removeFromSuperview()
-    cancelActiveStroke()
     attachedOverlayPage = nil
     invalidateOverlayTransformCache()
   }
@@ -47,7 +45,7 @@ extension InkSignView {
     attachedOverlayPage = pageID
     refreshOverlayTransform(overlay, for: pageID)
     textInteractionOverlay.syncContent()
-    if let pendingPageSwitchID { finishPageSwitchIfReady(requestID: pendingPageSwitchID) }
+    finishPagePresentationIfReady()
     _ = completeOpenIfReady()
   }
 
@@ -55,9 +53,9 @@ extension InkSignView {
     guard overlayProvider.canvasView(for: pageID) === overlay,
           attachedOverlayPage == pageID else { return }
     attachedOverlayPage = nil
-    textInteractionOverlay.finishForLifecycle()
-    cancelActiveStroke()
+    interaction.finishInteraction()
     invalidateOverlayTransformCache()
+    interaction.synchronizePolicy()
   }
 
   func overlayLayoutChanged(_ overlay: InkCanvasView) {
@@ -65,13 +63,14 @@ extension InkSignView {
           let pageID = documentCoordinator.document?.activePage.id,
           attachedOverlayPage == pageID, isSupportedPage(pageID) else { return }
     refreshOverlayTransform(overlay, for: pageID)
-    if let pendingPageSwitchID { finishPageSwitchIfReady(requestID: pendingPageSwitchID) }
+    finishPagePresentationIfReady()
     _ = completeOpenIfReady()
+    interaction.synchronizePolicy()
   }
 
   func refreshActiveOverlayTransform() {
-    reconcileTextViewportInset()
-    scheduleZoomReport()
+    interaction.viewport.reconcileTextViewportInset()
+    interaction.viewport.scheduleZoomReport()
     guard let state = documentCoordinator.document,
           let canvas = overlayProvider.canvasView(for: state.activePage.id) else { return }
     refreshOverlayTransform(canvas, for: state.activePage.id)
@@ -80,7 +79,7 @@ extension InkSignView {
   /// Reports a completed gesture mutation. Presentation callbacks only refresh
   /// dependent state; they never issue another viewport mutation.
   func refreshOverlayTransform(_ overlay: InkCanvasView, for pageID: UUID) {
-    scheduleZoomReport()
+    interaction.viewport.scheduleZoomReport()
     guard isSupportedPage(pageID), attachedOverlayPage == pageID,
           let state = documentCoordinator.document,
           let page = documentView.currentPage,

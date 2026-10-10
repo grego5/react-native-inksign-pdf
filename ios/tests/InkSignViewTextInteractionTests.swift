@@ -815,7 +815,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let history = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history)
     let zoom = fixture.view.documentView.scaleFactor
 
-    fixture.view.panViewport(by: CGPoint(x: -40, y: 30))
+    fixture.view.interaction.viewport.panViewport(by: CGPoint(x: -40, y: 30))
 
     XCTAssertEqual(fixture.view.documentView.scaleFactor, zoom, accuracy: 0.001)
     XCTAssertEqual(history.content.textAnnotations.first?.bounds, annotation.bounds)
@@ -966,7 +966,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
       let tap = CGPoint(x: 150, y: 200).applying(try XCTUnwrap(view.pageToOverlayTransform))
       XCTAssertTrue(overlay.routePlacementTap(at: tap))
       let settled = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
-        !view.viewportMotion.isRunning
+        !view.interaction.viewport.motion.isRunning
       }, object: nil)
       wait(for: [settled], timeout: 3)
     }
@@ -1107,7 +1107,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     try overlay.armPlacement(generation: generation)
     XCTAssertNil(overlay.beginPlacementRuleScan(generation: generation, pageID: firstPageID),
                  "Entering placement starts a scan for the active page")
-    fixture.view.setInteractionMode(editing: true)
+    fixture.view.interaction.setBaseMode(ink: true)
     XCTAssertFalse(overlay.hasPendingPlacement())
     XCTAssertNil(overlay.beginPlacementRuleScan(generation: generation, pageID: firstPageID),
                  "Leaving placement keeps the active page's scan result")

@@ -54,7 +54,7 @@ final class InkCanvasView: PKCanvasView {
   }
 
   override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-    guard owner?.editMode == true else { return nil }
+    guard owner?.interaction.acceptsInkInput == true else { return nil }
     return super.hitTest(point, with: event)
   }
 
@@ -206,7 +206,7 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
     displayedPages.insert(ObjectIdentifier(page))
     owner?.configureDoubleTapGestureRecognition()
     owner?.overlayDidDisplay(overlay.canvasView, for: pageID)
-    owner?.updatePDFViewInteractionOwnership()
+    owner?.interaction.synchronizePolicy()
   }
 
   func pdfView(_ view: PDFView,

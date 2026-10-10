@@ -2,8 +2,15 @@
 
 ## Ownership
 
-- `InkSignView` adapts Nitro and coordinates operations. Coordinator ownership:
-  [architecture](../architecture.md).
+- `InkSignView` adapts Nitro, runs the FIFO command queue, and connects owners.
+  Document/history ownership: [architecture](../architecture.md).
+- `ViewerInteractionCoordinator` owns mode tokens, base view/ink policy,
+  coordinate picking, and pending page presentation. Text activity comes from
+  the overlay; input requires ready page/overlay/transform geometry.
+  Mode transitions defer state snapshots until settlement; text cleanup retires
+  captured activity before callbacks so newer requests retain ownership.
+- `ViewerViewportController` owns programmatic viewport writes, motion,
+  keyboard space, and settled zoom events. PDFKit owns its live scroll geometry.
 - Serial PDF queue builds/caches canonical text/rule analysis and groups label
   rows once. LRU: eight pages/8 MiB estimated. Navigation/reordering/rotation
   retain analysis; replacement/disposal clear the cache.
@@ -29,7 +36,9 @@
   Resolve after active page, overlay, transform, and requested viewport readiness.
   Retain target selection through intermediate PDFKit page notifications.
 - Structural suspension disables interaction independently of mode; completion
-  applies the latest mode. Import selection follows shared defaults.
+  applies the latest policy. Navigation and structural failure recovery share
+  presentation readiness; requests are claimed before viewport work and settle
+  once. Import selection follows shared defaults.
 - Rotation updates coordinator orientation/geometry revision, applies it to the
   in-memory PDFKit page, and relayouts. Assembly rebinds orientation;
   [export](export.md) persists it. Shared geometry/history invariants apply.
@@ -41,4 +50,6 @@
 - PDFKit page/view conversion aligns overlays during zoom, scrolling, and page
   changes.
 - Page-change callbacks follow installed page switches.
-- Disposal uses the shared operation cancellation and cleanup rules.
+- Replacement/disposal retires mode callers, picking, presentation, and motion
+  through the interaction owner. Running PDF work retains its FIFO slot and
+  resources until completion; shared cleanup rules apply.

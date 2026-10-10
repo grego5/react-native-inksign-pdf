@@ -90,7 +90,9 @@ and export.
   open/close. Presentation requests for a retiring document are cancelled when
   replacement/close is scheduled. Other synchronous commands and user gestures act immediately.
 - `setMode()` requires ready presentation and replaces the mode-session token,
-  including same-mode requests. Session methods/pages cancel on supersession,
+  including same-mode requests. With no document, `setMode('view')` is a no-op
+  returning an inactive session; ink/text still require a document.
+  Session methods/pages cancel on supersession,
   scheduled replacement/close, or disposal; ordinary pages are document-bound.
   Navigation/reordering and internal text transitions retain the token. Handles
   retain tokens/weak view references; handle disposal does not end the session.
@@ -102,7 +104,8 @@ and export.
 - `close()` waits its turn; `close(true)` cancels queued/running callers, invalidates
   late publication, and clears the viewer. Disposal always cancels immediately.
 - Opening waits for loading and usable presentation geometry, then resolves after
-  installation. Failed opening leaves the viewer empty. Prepared handles remain
+  installation and reports the initial page through `onPageChange`. Failed opening
+  leaves the viewer empty. Prepared handles remain
   bound to their original document/page and reject after invalidation.
 - Successful `addPages()` publication reports the active page through
   `onPageChange`, including first-document creation. Empty/cancelled imports emit

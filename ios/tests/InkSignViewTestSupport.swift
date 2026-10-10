@@ -61,7 +61,7 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     view.documentView.go(to: states[activePageIndex].page)
     view.documentView.layoutIfNeeded()
     if applyInitialViewport {
-      XCTAssertTrue(view.applyViewport(target: ViewportTarget(
+      XCTAssertTrue(view.interaction.viewport.applyViewport(target: ViewportTarget(
         zoom: view.documentView.scaleFactorForSizeToFit,
         focus: CGPoint(x: 150, y: 200))))
     }

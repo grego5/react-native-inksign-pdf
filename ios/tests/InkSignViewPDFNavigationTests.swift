@@ -33,7 +33,7 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
 
     XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.id, fixture.pages[1])
     XCTAssertEqual(changes.map(\.pageIndex), [1])
-    XCTAssertNil(fixture.view.pendingPageSwitchID)
+    XCTAssertNil(fixture.view.interaction.presentation)
   }
 
   func testProgrammaticPageChangeUsesPDFViewAndCompletesAfterOverlay() throws {
@@ -58,7 +58,7 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
                                          for: page)
 
     XCTAssertEqual(completionCount, 1)
-    XCTAssertNil(fixture.view.pendingPageSwitchID)
+    XCTAssertNil(fixture.view.interaction.presentation)
     XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.id, fixture.pages[1])
   }
 }
