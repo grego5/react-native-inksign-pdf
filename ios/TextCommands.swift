@@ -197,7 +197,25 @@ extension InkSignView {
     var detectionBounds: CGRect
     if let fieldName = options.fieldName {
       let lookup = handle.analysis.lookup(key: fieldName)
-      guard lookup.hasLiteralMatch else { throw TextError.keyNotFound }
+      guard lookup.hasLiteralMatch else {
+        #if DEBUG
+        let analysis = handle.analysis
+        let relatedLabels = analysis.labelCandidates.filter {
+          $0.fieldName.contains(fieldName) || fieldName.contains($0.fieldName)
+        }.prefix(8).map(\.fieldName)
+        let drawableCharacters = analysis.characterBounds.compactMap { $0 }.count
+        let extractedFooter = String(reflecting: String(analysis.sourceText.suffix(240)))
+        let footerLabels = analysis.labelCandidates.suffix(6).map(\.fieldName)
+        throw TextError.keyNotFound(details:
+          "page=\(analysis.pageIndex), key=\(String(reflecting: fieldName)), " +
+          "extracted=\(analysis.sourceText.contains(fieldName)), " +
+          "drawable=\(drawableCharacters)/\((analysis.sourceText as NSString).length), " +
+          "labels=\(analysis.labelCandidates.count), related=\(relatedLabels)\n" +
+          "footer=\(extractedFooter)\npreparedFooter=\(footerLabels)")
+        #else
+        throw TextError.keyNotFound(details: nil)
+        #endif
+      }
       let displayed = handle.analysis.displayedFieldGeometry(lookup: lookup,
         geometry: geometry)
       let candidates = displayed.matches.filter { match in

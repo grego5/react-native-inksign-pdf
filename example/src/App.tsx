@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import * as Sharing from 'expo-sharing';
 import {
-  Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View,
+  Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
@@ -25,6 +25,7 @@ export default function App() {
   const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
   const [textSelected, setTextSelected] = useState(false);
   const [signingFieldName, setSigningFieldName] = useState<string | null>(null);
+  const [fieldFocusError, setFieldFocusError] = useState<string | null>(null);
   const [fieldRtl, setFieldRtl] = useState(false);
 
   const [state, setState] = useState<ViewerState>({
@@ -107,7 +108,7 @@ export default function App() {
       await page.focusText(id, { zoom: 3, verticalAnchor: 'bottom', edgeOffset: 8 });
       view.setMode('ink');
     } catch (error) {
-      if (!isOperationCancelled(error)) Alert.alert('Field focus failed', String(error));
+      if (!isOperationCancelled(error)) setFieldFocusError(String(error));
     }
   }
 
@@ -390,6 +391,32 @@ export default function App() {
             </View>
           </KeyboardAvoidingView>
         </Modal>
+        <Modal
+          visible={fieldFocusError !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setFieldFocusError(null)}>
+          <SafeAreaView style={styles.dialogBackdrop}>
+            <View style={[styles.dialog, styles.errorDialog]}>
+              <Text style={styles.dialogTitle}>Field focus failed</Text>
+              <ScrollView style={styles.errorDetails}>
+                <Text selectable style={styles.errorDetailsText}>{fieldFocusError}</Text>
+              </ScrollView>
+              <View style={styles.row}>
+                <Action
+                  label="Share"
+                  onPress={() => {
+                    if (fieldFocusError === null) return;
+                    void Share.share({ message: fieldFocusError }).catch(error => {
+                      Alert.alert('Share failed', String(error));
+                    });
+                  }}
+                />
+                <Action label="Close" onPress={() => setFieldFocusError(null)} />
+              </View>
+            </View>
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     </SafeAreaProvider>
   );
@@ -433,6 +460,9 @@ const styles = StyleSheet.create({
   },
   dialog: { padding: 20, gap: 16, borderRadius: 12, backgroundColor: '#fff' },
   dialogTitle: { fontSize: 18, fontWeight: '600', color: '#111' },
+  errorDialog: { maxHeight: '90%' },
+  errorDetails: { flexShrink: 1 },
+  errorDetailsText: { color: '#111', fontSize: 14 },
   dialogInput: {
     borderWidth: 1, borderColor: '#aaa', borderRadius: 6, padding: 12, color: '#111',
   },
