@@ -43,6 +43,8 @@
   Above-rule tolerance is the greater of screen tolerance and label line-height
   (editor line-height when unlabeled); below-rule tolerance is screen-based.
   Existing annotation editing/dragging does not snap.
+- Auto-sized editors reopen at the stored top edge. Keyboard handling changes
+  the viewport rather than the annotation's position.
 - `setTextDirection()` updates future placement and the editor, preserving fixed
   flow bounds; reflow/caret following use the updated direction. Explicit LTR/RTL
   wins; `auto` uses app direction; omission uses the last setting or app direction.

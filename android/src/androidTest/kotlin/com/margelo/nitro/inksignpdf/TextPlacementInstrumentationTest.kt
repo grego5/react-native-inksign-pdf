@@ -1237,6 +1237,7 @@ internal class TextPlacementInstrumentationTest {
         text = "Hello",
         bounds = PageRect(80.0, 80.0, 120.0, 98.0),
         fontSize = 16.0,
+        verticalAnchor = TextVerticalAnchor.BOTTOM,
       )
       appendTestText(original)
       overlay.syncContent()
@@ -1263,6 +1264,7 @@ internal class TextPlacementInstrumentationTest {
         val updated = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         assertEquals("Updated", updated.text)
         assertEquals(17.0, updated.fontSize, 0.0)
+        assertEquals(original.bounds.top, updated.bounds.top, 0.0)
 
         harness.surface.undo()
         val undone = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()

@@ -1471,10 +1471,7 @@ internal class TextInteractionOverlay(
         (annotation.flowBounds ?: annotation.bounds).left
       },
       directionRtl = annotation.directionRtl,
-      positionY = when (annotation.verticalAnchor) {
-        TextVerticalAnchor.TOP -> (annotation.flowBounds ?: annotation.bounds).top
-        TextVerticalAnchor.BOTTOM -> (annotation.flowBounds ?: annotation.bounds).bottom
-      },
+      positionY = (annotation.flowBounds ?: annotation.bounds).top,
       fontSize = annotation.fontSize,
       textColor = annotation.textColor,
       flowBounds = annotation.flowBounds,
