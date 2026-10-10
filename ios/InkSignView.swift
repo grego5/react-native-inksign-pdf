@@ -393,7 +393,7 @@ final class InkSignView: HybridInkSignViewSpec {
     }
   }
 
-  enum TextError: LocalizedError {
+  enum TextError: LocalizedError, CustomStringConvertible {
     case notReady
     case notFocused
     case invalidText
@@ -407,7 +407,9 @@ final class InkSignView: HybridInkSignViewSpec {
     case targetAmbiguous
     case textDoesNotFit
 
-    var errorDescription: String? {
+    var errorDescription: String? { description }
+
+    var description: String {
       switch self {
       case .notReady:
         return "view_not_ready: The PDF view is not ready for text interaction"

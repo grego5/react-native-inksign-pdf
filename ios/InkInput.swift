@@ -107,7 +107,7 @@ extension InkSignView {
     endedDrawingPageToOverlayTransform = nil
     if hadInteraction { canvasView.cancelDrawingInteraction() }
     if clearLive { installCommittedDrawing() }
-    installQueuedPenIfNeeded()
+    installPenAfterDrawing()
   }
 
   /// Stores exactly one history action for an ended interaction. A later
@@ -129,7 +129,7 @@ extension InkSignView {
     endedDrawingPageToOverlayTransform = nil
     if sameDrawing(finished, baseline.drawing) {
       installCommittedDrawing()
-      installQueuedPenIfNeeded()
+      installPenAfterDrawing()
       return
     }
     guard let page = documentCoordinator.document?.activePage else { return }
@@ -137,7 +137,7 @@ extension InkSignView {
                         before: baseline,
                         after: baseline.replacingDrawing(finished))
     installCommittedDrawing()
-    installQueuedPenIfNeeded()
+    installPenAfterDrawing()
     emitChange()
   }
 
@@ -171,10 +171,9 @@ extension InkSignView {
     lhs.dataRepresentation() == rhs.dataRepresentation()
   }
 
-  private func installQueuedPenIfNeeded() {
-    guard let queuedPen else { return }
-    currentPen = queuedPen
+  private func installPenAfterDrawing() {
+    let pen = queuedPen ?? currentPen
     self.queuedPen = nil
-    installPen(currentPen)
+    installPen(pen)
   }
 }

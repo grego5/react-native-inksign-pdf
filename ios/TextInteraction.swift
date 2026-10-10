@@ -111,7 +111,6 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private var editor: UITextView?
   var hasActiveEditor: Bool { editor != nil }
   private var settlingEditor = false
-  private var lastEditorContentSize = CGSize.zero
   private var caretFollowEnabled = false
   private enum PlacementRuleCache {
     case scanning(generation: UInt64, pageID: UUID, requestID: UInt64)
@@ -1032,6 +1031,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
         maximumWidth: pageSize.width,
         insets: insets,
         fallbackFontSize: state.fontSize,
+        isRTL: state.isRTL,
         fixedContentWidth: state.flowBounds?.width)
       let placement = makeInitialPlacement(initialPlacement,
                                            size: size,
@@ -1198,13 +1198,12 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
 
   private func finishEditing(keepingSelection: Bool = true) {
     guard case .editing = interactionState, let textView = editor else { return }
-    textView.layoutManager.ensureLayout(for: textView.textContainer)
-    lastEditorContentSize = textView.bounds.size
+    layoutEditor()
     guard case .editing(let state) = interactionState else { return }
     let text = textView.text ?? ""
     let original = state.original
     let annotation = text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-      ? nil : settledAnnotation(state: state, text: text)
+      ? nil : settledAnnotation(state: state, text: text, editorSize: textView.bounds.size)
     let finishedID = keepingSelection ? annotation?.id : nil
     closeEditor(endingState: finishedID.map { .selected(id: $0) } ?? .idle)
     if let original {
@@ -1227,7 +1226,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     syncPresentation()
   }
 
-  private func settledAnnotation(state: EditingState, text: String) -> InkSignPdfTextAnnotation {
+  private func settledAnnotation(state: EditingState, text: String, editorSize: CGSize) -> InkSignPdfTextAnnotation {
     let layoutRotation = state.layoutRotation
     if let flowBounds = state.flowBounds {
       let layoutBounds = flowBounds
@@ -1249,8 +1248,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                       alignment: state.alignment,
                                       layoutRotation: layoutRotation)
     }
-    let size = lastEditorContentSize
-    let bounds = CGRect(origin: state.position, size: size)
+    let bounds = CGRect(origin: state.position, size: editorSize)
     return InkSignPdfTextAnnotation(id: state.id, text: text,
                                     bounds: bounds,
                                     fontSize: state.fontSize,
@@ -1308,7 +1306,6 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     settlingEditor = true
     self.editor = nil
     caretFollowEnabled = false
-    lastEditorContentSize = .zero
     editor.delegate = nil
     // Retire the captured activity before selection or first-responder callbacks.
     if let endingState { interactionState = endingState }
@@ -1362,6 +1359,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
       maximumWidth: pageSize.width,
       insets: insets,
       fallbackFontSize: state.fontSize,
+      isRTL: state.isRTL,
       fixedContentWidth: state.flowBounds?.width)
     let origin: CGPoint
     if let anchor = state.placementAnchor {
@@ -1389,7 +1387,6 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     editor.center = CGPoint(x: updatedState.position.x + editorSize.width / 2,
                             y: updatedState.position.y + editorSize.height / 2).applying(transform)
     editor.bounds = CGRect(origin: .zero, size: editorSize)
-    lastEditorContentSize = editorSize
     editor.setContentOffset(.zero, animated: false)
     editor.layoutManager.ensureLayout(for: editor.textContainer)
     editor.layoutIfNeeded()
