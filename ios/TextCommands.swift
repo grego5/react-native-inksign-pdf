@@ -127,7 +127,7 @@ extension InkSignView {
 
   private func getPageNow(pageIndex: Double?, modeSession: InkSignPdfModeSessionToken? = nil,
                           capturedPageID: UUID? = nil) throws -> Promise<any HybridAnalyzedPageSpec> {
-    let captured = try performOnMainSync { () throws -> (URL, UInt64, Int, UUID, CGRect) in
+    let handle = try performOnMainSync { () throws -> any HybridAnalyzedPageSpec in
       guard !self.disposed else { throw TextError.cancelled }
       guard let document = self.documentCoordinator.document else { throw TextError.documentNotOpen }
       let index: Int
@@ -144,51 +144,18 @@ extension InkSignView {
         index = document.activePageIndex
       }
       let page = document.pages[index]
-      return (document.workingURL, self.documentCoordinator.generation, index, page.id, page.geometry.mediaBox)
+      return HybridAnalyzedPage(owner: self, generation: self.documentCoordinator.generation,
+        pageID: page.id, analysis: page.sourceAnalysis, modeSession: modeSession)
     }
-    let coordinator = documentCoordinator
-    let settlement = InkSignPdfOperationPromise<any HybridAnalyzedPageSpec>()
-    guard let pendingID = coordinator.registerPending(generation: captured.1, handler: {
-      settlement.reject(TextError.cancelled)
-    }) else {
-      settlement.reject(TextError.cancelled)
-      return settlement.promise
-    }
-    coordinator.pdfQueue.async {
-      let result: Result<InkSignPdfPageAnalysis, Error>
-      if let analysis = coordinator.pageAnalysis(sourceURL: captured.0, generation: captured.1,
-        pageIndex: captured.2, pageID: captured.3, mediaBox: captured.4) {
-        result = .success(analysis)
-      } else {
-        result = .failure(TextError.cancelled)
-      }
-      DispatchQueue.main.async {
-        guard coordinator.completePending(pendingID) else { return }
-        guard !self.disposed, coordinator.generation == captured.1,
-              coordinator.document?.pages.contains(where: { $0.id == captured.3 }) == true else {
-          settlement.reject(TextError.cancelled)
-          return
-        }
-        do {
-          let analysis = try result.get()
-          if let modeSession { try self.interaction.requireSession(modeSession) }
-          if !coordinator.textTargets(for: captured.3).isEmpty { coordinator.retainTextAnalysis(analysis) }
-          settlement.resolve(HybridAnalyzedPage(owner: self, generation: captured.1,
-            pageID: captured.3, analysis: analysis, modeSession: modeSession))
-        } catch {
-          settlement.reject(error)
-        }
-      }
-    }
-    return settlement.promise
+    return .resolved(withResult: handle)
   }
 
   func resolvePreparedText(_ handle: HybridAnalyzedPage, options: ResolveTextOptions) throws -> Double {
     try validateTextPageContext(handle)
     guard let document = documentCoordinator.document,
-          let page = document.pages.first(where: { $0.id == handle.pageID }) else { throw TextError.cancelled }
+          let pageIndex = document.index(of: handle.pageID) else { throw TextError.cancelled }
+    let page = document.pages[pageIndex]
     let geometry = page.geometry
-    documentCoordinator.retainTextAnalysis(handle.analysis)
     let fieldBounds: CGRect
     var identity: String?
     var embeddedValue = ""

@@ -1234,11 +1234,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     wait(for: [opened], timeout: 5)
     XCTAssertEqual(coordinator.document?.pages.count, 2)
     let keyPage = try XCTUnwrap(coordinator.document?.pages.first)
-    let analysis = InkSignPdfPageAnalysis.build(generation: coordinator.generation,
-                                                pageID: keyPage.id,
-                                                pageIndex: 0,
-                                                page: keyPage.page,
-                                                mediaBox: keyPage.geometry.mediaBox)
+    let analysis = keyPage.sourceAnalysis
     let lookup = analysis.lookup(key: "Name")
     XCTAssertTrue(lookup.hasLiteralMatch)
     let displayed = analysis.displayedFieldGeometry(lookup: lookup, geometry: keyPage.geometry)
@@ -1250,21 +1246,9 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       pageSize: keyPage.geometry.displaySize),
       "Fixture must contain a usable same-row rule; matches=\(displayed.matches), rules=\(displayed.rules)")
 
-    let workerEntered = DispatchSemaphore(value: 0)
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal() }
-    coordinator.pdfQueue.async {
-      workerEntered.signal()
-      _ = releaseWorker.wait(timeout: .now() + 5)
-    }
-    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
-
-    let pageRequest = try view.getPage(pageIndex: 0)
-
+    let page = try awaitRotationOperation(view.getPage(pageIndex: 0))
     XCTAssertEqual(try view.switchPage(to: 1).pageIndex, 1)
     XCTAssertEqual(coordinator.document?.activePageIndex, 1)
-    releaseWorker.signal()
-    let page = try awaitRotationOperation(pageRequest)
     let textID = try page.resolveText(options: ResolveTextOptions(
       fieldName: "Name", bounds: nil, occurrence: nil, fontSize: nil, color: nil,
       direction: nil, maxLines: nil, alignment: nil, verticalAnchor: nil))
@@ -1274,7 +1258,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(coordinator.document?.pages[1].history.content.textAnnotations.isEmpty == true)
   }
 
-  func testPendingPreparedPageUsesCurrentGeometryAfterRotation() throws {
+  func testPreparedPageUsesCurrentGeometryAfterRotation() throws {
     let fixture = makeFixture(pageCount: 1)
     let keyPDFURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("InkSignRotationFieldLookup-\(UUID().uuidString).pdf")
@@ -1303,31 +1287,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     view.beginLoad(keyPDFURL.path, zoom: nil, focus: nil, fitToPage: true, promise: open)
     wait(for: [opened], timeout: 10)
     XCTAssertNil(openError)
-    view.documentCoordinator.pdfQueue.sync {}
-
-    let workerHeld = expectation(description: "field worker is held before lookup")
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal() }
-    view.documentCoordinator.pdfQueue.async {
-      workerHeld.fulfill()
-      _ = releaseWorker.wait(timeout: .now() + 30)
-    }
-    wait(for: [workerHeld], timeout: 5)
-
-    let pageRequest = try view.getPage(pageIndex: nil)
-    let rotated = expectation(description: "rotation follows prepared lookup")
-    var completionOrder: [String] = []
-    pageRequest.then { _ in completionOrder.append("prepared") }
-    let rotation = try view.rotatePage(degrees: 90)
-    var rotationError: Error?
-    rotation.then { _ in completionOrder.append("rotated"); rotated.fulfill() }
-    rotation.catch { error in rotationError = error; rotated.fulfill() }
-    releaseWorker.signal()
-    let page = try awaitRotationOperation(pageRequest)
-    wait(for: [rotated], timeout: 10)
-
-    XCTAssertNil(rotationError)
-    XCTAssertEqual(completionOrder, ["prepared", "rotated"])
+    let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
+    _ = try awaitRotationOperation(view.rotatePage(degrees: 90))
     let document = try XCTUnwrap(view.documentCoordinator.document)
     XCTAssertEqual(document.activePage.geometryRevision, 1)
     XCTAssertTrue(document.activePage.history.content.textAnnotations.isEmpty)
@@ -1338,7 +1299,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
   }
 
-  func testPendingPreparedPageFocusRejectsVerticalRuleAfterRotation() throws {
+  func testPreparedPageFocusRejectsVerticalRuleAfterRotation() throws {
     let fixture = makeFixture(pageCount: 1)
     let keyPDFURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("InkSignRotationFieldFocus-\(UUID().uuidString).pdf")
@@ -1367,31 +1328,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     view.beginLoad(keyPDFURL.path, zoom: nil, focus: nil, fitToPage: true, promise: open)
     wait(for: [opened], timeout: 10)
     XCTAssertNil(openError)
-    view.documentCoordinator.pdfQueue.sync {}
-
-    let workerHeld = expectation(description: "field worker is held before focus lookup")
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal() }
-    view.documentCoordinator.pdfQueue.async {
-      workerHeld.fulfill()
-      _ = releaseWorker.wait(timeout: .now() + 30)
-    }
-    wait(for: [workerHeld], timeout: 5)
-
-    let pageRequest = try view.getPage(pageIndex: nil)
-    let rotated = expectation(description: "rotation follows prepared focus lookup")
-    var completionOrder: [String] = []
-    pageRequest.then { _ in completionOrder.append("prepared") }
-    let rotation = try view.rotatePage(degrees: 90)
-    var rotationError: Error?
-    rotation.then { _ in completionOrder.append("rotated"); rotated.fulfill() }
-    rotation.catch { error in rotationError = error; rotated.fulfill() }
-    releaseWorker.signal()
-    let page = try awaitRotationOperation(pageRequest)
-    wait(for: [rotated], timeout: 10)
-
-    XCTAssertNil(rotationError)
-    XCTAssertEqual(completionOrder, ["prepared", "rotated"])
+    let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
+    _ = try awaitRotationOperation(view.rotatePage(degrees: 90))
     XCTAssertEqual(view.documentCoordinator.document?.activePage.geometryRevision, 1)
     XCTAssertTrue(view.documentCoordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
     XCTAssertThrowsError(try page.resolveText(options: ResolveTextOptions(
@@ -1444,20 +1382,15 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(modes.last, "view")
   }
 
-  func testModeSessionCancelsPendingPreparationWithoutReleasingWorkerQueue() throws {
+  func testModeSessionCancelsQueuedPageAcquisition() throws {
     let fixture = makeFixture(pageCount: 1)
     let view = fixture.view
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal(); view.dispose(); fixture.window.isHidden = true }
-    let workerEntered = DispatchSemaphore(value: 0)
-    view.documentCoordinator.pdfQueue.async {
-      workerEntered.signal()
-      releaseWorker.wait()
-    }
-    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
+    defer { view.dispose(); fixture.window.isHidden = true }
+    let gate = Promise<Void>()
+    let blocked = view.enqueueViewerCommand { gate }
     let session = try view.setMode(mode: .ink, options: nil)
     let preparing = try session.getPage(pageIndex: nil)
-    let cancelled = expectation(description: "mode replacement cancels pending preparation")
+    let cancelled = expectation(description: "mode replacement cancels queued page acquisition")
     var rejectionCount = 0
     preparing.then { _ in XCTFail("Cancelled acquisition returned a page") }
     preparing.catch { error in
@@ -1468,7 +1401,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try view.setMode(mode: .ink, options: nil) // The same mode still starts a new session.
     wait(for: [cancelled], timeout: 2)
     let independent = try view.getPage(pageIndex: nil)
-    releaseWorker.signal()
+    gate.resolve()
+    try awaitModeChange(blocked)
     let page = try awaitRotationOperation(independent)
     XCTAssertEqual(rejectionCount, 1)
     XCTAssertNoThrow(try page.getTextEntries())
@@ -1511,7 +1445,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertNil(canvas.hitTest(canvasPoint, with: nil))
   }
 
-  func testReplacementCancelsProductionTextLookupAndIgnoresLateWorkerResult() throws {
+  func testReplacementInvalidatesPreparedPage() throws {
     let fixture = makeFixture(pageCount: 1)
     let replacementFixture = makeFixture(pageCount: 1)
     let keyPDFURL = FileManager.default.temporaryDirectory
@@ -1531,15 +1465,6 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
                          attributes: [.font: UIFont.systemFont(ofSize: 18)])
         .draw(at: CGPoint(x: 70, y: 120))
     }
-    let keyDocument = try XCTUnwrap(PDFDocument(url: keyPDFURL))
-    let keyPage = try XCTUnwrap(keyDocument.page(at: 0))
-    let keyAnalysis = InkSignPdfPageAnalysis.build(generation: 1,
-                                                   pageID: UUID(),
-                                                   pageIndex: 0,
-                                                   page: keyPage,
-                                                   mediaBox: keyPage.bounds(for: .mediaBox))
-    XCTAssertTrue(keyAnalysis.lookup(key: "Name").hasLiteralMatch)
-
     let initialLoad = Promise<PageInfo>()
     let initialLoadCompleted = expectation(description: "PDF-backed key fixture opens")
     initialLoad.then { _ in initialLoadCompleted.fulfill() }
@@ -1550,7 +1475,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
                    fitToPage: true,
                    promise: initialLoad)
     wait(for: [initialLoadCompleted], timeout: 5)
-    coordinator.pdfQueue.sync {}
+    XCTAssertTrue(coordinator.document?.activePage.sourceAnalysis.lookup(key: "Name").hasLiteralMatch == true)
+    let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
 
     let workerEntered = DispatchSemaphore(value: 0)
     let releaseWorker = DispatchSemaphore(value: 0)
@@ -1560,16 +1486,6 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       _ = releaseWorker.wait(timeout: .now() + 5)
     }
     XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
-
-    let lookup = try view.getPage(pageIndex: nil)
-    let lookupCancelled = expectation(description: "prepared page cancellation settles promptly")
-    var lookupError: Error?
-    var lookupRejectionCount = 0
-    lookup.catch { error in
-      lookupError = error
-      lookupRejectionCount += 1
-      lookupCancelled.fulfill()
-    }
 
     let replacement = Promise<PageInfo>()
     let replacementInstalled = expectation(description: "replacement installs after worker release")
@@ -1583,14 +1499,13 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
                    promise: replacement)
 
     XCTAssertNil(coordinator.document)
-    wait(for: [lookupCancelled], timeout: 2)
-    XCTAssertTrue(lookupError?.localizedDescription.hasPrefix("operation_cancelled") == true)
-    XCTAssertEqual(lookupRejectionCount, 1)
+    XCTAssertThrowsError(try page.getTextEntries()) {
+      XCTAssertTrue($0.localizedDescription.hasPrefix("operation_cancelled"))
+    }
 
     releaseWorker.signal()
     wait(for: [replacementInstalled], timeout: 5)
-    coordinator.pdfQueue.sync {}
-    XCTAssertEqual(lookupRejectionCount, 1)
+    XCTAssertThrowsError(try page.getTextEntries())
     XCTAssertTrue(coordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
   }
 

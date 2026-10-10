@@ -1,6 +1,6 @@
 import UIKit
 
-/// Chooses the wrapping width and asks UIKit for the live editor's fitting height.
+/// Chooses the wrapping width and measures the live editor's laid-out lines.
 enum InkSignPdfTextEditorLayout {
   static func measure(_ editor: UITextView,
                       maximumWidth: CGFloat,
@@ -34,10 +34,19 @@ enum InkSignPdfTextEditorLayout {
     }
 
     let width = contentWidth + insets.left + insets.right
-    let fittingSize = editor.sizeThatFits(
-      CGSize(width: width, height: .greatestFiniteMagnitude))
+    let manager = editor.layoutManager
+    let glyphRange = NSRange(location: 0, length: manager.numberOfGlyphs)
+    var contentHeight: CGFloat = 0
+    var lineCount = 0
+    manager.enumerateLineFragments(forGlyphRange: glyphRange) { _, usedRect, _, _, _ in
+      contentHeight = max(contentHeight, usedRect.maxY)
+      lineCount += 1
+    }
+    let lineHeight = max(font.lineHeight, 1)
+    contentHeight = max(contentHeight, lineHeight * CGFloat(max(lineCount, 1)))
+    let emptyLineHeight = editor.text.last?.isNewline == true ? font.lineHeight : 0
     return CGSize(width: width,
-                  height: max(fittingSize.height, font.lineHeight + insets.top + insets.bottom))
+                  height: max(contentHeight + emptyLineHeight, font.lineHeight) + insets.top + insets.bottom)
   }
 
   private static func contentWidthExtent(of editor: UITextView,

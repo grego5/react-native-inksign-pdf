@@ -45,7 +45,7 @@ extension InkSignPdfDocumentCoordinator {
       let order: PageOrder
       switch command {
       case .append(let activePage):
-        var appendedRecords: [InkSignPdfPageState] = []
+        var appended: [InkSignPdfPageState] = []
         for stagedPage in staged {
           if stagedPage.type == .pdf {
             guard let source = PDFDocument(url: stagedPage.url), source.pageCount > 0 else {
@@ -56,6 +56,7 @@ extension InkSignPdfDocumentCoordinator {
               guard let page = source.page(at: sourceIndex) else {
                 throw InkSignView.MutablePageError.assemblyFailed
               }
+              appended.append(try InkSignPdfDocumentCandidateLoader.pageState(for: page))
               candidate.insert(page, at: candidate.pageCount)
             }
           } else {
@@ -64,46 +65,29 @@ extension InkSignPdfDocumentCoordinator {
               geometry: input.imageGeometry,
               targetDpi: input.imageTargetDpi,
               jpegQuality: input.imageJpegQuality)
+            appended.append(try InkSignPdfDocumentCandidateLoader.pageState(for: page))
             candidate.insert(page, at: candidate.pageCount)
           }
         }
 
-        guard candidate.pageCount > input.pages.count else {
+        guard !appended.isEmpty else {
           throw InkSignView.MutablePageError.assemblyFailed
         }
-        let appended = try (input.pages.count..<candidate.pageCount).map { index in
-          try Self.pageRecord(in: candidate, at: index)
+        let selectedPageID: UUID
+        switch activePage {
+        case .current:
+          selectedPageID = input.pages.isEmpty ? appended[0].id : input.activePageID
+        case .firstadded:
+          selectedPageID = appended[0].id
+        case .lastadded:
+          selectedPageID = appended[appended.count - 1].id
         }
         if input.pages.isEmpty {
-          let selectedPage: InkSignPdfPageState
-          switch activePage {
-          case .current, .firstadded:
-            guard let first = appended.first else {
-              throw InkSignView.MutablePageError.assemblyFailed
-            }
-            selectedPage = first
-          case .lastadded:
-            guard let last = appended.last else {
-              throw InkSignView.MutablePageError.assemblyFailed
-            }
-            selectedPage = last
-          }
           order = PageOrder(pages: appended,
-                            activePageID: selectedPage.id,
+                            activePageID: selectedPageID,
                             addedPageCount: appended.count,
                             changed: true)
         } else {
-          let selectedPageID: UUID
-          switch activePage {
-          case .current:
-            selectedPageID = input.activePageID
-          case .firstadded:
-            guard let first = appended.first else { throw InkSignView.MutablePageError.assemblyFailed }
-            selectedPageID = first.id
-          case .lastadded:
-            guard let last = appended.last else { throw InkSignView.MutablePageError.assemblyFailed }
-            selectedPageID = last.id
-          }
           order = try Self.pageOrder(current: input.pages,
                                      activePageID: input.activePageID,
                                      mutation: .append(appended, activePageID: selectedPageID))
@@ -123,7 +107,6 @@ extension InkSignPdfDocumentCoordinator {
         order = try Self.pageOrder(current: input.pages,
                                    activePageID: input.activePageID,
                                    mutation: .moveActive(to: destination))
-
       }
 
       var wroteCandidate = false
@@ -134,7 +117,8 @@ extension InkSignPdfDocumentCoordinator {
         throw InkSignView.MutablePageError.assemblyFailed
       }
 
-      let reopened = try InkSignPdfDocumentCandidateLoader.load(url: allocated)
+      let reopened = try InkSignPdfDocumentCandidateLoader.load(url: allocated,
+                                                               retainingAnalysisFrom: order.pages)
       guard reopened.pages.count == order.pages.count else {
         throw InkSignView.MutablePageError.assemblyFailed
       }
@@ -174,16 +158,6 @@ extension InkSignPdfDocumentCoordinator {
 
   func releaseStagedInputs(_ staged: [InkSignPdfStagedPageInput]) {
     staged.forEach { artifactPolicy.deleteExact($0.url) }
-  }
-
-  private static func pageRecord(in document: PDFDocument,
-                                 at index: Int) throws -> InkSignPdfPageState {
-    guard let page = document.page(at: index) else {
-      throw InkSignView.MutablePageError.assemblyFailed
-    }
-    let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
-    guard geometry.isValid else { throw InkSignView.MutablePageError.assemblyFailed }
-    return InkSignPdfPageState(page: page, geometry: geometry)
   }
 
   private static func samePageProperties(_ lhs: PDFPage, _ rhs: PDFPage) -> Bool {
