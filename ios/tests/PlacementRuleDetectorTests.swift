@@ -14,8 +14,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let document = try XCTUnwrap(PDFDocument(url: url))
     let page = try XCTUnwrap(document.page(at: 0))
     try requireDrawableLabel("FullName", in: page)
-    let analysis = InkSignPdfPageAnalysis.build(generation: 1, pageID: UUID(), pageIndex: 0,
-      page: page, mediaBox: page.bounds(for: .mediaBox))
+    let analysis = InkSignPdfPageAnalysis.build(page: page, mediaBox: page.bounds(for: .mediaBox))
     XCTAssertEqual(analysis.lookup(key: "Full Name").matches.count, 1)
     XCTAssertFalse(analysis.lookup(key: "Name").hasLiteralMatch)
     XCTAssertFalse(analysis.lookup(key: "Full").hasLiteralMatch)
@@ -98,10 +97,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let document = try XCTUnwrap(PDFDocument(url: url))
     let page = try XCTUnwrap(document.page(at: 0))
     let mediaBox = page.bounds(for: .mediaBox)
-    let lookup = InkSignPdfPageAnalysis.build(generation: 1,
-                                              pageID: UUID(),
-                                              pageIndex: 0,
-                                              page: page,
+    let lookup = InkSignPdfPageAnalysis.build(page: page,
                                               mediaBox: mediaBox).lookup(key: "name")
     XCTAssertTrue(lookup.hasLiteralMatch)
     let matches = lookup.matches
@@ -128,10 +124,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let page = try XCTUnwrap(document.page(at: 0))
     let key = try XCTUnwrap(page.string)
 
-    let lookup = InkSignPdfPageAnalysis.build(generation: 1,
-                                              pageID: UUID(),
-                                              pageIndex: 0,
-                                              page: page,
+    let lookup = InkSignPdfPageAnalysis.build(page: page,
                                               mediaBox: page.bounds(for: .mediaBox)).lookup(key: key)
     XCTAssertFalse(lookup.hasLiteralMatch,
                    "The API matches complete prepared labels, not source text spanning visual rows")
@@ -154,10 +147,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     try requireDrawableLabel("Full Name", in: page)
     let spaceIndex = match.location + ("Full" as NSString).length
 
-    let analysis = InkSignPdfPageAnalysis.build(generation: 1,
-                                                pageID: UUID(),
-                                                pageIndex: 0,
-                                                page: page,
+    let analysis = InkSignPdfPageAnalysis.build(page: page,
                                                 mediaBox: page.bounds(for: .mediaBox))
     let lookup = analysis.lookup(key: "Full Name")
     XCTAssertTrue(lookup.hasLiteralMatch,
@@ -180,15 +170,11 @@ final class PlacementRuleDetectorTests: XCTestCase {
     var characterVisualRows = analysis.characterVisualRows
     characterVisualRows[spaceIndex] = -1
     let geometrySparseAnalysis = InkSignPdfPageAnalysis(
-      generation: analysis.generation,
-      pageID: analysis.pageID,
-      pageIndex: analysis.pageIndex,
       sourceText: analysis.sourceText,
       characterBounds: characterBounds,
       characterVisualRows: characterVisualRows,
       rules: analysis.rules,
-      labelCandidates: analysis.labelCandidates,
-      estimatedMemoryBytes: analysis.estimatedMemoryBytes)
+      labelCandidates: analysis.labelCandidates)
     let geometrySparseLookup = geometrySparseAnalysis.lookup(key: "Full Name")
     XCTAssertTrue(geometrySparseLookup.hasLiteralMatch)
     XCTAssertEqual(geometrySparseLookup.matches.count, 1)
@@ -205,8 +191,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: url) }
     let document = try XCTUnwrap(PDFDocument(url: url))
     let page = try XCTUnwrap(document.page(at: 0))
-    let analysis = InkSignPdfPageAnalysis.build(generation: 1, pageID: UUID(), pageIndex: 0,
-                                               page: page, mediaBox: page.bounds(for: .mediaBox))
+    let analysis = InkSignPdfPageAnalysis.build(page: page, mediaBox: page.bounds(for: .mediaBox))
     XCTAssertFalse(analysis.lookup(key: "Full").matches.isEmpty)
     XCTAssertFalse(analysis.lookup(key: "Name").matches.isEmpty)
     XCTAssertTrue(analysis.lookup(key: "Full Name").matches.isEmpty)
@@ -263,10 +248,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let extracted = try XCTUnwrap(page.string)
     XCTAssertEqual(extracted.lowercased().components(separatedBy: "name").count - 1, 2,
                    "The PDF-backed fixture must expose both occurrences: \(extracted)")
-    let analysis = InkSignPdfPageAnalysis.build(generation: 1,
-                                                pageID: UUID(),
-                                                pageIndex: 0,
-                                                page: page,
+    let analysis = InkSignPdfPageAnalysis.build(page: page,
                                                 mediaBox: mediaBox)
     let lookup = analysis.lookup(key: "Name")
     XCTAssertTrue(lookup.hasLiteralMatch)
@@ -276,57 +258,30 @@ final class PlacementRuleDetectorTests: XCTestCase {
       "Separated fields on one visual row must remain distinct prepared labels")
   }
 
-  func testPageAnalysisCacheReusesKeysAndExpiresOnGenerationChange() throws {
-    let firstURL = try makePDF { context in
-      drawFixtureLabel("Name        Signature        X", at: CGPoint(x: 80, y: 120), in: context)
+  func testReboundPageAnalysisRetainsOriginalTextAfterSourceFileRemoval() throws {
+    let originalURL = try makePDF { context in
+      drawFixtureLabel("Name        X", at: CGPoint(x: 80, y: 120), in: context)
     }
-    let replacementURL = try makePDF { context in
-      drawFixtureLabel("Owner        Signature        X", at: CGPoint(x: 80, y: 120), in: context)
+    let workingURL = try makePDF { context in
+      drawFixtureLabel("Owner        X", at: CGPoint(x: 80, y: 120), in: context)
     }
-    let coordinator = InkSignPdfDocumentCoordinator()
-    let pageID = UUID()
-    let mediaBox = CGRect(x: 0, y: 0, width: 595, height: 842)
     defer {
-      coordinator.dispose()
-      coordinator.pdfQueue.sync {}
-      try? FileManager.default.removeItem(at: firstURL)
-      try? FileManager.default.removeItem(at: replacementURL)
+      try? FileManager.default.removeItem(at: originalURL)
+      try? FileManager.default.removeItem(at: workingURL)
     }
+    let original = try InkSignPdfDocumentCandidateLoader.load(url: originalURL)
+    let working = try InkSignPdfDocumentCandidateLoader.load(url: workingURL,
+                                                            retainingAnalysisFrom: original.pages)
+    let rebound = InkSignPdfDocumentCandidateLoader.rebinding(original.pages[0], to: working.pages[0])
+    try FileManager.default.removeItem(at: originalURL)
 
-    let first = try XCTUnwrap(coordinator.pdfQueue.sync {
-      coordinator.pageAnalysis(sourceURL: firstURL,
-                               generation: 4,
-                               pageIndex: 0,
-                               pageID: pageID,
-                               mediaBox: mediaBox)
-    })
-    XCTAssertTrue(first.rules.isEmpty)
-    XCTAssertTrue(first.lookup(key: "Name").hasLiteralMatch)
-    let sourceDocument = try XCTUnwrap(PDFDocument(url: firstURL))
-    try requireDrawableLabel("Signature", in: XCTUnwrap(sourceDocument.page(at: 0)))
-    XCTAssertTrue(first.lookup(key: "Signature").hasLiteralMatch,
-      "Extracted: \(first.sourceText); prepared labels: \(first.labelCandidates.map(\.fieldName))")
-    let reused = try XCTUnwrap(coordinator.pdfQueue.sync {
-      coordinator.pageAnalysis(sourceURL: firstURL,
-                               generation: 4,
-                               pageIndex: 0,
-                               pageID: pageID,
-                               mediaBox: mediaBox)
-    })
-    XCTAssertEqual(reused.sourceText, first.sourceText)
-    XCTAssertEqual(coordinator.pdfQueue.sync { coordinator.pageAnalysisBuildCountForTesting }, 1)
-
-    let replacement = try XCTUnwrap(coordinator.pdfQueue.sync {
-      coordinator.pageAnalysis(sourceURL: replacementURL,
-                               generation: 5,
-                               pageIndex: 0,
-                               pageID: pageID,
-                               mediaBox: mediaBox)
-    })
-    XCTAssertEqual(replacement.generation, 5)
-    XCTAssertTrue(replacement.lookup(key: "Owner").hasLiteralMatch)
-    XCTAssertFalse(replacement.lookup(key: "Name").hasLiteralMatch)
-    XCTAssertEqual(coordinator.pdfQueue.sync { coordinator.pageAnalysisBuildCountForTesting }, 2)
+    XCTAssertEqual(rebound.id, original.pages[0].id)
+    XCTAssertTrue(try XCTUnwrap(rebound.page.string).contains("Owner"))
+    XCTAssertTrue(rebound.sourceAnalysis.lookup(key: "Name").hasLiteralMatch)
+    XCTAssertFalse(rebound.sourceAnalysis.lookup(key: "Owner").hasLiteralMatch)
+    let replacement = try InkSignPdfDocumentCandidateLoader.load(url: workingURL)
+    XCTAssertTrue(replacement.pages[0].sourceAnalysis.lookup(key: "Owner").hasLiteralMatch)
+    XCTAssertFalse(replacement.pages[0].sourceAnalysis.lookup(key: "Name").hasLiteralMatch)
   }
 
   func testKeyUnderlineRuleLeavesTheLabelAndMarginOutsideTheTextFlow() {
@@ -419,7 +374,8 @@ final class PlacementRuleDetectorTests: XCTestCase {
     guard range.location != NSNotFound else { return }
     for index in range.location..<NSMaxRange(range) {
       if source.character(at: index) == 0x20 { continue }
-      let bounds = page.characterBounds(at: index)
+      let selection = try XCTUnwrap(page.selection(for: NSRange(location: index, length: 1)))
+      let bounds = selection.bounds(for: page)
       XCTAssertFalse(bounds.isNull || bounds.isEmpty,
         "Fixture label \(label), character index \(index), bounds \(bounds)")
     }

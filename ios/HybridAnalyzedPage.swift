@@ -23,10 +23,8 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContex
     self.generation = 0
     self.modeSession = nil
     self.pageID = pageID
-    self.analysis = InkSignPdfPageAnalysis(generation: 0,
-      pageID: pageID, pageIndex: 0, sourceText: "", characterBounds: [],
-      characterVisualRows: [], rules: [], labelCandidates: [],
-      estimatedMemoryBytes: 0)
+    self.analysis = InkSignPdfPageAnalysis(sourceText: "", characterBounds: [],
+      characterVisualRows: [], rules: [], labelCandidates: [])
     super.init()
   }
 

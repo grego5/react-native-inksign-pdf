@@ -108,11 +108,6 @@ final class InkSignPdfDocumentCoordinator {
     let generation: UInt64
     let type: OperationType
   }
-  private struct PageAnalysisKey: Hashable {
-    let generation: UInt64
-    let pageID: UUID
-  }
-
   let artifactPolicy: InkSignPdfCacheArtifactPolicy
   let pdfQueue = DispatchQueue(label: "ReactNativeInkSignPdf.ios.pdf",
                                qos: .userInitiated)
@@ -130,11 +125,6 @@ final class InkSignPdfDocumentCoordinator {
   private var ownedOutputs = Set<URL>()
   private var nextTextID: UInt64 = 0
   private var textTargets: [UInt64: InkSignPdfTextTarget] = [:]
-  private var textSourceAnalysis: [UUID: InkSignPdfPageAnalysis] = [:]
-  private var pageAnalysisGeneration: UInt64?
-  private var pageAnalysisCache: [PageAnalysisKey: InkSignPdfPageAnalysis] = [:]
-  private var pageAnalysisLRU: [PageAnalysisKey] = []
-  private(set) var pageAnalysisBuildCountForTesting = 0
 
   func allocateTextID() throws -> UInt64 {
     let maximum = UInt64(9_007_199_254_740_991)
@@ -225,29 +215,15 @@ final class InkSignPdfDocumentCoordinator {
     }
   }
 
-  func retainTextAnalysis(_ analysis: InkSignPdfPageAnalysis) {
-    // Source text is immutable for the lifetime of a stable page ID.
-    guard textSourceAnalysis[analysis.pageID] == nil else { return }
-    textSourceAnalysis[analysis.pageID] = analysis
-    for target in textTargets(for: analysis.pageID) {
-      refreshEmbeddedValue(id: target.id)
-    }
-  }
-
-  private func refreshEmbeddedValue(id: UInt64) {
-    guard var target = textTargets[id], let analysis = textSourceAnalysis[target.pageID] else { return }
-    target.embeddedValue = analysis.embeddedText(in: target.canonicalDetectionBounds, excluding: target.excludedSourceRanges)
-    textTargets[id] = target
-  }
-
   func updateTextPlacement(_ annotation: InkSignPdfTextAnnotation, page: InkSignPdfPageState) {
     let bounds = annotation.canonicalPlacementBounds(mediaBox: page.geometry.mediaBox)
     guard var target = textTargets[annotation.id] else { preconditionFailure("Committed text requires a reserved target") }
     precondition(target.pageID == page.id)
     target.canonicalBounds = bounds
     if target.sourceIdentity == nil { target.canonicalDetectionBounds = bounds }
+    target.embeddedValue = page.sourceAnalysis.embeddedText(in: target.canonicalDetectionBounds,
+                                                           excluding: target.excludedSourceRanges)
     textTargets[annotation.id] = target
-    refreshEmbeddedValue(id: annotation.id)
   }
 
   func synchronizeTextPlacement(on page: InkSignPdfPageState) {
@@ -264,7 +240,6 @@ final class InkSignPdfDocumentCoordinator {
 
   func removeTextTargets(for pageID: UUID) {
     textTargets = textTargets.filter { $0.value.pageID != pageID }
-    textSourceAnalysis.removeValue(forKey: pageID)
   }
 
   var isDirty: Bool {
@@ -346,7 +321,6 @@ final class InkSignPdfDocumentCoordinator {
       replacedDocument = document
       document = nil
       textTargets.removeAll(keepingCapacity: false)
-      textSourceAnalysis.removeAll(keepingCapacity: false)
       structuralDirty = false
       rollbackDocument = nil
       rollbackStructuralDirty = nil
@@ -526,7 +500,6 @@ final class InkSignPdfDocumentCoordinator {
     document = candidate
     let retainedPageIDs = Set(candidate.pages.map(\.id))
     textTargets = textTargets.filter { retainedPageIDs.contains($0.value.pageID) }
-    textSourceAnalysis = textSourceAnalysis.filter { retainedPageIDs.contains($0.key) }
     pendingArtifacts.remove(candidate.workingURL)
     structuralDirty = true
     return previous
@@ -544,7 +517,8 @@ final class InkSignPdfDocumentCoordinator {
                                 rotation: (old.geometry.rotation + degrees) % 360)
     document.replaceActivePage(InkSignPdfPageState(
       id: old.id, page: old.page, geometry: geometry, history: old.history,
-      geometryRevision: old.geometryRevision &+ 1, sourceGeometry: old.sourceGeometry))
+      geometryRevision: old.geometryRevision &+ 1, sourceGeometry: old.sourceGeometry,
+      sourceAnalysis: old.sourceAnalysis))
     structuralDirty = true
     return document
   }
@@ -568,7 +542,6 @@ final class InkSignPdfDocumentCoordinator {
     }
     document = nil
     textTargets.removeAll(keepingCapacity: false)
-    textSourceAnalysis.removeAll(keepingCapacity: false)
     structuralDirty = false
   }
 
@@ -583,56 +556,11 @@ final class InkSignPdfDocumentCoordinator {
     structuralDirty = dirty
   }
 
-  func pageAnalysis(sourceURL: URL,
-                    generation: UInt64,
-                    pageIndex: Int,
-                    pageID: UUID,
-                    mediaBox: CGRect) -> InkSignPdfPageAnalysis? {
-    dispatchPrecondition(condition: .onQueue(pdfQueue))
-    if pageAnalysisGeneration != generation {
-      pageAnalysisCache.removeAll(keepingCapacity: true)
-      pageAnalysisLRU.removeAll(keepingCapacity: true)
-      pageAnalysisGeneration = generation
-    }
-    let key = PageAnalysisKey(generation: generation, pageID: pageID)
-    if let cached = pageAnalysisCache[key] {
-      pageAnalysisLRU.removeAll { $0 == key }
-      pageAnalysisLRU.append(key)
-      return cached
-    }
-    guard let source = PDFDocument(url: sourceURL),
-          let page = source.page(at: pageIndex) else { return nil }
-    let analysis = InkSignPdfPageAnalysis.build(generation: generation,
-                                                pageID: pageID,
-                                                pageIndex: pageIndex,
-                                                page: page,
-                                                mediaBox: mediaBox)
-    pageAnalysisCache[key] = analysis
-    pageAnalysisLRU.append(key)
-    pageAnalysisBuildCountForTesting += 1
-    while !pageAnalysisLRU.isEmpty {
-      let estimatedBytes = pageAnalysisCache.values.reduce(0) {
-        $0 + $1.estimatedMemoryBytes
-      }
-      guard pageAnalysisLRU.count > 8 || estimatedBytes > 8 * 1024 * 1024 else { break }
-      let evicted = pageAnalysisLRU.removeFirst()
-      pageAnalysisCache.removeValue(forKey: evicted)
-    }
-    return analysis
-  }
-
-  private func clearPageAnalysisCache() {
-    pageAnalysisGeneration = nil
-    pageAnalysisCache.removeAll(keepingCapacity: false)
-    pageAnalysisLRU.removeAll(keepingCapacity: false)
-  }
-
   func dispose() {
     lock.lock()
     guard !isDisposed else { lock.unlock(); return }
     isDisposed = true
     textTargets.removeAll(keepingCapacity: false)
-    textSourceAnalysis.removeAll(keepingCapacity: false)
     generation &+= 1
     activeOperation = nil
     let cancellationHandlers = Array(pendingCancellations.values)
@@ -646,10 +574,9 @@ final class InkSignPdfDocumentCoordinator {
     clearDocument()
     lock.unlock()
     cancellationHandlers.forEach { $0() }
-    pdfQueue.async { [weak self, artifactPolicy = self.artifactPolicy] in
+    pdfQueue.async { [artifactPolicy = self.artifactPolicy] in
       artifacts.forEach(artifactPolicy.deleteExact)
       if let previous { artifactPolicy.deleteExact(previous.workingURL) }
-      self?.clearPageAnalysisCache()
     }
   }
 }
@@ -704,6 +631,8 @@ final class InkSignPdfPageState {
   let history: InkSignPdfPageContentHistory
   let geometryRevision: UInt64
   let sourceGeometry: PageGeometry
+  /// Captured from the original page before PDFKit serialization.
+  let sourceAnalysis: InkSignPdfPageAnalysis
 
   var contentRevision: UInt64 { history.revision }
 
@@ -712,13 +641,15 @@ final class InkSignPdfPageState {
        geometry: PageGeometry,
        history: InkSignPdfPageContentHistory = InkSignPdfPageContentHistory(),
        geometryRevision: UInt64 = 0,
-       sourceGeometry: PageGeometry? = nil) {
+       sourceGeometry: PageGeometry? = nil,
+       sourceAnalysis: InkSignPdfPageAnalysis) {
     self.id = id
     self.page = page
     self.geometry = geometry
     self.history = history
     self.geometryRevision = geometryRevision
     self.sourceGeometry = sourceGeometry ?? geometry
+    self.sourceAnalysis = sourceAnalysis
   }
 }
 

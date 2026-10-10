@@ -11,12 +11,13 @@
   captured activity before callbacks so newer requests retain ownership.
 - `ViewerViewportController` owns programmatic viewport writes, motion,
   keyboard space, and settled zoom events. PDFKit owns its live scroll geometry.
-- Serial PDF queue builds/caches canonical text/rule analysis and groups label
-  rows once. LRU: eight pages/8 MiB estimated. Navigation/reordering/rotation
-  retain analysis; replacement/disposal clear the cache.
-- Handles retain immutable analysis independently; coordinator targets retain
-  source analysis for fallback after movement. Page deletion releases targets.
-  Structural publication retains the session for surviving pages.
+- Serial PDF queue analyzes each original page once during open/import, before
+  PDFKit serialization. Page state owns immutable canonical text/rule analysis;
+  navigation, reordering, and rotation preserve it. Analysis retains no source
+  PDF bytes or framework page objects.
+- `getPage()` shares stored analysis through the viewer command queue; target
+  fallback reads it from page state. Analysis lives with retained pages/handles.
+  Page deletion releases targets; surviving pages retain their session on publication.
 - `PDFView` owns page presentation, viewport gestures, and overlay lifecycle.
 - The page overlay provider supplies page-scoped ink canvases. The text overlay
   owns temporary editing state.

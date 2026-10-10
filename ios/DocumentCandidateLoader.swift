@@ -13,11 +13,15 @@ enum InkSignPdfDocumentCandidateError: Error {
 }
 
 enum InkSignPdfDocumentCandidateLoader {
-  static func load(url: URL) throws -> InkSignPdfDocumentCandidate {
+  static func load(url: URL,
+                   retainingAnalysisFrom sourcePages: [InkSignPdfPageState]? = nil) throws -> InkSignPdfDocumentCandidate {
     guard let document = PDFDocument(url: url) else {
       throw InkSignPdfDocumentCandidateError.unreadable
     }
     guard document.pageCount > 0 else { throw InkSignPdfDocumentCandidateError.empty }
+    if let sourcePages, sourcePages.count != document.pageCount {
+      throw InkSignPdfDocumentCandidateError.unreadable
+    }
 
     var pages: [InkSignPdfPageState] = []
     pages.reserveCapacity(document.pageCount)
@@ -25,11 +29,17 @@ enum InkSignPdfDocumentCandidateLoader {
       guard let page = document.page(at: index) else {
         throw InkSignPdfDocumentCandidateError.unreadable
       }
-      let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
-      guard geometry.isValid else { throw InkSignPdfDocumentCandidateError.invalidGeometry }
-      pages.append(InkSignPdfPageState(page: page, geometry: geometry))
+      pages.append(try pageState(for: page, sourceAnalysis: sourcePages?[index].sourceAnalysis))
     }
     return InkSignPdfDocumentCandidate(document: document, pages: pages)
+  }
+
+  static func pageState(for page: PDFPage,
+                        sourceAnalysis: InkSignPdfPageAnalysis? = nil) throws -> InkSignPdfPageState {
+    let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
+    guard geometry.isValid else { throw InkSignPdfDocumentCandidateError.invalidGeometry }
+    let analysis = sourceAnalysis ?? InkSignPdfPageAnalysis.build(page: page, mediaBox: geometry.mediaBox)
+    return InkSignPdfPageState(page: page, geometry: geometry, sourceAnalysis: analysis)
   }
 
   static func rebinding(_ oldPage: InkSignPdfPageState,
@@ -40,6 +50,7 @@ enum InkSignPdfDocumentCandidateLoader {
                         geometry: oldPage.geometry,
                         history: oldPage.history,
                         geometryRevision: oldPage.geometryRevision,
-                        sourceGeometry: candidatePage.sourceGeometry)
+                        sourceGeometry: candidatePage.sourceGeometry,
+                        sourceAnalysis: oldPage.sourceAnalysis)
   }
 }

@@ -63,15 +63,11 @@ struct InkSignPdfPreparedLabel {
 }
 
 struct InkSignPdfPageAnalysis {
-  let generation: UInt64
-  let pageID: UUID
-  let pageIndex: Int
   let sourceText: String
   let characterBounds: [CGRect?]
   let characterVisualRows: [Int]
   let rules: [InkSignPdfCanonicalWritingRule]
   let labelCandidates: [InkSignPdfPreparedLabel]
-  let estimatedMemoryBytes: Int
 
   /// Immutable canonical source geometry is projected for displayed selection.
   func displayedFieldGeometry(lookup: InkSignPdfTextLookup,
@@ -93,10 +89,7 @@ struct InkSignPdfPageAnalysis {
                                              sourceRules: projected.map { $0.0 })
   }
 
-  static func build(generation: UInt64,
-                    pageID: UUID,
-                    pageIndex: Int,
-                    page: PDFPage,
+  static func build(page: PDFPage,
                     mediaBox: CGRect) -> InkSignPdfPageAnalysis {
     let sourceText = page.string ?? ""
     let sourceString = sourceText as NSString
@@ -111,7 +104,9 @@ struct InkSignPdfPageAnalysis {
                                                   rotate: 0,
                                                   preserveAspectRatio: false)
       characterBounds = (0..<sourceString.length).map { index -> CGRect? in
-        let bounds = page.characterBounds(at: index)
+        // Range selections keep geometry aligned with page.string's reading order.
+        guard let selection = page.selection(for: NSRange(location: index, length: 1)) else { return nil }
+        let bounds = selection.bounds(for: page)
         guard !bounds.isNull, !bounds.isEmpty else { return nil }
         return Self.sourceDisplayRect(bounds, transform: transform, pageSize: pageSize)
       }
@@ -143,23 +138,11 @@ struct InkSignPdfPageAnalysis {
           lineHeight: abs(rowEnd.y - rowStart.y), lineCenterY: (rowStart.y + rowEnd.y) / 2,
           rowStart: rowStart, rowEnd: rowEnd))
     }
-    return InkSignPdfPageAnalysis(generation: generation,
-                                  pageID: pageID,
-                                  pageIndex: pageIndex,
-                                  sourceText: sourceText,
+    return InkSignPdfPageAnalysis(sourceText: sourceText,
                                   characterBounds: canonicalBounds,
                                   characterVisualRows: characterVisualRows,
                                   rules: rules,
-                                  labelCandidates: canonicalLabels,
-                                  estimatedMemoryBytes: sourceString.length * MemoryLayout<UInt16>.stride +
-                                    characterBounds.count * MemoryLayout<CGRect?>.stride +
-                                    characterVisualRows.count * MemoryLayout<Int>.stride +
-                                    rules.count * MemoryLayout<InkSignPdfCanonicalWritingRule>.stride +
-                                    labelCandidates.reduce(0) { total, label in
-                                      total + MemoryLayout<InkSignPdfPreparedLabel>.stride +
-                                        label.sourceRanges.count * MemoryLayout<NSRange>.stride +
-                                        label.tokens.reduce(0) { $0 + $1.count * MemoryLayout<UInt16>.stride }
-                                    } + 1024)
+                                  labelCandidates: canonicalLabels)
   }
 
   func lookup(key: String) -> InkSignPdfTextLookup {

@@ -15,6 +15,9 @@
 
 - PDFKit carries source pages into the output; Quartz draws annotations and
   CoreText shapes committed text.
+- PDFKit serialization can change source font/Unicode mappings. Source text
+  search/copy after export is not guaranteed; in-session operations use import-time
+  analysis under [source ownership](view-lifecycle.md#ownership).
 - A bounded text annotation uses its fixed flow rectangle as its PDF bounds;
   measured visible text may occupy less of that rectangle.
 - Text flow regions, line limits, and vertical anchors determine the same

@@ -130,7 +130,8 @@ x, y }`, then return to view mode. Page or mode changes and teardown cancel
 - `setTextDirection(direction)` — Set the base text direction: `'ltr'`, `'rtl'`,
   or `'auto'` to follow app direction.
 - `finalize()` — Export to a temporary PDF `file://` URI. Copy it to persistent
-  storage before closing the viewer if you need to retain it.
+  storage before closing the viewer if you need to retain it. On iOS, original
+  PDF text may lose search/copy support after export.
 
 ### Prepared page
 
