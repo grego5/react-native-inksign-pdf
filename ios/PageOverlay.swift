@@ -208,7 +208,7 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
     displayedPages.insert(ObjectIdentifier(page))
     owner?.configureDoubleTapGestureRecognition()
     owner?.overlayDidDisplay(overlay.canvasView, for: pageID)
-    owner?.updatePDFViewInteractionOwnership()
+    owner?.interaction.synchronizePolicy()
   }
 
   func pdfView(_ view: PDFView,

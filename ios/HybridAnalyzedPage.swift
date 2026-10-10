@@ -78,7 +78,7 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContex
   private func withOwner<T>(_ action: (InkSignView) throws -> T) throws -> T {
     guard let owner else { throw InkSignView.TextError.cancelled }
     return try owner.performOnMainSync {
-      if let modeSession { try owner.requireModeSession(modeSession) }
+      if let modeSession { try owner.interaction.requireSession(modeSession) }
       guard !owner.disposed,
             owner.documentCoordinator.generation == generation,
             owner.documentCoordinator.document?.pages.contains(where: { $0.id == pageID }) == true else {

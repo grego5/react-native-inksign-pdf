@@ -14,7 +14,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let session = try view.setMode(mode: .view, options: nil)
     _ = try awaitRotationOperation(session.setViewport(
       options: ViewportOptions(x: 170, y: 120, zoom: 3)))
-    XCTAssertFalse(view.viewportMotion.isRunning)
+    XCTAssertFalse(view.interaction.viewport.motion.isRunning)
     let viewport = try view.getViewport()
     XCTAssertEqual(viewport.zoom, 3, accuracy: 0.01)
     let page = try XCTUnwrap(view.documentCoordinator.document?.activePage)
@@ -41,8 +41,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     _ = try view.setMode(mode: .ink, options: nil)
     wait(for: [cancelled], timeout: 3)
-    XCTAssertTrue(view.editMode)
-    XCTAssertFalse(view.viewportMotion.isRunning)
+    XCTAssertTrue(view.interaction.isInk)
+    XCTAssertFalse(view.interaction.viewport.motion.isRunning)
   }
 
   func testZoomReportsSettledFitRelativeScaleAndEachPage() throws {
@@ -62,16 +62,16 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       pending = nil
       XCTAssertEqual(try XCTUnwrap(reports.last), expected, accuracy: 0.000001)
     }
-    try expectZoom(1) { view.scheduleZoomReport() }
-    let fit = try XCTUnwrap(view.usableFitScale())
+    try expectZoom(1) { view.interaction.viewport.scheduleZoomReport() }
+    let fit = try XCTUnwrap(view.interaction.viewport.usableFitScale())
     try expectZoom(2) {
-      view.applyViewport(request: .focus(nil, zoom: Double(fit * 2)))
+      view.interaction.viewport.applyViewport(request: .focus(nil, zoom: Double(fit * 2)))
     }
     try expectZoom(0.75) {
-      view.applyViewport(request: .focus(nil, zoom: Double(fit * 0.75)))
+      view.interaction.viewport.applyViewport(request: .focus(nil, zoom: Double(fit * 0.75)))
     }
-    try expectZoom(1) { _ = try view.switchPage(to: 1); view.applyViewport(request: .fit) }
-    try expectZoom(1) { _ = try view.switchPage(to: 0); view.applyViewport(request: .fit) }
+    try expectZoom(1) { _ = try view.switchPage(to: 1); view.interaction.viewport.applyViewport(request: .fit) }
+    try expectZoom(1) { _ = try view.switchPage(to: 0); view.interaction.viewport.applyViewport(request: .fit) }
   }
 
   func testOpenDetectsJpegWithoutExtensionAndCreatesOnePdfPage() throws {
@@ -145,7 +145,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try awaitRotationOperation(view.close(cancelPending: false))
     XCTAssertEqual(errors.count, 2)
     XCTAssertFalse(view.isPickingPageCoords)
-    XCTAssertNil(view.pendingPageCoords)
+    XCTAssertNil(view.interaction.coordinateRequest)
     // Queue admission is deliberately held so disposal also covers a not-yet-armed request.
     let held = Promise<Void>()
     view.enqueueViewerCommand { held }
@@ -172,7 +172,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(coordinates.isEmpty)
     XCTAssertEqual(errors.count, 1)
     XCTAssertTrue(errors[0].localizedDescription.hasPrefix("operation_cancelled:"))
-    XCTAssertNil(view.pendingPageCoords)
+    XCTAssertNil(view.interaction.coordinateRequest)
     XCTAssertTrue(view.interactionMode() == .ink)
     let nextPage = try awaitRotationOperation(session.getPage(pageIndex: 1))
     XCTAssertNoThrow(try nextPage.getTextEntries())
@@ -198,7 +198,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertThrowsError(try fixture.view.setMode(mode: .text, options: nil))
     XCTAssertThrowsError(try fixture.view.setMode(mode: .view, options: nil))
     XCTAssertNil(fixture.view.documentCoordinator.document)
-    XCTAssertFalse(fixture.view.editMode)
+    XCTAssertFalse(fixture.view.interaction.isInk)
     XCTAssertFalse(fixture.view.textInteractionOverlay.hasPendingPlacement())
     // Late completion cannot revive the cancelled queue or current document.
     neverFinishes.resolve(withResult: PageInfo(pageIndex: 0, pageCount: 1, width: 300, height: 400))
@@ -854,7 +854,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(view.canvasView === view.overlayProvider.canvasView(for: pageID))
     XCTAssertTrue(view.documentView.isUserInteractionEnabled)
     XCTAssertTrue(view.canvasView.drawingGestureRecognizer.isEnabled)
-    XCTAssertTrue(view.editMode)
+    XCTAssertTrue(view.interaction.isInk)
     XCTAssertEqual(afterRotation.workingURL, workingURLBefore)
     XCTAssertEqual(try Data(contentsOf: afterRotation.workingURL), workingBytesBefore)
     XCTAssertEqual(afterRotation.activePage.sourceGeometry.rotation, 0)
@@ -968,7 +968,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       if angle != 0 { _ = try awaitRotationOperation(view.rotatePage(degrees: 90)) }
       let state = try XCTUnwrap(view.documentCoordinator.document)
       let historyBefore = state.activePage.history.content
-      let modeBefore = view.editMode
+      let modeBefore = view.interaction.isInk
       let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
       let textOptions = ResolveTextOptions(fieldName: "Name", bounds: nil, occurrence: nil,
         fontSize: nil, color: nil, direction: .ltr, maxLines: 2,
@@ -979,7 +979,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
           XCTFail("A vertical rule must not accept field insertion")
         } catch { XCTAssertTrue(error.localizedDescription.hasPrefix("text_rule_not_found")) }
         XCTAssertTrue(state.activePage.history.content.equals(historyBefore))
-        XCTAssertEqual(view.editMode, modeBefore)
+        XCTAssertEqual(view.interaction.isInk, modeBefore)
         continue
       }
       let textID = try page.resolveText(options: textOptions)
@@ -1415,7 +1415,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     var modes: [String] = []
     view.onStateChange = { modes.append($0.mode.stringValue) }
     try page.setTextValue(id: textID, text: "Ada")
-    let beforeFocus = try view.currentViewportSnapshot().zoom
+    let beforeFocus = try view.interaction.viewport.currentViewportSnapshot().zoom
     let gate = Promise<Void>()
     let blocked = view.enqueueViewerCommand { gate }
     let focus = try page.focusText(id: textID,
@@ -1427,7 +1427,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       cancelled.fulfill()
     }
     try view.setMode(mode: .text, options: nil)
-    XCTAssertFalse(view.editMode)
+    XCTAssertFalse(view.interaction.isInk)
     XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
     wait(for: [cancelled], timeout: 2)
     XCTAssertThrowsError(try page.setTextValue(id: textID, text: "Stale"))
@@ -1437,8 +1437,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try awaitModeChange(blocked)
     try awaitModeChange(view.enqueueViewerCommand { Promise<Void>.resolved() })
     XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
-    XCTAssertFalse(view.editMode)
-    XCTAssertEqual(try view.currentViewportSnapshot().zoom, beforeFocus, accuracy: 0.01)
+    XCTAssertFalse(view.interaction.isInk)
+    XCTAssertEqual(try view.interaction.viewport.currentViewportSnapshot().zoom, beforeFocus, accuracy: 0.01)
     try view.setMode(mode: .view, options: nil)
     XCTAssertFalse(view.textInteractionOverlay.hasPendingPlacement())
     XCTAssertEqual(modes.last, "view")
@@ -1490,14 +1490,14 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
 
     let moving = try view.movePage(pageIndex: 1)
     let session = try view.setMode(mode: .ink, options: nil)
-    XCTAssertTrue(view.editMode)
+    XCTAssertTrue(view.interaction.isInk)
     XCTAssertFalse(view.documentView.isUserInteractionEnabled)
     XCTAssertFalse(view.canvasView.drawingGestureRecognizer.isEnabled)
 
     releaseWorker.signal()
     _ = try awaitRotationOperation(moving)
     XCTAssertEqual(view.documentCoordinator.document?.activePageID, pageID)
-    XCTAssertTrue(view.editMode)
+    XCTAssertTrue(view.interaction.isInk)
     XCTAssertTrue(view.documentView.isUserInteractionEnabled)
     XCTAssertTrue(view.canvasView.drawingGestureRecognizer.isEnabled)
     let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
@@ -1905,8 +1905,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let target = ViewportTarget(zoom: 3, focus: CGPoint(x: 140, y: 180))
-    XCTAssertTrue(view.applyViewport(target: target))
-    view.setInteractionMode(editing: true)
+    XCTAssertTrue(view.interaction.viewport.applyViewport(target: target))
+    view.interaction.setBaseMode(ink: true)
     let original = try XCTUnwrap(view.documentCoordinator.document)
     let rejected = expectation(description: "invalid replacement is rejected")
     var rejection: Error?
@@ -1921,14 +1921,14 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertNil(view.documentCoordinator.document, "replacement clears the old document on admission")
     XCTAssertNil(view.documentView.document)
     XCTAssertNil(view.overlayProvider.canvasView(for: original.activePage.id))
-    XCTAssertFalse(view.editMode)
+    XCTAssertFalse(view.interaction.isInk)
     wait(for: [rejected], timeout: 5)
 
     XCTAssertNotNil(rejection)
     XCTAssertNil(view.documentCoordinator.document)
     XCTAssertNil(view.documentView.document)
     XCTAssertNil(view.attachedOverlayPage)
-    XCTAssertFalse(view.editMode)
+    XCTAssertFalse(view.interaction.isInk)
     view.documentCoordinator.pdfQueue.sync {}
     XCTAssertFalse(FileManager.default.fileExists(atPath: original.workingURL.path))
   }
@@ -1950,13 +1950,13 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertNil(view.documentCoordinator.document, "replacement clears the old document on admission")
     XCTAssertNil(view.documentView.document)
     XCTAssertNil(view.overlayProvider.canvasView(for: original.activePage.id))
-    XCTAssertFalse(view.editMode)
+    XCTAssertFalse(view.interaction.isInk)
     wait(for: [rejected], timeout: 5)
 
     XCTAssertNil(view.documentCoordinator.document)
     XCTAssertNil(view.documentView.document)
     XCTAssertNil(view.attachedOverlayPage)
-    XCTAssertFalse(view.editMode)
+    XCTAssertFalse(view.interaction.isInk)
     view.documentCoordinator.pdfQueue.sync {}
     XCTAssertFalse(FileManager.default.fileExists(atPath: original.workingURL.path))
     XCTAssertNil(view.overlayProvider.canvasView(for: original.activePage.id))
@@ -2209,9 +2209,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     defer { fixture.window.isHidden = true }
     let initialZoom = fixture.view.documentView.scaleFactor
 
-    try fixture.view.applyModeTransition(
-      toEditing: false,
-      request: .focus(CGPoint(x: 150, y: 200), zoom: nil))
+    fixture.view.interaction.viewport.applyViewport(request: .focus(CGPoint(x: 150, y: 200), zoom: nil))
 
     XCTAssertEqual(fixture.view.documentView.scaleFactor, initialZoom, accuracy: 0.0001)
   }

@@ -114,6 +114,7 @@ to persistent storage if you need it after closing the viewer.
   once the document is ready. Preserves the viewport and returns a mode session.
   Options apply only to text mode; viewport changes wait for a placement tap.
   Switching modes finishes an open text entry or cancels untapped placement.
+  `'view'` is a no-op when no document is open.
 - `requestPageCoords()` — Wait for one page tap and return `{ pageId, pageIndex,
 x, y }`, then return to view mode. Page or mode changes and teardown cancel
   the request. Use `setMode('view')` for Back.

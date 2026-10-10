@@ -2,24 +2,27 @@
 
 ## Viewport and modes
 
-- `onZoomChange` reports settled scale/fit, deduplicated per page; initial
-  presentation and page/size changes emit when ready. Wait for stable scale/fit
-  and finished PDFView gestures.
+- `ViewerViewportController` writes scale, destination, page-scroll offset/zoom,
+  and keyboard insets. `onZoomChange` reports settled scale/fit, deduplicated per
+  page; initial presentation and page/size changes emit when ready. Wait for
+  stable scale/fit and finished PDFView gestures.
 
 - `session.setViewport()` preserves when omitted, fits for `{}`; absolute zoom
   and paired x/y override focus. Text-mode viewport options wait for a valid tap.
   Mode changes commit drafts or cancel untapped placement; finish returns to view.
   Session lifetime follows the shared [operation contract](../architecture.md#document-operations).
-- `PDFView` owns viewport/navigation gestures, PencilKit owns ink, text overlay
-  owns placement/selection/editing/dragging. See [ownership](view-lifecycle.md).
+- `ViewerInteractionCoordinator` derives exclusive input policy from picker,
+  text activity, base view/ink policy, and presentation readiness. PDFKit and
+  PencilKit apply it; overlay attachment and layout reconcile the current policy.
+  See [ownership](view-lifecycle.md).
 - `PageGeometry` confines PDFKit media-box/bottom-left coordinates to adapters;
   public focus/bounds use displayed top-left points. Editing preserves zoom and
   may pan for caret visibility. Shared [geometry](../architecture.md#document-model) applies.
 - Focus positions the requested page point. Editing keeps the caret above the
   keyboard. Keyboard avoidance owns an additive bottom inset, reconciled with
   PDFKit's live geometry after zoom; ending editing removes only that contribution.
-- `ViewportMotion` applies zoom and focus together on the active page's zooming
-  scroll view. Focus promises resolve after animation; mode/page/document
+- The viewport controller uses `ViewportMotion` to apply zoom and focus together
+  on the active page's zooming scroll view. Focus promises resolve after animation; mode/page/document
   replacement, overlay reset, and user pan/pinch cancel it. Initial presentation
   is immediate. Caret correction uses the same frame; zoom events wait for settlement.
 
