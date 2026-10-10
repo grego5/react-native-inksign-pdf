@@ -11,18 +11,18 @@ extension InkSignView {
                                _ action: @escaping () throws -> Promise<T>) -> Promise<T> {
     let result = InkSignPdfOperationPromise<T>()
     performOnMain {
-      guard !self.disposed, modeSession.map(self.modeSessionIsCurrent) ?? true else {
+      guard !self.disposed, modeSession.map(self.interaction.sessionIsCurrent) ?? true else {
         result.reject(LoadError.cancelled); return
       }
       let id = UUID()
       let entry = ViewerCommand(id: id, presentation: presentation, modeSession: modeSession, start: { [weak self] in
         guard let self else { result.reject(LoadError.cancelled); return }
         do {
-          if let modeSession { try self.requireModeSession(modeSession) }
+          if let modeSession { try self.interaction.requireSession(modeSession) }
           let operation = try action()
           operation.then { value in
             self.performOnMain {
-              if let modeSession, !self.modeSessionIsCurrent(modeSession) { result.reject(LoadError.cancelled) }
+              if let modeSession, !self.interaction.sessionIsCurrent(modeSession) { result.reject(LoadError.cancelled) }
               else { result.resolve(value) }
               self.finishViewerCommand(id)
             }
@@ -55,22 +55,18 @@ extension InkSignView {
 
   func cancelPresentationCommands() {
     performOnMain {
-      self.invalidateModeSession()
-      self.cancelCoordinateRequest()
-      self.fieldFocusRequestID &+= 1
-      self.pageNavigationRequestID &+= 1
-      self.cancelPendingPageSwitch()
       let retired = self.commandQueue.filter { $0.presentation }
       self.commandQueue.removeAll { $0.presentation }
+      let running = self.runningCommand?.presentation == true ? self.runningCommand : nil
+      self.pageNavigationRequestID &+= 1
+      self.interaction.retireRequests()
       retired.forEach { $0.cancel() }
-      if self.runningCommand?.presentation == true {
-        self.runningCommand?.cancel()
-      }
+      running?.cancel()
     }
   }
 
   func cancelViewerCommands() {
-    cancelCoordinateRequest()
+    interaction.cancelCoordinates()
     let retired = commandQueue
     commandQueue.removeAll()
     let running = runningCommand
@@ -101,18 +97,18 @@ extension InkSignView {
     pageInputCoordinator.cancelPending()
     textInteractionOverlay.discardForDocumentReplacement()
     cancelActiveStroke(clearLive: false)
-    cancelPendingPageSwitch()
-    fieldFocusRequestID &+= 1
+    interaction.cancelPresentation()
+    interaction.viewport.supersede()
     pageNavigationRequestID &+= 1
-    pageSwitchRequestID &+= 1
+
     documentCoordinator.closeDocument()
-    structuralInteractionSuspended = false
+    interaction.resetAvailability()
     documentID = nil
     documentView.document = nil
     overlayProvider.reset()
     attachedOverlayPage = nil
     invalidateOverlayTransformCache()
-    applyInteractionMode(editing: false, interactionsEnabled: false)
+    interaction.setBaseMode(ink: false, enabled: false, finish: false)
     emitChange(force: true)
   }
 
@@ -169,7 +165,7 @@ extension InkSignView {
     guard !disposed else { throw ViewportError.cancelled }
     let current = try currentPageInfo()
     let target = min(max(current.pageIndex + delta, 0), current.pageCount - 1)
-    cancelPendingPageSwitch()
+    interaction.cancelPresentation()
     pageNavigationRequestID &+= 1
     if target == current.pageIndex {
       return
@@ -192,7 +188,7 @@ extension InkSignView {
   func getViewport() throws -> Viewport {
     try performOnMainSync {
       guard !self.disposed else { throw ViewportError.cancelled }
-      return try self.currentViewportSnapshot()
+      return try self.interaction.viewport.currentViewportSnapshot()
     }
   }
 
@@ -205,7 +201,10 @@ extension InkSignView {
   }
 
   func setMode(mode: InputMode, options: TextModeOptions?) throws -> any HybridModeSessionSpec {
-    try beginModeSession(mode, options: options)
+    try performOnMainSync {
+      let token = try interaction.beginSession(mode, options: options)
+      return HybridModeSession(owner: self, token: token)
+    }
   }
 
   func beginLoad(
@@ -220,23 +219,20 @@ extension InkSignView {
       return
     }
     let replacedOpen = pendingOpen
-    invalidateModeSession()
-    cancelCoordinateRequest()
+    interaction.retireRequests()
     pendingOpen = nil
     guard let operation = documentCoordinator.admit(.open) else {
       replacedOpen?.settlement.reject(LoadError.cancelled)
       promise.reject(withError: LoadError.operationInProgress)
       return
     }
-    structuralInteractionSuspended = false
+    interaction.resetAvailability()
     textInteractionOverlay.discardForDocumentReplacement()
     pageInputCoordinator.cancelPending()
     cancelActiveStroke(clearLive: false)
-    cancelPendingPageSwitch()
     pageNavigationRequestID &+= 1
-    pageSwitchRequestID &+= 1
-    pendingPageSwitchID = nil
-    applyInteractionMode(editing: false, interactionsEnabled: false)
+
+    interaction.setBaseMode(ink: false, enabled: false, finish: false)
     textInteractionOverlay.clearPlacementRules()
     documentView.document = nil
     overlayProvider.reset()
@@ -353,14 +349,12 @@ extension InkSignView {
 
     pending.phase = .installing
     pendingOpen = pending
-    finishInteractionForLifecycle()
+    interaction.finishInteraction()
     pageInputCoordinator.cancelPending()
-    cancelActiveStroke(clearLive: false)
-    applyInteractionMode(editing: false, interactionsEnabled: false)
-    cancelPendingPageSwitch()
+    interaction.setBaseMode(ink: false, enabled: false, finish: false)
+    interaction.cancelPresentation()
     pageNavigationRequestID &+= 1
-    pageSwitchRequestID &+= 1
-    pendingPageSwitchID = nil
+
     invalidateOverlayTransformCache()
     textInteractionOverlay.clearPlacementRules()
 
@@ -381,7 +375,7 @@ extension InkSignView {
       failOpenAttempt(error: LoadError.pdfLoadFailed)
       return
     }
-    documentView.go(to: candidate.pages[0].page)
+    interaction.viewport.navigate(to: candidate.pages[0].page)
     configureDoubleTapGestureRecognition()
     pending.phase = .awaitingReadiness
     pendingOpen = pending
@@ -410,12 +404,11 @@ extension InkSignView {
           (failed.map { $0.operation.id == pending.operation.id } ?? true) else { return }
     pending.phase = .clearing
     pendingOpen = pending
-    finishInteractionForLifecycle()
-    cancelActiveStroke(clearLive: false)
-    cancelPendingPageSwitch()
+    interaction.finishInteraction()
+    interaction.cancelPresentation()
     pageNavigationRequestID &+= 1
-    pageSwitchRequestID &+= 1
-    applyInteractionMode(editing: false, interactionsEnabled: false)
+
+    interaction.setBaseMode(ink: false, enabled: false, finish: false)
     textInteractionOverlay.clearPlacementRules()
     documentView.document = nil
     overlayProvider.reset()
@@ -429,48 +422,11 @@ extension InkSignView {
     pending.settlement.reject(error)
   }
 
-  func finishInteractionForLifecycle() {
-    viewportMotion.cancel()
-    if isPickingPageCoords { cancelCoordinateRequest() }
-    textInteractionOverlay.finishForLifecycle()
-  }
-
-  func setInteractionMode(editing: Bool, interactionsEnabled: Bool = true) {
-    let editing = editing && documentCoordinator.document != nil
-    finishInteractionForLifecycle()
-    if editMode && !editing { cancelActiveStroke() }
-    applyInteractionMode(editing: editing, interactionsEnabled: interactionsEnabled)
-    emitChange()
-  }
-
-  func applyInteractionMode(editing: Bool, interactionsEnabled: Bool) {
-    let editing = editing && documentCoordinator.document != nil
-    editMode = editing
-    let enabled = interactionsEnabled && !structuralInteractionSuspended &&
-      documentCoordinator.document != nil && !disposed
-    viewInteractionsEnabled = enabled
-    configureCanvasInteraction(canvasView)
-    pdfViewInteractionOwnership.update(
-      pdfView: documentView,
-      editing: editing,
-      interactionsEnabled: enabled,
-      placementRecognizer: textInteractionOverlay.placementTapRecognizer)
-  }
-
-  func updatePDFViewInteractionOwnership() {
-    configureCanvasInteraction(canvasView)
-    pdfViewInteractionOwnership.update(
-      pdfView: documentView,
-      editing: editMode,
-      interactionsEnabled: viewInteractionsEnabled,
-      placementRecognizer: textInteractionOverlay.placementTapRecognizer)
-  }
-
   func configureCanvasInteraction(_ canvas: InkCanvasView) {
-    let enabled = viewInteractionsEnabled && documentCoordinator.document != nil && !disposed
+    let enabled = interaction.inputEnabled
     canvas.isHidden = documentCoordinator.document == nil
     canvas.isUserInteractionEnabled = enabled
-    canvas.drawingGestureRecognizer.isEnabled = editMode && enabled
+    canvas.drawingGestureRecognizer.isEnabled = interaction.acceptsInkInput
   }
 
   func currentPageInfo() throws -> InkSignPdfNativePageInfo {

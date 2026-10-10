@@ -197,7 +197,7 @@ extension InkSignView {
       }
       guard let context = self.beginStructuralOperation(settlement: settlement,
                                                         cancelActiveInk: true) else { return }
-      self.fieldFocusRequestID &+= 1
+      self.interaction.viewport.supersede()
       guard self.prepareStructuralMutation(context, settlement: settlement) else { return }
       guard let state = context.coordinator.rotateActivePage(degrees: rotation,
                                                             operation: context.operation) else {
@@ -282,7 +282,7 @@ extension InkSignView {
       settlement.reject(MutablePageError.operationCancelled)
       return nil
     }
-    let viewport = try? currentViewportSnapshot()
+    let viewport = try? interaction.viewport.currentViewportSnapshot()
     let pages = oldState?.pages ?? []
     let activePageID = oldState?.activePageID ?? UUID()
     let activePageIndex = oldState?.activePageIndex ?? 0
@@ -308,11 +308,13 @@ extension InkSignView {
       finishStructuralFailure(context, error: MutablePageError.activeInkGesture, settlement: settlement)
       return false
     }
-    cancelPendingPageSwitch()
-    structuralInteractionSuspended = true
-    finishInteractionForLifecycle()
-    applyInteractionMode(editing: editMode, interactionsEnabled: false)
+    interaction.cancelPresentation()
     context.prepared = true
+    interaction.suspendStructural()
+    guard documentCoordinator.isCurrent(context.operation) else {
+      settlement.reject(MutablePageError.operationCancelled)
+      return false
+    }
     return true
   }
 
@@ -400,29 +402,23 @@ extension InkSignView {
                                           settlement: InkSignPdfOperationPromise<T>) {
     let isCurrent = documentCoordinator.isCurrent(context.operation)
     if isCurrent {
-      documentCoordinator.settle(context.operation, succeeded: false)
       if context.prepared, let oldState = context.oldState {
-        restoreStructuralPresentation(oldState,
-                                      generation: context.operation.generation,
-                                      viewport: context.viewport)
+        installStructuralPresentation(oldState, generation: context.operation.generation,
+                                      viewport: context.viewport) { [weak self] outcome in
+          guard let self, self.documentCoordinator.isCurrent(context.operation) else {
+            settlement.reject(MutablePageError.operationCancelled); return
+          }
+          self.documentCoordinator.settle(context.operation, succeeded: false)
+          if case .failure(let restorationError) = outcome { settlement.reject(restorationError) }
+          else { settlement.reject(error) }
+        }
+        return
       } else if context.prepared {
-        resumeStructuralInteraction()
+        interaction.resumePresentation()
       }
+      documentCoordinator.settle(context.operation, succeeded: false)
     }
     settlement.reject(isCurrent ? error : MutablePageError.operationCancelled)
-  }
-
-  private func restoreStructuralPresentation(_ state: InkSignPdfDocumentState,
-                                             generation: UInt64,
-                                             viewport: Viewport?) {
-    let page = state.activePage
-    invalidateOverlayTransformCache()
-    textInteractionOverlay.clearPlacementRules()
-    overlayProvider.install(document: state.document, generation: generation)
-    documentView.document = state.document
-    documentView.go(to: page.page)
-    applyStructuralViewport(viewport)
-    resumeStructuralInteraction()
   }
 
   private func installStructuralPresentation(_ state: InkSignPdfDocumentState,
@@ -430,10 +426,14 @@ extension InkSignView {
                                              viewport: Viewport?,
                                              fitPage: Bool = false,
                                              completion: @escaping (Result<PageInfo, Error>) -> Void) {
-    pageSwitchRequestID &+= 1
-    pendingPageSwitchID = nil
+
     let page = state.activePage
-    pendingStructuralPresentationPageID = page.id
+    let viewportRequest: ViewportRequest? = fitPage ? .fit : viewport.map {
+      .focus(CGPoint(x: $0.x, y: $0.y), zoom: $0.zoom)
+    }
+    let request = interaction.beginPresentation(page: page, viewport: viewportRequest,
+      structural: true, completion: completion)
+    guard interaction.presentation === request else { return }
     invalidateOverlayTransformCache()
     textInteractionOverlay.clearPlacementRules()
     if documentView.document !== state.document {
@@ -441,34 +441,13 @@ extension InkSignView {
       overlayProvider.install(document: state.document, generation: generation)
       documentView.document = state.document
     }
-    documentView.go(to: page.page)
+    interaction.viewport.navigate(to: page.page)
     configureDoubleTapGestureRecognition()
-    pendingPageSwitchID = pageSwitchRequestID
-    pendingPageSwitchCompletion = completion
-    if fitPage {
-      pendingPageSwitchViewport = .fit
-    } else {
-      pendingPageSwitchViewport = viewport.map {
-        .focus(CGPoint(x: $0.x, y: $0.y), zoom: $0.zoom)
-      }
-    }
     documentViewDidNavigate(to: page.page)
     documentView.layoutDocumentView()
     documentView.layoutIfNeeded()
     refreshActiveOverlayTransform()
-    finishPageSwitchIfReady(requestID: pageSwitchRequestID)
-  }
-
-  private func applyStructuralViewport(_ viewport: Viewport?) {
-    guard let viewport else { return }
-    _ = applyViewport(target: ViewportTarget(zoom: CGFloat(viewport.zoom),
-                                             focus: CGPoint(x: viewport.x, y: viewport.y)))
-  }
-
-  func resumeStructuralInteraction() {
-    structuralInteractionSuspended = false
-    applyInteractionMode(editing: editMode, interactionsEnabled: true)
-    emitChange()
+    finishPagePresentationIfReady()
   }
 
 }
