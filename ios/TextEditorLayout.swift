@@ -1,11 +1,12 @@
 import UIKit
 
-/// Chooses the wrapping width and asks UIKit for the live editor's fitting height.
+/// Chooses the wrapping width and measures all lines with the annotation layout.
 enum InkSignPdfTextEditorLayout {
   static func measure(_ editor: UITextView,
                       maximumWidth: CGFloat,
                       insets: UIEdgeInsets,
                       fallbackFontSize: CGFloat,
+                      isRTL: Bool,
                       fixedContentWidth: CGFloat? = nil) -> CGSize {
     let availableWidth = max(1, maximumWidth - insets.left - insets.right)
     let font = editor.font ?? InkSignPdfTextStyle.font(size: fallbackFontSize)
@@ -34,10 +35,15 @@ enum InkSignPdfTextEditorLayout {
     }
 
     let width = contentWidth + insets.left + insets.right
-    let fittingSize = editor.sizeThatFits(
-      CGSize(width: width, height: .greatestFiniteMagnitude))
+    let layout = InkSignPdfTextRenderer.layout(text: editor.text ?? "",
+                                              fontSize: font.pointSize,
+                                              isRTL: isRTL,
+                                              contentWidth: contentWidth)
+    let presentationInsets = InkSignPdfTextStyle.presentationInsets
+    let contentHeight = layout.size.height - presentationInsets.top - presentationInsets.bottom
+    let emptyLineHeight = editor.text.last?.isNewline == true ? font.lineHeight : 0
     return CGSize(width: width,
-                  height: max(fittingSize.height, font.lineHeight + insets.top + insets.bottom))
+                  height: max(contentHeight + emptyLineHeight, font.lineHeight) + insets.top + insets.bottom)
   }
 
   private static func contentWidthExtent(of editor: UITextView,

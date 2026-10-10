@@ -111,7 +111,9 @@ struct InkSignPdfPageAnalysis {
                                                   rotate: 0,
                                                   preserveAspectRatio: false)
       characterBounds = (0..<sourceString.length).map { index -> CGRect? in
-        let bounds = page.characterBounds(at: index)
+        // Range selections keep geometry aligned with page.string's reading order.
+        guard let selection = page.selection(for: NSRange(location: index, length: 1)) else { return nil }
+        let bounds = selection.bounds(for: page)
         guard !bounds.isNull, !bounds.isEmpty else { return nil }
         return Self.sourceDisplayRect(bounds, transform: transform, pageSize: pageSize)
       }

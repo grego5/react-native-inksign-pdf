@@ -81,9 +81,9 @@ extension InkSignView {
   func updateCanvasPen(_ canvas: InkCanvasView) {
     guard !hasDrawingTransaction else { return }
     var width = CGFloat(currentPen.maxWidth)
-    if canvas.isDescendant(of: documentView) {
-      let origin = canvas.convert(.zero, to: documentView)
-      let axis = canvas.convert(CGPoint(x: 1, y: 0), to: documentView)
+    if let window = canvas.window {
+      let origin = canvas.convert(.zero, to: window)
+      let axis = canvas.convert(CGPoint(x: 1, y: 0), to: window)
       let scale = hypot(axis.x - origin.x, axis.y - origin.y) * canvas.zoomScale
       guard scale.isFinite, scale > 0 else { return }
       width /= scale

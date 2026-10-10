@@ -114,6 +114,7 @@ extension InkSignView {
        overlayTransformBounds == overlay.bounds,
        overlayTransformMediaBox == mediaBox,
        pageToOverlayTransform == transform {
+      updateCanvasPen(overlay)
       return
     }
     if hasDrawingTransaction { cancelActiveStroke() }
@@ -123,6 +124,7 @@ extension InkSignView {
     overlayTransformMediaBox = mediaBox
     installCommittedDrawing()
     textInteractionOverlay.syncTransform()
+    updateCanvasPen(overlay)
   }
 
   func invalidateOverlayTransformCache() {

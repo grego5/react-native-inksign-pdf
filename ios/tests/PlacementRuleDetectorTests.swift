@@ -419,7 +419,8 @@ final class PlacementRuleDetectorTests: XCTestCase {
     guard range.location != NSNotFound else { return }
     for index in range.location..<NSMaxRange(range) {
       if source.character(at: index) == 0x20 { continue }
-      let bounds = page.characterBounds(at: index)
+      let selection = try XCTUnwrap(page.selection(for: NSRange(location: index, length: 1)))
+      let bounds = selection.bounds(for: page)
       XCTAssertFalse(bounds.isNull || bounds.isEmpty,
         "Fixture label \(label), character index \(index), bounds \(bounds)")
     }

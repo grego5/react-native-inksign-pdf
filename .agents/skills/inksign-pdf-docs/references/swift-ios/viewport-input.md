@@ -58,9 +58,9 @@
   apply to live/committed text. Input admits complete fitting lines; deletion
   remains available. Direction/font changes retain text through overflow reflow.
   `verticalAnchor` fixes the top/bottom of the retained block.
-- **Editor sizing:** UIKit supplies fitting height at the final wrapping width.
-  The overlay applies the editor bounds before caret following; auto-sized text
-  grows through wrapping and explicit new lines.
+- **Editor sizing:** Live and saved bounds use the annotation layout at the
+  final wrapping width; live height also includes the trailing empty line.
+  The overlay applies bounds before caret following and remeasures before commit.
 - **Text direction:** Explicit LTR/RTL overrides app policy. `auto` uses the
   resolved app layout direction. Omitted direction follows the last
   `setTextDirection()` choice, or app direction when unset/`auto`. Tap placement
@@ -70,8 +70,8 @@
 
 ## Prepared page text
 
-- PDFKit analysis groups complete visual labels with exact source ranges; rules
-  retain canonical endpoints/source identity. Shared
+- PDFKit analysis pairs source UTF-16 ranges with range-selection bounds and
+  groups complete visual labels. Rules retain canonical endpoints/source identity. Shared
   [lookup, values, adoption, and focus](../architecture.md#document-model) apply.
 - Finalize formatting before measuring visible bounds. Cache/target lifetime:
   [ownership](view-lifecycle.md#ownership).
