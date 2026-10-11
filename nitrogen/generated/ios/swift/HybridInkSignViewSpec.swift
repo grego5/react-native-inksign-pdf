@@ -30,6 +30,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   var onTextSelectionChange: ((_ selection: Variant_NullType_TextSelection?) -> Void)? { get set }
 
   // Methods
+  func loadFonts(fonts: [NamedFontSource]) throws -> Promise<Void>
   func open(path: String, options: ViewportOptions?) throws -> Promise<PageInfo>
   func close(cancelPending: Bool?) throws -> Promise<Void>
   func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult>

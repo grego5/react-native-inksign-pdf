@@ -14,7 +14,7 @@ public protocol HybridTextHandleSpec_protocol: HybridObject {
 
   // Methods
   func getValue() throws -> String
-  func setValue(text: String) throws -> Void
+  func setValue(text: String, options: TextAnnotationOptions?) throws -> Void
   func setOptions(options: TextAnnotationOptions) throws -> Void
   func adjustSize(delta: Double) throws -> Double
 }

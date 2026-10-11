@@ -33,6 +33,8 @@ namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
+// Forward declaration of `NamedFontSource` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `AddPagesOptions` to properly resolve imports.
@@ -98,13 +100,15 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "JHybridAnalyzedPageSpec.hpp"
 #include "HybridModeSessionSpec.hpp"
 #include "JHybridModeSessionSpec.hpp"
+#include "NamedFontSource.hpp"
+#include <vector>
+#include "JNamedFontSource.hpp"
 #include "ViewportOptions.hpp"
 #include "JViewportOptions.hpp"
 #include "AddPagesOptions.hpp"
 #include "JAddPagesOptions.hpp"
 #include "PageType.hpp"
 #include "JPageType.hpp"
-#include <vector>
 #include "ImagePageSize.hpp"
 #include "JImagePageSize.hpp"
 #include "AddPagesActivePage.hpp"
@@ -346,6 +350,30 @@ namespace margelo::nitro::inksignpdf {
   }
 
   // Methods
+  std::shared_ptr<Promise<void>> JHybridInkSignViewSpec::loadFonts(const std::vector<NamedFontSource>& fonts) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JArrayClass<JNamedFontSource>> /* fonts */)>("loadFonts");
+    auto __result = method(_javaPart, [&](auto&& __input) {
+      size_t __size = __input.size();
+      jni::local_ref<jni::JArrayClass<JNamedFontSource>> __array = jni::JArrayClass<JNamedFontSource>::newArray(__size);
+      for (size_t __i = 0; __i < __size; __i++) {
+        const auto& __element = __input[__i];
+        auto __elementJni = JNamedFontSource::fromCpp(__element);
+        __array->setElement(__i, *__elementJni);
+      }
+      return __array;
+    }(fonts));
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
   std::shared_ptr<Promise<PageInfo>> JHybridInkSignViewSpec::open(const std::string& path, const std::optional<ViewportOptions>& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* path */, jni::alias_ref<JViewportOptions> /* options */)>("open");
     auto __result = method(_javaPart, jni::make_jstring(path), options.has_value() ? JViewportOptions::fromCpp(options.value()) : nullptr);

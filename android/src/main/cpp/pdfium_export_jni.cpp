@@ -452,11 +452,13 @@ std::string exportPdf(
     const std::vector<jfloat>& textRunTransforms,
     const std::vector<jint>& pageRotations,
     const std::vector<std::vector<std::uint8_t>>& fontResources,
+    const std::vector<jint>& explicitFontSelections,
     bool maySubsetFonts,
     bool forceSubsetSaveFailureForTesting,
     jint inkColor,
     std::vector<std::uint8_t>& candidateBytes) {
   if (pageIndices.empty() || pageDimensions.size() != pageIndices.size() * 2 ||
+      explicitFontSelections.size() != fontResources.size() ||
       pageRotations.size() != pageIndices.size() ||
       textRunTransforms.size() != textRunTexts.size() * 6 ||
       pathCommandOffsets.size() != pathPageIndices.size() + 1 ||
@@ -696,11 +698,17 @@ std::string exportPdf(
             }
           }
           if (!shapedOk) {
+            if (explicitFontSelections[static_cast<std::size_t>(fontIndex)] != 0) {
+              return "Unable to shape text with the selected named font";
+            }
             segment.fontIndex = -1;
             segment.glyphs.clear();
             segment.advance = estimatedAdvance;
           }
         } else {
+          if (explicitFontSelections[static_cast<std::size_t>(fontIndex)] != 0) {
+            return "The selected named font has no font program";
+          }
           segment.fontIndex = -1;
         }
       }
@@ -783,6 +791,8 @@ std::string exportPdf(
     if (loaded != nullptr) {
       loadedFonts[font] = std::make_unique<ScopedFont>(loaded);
       fontAvailable[font] = true;
+    } else if (explicitFontSelections[font] != 0) {
+      return "PDFium could not load the selected named font";
     }
   }
 
@@ -794,6 +804,10 @@ std::string exportPdf(
       if (available && std::any_of(segment.glyphs.begin(), segment.glyphs.end(),
                                    [](const auto& glyph) { return glyph.cid == 0; })) {
         available = false;
+      }
+      if (segment.fontIndex >= 0 && !available &&
+          explicitFontSelections[static_cast<std::size_t>(segment.fontIndex)] != 0) {
+        return "The supplied embedded font could not represent the shaped text";
       }
       needsFallbackText = needsFallbackText || !available;
     }
@@ -978,6 +992,11 @@ std::string exportPdf(
         placements.insert(placements.end(), segmentPlacements.begin(),
                           segmentPlacements.end());
         continue;
+      }
+
+      if (segment.fontIndex >= 0 &&
+          explicitFontSelections[static_cast<std::size_t>(segment.fontIndex)] != 0) {
+        return "PDFium could not draw text with the selected named font";
       }
 
       const auto logicalText = lineText.substr(segment.sourceStart, segment.sourceLength);
@@ -1197,6 +1216,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
     jintArray textRunColorsValue,
     jfloatArray textRunTransformsValue,
     jobjectArray fontResourcesValue,
+    jintArray explicitFontSelectionsValue,
     jboolean maySubsetFontsValue,
     jboolean forceSubsetSaveFailureForTestingValue,
     jint inkColor) {
@@ -1233,6 +1253,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
   std::vector<jint> textRunColors;
   std::vector<jfloat> textRunTransforms;
   std::vector<std::vector<std::uint8_t>> fontResources;
+  std::vector<jint> explicitFontSelections;
 
   auto copyStrings = [&](jobjectArray values, std::vector<std::u16string>& result) {
     if (values == nullptr) return false;
@@ -1292,7 +1313,8 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
       !copyArray(env, textRunGeometryValue, textRunGeometry) ||
       !copyArray(env, textRunColorsValue, textRunColors) ||
       !copyArray(env, textRunTransformsValue, textRunTransforms) ||
-      !copyFontResources(fontResourcesValue)) {
+      !copyFontResources(fontResourcesValue) ||
+      !copyArray(env, explicitFontSelectionsValue, explicitFontSelections)) {
     if (!env->ExceptionCheck()) {
       throwJava(env, "java/lang/IllegalArgumentException", "PDF export data is invalid");
     }
@@ -1335,6 +1357,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
                       textRunTexts, textRunSourceRanges, textRunBidiLevels,
                       textRunVisualOrder, textRunBaseDirections, textRunAlignments, textRunFontIndices,
                       textRunGeometry, textRunColors, textRunTransforms, pageRotations, fontResources,
+                      explicitFontSelections,
                       maySubsetFontsValue == JNI_TRUE,
                       forceSubsetSaveFailureForTestingValue == JNI_TRUE, inkColor,
                       candidateBytes);

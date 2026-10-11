@@ -35,8 +35,11 @@ namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 
-#include "TextDirection.hpp"
+#include <NitroModules/Null.hpp>
+#include <string>
+#include <variant>
 #include <optional>
+#include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
 
@@ -47,6 +50,7 @@ namespace margelo::nitro::inksignpdf {
    */
   struct TextModeOptions final {
   public:
+    std::optional<std::variant<nitro::NullType, std::string>> font     SWIFT_PRIVATE;
     std::optional<TextDirection> direction     SWIFT_PRIVATE;
     std::optional<double> width     SWIFT_PRIVATE;
     std::optional<double> height     SWIFT_PRIVATE;
@@ -59,7 +63,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     TextModeOptions() = default;
-    explicit TextModeOptions(std::optional<TextDirection> direction, std::optional<double> width, std::optional<double> height, std::optional<double> maxLines, std::optional<TextAlignment> alignment, std::optional<TextVerticalAnchor> verticalAnchor, std::optional<double> x, std::optional<double> y, std::optional<double> zoom): direction(direction), width(width), height(height), maxLines(maxLines), alignment(alignment), verticalAnchor(verticalAnchor), x(x), y(y), zoom(zoom) {}
+    explicit TextModeOptions(std::optional<std::variant<nitro::NullType, std::string>> font, std::optional<TextDirection> direction, std::optional<double> width, std::optional<double> height, std::optional<double> maxLines, std::optional<TextAlignment> alignment, std::optional<TextVerticalAnchor> verticalAnchor, std::optional<double> x, std::optional<double> y, std::optional<double> zoom): font(font), direction(direction), width(width), height(height), maxLines(maxLines), alignment(alignment), verticalAnchor(verticalAnchor), x(x), y(y), zoom(zoom) {}
 
   public:
     friend bool operator==(const TextModeOptions& lhs, const TextModeOptions& rhs) = default;
@@ -75,6 +79,7 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::TextModeOptions fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::TextModeOptions(
+        JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "font"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "width"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "height"))),
@@ -88,6 +93,7 @@ namespace margelo::nitro {
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::TextModeOptions& arg) {
       jsi::Object obj(runtime);
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "font"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.font));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "direction"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::toJSI(runtime, arg.direction));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "width"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.width));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "height"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.height));
@@ -107,6 +113,7 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
+      if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "font")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "width")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "height")))) return false;

@@ -26,7 +26,15 @@
 - Resolve logical start/end alignment against direction within the saved flow
   region. Preview/export share complete-line selection under flow/maxLines limits;
   vertical anchoring positions the retained block.
-- On API 31+, Android system fallback selects fonts and supplies font resources.
+- Named fonts supply cached TrueType bytes on every supported Android version.
+  JNI records whether each resource is an explicit selection: named-font shaping
+  and embedding failures reject export; implicit system resources retain the
+  existing best-effort fallback. Missing glyphs are rendering outcomes, not input errors.
+- On API 31+, Android system fallback selects fonts and supplies font resources,
+  including text entered with a named font. Reuse owner-cached bytes when Android
+  selects the named face; embed the selected system resource for fallback runs.
+  Preserve resolved font selections for digits, punctuation, and combining marks;
+  weak characters without a usable selection may inherit a neighboring run font.
   PDFium's HarfBuzz shapes runs with cluster mappings and explicit positions.
   `ToUnicode` maps glyphs to characters; line-level `/ActualText` records logical
   text for mixed RTL and LTR lines. Embed a selected font only when its
@@ -35,8 +43,9 @@
   text extraction when subsetting is used. It saves full font programs when font
   rights or glyph mappings require them, and retries with full fonts if subset
   serialization fails. Font collections currently use the first face.
-- On API 24–30, selected Android font bytes are unavailable; use PDFium's standard-font
-  fallback as a best-effort path. Missing glyph coverage or embedding rights alone do
+- On API 24–30, selected system font bytes are unavailable; system-only text uses
+  PDFium's standard-font fallback. Named fonts remain embedded; unsupported glyphs
+  use their missing-glyph appearance, which can differ from Android preview. Missing glyph coverage or embedding rights alone do
   not reject finalize; affected glyphs may be blank or partial.
 
 ## Verification

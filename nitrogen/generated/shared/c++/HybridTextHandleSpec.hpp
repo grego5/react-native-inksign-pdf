@@ -18,6 +18,7 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 
 #include <string>
 #include "TextAnnotationOptions.hpp"
+#include <optional>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -51,7 +52,7 @@ namespace margelo::nitro::inksignpdf {
     public:
       // Methods
       virtual std::string getValue() = 0;
-      virtual void setValue(const std::string& text) = 0;
+      virtual void setValue(const std::string& text, const std::optional<TextAnnotationOptions>& options) = 0;
       virtual void setOptions(const TextAnnotationOptions& options) = 0;
       virtual double adjustSize(double delta) = 0;
 

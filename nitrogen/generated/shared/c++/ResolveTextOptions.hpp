@@ -43,6 +43,8 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include <optional>
 #include "TextAnnotationBounds.hpp"
 #include "TextKeyOccurrence.hpp"
+#include <NitroModules/Null.hpp>
+#include <variant>
 #include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
@@ -57,6 +59,7 @@ namespace margelo::nitro::inksignpdf {
     std::optional<std::string> fieldName     SWIFT_PRIVATE;
     std::optional<TextAnnotationBounds> bounds     SWIFT_PRIVATE;
     std::optional<TextKeyOccurrence> occurrence     SWIFT_PRIVATE;
+    std::optional<std::variant<nitro::NullType, std::string>> font     SWIFT_PRIVATE;
     std::optional<double> fontSize     SWIFT_PRIVATE;
     std::optional<std::string> color     SWIFT_PRIVATE;
     std::optional<TextDirection> direction     SWIFT_PRIVATE;
@@ -66,7 +69,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     ResolveTextOptions() = default;
-    explicit ResolveTextOptions(std::optional<std::string> fieldName, std::optional<TextAnnotationBounds> bounds, std::optional<TextKeyOccurrence> occurrence, std::optional<double> fontSize, std::optional<std::string> color, std::optional<TextDirection> direction, std::optional<double> maxLines, std::optional<TextAlignment> alignment, std::optional<TextVerticalAnchor> verticalAnchor): fieldName(fieldName), bounds(bounds), occurrence(occurrence), fontSize(fontSize), color(color), direction(direction), maxLines(maxLines), alignment(alignment), verticalAnchor(verticalAnchor) {}
+    explicit ResolveTextOptions(std::optional<std::string> fieldName, std::optional<TextAnnotationBounds> bounds, std::optional<TextKeyOccurrence> occurrence, std::optional<std::variant<nitro::NullType, std::string>> font, std::optional<double> fontSize, std::optional<std::string> color, std::optional<TextDirection> direction, std::optional<double> maxLines, std::optional<TextAlignment> alignment, std::optional<TextVerticalAnchor> verticalAnchor): fieldName(fieldName), bounds(bounds), occurrence(occurrence), font(font), fontSize(fontSize), color(color), direction(direction), maxLines(maxLines), alignment(alignment), verticalAnchor(verticalAnchor) {}
 
   public:
     friend bool operator==(const ResolveTextOptions& lhs, const ResolveTextOptions& rhs) = default;
@@ -85,6 +88,7 @@ namespace margelo::nitro {
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fieldName"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAnnotationBounds>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "bounds"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextKeyOccurrence>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "occurrence"))),
+        JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "font"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontSize"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "color"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction"))),
@@ -98,6 +102,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "fieldName"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.fieldName));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "bounds"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAnnotationBounds>>::toJSI(runtime, arg.bounds));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "occurrence"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextKeyOccurrence>>::toJSI(runtime, arg.occurrence));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "font"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.font));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "fontSize"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.fontSize));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "color"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.color));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "direction"), JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::toJSI(runtime, arg.direction));
@@ -117,6 +122,7 @@ namespace margelo::nitro {
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fieldName")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextAnnotationBounds>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "bounds")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextKeyOccurrence>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "occurrence")))) return false;
+      if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "font")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontSize")))) return false;
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "color")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::TextDirection>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "direction")))) return false;

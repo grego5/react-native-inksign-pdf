@@ -13,6 +13,10 @@ namespace margelo::nitro::inksignpdf { struct TextEntry; }
 namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 // Forward declaration of `TextValueSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
+// Forward declaration of `TextFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `ResolveTextOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ResolveTextOptions; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
@@ -25,11 +29,10 @@ namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
-// Forward declaration of `TextFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
-// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 
+#include <NitroModules/Promise.hpp>
+#include <NitroModules/JPromise.hpp>
+#include <NitroModules/JUnit.hpp>
 #include <string>
 #include "TextEntry.hpp"
 #include "JTextEntry.hpp"
@@ -39,13 +42,18 @@ namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 #include "TextValueSource.hpp"
 #include "JTextValueSource.hpp"
 #include <vector>
-#include <NitroModules/Promise.hpp>
-#include <NitroModules/JPromise.hpp>
-#include <NitroModules/JUnit.hpp>
+#include "TextFocusOptions.hpp"
+#include "JTextFocusOptions.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
+#include "JFieldFocusVerticalAnchor.hpp"
 #include "ResolveTextOptions.hpp"
 #include "JResolveTextOptions.hpp"
 #include "TextKeyOccurrence.hpp"
 #include "JTextKeyOccurrence.hpp"
+#include <NitroModules/Null.hpp>
+#include <variant>
+#include "JVariant_NullType_String.hpp"
+#include <NitroModules/JNull.hpp>
 #include "TextDirection.hpp"
 #include "JTextDirection.hpp"
 #include "TextAlignment.hpp"
@@ -54,10 +62,6 @@ namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 #include "JTextVerticalAnchor.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "JTextAnnotationOptions.hpp"
-#include "TextFocusOptions.hpp"
-#include "JTextFocusOptions.hpp"
-#include "FieldFocusVerticalAnchor.hpp"
-#include "JFieldFocusVerticalAnchor.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -92,6 +96,21 @@ namespace margelo::nitro::inksignpdf {
   
 
   // Methods
+  std::shared_ptr<Promise<void>> JHybridAnalyzedPageSpec::focusText(double id, const std::optional<TextFocusOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(double /* id */, jni::alias_ref<JTextFocusOptions> /* options */)>("focusText");
+    auto __result = method(_javaPart, id, options.has_value() ? JTextFocusOptions::fromCpp(options.value()) : nullptr);
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
   double JHybridAnalyzedPageSpec::resolveText(const ResolveTextOptions& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<double(jni::alias_ref<JResolveTextOptions> /* options */)>("resolveText");
     auto __result = method(_javaPart, JResolveTextOptions::fromCpp(options));
@@ -102,9 +121,9 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart, id);
     return __result->toStdString();
   }
-  void JHybridAnalyzedPageSpec::setTextValue(double id, const std::string& text) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* id */, jni::alias_ref<jni::JString> /* text */)>("setTextValue");
-    method(_javaPart, id, jni::make_jstring(text));
+  void JHybridAnalyzedPageSpec::setTextValue(double id, const std::string& text, const std::optional<TextAnnotationOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* id */, jni::alias_ref<jni::JString> /* text */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("setTextValue");
+    method(_javaPart, id, jni::make_jstring(text), options.has_value() ? JTextAnnotationOptions::fromCpp(options.value()) : nullptr);
   }
   void JHybridAnalyzedPageSpec::setTextOptions(double id, const TextAnnotationOptions& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* id */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("setTextOptions");
@@ -133,21 +152,6 @@ namespace margelo::nitro::inksignpdf {
       }
       return __vector;
     }(__result);
-  }
-  std::shared_ptr<Promise<void>> JHybridAnalyzedPageSpec::focusText(double id, const std::optional<TextFocusOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(double /* id */, jni::alias_ref<JTextFocusOptions> /* options */)>("focusText");
-    auto __result = method(_javaPart, id, options.has_value() ? JTextFocusOptions::fromCpp(options.value()) : nullptr);
-    return [&]() {
-      auto __promise = Promise<void>::create();
-      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
-        __promise->resolve();
-      });
-      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
-        jni::JniException __jniError(__throwable);
-        __promise->reject(std::make_exception_ptr(__jniError));
-      });
-      return __promise;
-    }();
   }
 
 } // namespace margelo::nitro::inksignpdf

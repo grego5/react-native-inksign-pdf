@@ -12,6 +12,10 @@
 // Forward declaration of `HybridAnalyzedPageSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridAnalyzedPageSpec_cxx; }
 
+// Forward declaration of `TextFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `ResolveTextOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ResolveTextOptions; }
 // Forward declaration of `TextAnnotationBounds` to properly resolve imports.
@@ -30,16 +34,17 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 namespace margelo::nitro::inksignpdf { struct TextEntry; }
 // Forward declaration of `TextValueSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
-// Forward declaration of `TextFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
-// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 
+#include <NitroModules/Promise.hpp>
+#include "TextFocusOptions.hpp"
+#include <optional>
+#include "FieldFocusVerticalAnchor.hpp"
 #include "ResolveTextOptions.hpp"
 #include <string>
-#include <optional>
 #include "TextAnnotationBounds.hpp"
 #include "TextKeyOccurrence.hpp"
+#include <NitroModules/Null.hpp>
+#include <variant>
 #include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
@@ -47,9 +52,6 @@ namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 #include "TextEntry.hpp"
 #include "TextValueSource.hpp"
 #include <vector>
-#include <NitroModules/Promise.hpp>
-#include "TextFocusOptions.hpp"
-#include "FieldFocusVerticalAnchor.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
 
@@ -101,6 +103,14 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
+    inline std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) override {
+      auto __result = _swiftPart.focusText(std::forward<decltype(id)>(id), options);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline double resolveText(const ResolveTextOptions& options) override {
       auto __result = _swiftPart.resolveText(std::forward<decltype(options)>(options));
       if (__result.hasError()) [[unlikely]] {
@@ -117,8 +127,8 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline void setTextValue(double id, const std::string& text) override {
-      auto __result = _swiftPart.setTextValue(std::forward<decltype(id)>(id), text);
+    inline void setTextValue(double id, const std::string& text, const std::optional<TextAnnotationOptions>& options) override {
+      auto __result = _swiftPart.setTextValue(std::forward<decltype(id)>(id), text, options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
@@ -147,14 +157,6 @@ namespace margelo::nitro::inksignpdf {
     }
     inline std::vector<TextEntry> getTextEntries() override {
       auto __result = _swiftPart.getTextEntries();
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) override {
-      auto __result = _swiftPart.focusText(std::forward<decltype(id)>(id), options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

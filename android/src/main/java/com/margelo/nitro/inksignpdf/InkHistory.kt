@@ -48,6 +48,7 @@ internal data class TextAnnotation(
   val alignment: TextAlignment = TextAlignment.START,
   /** Page orientation in which layout coordinates were captured; null means raw content space. */
   val layoutPage: PdfPageDimensions? = null,
+  val font: NamedFontResource? = null,
 ) {
   val layoutToCanonical: PageTransform
     get() = layoutPage?.let { PageCoordinates(it).displayToRawTransform() }
@@ -150,6 +151,8 @@ internal class InkHistory {
     cleanStateRevision?.let { it != (undoStack.lastOrNull()?.stateRevision ?: 0L) }
       ?: completed.isNotEmpty(),
   )
+  fun discardUndo() { undoStack.clear(); redoStack.clear() }
+
   fun resetDirty() {
     cleanStateRevision = undoStack.lastOrNull()?.stateRevision ?: 0L
   }

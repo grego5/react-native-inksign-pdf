@@ -135,7 +135,7 @@ internal fun completeLabelMatches(labels: List<PreparedTextLabel>, query: String
 }
 
 internal fun ResolveTextOptions.toAnnotationOptions() = TextAnnotationOptions(
-  fontSize, color, direction, maxLines, alignment,
+  font, fontSize, color, direction, maxLines, alignment,
   verticalAnchor ?: if (fieldName != null) TextVerticalAnchor.BOTTOM else TextVerticalAnchor.TOP,
 )
 

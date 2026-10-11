@@ -49,7 +49,8 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContex
     try withOwner { try $0.preparedTextValue(self, id: id) }
   }
 
-  func setTextValue(id: Double, text: String) throws {
+  func setTextValue(id: Double, text: String, options: TextAnnotationOptions?) throws {
+    guard options == nil else { throw InkSignView.HeadlessFeatureError.androidOnly }
     try withOwner { try $0.setPreparedTextValue(self, id: id, text: text) }
   }
 

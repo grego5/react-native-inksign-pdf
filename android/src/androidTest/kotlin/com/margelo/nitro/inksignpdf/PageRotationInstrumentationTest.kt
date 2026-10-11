@@ -150,7 +150,7 @@ class PageRotationInstrumentationTest {
       await(instrumentation, viewRef.get().rotatePage(90.0))
 
       val id = capturedPage.resolveText(fieldResolutionOptions())
-      capturedPage.setTextValue(id, "OK")
+      capturedPage.setTextValue(id, "OK", null)
       val currentPage = awaitPreparedPage(instrumentation, viewRef.get())
       assertEquals(id, currentPage.resolveText(fieldResolutionOptions()), 0.0)
       await(instrumentation, currentPage.focusText(id, TextFocusOptions(
@@ -225,7 +225,7 @@ class PageRotationInstrumentationTest {
           stableId?.let { assertEquals("Returning to the same source rule must reuse its ID", it, id, 0.0) }
             ?: run { stableId = id }
         }
-        page.setTextValue(id, "OK")
+        page.setTextValue(id, "OK", null)
         val ruleY = if (angle == 0) 132.0 else 268.0
         val field = PageRect(if (angle == 0) 210.0 else 190.0, 0.0, 280.0, ruleY)
         instrumentation.runOnMainSync {
@@ -439,7 +439,7 @@ class PageRotationInstrumentationTest {
     return checkNotNull(result.get())
   }
 
-  private fun fieldResolutionOptions() = ResolveTextOptions(
+  private fun fieldResolutionOptions() = ResolveTextOptions(font = null,
     fieldName = "Name",
     bounds = null,
     occurrence = TextKeyOccurrence.FIRST,

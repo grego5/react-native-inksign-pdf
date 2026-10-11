@@ -137,9 +137,9 @@ open class HybridTextHandleSpec_cxx {
   }
   
   @inline(__always)
-  public final func setValue(text: std.string) -> bridge.Result_void_ {
+  public final func setValue(text: std.string, options: bridge.std__optional_TextAnnotationOptions_) -> bridge.Result_void_ {
     do {
-      try self.__implementation.setValue(text: String(text))
+      try self.__implementation.setValue(text: String(text), options: options.value)
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()

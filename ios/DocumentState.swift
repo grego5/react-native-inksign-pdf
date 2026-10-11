@@ -19,7 +19,7 @@ struct InkSignPdfTextTargetOptions {
   }
 
   var publicOptions: TextAnnotationOptions {
-    TextAnnotationOptions(fontSize: fontSize, color: color, direction: direction,
+    TextAnnotationOptions(font: nil, fontSize: fontSize, color: color, direction: direction,
       maxLines: maxLines.map(Double.init), alignment: alignment, verticalAnchor: verticalAnchor)
   }
 }

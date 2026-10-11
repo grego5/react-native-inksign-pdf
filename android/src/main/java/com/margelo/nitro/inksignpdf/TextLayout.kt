@@ -109,6 +109,7 @@ internal object TextLayoutSpec {
     fontSize: Double,
     width: Double,
     baseDirectionRtl: Boolean,
+    typeface: Typeface = TextLayoutSpec.typeface,
   ): TextIntrinsicSize {
     require(width.isFinite() && width > 0.0)
     val layoutWidth = max(1, ceil(width).toInt())
@@ -116,7 +117,7 @@ internal object TextLayoutSpec {
       text,
       0,
       text.length,
-      createPaint(fontSize),
+      createPaint(fontSize, typeface = typeface),
       layoutWidth,
     )
       .setIncludePad(includeFontPadding)
@@ -124,11 +125,11 @@ internal object TextLayoutSpec {
       .setHyphenationFrequency(hyphenationFrequency)
       .setTextDirection(directionHeuristic(baseDirectionRtl))
       .build()
-    return TextIntrinsicSize(width, max(layout.height.toDouble(), measure(text, fontSize).height))
+    return TextIntrinsicSize(width, max(layout.height.toDouble(), measure(text, fontSize, typeface).height))
   }
 
   fun createLayout(annotation: TextAnnotation): StaticLayout {
-    val measuredWidth = measure(annotation.text, annotation.fontSize).width
+    val measuredWidth = measure(annotation.text, annotation.fontSize, annotation.font?.typeface ?: typeface).width
     val layoutWidth = annotation.flowBounds?.let { it.right - it.left }
       ?: max(annotation.intrinsicWidth, measuredWidth)
     return createLayout(
@@ -138,6 +139,7 @@ internal object TextLayoutSpec {
       layoutWidth = layoutWidth,
       baseDirectionRtl = annotation.directionRtl,
       alignment = annotation.alignment,
+      typeface = annotation.font?.typeface ?: typeface,
     )
   }
 
@@ -148,8 +150,9 @@ internal object TextLayoutSpec {
     layoutWidth: Double,
     baseDirectionRtl: Boolean,
     alignment: TextAlignment = TextAlignment.START,
+    typeface: Typeface = TextLayoutSpec.typeface,
   ): StaticLayout {
-    val paint = createPaint(fontSize, textColor)
+    val paint = createPaint(fontSize, textColor, typeface)
     val width = max(1, ceil(layoutWidth).toInt())
     return StaticLayout.Builder.obtain(
       text,
@@ -179,6 +182,7 @@ internal object TextLayoutSpec {
     maxLines: Int,
     baseDirectionRtl: Boolean,
     alignment: TextAlignment = TextAlignment.START,
+    typeface: Typeface = TextLayoutSpec.typeface,
   ): Boolean {
     if (text.isEmpty()) return true
     val layout = createLayout(
@@ -188,6 +192,7 @@ internal object TextLayoutSpec {
       layoutWidth = flowBounds.right - flowBounds.left,
       baseDirectionRtl = baseDirectionRtl,
       alignment = alignment,
+      typeface = typeface,
     )
     val selection = selectVisibleLines(
       layout = layout,
@@ -207,9 +212,10 @@ internal object TextLayoutSpec {
     maxLines: Int,
     baseDirectionRtl: Boolean,
     alignment: TextAlignment,
+    typeface: Typeface = TextLayoutSpec.typeface,
   ): Boolean {
     if (text.isEmpty() || maxLines <= 0) return true
-    val intrinsicWidth = measure(text, fontSize).width
+    val intrinsicWidth = measure(text, fontSize, typeface).width
     return createLayout(
       text = text,
       fontSize = fontSize,
@@ -217,6 +223,7 @@ internal object TextLayoutSpec {
       layoutWidth = intrinsicWidth,
       baseDirectionRtl = baseDirectionRtl,
       alignment = alignment,
+      typeface = typeface,
     ).lineCount <= maxLines
   }
 
@@ -276,6 +283,7 @@ internal object TextLayoutSpec {
     verticalPaddingPx: Int = 0,
     textColor: Int = Color.BLACK,
     alignment: TextAlignment = TextAlignment.START,
+    typeface: Typeface = TextLayoutSpec.typeface,
   ) {
     editor.typeface = typeface
     editor.setTextColor(textColor)
@@ -297,6 +305,7 @@ internal object TextLayoutSpec {
     editor: TextView,
     baseDirectionRtl: Boolean,
     alignment: TextAlignment = TextAlignment.START,
+    typeface: Typeface = TextLayoutSpec.typeface,
   ) {
     val direction = if (baseDirectionRtl) TextView.TEXT_DIRECTION_RTL else TextView.TEXT_DIRECTION_LTR
     if (editor.textDirection != direction) editor.textDirection = direction

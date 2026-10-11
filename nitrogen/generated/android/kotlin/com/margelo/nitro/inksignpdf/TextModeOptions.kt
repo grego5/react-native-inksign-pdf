@@ -10,7 +10,7 @@ package com.margelo.nitro.inksignpdf
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import java.util.Objects
-
+import com.margelo.nitro.core.NullType
 
 /**
  * Represents the JavaScript object/struct "TextModeOptions".
@@ -18,6 +18,9 @@ import java.util.Objects
 @DoNotStrip
 @Keep
 data class TextModeOptions(
+  @DoNotStrip
+  @Keep
+  val font: Variant_NullType_String?,
   @DoNotStrip
   @Keep
   val direction: TextDirection?,
@@ -51,7 +54,8 @@ data class TextModeOptions(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is TextModeOptions) return false
-    return Objects.deepEquals(this.direction, other.direction)
+    return Objects.deepEquals(this.font, other.font)
+      && Objects.deepEquals(this.direction, other.direction)
       && Objects.deepEquals(this.width, other.width)
       && Objects.deepEquals(this.height, other.height)
       && Objects.deepEquals(this.maxLines, other.maxLines)
@@ -64,6 +68,7 @@ data class TextModeOptions(
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
+      font,
       direction,
       width,
       height,
@@ -84,8 +89,8 @@ data class TextModeOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(direction: TextDirection?, width: Double?, height: Double?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?, x: Double?, y: Double?, zoom: Double?): TextModeOptions {
-      return TextModeOptions(direction, width, height, maxLines, alignment, verticalAnchor, x, y, zoom)
+    private fun fromCpp(font: Variant_NullType_String?, direction: TextDirection?, width: Double?, height: Double?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?, x: Double?, y: Double?, zoom: Double?): TextModeOptions {
+      return TextModeOptions(font, direction, width, height, maxLines, alignment, verticalAnchor, x, y, zoom)
     }
   }
 }

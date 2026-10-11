@@ -202,6 +202,7 @@ extension InkSignView {
 
   func setMode(mode: InputMode, options: TextModeOptions?) throws -> any HybridModeSessionSpec {
     try performOnMainSync {
+      if case .second? = options?.font { throw HeadlessFeatureError.androidOnly }
       let token = try interaction.beginSession(mode, options: options)
       return HybridModeSession(owner: self, token: token)
     }

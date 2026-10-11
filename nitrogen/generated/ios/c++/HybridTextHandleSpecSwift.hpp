@@ -24,6 +24,8 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include <string>
 #include "TextAnnotationOptions.hpp"
 #include <optional>
+#include <NitroModules/Null.hpp>
+#include <variant>
 #include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
@@ -86,8 +88,8 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline void setValue(const std::string& text) override {
-      auto __result = _swiftPart.setValue(text);
+    inline void setValue(const std::string& text, const std::optional<TextAnnotationOptions>& options) override {
+      auto __result = _swiftPart.setValue(text, options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

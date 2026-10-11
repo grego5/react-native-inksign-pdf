@@ -32,6 +32,8 @@ namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
+// Forward declaration of `NamedFontSource` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `PageInfo` to properly resolve imports.
@@ -44,6 +46,8 @@ namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextAnnotationBounds` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
+// Forward declaration of `TextAnnotationOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `TextEntry` to properly resolve imports.
@@ -90,12 +94,14 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "HybridTextHandleSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
+#include "NamedFontSource.hpp"
 #include "PageCoords.hpp"
 #include "PageInfo.hpp"
 #include "PageType.hpp"
 #include "PagerDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextAnnotationBounds.hpp"
+#include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
 #include "TextEntry.hpp"
 #include "TextFocusOptions.hpp"
@@ -125,122 +131,6 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
  */
 namespace margelo::nitro::inksignpdf::bridge::swift {
 
-  // pragma MARK: std::optional<std::string>
-  /**
-   * Specialized version of `std::optional<std::string>`.
-   */
-  using std__optional_std__string_ = std::optional<std::string>;
-  inline std::optional<std::string> create_std__optional_std__string_(const std::string& value) noexcept {
-    return std::optional<std::string>(value);
-  }
-  inline bool has_value_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline std::string get_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<TextAnnotationBounds>
-  /**
-   * Specialized version of `std::optional<TextAnnotationBounds>`.
-   */
-  using std__optional_TextAnnotationBounds_ = std::optional<TextAnnotationBounds>;
-  inline std::optional<TextAnnotationBounds> create_std__optional_TextAnnotationBounds_(const TextAnnotationBounds& value) noexcept {
-    return std::optional<TextAnnotationBounds>(value);
-  }
-  inline bool has_value_std__optional_TextAnnotationBounds_(const std::optional<TextAnnotationBounds>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline TextAnnotationBounds get_std__optional_TextAnnotationBounds_(const std::optional<TextAnnotationBounds>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<TextKeyOccurrence>
-  /**
-   * Specialized version of `std::optional<TextKeyOccurrence>`.
-   */
-  using std__optional_TextKeyOccurrence_ = std::optional<TextKeyOccurrence>;
-  inline std::optional<TextKeyOccurrence> create_std__optional_TextKeyOccurrence_(const TextKeyOccurrence& value) noexcept {
-    return std::optional<TextKeyOccurrence>(value);
-  }
-  inline bool has_value_std__optional_TextKeyOccurrence_(const std::optional<TextKeyOccurrence>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline TextKeyOccurrence get_std__optional_TextKeyOccurrence_(const std::optional<TextKeyOccurrence>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<double>
-  /**
-   * Specialized version of `std::optional<double>`.
-   */
-  using std__optional_double_ = std::optional<double>;
-  inline std::optional<double> create_std__optional_double_(const double& value) noexcept {
-    return std::optional<double>(value);
-  }
-  inline bool has_value_std__optional_double_(const std::optional<double>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline double get_std__optional_double_(const std::optional<double>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<TextDirection>
-  /**
-   * Specialized version of `std::optional<TextDirection>`.
-   */
-  using std__optional_TextDirection_ = std::optional<TextDirection>;
-  inline std::optional<TextDirection> create_std__optional_TextDirection_(const TextDirection& value) noexcept {
-    return std::optional<TextDirection>(value);
-  }
-  inline bool has_value_std__optional_TextDirection_(const std::optional<TextDirection>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline TextDirection get_std__optional_TextDirection_(const std::optional<TextDirection>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<TextAlignment>
-  /**
-   * Specialized version of `std::optional<TextAlignment>`.
-   */
-  using std__optional_TextAlignment_ = std::optional<TextAlignment>;
-  inline std::optional<TextAlignment> create_std__optional_TextAlignment_(const TextAlignment& value) noexcept {
-    return std::optional<TextAlignment>(value);
-  }
-  inline bool has_value_std__optional_TextAlignment_(const std::optional<TextAlignment>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline TextAlignment get_std__optional_TextAlignment_(const std::optional<TextAlignment>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<TextVerticalAnchor>
-  /**
-   * Specialized version of `std::optional<TextVerticalAnchor>`.
-   */
-  using std__optional_TextVerticalAnchor_ = std::optional<TextVerticalAnchor>;
-  inline std::optional<TextVerticalAnchor> create_std__optional_TextVerticalAnchor_(const TextVerticalAnchor& value) noexcept {
-    return std::optional<TextVerticalAnchor>(value);
-  }
-  inline bool has_value_std__optional_TextVerticalAnchor_(const std::optional<TextVerticalAnchor>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline TextVerticalAnchor get_std__optional_TextVerticalAnchor_(const std::optional<TextVerticalAnchor>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::vector<TextEntry>
-  /**
-   * Specialized version of `std::vector<TextEntry>`.
-   */
-  using std__vector_TextEntry_ = std::vector<TextEntry>;
-  inline std::vector<TextEntry> create_std__vector_TextEntry_(size_t size) noexcept {
-    std::vector<TextEntry> vector;
-    vector.reserve(size);
-    return vector;
-  }
-  
   // pragma MARK: std::shared_ptr<Promise<void>>
   /**
    * Specialized version of `std::shared_ptr<Promise<void>>`.
@@ -297,6 +187,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Func_void_std__exception_ptr_Wrapper(std::move(value));
   }
   
+  // pragma MARK: std::optional<double>
+  /**
+   * Specialized version of `std::optional<double>`.
+   */
+  using std__optional_double_ = std::optional<double>;
+  inline std::optional<double> create_std__optional_double_(const double& value) noexcept {
+    return std::optional<double>(value);
+  }
+  inline bool has_value_std__optional_double_(const std::optional<double>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline double get_std__optional_double_(const std::optional<double>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::optional<FieldFocusVerticalAnchor>
   /**
    * Specialized version of `std::optional<FieldFocusVerticalAnchor>`.
@@ -327,6 +232,166 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::optional<std::string>
+  /**
+   * Specialized version of `std::optional<std::string>`.
+   */
+  using std__optional_std__string_ = std::optional<std::string>;
+  inline std::optional<std::string> create_std__optional_std__string_(const std::string& value) noexcept {
+    return std::optional<std::string>(value);
+  }
+  inline bool has_value_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::string get_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextAnnotationBounds>
+  /**
+   * Specialized version of `std::optional<TextAnnotationBounds>`.
+   */
+  using std__optional_TextAnnotationBounds_ = std::optional<TextAnnotationBounds>;
+  inline std::optional<TextAnnotationBounds> create_std__optional_TextAnnotationBounds_(const TextAnnotationBounds& value) noexcept {
+    return std::optional<TextAnnotationBounds>(value);
+  }
+  inline bool has_value_std__optional_TextAnnotationBounds_(const std::optional<TextAnnotationBounds>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextAnnotationBounds get_std__optional_TextAnnotationBounds_(const std::optional<TextAnnotationBounds>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextKeyOccurrence>
+  /**
+   * Specialized version of `std::optional<TextKeyOccurrence>`.
+   */
+  using std__optional_TextKeyOccurrence_ = std::optional<TextKeyOccurrence>;
+  inline std::optional<TextKeyOccurrence> create_std__optional_TextKeyOccurrence_(const TextKeyOccurrence& value) noexcept {
+    return std::optional<TextKeyOccurrence>(value);
+  }
+  inline bool has_value_std__optional_TextKeyOccurrence_(const std::optional<TextKeyOccurrence>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextKeyOccurrence get_std__optional_TextKeyOccurrence_(const std::optional<TextKeyOccurrence>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::variant<nitro::NullType, std::string>
+  /**
+   * Wrapper struct for `std::variant<nitro::NullType, std::string>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
+   */
+  struct std__variant_nitro__NullType__std__string_ final {
+    std::variant<nitro::NullType, std::string> variant;
+    std__variant_nitro__NullType__std__string_(std::variant<nitro::NullType, std::string> variant): variant(variant) { }
+    operator std::variant<nitro::NullType, std::string>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline nitro::NullType get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline std::string get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_nitro__NullType__std__string_ create_std__variant_nitro__NullType__std__string_(nitro::NullType value) noexcept {
+    return std__variant_nitro__NullType__std__string_(value);
+  }
+  inline std__variant_nitro__NullType__std__string_ create_std__variant_nitro__NullType__std__string_(const std::string& value) noexcept {
+    return std__variant_nitro__NullType__std__string_(value);
+  }
+  
+  // pragma MARK: std::optional<std::variant<nitro::NullType, std::string>>
+  /**
+   * Specialized version of `std::optional<std::variant<nitro::NullType, std::string>>`.
+   */
+  using std__optional_std__variant_nitro__NullType__std__string__ = std::optional<std::variant<nitro::NullType, std::string>>;
+  inline std::optional<std::variant<nitro::NullType, std::string>> create_std__optional_std__variant_nitro__NullType__std__string__(const std::variant<nitro::NullType, std::string>& value) noexcept {
+    return std::optional<std::variant<nitro::NullType, std::string>>(value);
+  }
+  inline bool has_value_std__optional_std__variant_nitro__NullType__std__string__(const std::optional<std::variant<nitro::NullType, std::string>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::variant<nitro::NullType, std::string> get_std__optional_std__variant_nitro__NullType__std__string__(const std::optional<std::variant<nitro::NullType, std::string>>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextDirection>
+  /**
+   * Specialized version of `std::optional<TextDirection>`.
+   */
+  using std__optional_TextDirection_ = std::optional<TextDirection>;
+  inline std::optional<TextDirection> create_std__optional_TextDirection_(const TextDirection& value) noexcept {
+    return std::optional<TextDirection>(value);
+  }
+  inline bool has_value_std__optional_TextDirection_(const std::optional<TextDirection>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextDirection get_std__optional_TextDirection_(const std::optional<TextDirection>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextAlignment>
+  /**
+   * Specialized version of `std::optional<TextAlignment>`.
+   */
+  using std__optional_TextAlignment_ = std::optional<TextAlignment>;
+  inline std::optional<TextAlignment> create_std__optional_TextAlignment_(const TextAlignment& value) noexcept {
+    return std::optional<TextAlignment>(value);
+  }
+  inline bool has_value_std__optional_TextAlignment_(const std::optional<TextAlignment>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextAlignment get_std__optional_TextAlignment_(const std::optional<TextAlignment>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextVerticalAnchor>
+  /**
+   * Specialized version of `std::optional<TextVerticalAnchor>`.
+   */
+  using std__optional_TextVerticalAnchor_ = std::optional<TextVerticalAnchor>;
+  inline std::optional<TextVerticalAnchor> create_std__optional_TextVerticalAnchor_(const TextVerticalAnchor& value) noexcept {
+    return std::optional<TextVerticalAnchor>(value);
+  }
+  inline bool has_value_std__optional_TextVerticalAnchor_(const std::optional<TextVerticalAnchor>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextVerticalAnchor get_std__optional_TextVerticalAnchor_(const std::optional<TextVerticalAnchor>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<TextAnnotationOptions>
+  /**
+   * Specialized version of `std::optional<TextAnnotationOptions>`.
+   */
+  using std__optional_TextAnnotationOptions_ = std::optional<TextAnnotationOptions>;
+  inline std::optional<TextAnnotationOptions> create_std__optional_TextAnnotationOptions_(const TextAnnotationOptions& value) noexcept {
+    return std::optional<TextAnnotationOptions>(value);
+  }
+  inline bool has_value_std__optional_TextAnnotationOptions_(const std::optional<TextAnnotationOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline TextAnnotationOptions get_std__optional_TextAnnotationOptions_(const std::optional<TextAnnotationOptions>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::vector<TextEntry>
+  /**
+   * Specialized version of `std::vector<TextEntry>`.
+   */
+  using std__vector_TextEntry_ = std::vector<TextEntry>;
+  inline std::vector<TextEntry> create_std__vector_TextEntry_(size_t size) noexcept {
+    std::vector<TextEntry> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  
   // pragma MARK: std::shared_ptr<HybridAnalyzedPageSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridAnalyzedPageSpec>`.
@@ -338,6 +403,15 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   // pragma MARK: std::weak_ptr<HybridAnalyzedPageSpec>
   using std__weak_ptr_HybridAnalyzedPageSpec_ = std::weak_ptr<HybridAnalyzedPageSpec>;
   inline std__weak_ptr_HybridAnalyzedPageSpec_ weakify_std__shared_ptr_HybridAnalyzedPageSpec_(const std::shared_ptr<HybridAnalyzedPageSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<void>>>
+  using Result_std__shared_ptr_Promise_void___ = Result<std::shared_ptr<Promise<void>>>;
+  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::shared_ptr<Promise<void>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<void>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<void>>>::withError(error);
+  }
   
   // pragma MARK: Result<double>
   using Result_double_ = Result<double>;
@@ -382,15 +456,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline Result_std__vector_TextEntry__ create_Result_std__vector_TextEntry__(const std::exception_ptr& error) noexcept {
     return Result<std::vector<TextEntry>>::withError(error);
-  }
-  
-  // pragma MARK: Result<std::shared_ptr<Promise<void>>>
-  using Result_std__shared_ptr_Promise_void___ = Result<std::shared_ptr<Promise<void>>>;
-  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::shared_ptr<Promise<void>>& value) noexcept {
-    return Result<std::shared_ptr<Promise<void>>>::withValue(value);
-  }
-  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::exception_ptr& error) noexcept {
-    return Result<std::shared_ptr<Promise<void>>>::withError(error);
   }
   
   // pragma MARK: std::shared_ptr<HybridTextHandleSpec>
@@ -575,50 +640,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline PagerDirection get_std__optional_PagerDirection_(const std::optional<PagerDirection>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::variant<nitro::NullType, std::string>
-  /**
-   * Wrapper struct for `std::variant<nitro::NullType, std::string>`.
-   * std::variant cannot be used in Swift because of a Swift bug.
-   * Not even specializing it works. So we create a wrapper struct.
-   */
-  struct std__variant_nitro__NullType__std__string_ final {
-    std::variant<nitro::NullType, std::string> variant;
-    std__variant_nitro__NullType__std__string_(std::variant<nitro::NullType, std::string> variant): variant(variant) { }
-    operator std::variant<nitro::NullType, std::string>() const noexcept {
-      return variant;
-    }
-    inline size_t index() const noexcept {
-      return variant.index();
-    }
-    inline nitro::NullType get_0() const noexcept {
-      return std::get<0>(variant);
-    }
-    inline std::string get_1() const noexcept {
-      return std::get<1>(variant);
-    }
-  };
-  inline std__variant_nitro__NullType__std__string_ create_std__variant_nitro__NullType__std__string_(nitro::NullType value) noexcept {
-    return std__variant_nitro__NullType__std__string_(value);
-  }
-  inline std__variant_nitro__NullType__std__string_ create_std__variant_nitro__NullType__std__string_(const std::string& value) noexcept {
-    return std__variant_nitro__NullType__std__string_(value);
-  }
-  
-  // pragma MARK: std::optional<std::variant<nitro::NullType, std::string>>
-  /**
-   * Specialized version of `std::optional<std::variant<nitro::NullType, std::string>>`.
-   */
-  using std__optional_std__variant_nitro__NullType__std__string__ = std::optional<std::variant<nitro::NullType, std::string>>;
-  inline std::optional<std::variant<nitro::NullType, std::string>> create_std__optional_std__variant_nitro__NullType__std__string__(const std::variant<nitro::NullType, std::string>& value) noexcept {
-    return std::optional<std::variant<nitro::NullType, std::string>>(value);
-  }
-  inline bool has_value_std__optional_std__variant_nitro__NullType__std__string__(const std::optional<std::variant<nitro::NullType, std::string>>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline std::variant<nitro::NullType, std::string> get_std__optional_std__variant_nitro__NullType__std__string__(const std::optional<std::variant<nitro::NullType, std::string>>& optional) noexcept {
     return optional.value();
   }
   
@@ -812,6 +833,17 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)> get_std__optional_std__function_void_const_std__optional_std__variant_nitro__NullType__TextSelection_______selection______(const std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>& optional) noexcept {
     return optional.value();
+  }
+  
+  // pragma MARK: std::vector<NamedFontSource>
+  /**
+   * Specialized version of `std::vector<NamedFontSource>`.
+   */
+  using std__vector_NamedFontSource_ = std::vector<NamedFontSource>;
+  inline std::vector<NamedFontSource> create_std__vector_NamedFontSource_(size_t size) noexcept {
+    std::vector<NamedFontSource> vector;
+    vector.reserve(size);
+    return vector;
   }
   
   // pragma MARK: std::shared_ptr<Promise<PageInfo>>

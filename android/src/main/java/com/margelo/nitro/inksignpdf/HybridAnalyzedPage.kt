@@ -53,10 +53,13 @@ private fun ViewPoint.toPagePoint() = PagePoint(x, y)
 /** Prepared page handle that retains detached analysis without retaining its view. */
 @DoNotStrip
 internal class HybridAnalyzedPage(
-  owner: HybridInkSignView,
-  private val context: PreparedPageContext,
+  owner: InkSignDocumentOwner,
+  context: PreparedPageContext,
 ) : HybridAnalyzedPageSpec() {
   private val owner = WeakReference(owner)
+  private val prepared = WeakReference(owner.retainPrepared(context))
+  private val context: PreparedPageContext get() = prepared.get()
+    ?: throw PdfSessionException("operation_cancelled", "The prepared page was released")
 
   override fun resolveText(options: ResolveTextOptions): Double =
     withOwner { it.resolvePreparedText(context, options) }
@@ -67,8 +70,8 @@ internal class HybridAnalyzedPage(
   override fun adjustTextSize(id: Double, delta: Double): Double =
     withOwner { it.adjustPreparedTextSize(context, id, delta) }
 
-  override fun setTextValue(id: Double, text: String) {
-    withOwner { it.setPreparedTextValue(context, id, text) }
+  override fun setTextValue(id: Double, text: String, options: TextAnnotationOptions?) {
+    withOwner { it.setPreparedTextValue(context, id, text, options) }
   }
 
   override fun setTextOptions(id: Double, options: TextAnnotationOptions) {
@@ -82,9 +85,9 @@ internal class HybridAnalyzedPage(
     withOwner { it.preparedTextEntries(context) }
 
   override fun focusText(id: Double, options: TextFocusOptions?): com.margelo.nitro.core.Promise<Unit> =
-    withOwner { it.focusPreparedText(context, id, options) }
+    withOwner { checkNotNull(it.presentation?.get()).focusPreparedText(context, id, options) }
 
-  private inline fun <T> withOwner(action: (HybridInkSignView) -> T): T =
+  private inline fun <T> withOwner(action: (InkSignDocumentOwner) -> T): T =
     owner.get()?.let(action) ?: throw PdfSessionException(
       "operation_cancelled", "The prepared page view has been disposed",
     )

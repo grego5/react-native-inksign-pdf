@@ -36,6 +36,9 @@ const originalLoad = Module._load;
 let InkSignView;
 try {
   Module._load = function(request, parent, isMain) {
+    if (request === 'react-native') {
+      return { Platform: { OS: 'android' } };
+    }
     if (request === 'react-native-nitro-modules') {
       return { callback: value => value, getHostComponent: () => NativeView };
     }

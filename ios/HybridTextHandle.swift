@@ -21,7 +21,8 @@ final class HybridTextHandle: HybridTextHandleSpec, InkSignPdfTextPageContext {
     try withOwner { try $0.preparedTextValue(self, id: textID) }
   }
 
-  func setValue(text: String) throws {
+  func setValue(text: String, options: TextAnnotationOptions?) throws {
+    guard options == nil else { throw InkSignView.HeadlessFeatureError.androidOnly }
     try withOwner { try $0.setPreparedTextValue(self, id: textID, text: text) }
   }
 

@@ -5,6 +5,8 @@ import type {
   HybridViewProps,
 } from 'react-native-nitro-modules'
 
+import type { NamedFontSource } from './InkSignDocument.nitro'
+
 /** Opaque RGB stroke color in `#RRGGBB` form. Invalid values are ignored natively. */
 export type StrokeColor = string
 
@@ -31,6 +33,8 @@ export interface TextAnnotationBounds {
 
 /** Text presentation options used by direct insertion and dimensioned placement. */
 export interface TextAnnotationOptions {
+  /** Preloaded owner-local font name; null restores the system font. Android only. */
+  font?: string | null
   /** Canonical page-unit font size for this text target. */
   fontSize?: number
   /** Opaque RGB color saved with this text target. */
@@ -47,6 +51,7 @@ export interface TextAnnotationOptions {
 
 /** One-shot text placement; viewport changes apply after the tap. Box dimensions are PDF page points. */
 export interface TextModeOptions extends ViewportOptions {
+  font?: string | null
   /** Defaults to `auto`, following the app's resolved layout direction. */
   direction?: TextDirection
   /** Supply both dimensions for a fixed hard-bounded box; omit both to auto-size as text grows. */
@@ -109,13 +114,13 @@ export interface PageCoords {
 }
 
 /** Prepared source analysis and synchronous text operations for one stable page. */
-export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
+export interface PageTextMethods {
   /** Creates or resolves a text target from page analysis and returns its ID. */
   resolveText(options: ResolveTextOptions): TextId
   /** Returns the target's effective text value. */
   getTextValue(id: TextId): string
   /** Sets the target's entered text; empty text removes module text and preserves source PDF text. */
-  setTextValue(id: TextId, text: string): void
+  setTextValue(id: TextId, text: string, options?: TextAnnotationOptions): void
   /** Updates the target's text options; omitted fields retain their current values. */
   setTextOptions(id: TextId, options: TextAnnotationOptions): void
   /** Adjusts the native font size by page points and returns the resulting size. */
@@ -124,6 +129,9 @@ export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kot
   getTextEntry(id: TextId): TextEntry
   /** Returns all text targets on this page. */
   getTextEntries(): TextEntry[]
+}
+
+export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }>, PageTextMethods {
   /** Focuses the target; omitted options use zoom 2 and center it without changing input mode. */
   focusText(id: TextId, options?: TextFocusOptions): Promise<void>
 }
@@ -132,7 +140,7 @@ export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kot
 export interface TextHandle extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   getValue(): string
   /** Empty text removes module text while preserving embedded PDF content. */
-  setValue(text: string): void
+  setValue(text: string, options?: TextAnnotationOptions): void
   setOptions(options: TextAnnotationOptions): void
   /** Adjusts font size by page points and returns the resulting size. */
   adjustSize(delta: number): number
@@ -263,6 +271,8 @@ export interface InkSignViewProps extends HybridViewProps {
 }
 
 export interface InkSignViewMethods extends HybridViewMethods {
+  /** Preload named text fonts once per viewer. Android only until iOS uses PDFium. */
+  loadFonts(fonts: NamedFontSource[]): Promise<void>
   /** Opens a local PDF or JPEG path/file:// URI. JPEG becomes one A4 page; omitted options fit. */
   open(path: string, options?: ViewportOptions): Promise<PageInfo>
   /** Closes in FIFO order; omitted `cancelPending` is false. Pass true to cancel pending work. */

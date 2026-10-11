@@ -55,7 +55,7 @@ namespace margelo::nitro::inksignpdf {
   public:
     // Methods
     std::string getValue() override;
-    void setValue(const std::string& text) override;
+    void setValue(const std::string& text, const std::optional<TextAnnotationOptions>& options) override;
     void setOptions(const TextAnnotationOptions& options) override;
     double adjustSize(double delta) override;
 

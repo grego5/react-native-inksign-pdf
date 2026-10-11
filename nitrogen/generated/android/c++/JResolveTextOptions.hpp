@@ -15,13 +15,17 @@
 #include "JTextDirection.hpp"
 #include "JTextKeyOccurrence.hpp"
 #include "JTextVerticalAnchor.hpp"
+#include "JVariant_NullType_String.hpp"
 #include "TextAlignment.hpp"
 #include "TextAnnotationBounds.hpp"
 #include "TextDirection.hpp"
 #include "TextKeyOccurrence.hpp"
 #include "TextVerticalAnchor.hpp"
+#include <NitroModules/JNull.hpp>
+#include <NitroModules/Null.hpp>
 #include <optional>
 #include <string>
+#include <variant>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -48,6 +52,8 @@ namespace margelo::nitro::inksignpdf {
       jni::local_ref<JTextAnnotationBounds> bounds = this->getFieldValue(fieldBounds);
       static const auto fieldOccurrence = clazz->getField<JTextKeyOccurrence>("occurrence");
       jni::local_ref<JTextKeyOccurrence> occurrence = this->getFieldValue(fieldOccurrence);
+      static const auto fieldFont = clazz->getField<JVariant_NullType_String>("font");
+      jni::local_ref<JVariant_NullType_String> font = this->getFieldValue(fieldFont);
       static const auto fieldFontSize = clazz->getField<jni::JDouble>("fontSize");
       jni::local_ref<jni::JDouble> fontSize = this->getFieldValue(fieldFontSize);
       static const auto fieldColor = clazz->getField<jni::JString>("color");
@@ -64,6 +70,7 @@ namespace margelo::nitro::inksignpdf {
         fieldName != nullptr ? std::make_optional(fieldName->toStdString()) : std::nullopt,
         bounds != nullptr ? std::make_optional(bounds->toCpp()) : std::nullopt,
         occurrence != nullptr ? std::make_optional(occurrence->toCpp()) : std::nullopt,
+        font != nullptr ? std::make_optional(font->toCpp()) : std::nullopt,
         fontSize != nullptr ? std::make_optional(fontSize->value()) : std::nullopt,
         color != nullptr ? std::make_optional(color->toStdString()) : std::nullopt,
         direction != nullptr ? std::make_optional(direction->toCpp()) : std::nullopt,
@@ -79,7 +86,7 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JResolveTextOptions::javaobject> fromCpp(const ResolveTextOptions& value) {
-      using JSignature = JResolveTextOptions(jni::alias_ref<jni::JString>, jni::alias_ref<JTextAnnotationBounds>, jni::alias_ref<JTextKeyOccurrence>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JString>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextAlignment>, jni::alias_ref<JTextVerticalAnchor>);
+      using JSignature = JResolveTextOptions(jni::alias_ref<jni::JString>, jni::alias_ref<JTextAnnotationBounds>, jni::alias_ref<JTextKeyOccurrence>, jni::alias_ref<JVariant_NullType_String>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JString>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextAlignment>, jni::alias_ref<JTextVerticalAnchor>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -87,6 +94,7 @@ namespace margelo::nitro::inksignpdf {
         value.fieldName.has_value() ? jni::make_jstring(value.fieldName.value()) : nullptr,
         value.bounds.has_value() ? JTextAnnotationBounds::fromCpp(value.bounds.value()) : nullptr,
         value.occurrence.has_value() ? JTextKeyOccurrence::fromCpp(value.occurrence.value()) : nullptr,
+        value.font.has_value() ? JVariant_NullType_String::fromCpp(value.font.value()) : nullptr,
         value.fontSize.has_value() ? jni::JDouble::valueOf(value.fontSize.value()) : nullptr,
         value.color.has_value() ? jni::make_jstring(value.color.value()) : nullptr,
         value.direction.has_value() ? JTextDirection::fromCpp(value.direction.value()) : nullptr,

@@ -25,6 +25,8 @@ namespace margelo::nitro::inksignpdf { struct ViewerState; }
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `TextSelection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextSelection; }
+// Forward declaration of `NamedFontSource` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
@@ -60,6 +62,8 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 #include "TextSelection.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
+#include "NamedFontSource.hpp"
+#include <vector>
 #include "ViewportOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
@@ -139,6 +143,7 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Methods
+      virtual std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) = 0;
       virtual std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) = 0;
       virtual std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) = 0;
       virtual std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) = 0;

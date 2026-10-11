@@ -176,8 +176,8 @@ internal fun programmaticTextFlowBounds(
   )
 }
 
-internal fun textEditorIntrinsicSize(text: String, fontSize: Double): TextIntrinsicSize {
-  val measured = TextLayoutSpec.measure(text, fontSize)
+internal fun textEditorIntrinsicSize(text: String, fontSize: Double, typeface: android.graphics.Typeface = TextLayoutSpec.typeface): TextIntrinsicSize {
+  val measured = TextLayoutSpec.measure(text, fontSize, typeface)
   return measured.copy(width = max(measured.width, textEditorMinimumContentWidth(fontSize)))
 }
 
@@ -342,6 +342,7 @@ internal fun localImeOverlapPx(
 internal class TextInteractionOverlay(
   context: Context,
   private val surface: SurfaceView,
+  private val fonts: NamedFontRegistry = NamedFontRegistry(context),
 ) : FrameLayout(context) {
   private sealed interface InteractionState {
     data object Idle : InteractionState
@@ -364,6 +365,7 @@ internal class TextInteractionOverlay(
       var positionY: Double,
       var fontSize: Double,
       var textColor: Int,
+      var font: NamedFontResource? = original?.font,
       val flowBounds: PageRect? = original?.flowBounds,
       var maxLines: Int = original?.maxLines ?: 0,
       var verticalAnchor: TextVerticalAnchor = original?.verticalAnchor ?: TextVerticalAnchor.TOP,
@@ -643,6 +645,7 @@ internal class TextInteractionOverlay(
       verticalAnchor = verticalAnchor,
       alignment = alignment,
       layoutPage = page,
+      font = fonts.resolve(options?.font),
     )
     val annotation = boundedAnnotation.copy(bounds = TextLayoutSpec.visibleBounds(boundedAnnotation, flowBounds))
     if (requireVisibleLine && (annotation.bounds.right <= annotation.bounds.left ||
@@ -775,6 +778,7 @@ internal class TextInteractionOverlay(
       fontSize = defaultFontSize,
       textColor = defaultTextColor,
       flowBounds = flowBounds,
+      font = fonts.resolve(options?.font),
       maxLines = options?.maxLines?.toInt() ?: 0,
       verticalAnchor = verticalAnchor,
       alignment = options?.alignment ?: TextAlignment.START,
@@ -872,20 +876,25 @@ internal class TextInteractionOverlay(
       editor?.text?.toString() ?: ""
     }
 
-  internal fun setPreparedDraftText(id: Long, value: String): Boolean {
+  internal fun setPreparedDraftText(id: Long, value: String, options: TextAnnotationOptions? = null): Boolean {
     val state = interactionState as? InteractionState.Editing ?: return false
     if (state.id != id) return false
-    val entry = editor ?: return false
-    val current = materializedEditorText(entry)
-    if (current == value) return true
+    val entry = checkNotNull(editor)
+    val font = fonts.resolve(options?.font, state.font)
+    val size = options?.fontSize ?: state.fontSize
+    val color = parseTextColor(options?.color, state.textColor)
+    val direction = options?.direction?.let(::resolveDirection) ?: state.directionRtl
+    val lines = options?.maxLines?.toInt() ?: state.maxLines
+    val alignment = options?.alignment ?: state.alignment
+    val typeface = font?.typeface ?: TextLayoutSpec.typeface
     val fits = state.flowBounds?.let { flow ->
-      TextLayoutSpec.fitsFlow(value, state.fontSize, state.textColor, flow,
-        state.maxLines, state.directionRtl, state.alignment)
-    } ?: TextLayoutSpec.fitsMaxLines(value, state.fontSize, state.textColor,
-      state.maxLines, state.directionRtl, state.alignment)
-    if (!fits) throw PdfSessionException(
-      "text_does_not_fit", "The supplied value does not fit in the text target",
-    )
+      TextLayoutSpec.fitsFlow(value, size, color, flow, lines, direction, alignment, typeface)
+    } ?: TextLayoutSpec.fitsMaxLines(value, size, color, lines, direction, alignment, typeface)
+    if (!fits) throw PdfSessionException("text_does_not_fit", "The supplied value does not fit in the text target")
+    state.font = font; state.fontSize = size; state.textColor = color
+    state.directionRtl = direction; state.maxLines = lines; state.alignment = alignment
+    state.verticalAnchor = options?.verticalAnchor ?: state.verticalAnchor
+    configureEditorPreservingSelection(entry, displayFontSize(size), direction, color, alignment)
     entry.setText(value)
     entry.setSelection(value.length)
     invalidate()
@@ -917,6 +926,8 @@ internal class TextInteractionOverlay(
       TextDirection.AUTO -> appLayoutIsRtl()
       null -> state.directionRtl
     }
+    val font = fonts.resolve(options.font, state.font)
+    state.font = font
     state.fontSize = options.fontSize ?: state.fontSize
     state.textColor = parseTextColor(options.color, state.textColor)
     state.maxLines = options.maxLines?.toInt() ?: state.maxLines
@@ -1364,8 +1375,7 @@ internal class TextInteractionOverlay(
                 flowBounds = flowBounds,
                 maxLines = currentState.maxLines,
                 baseDirectionRtl = currentState.directionRtl,
-                alignment = currentState.alignment,
-              )
+                alignment = currentState.alignment, typeface = editingTypeface())
             } else {
               TextLayoutSpec.fitsMaxLines(
                 text = prospectiveText,
@@ -1373,8 +1383,7 @@ internal class TextInteractionOverlay(
                 textColor = currentState.textColor,
                 maxLines = currentState.maxLines,
                 baseDirectionRtl = currentState.directionRtl,
-                alignment = currentState.alignment,
-              )
+                alignment = currentState.alignment, typeface = editingTypeface())
             }
             if (fits) {
               null
@@ -1740,6 +1749,7 @@ internal class TextInteractionOverlay(
       verticalAnchor = state.verticalAnchor,
       alignment = state.alignment,
       layoutPage = state.original?.layoutPage ?: if (state.original == null) presentation.page else null,
+      font = state.font,
     )
     return if (flowBounds == null) updated else updated.copy(
       bounds = TextLayoutSpec.visibleBounds(updated, flowBounds),
@@ -1767,7 +1777,7 @@ internal class TextInteractionOverlay(
     fontSize: Double,
     page: PdfPageDimensions,
   ): TextAnnotation {
-    val size = textEditorIntrinsicSize(annotation.text, fontSize)
+    val size = textEditorIntrinsicSize(annotation.text, fontSize, annotation.font?.typeface ?: TextLayoutSpec.typeface)
     val position = clampPosition(annotation.position, size, page)
     val flowBounds = annotation.flowBounds
     val updated = TextAnnotation(
@@ -1776,6 +1786,7 @@ internal class TextInteractionOverlay(
       bounds = flowBounds ?: PageRect(position.x, position.y, position.x + size.width, position.y + size.height),
       fontSize = fontSize,
       layoutPage = annotation.layoutPage,
+      font = annotation.font,
       textColor = annotation.textColor,
       directionRtl = annotation.directionRtl,
       flowBounds = flowBounds,
@@ -1991,8 +2002,7 @@ internal class TextInteractionOverlay(
         fontSize = state.fontSize,
         textColor = state.textColor,
         layoutWidth = flowBounds.right - flowBounds.left,
-        baseDirectionRtl = state.directionRtl,
-      )
+        baseDirectionRtl = state.directionRtl, typeface = editingTypeface())
       val selection = TextLayoutSpec.selectVisibleLines(
         layout,
         flowBounds,
@@ -2075,7 +2085,7 @@ internal class TextInteractionOverlay(
     anchorX: Double? = null,
     isRtl: Boolean,
   ): TextIntrinsicSize {
-    val intrinsic = textEditorIntrinsicSize(text, fontSize)
+    val intrinsic = textEditorIntrinsicSize(text, fontSize, editingTypeface())
     val minimumPageSize = fontSize
     val bounded = textEditorPageBoundedSize(
       intrinsic,
@@ -2085,7 +2095,7 @@ internal class TextInteractionOverlay(
       anchorX,
       isRtl,
     )
-    return TextLayoutSpec.measureWrapped(text, fontSize, bounded.width, isRtl)
+    return TextLayoutSpec.measureWrapped(text, fontSize, bounded.width, isRtl, editingTypeface())
   }
 
   private fun configureEditorPreservingSelection(
@@ -2106,8 +2116,7 @@ internal class TextInteractionOverlay(
       if (constrainedFlow) 0 else textEditorPaddingPx(fontSize, textEditorHorizontalPaddingRatio),
       if (constrainedFlow) 0 else textEditorPaddingPx(fontSize, textEditorVerticalPaddingRatio),
       textColor,
-      alignment,
-    )
+      alignment, typeface = editingTypeface())
     if (entry.text != null) {
       entry.setSelection(
         start.coerceAtMost(entry.text.length),
@@ -2141,6 +2150,8 @@ internal class TextInteractionOverlay(
   ): PagePoint {
     return clampTextAnnotationPosition(position, size, page)
   }
+
+  private fun editingTypeface() = (interactionState as? InteractionState.Editing)?.font?.typeface ?: TextLayoutSpec.typeface
 
   private fun displayFontSize(fontSize: Double): Double {
     val scale = lastPresentation?.transform?.uniformScale() ?: density

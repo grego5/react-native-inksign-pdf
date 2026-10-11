@@ -7,7 +7,7 @@ and export.
 
 ## System boundaries
 
-- `src/InkSignView.nitro.ts` defines native interfaces; `src/index.ts` defines
+- `src/InkSignView.nitro.ts` and `src/InkSignDocument.nitro.ts` define native interfaces; `src/index.ts` defines
   React session props. JS receives state/page events, prepared text metadata,
   and selection IDs, not PDF data or per-frame geometry.
 - [`src/index.ts`](../../../../src/index.ts) validates public arguments before
@@ -41,6 +41,29 @@ and export.
   uses PencilKit for ink input; export retains source pages and adds committed
   text and filled vector signatures as PDF annotations.
 
+## Android headless ownership
+
+`InkSignDocumentOwner` shares programmatic text commands, prepared handles,
+font resources, and page import with the viewer. `MutableDocumentCoordinator`
+remains the page/document state owner and `PdfSessionWorker` serializes backend
+analysis, assembly, and export. The viewer provides draft/focus/presentation
+callbacks through a weak presentation adapter; a headless document creates no view.
+Headless async commands enter a FIFO queue. Terminal `close()` immediately rejects
+new work and synchronous reads, including `pageCount` and `getInfo()`, through
+the same admission policy as text edits. It drains admitted async commands,
+invalidates handles, closes the backend, and releases
+working artifacts and fonts. Successful headless exports transfer to caller ownership
+and survive close. UI undo remains viewer-only.
+
+`loadFonts` atomically publishes named local sources, deduplicated per owner.
+Static single-face TrueType validation happens during preload. Missing glyphs
+do not reject text: Android selects system fallback for preview and API 31+
+export; older custom-font export uses the selected font's missing-glyph appearance.
+Named-font loading/shaping failures remain explicit. Current drafts and annotations
+own formatting; target options provide defaults for empty targets. Headless automatic
+direction follows React Native app direction. iOS keeps its existing PDFKit
+ownership and system font behavior; headless and named-font operations are Android-only.
+
 ## Document model
 
 - Page order and active-page identity are document state. Ink and text are
@@ -49,7 +72,8 @@ and export.
 - Prepared page handles retain immutable source analysis and a stable page ID.
   The coordinator owns numeric text IDs, target metadata, and committed history;
   the overlay owns drafts/selection. IDs are monotonic per view. Async preparation
-  enables synchronous resolution/value operations on the captured page.
+  enables synchronous resolution/value operations on the captured page. The owner
+  releases session-bound prepared contexts when the mode session is cancelled.
 - Field lookup compares complete joined labels first, then token frequencies
   when no joined match exists. Repeated words matter; fallback allows extracted
   word-order differences. Partial labels/substrings do not match.

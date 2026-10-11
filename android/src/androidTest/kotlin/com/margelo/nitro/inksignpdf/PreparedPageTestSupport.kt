@@ -25,7 +25,7 @@ internal fun awaitPreparedPage(
 
 internal fun resolveFreeTextTarget(page: HybridAnalyzedPageSpec, bounds: TextAnnotationBounds): Double =
   page.resolveText(
-    ResolveTextOptions(
+    ResolveTextOptions(font = null,
       fieldName = null,
       bounds = bounds,
       occurrence = null,
@@ -44,6 +44,6 @@ internal fun setPreparedText(
   value: String,
 ): Double {
   val id = resolveFreeTextTarget(page, bounds)
-  page.setTextValue(id, value)
+  page.setTextValue(id, value, null)
   return id
 }

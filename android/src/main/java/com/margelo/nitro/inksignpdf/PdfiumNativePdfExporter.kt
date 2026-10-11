@@ -89,6 +89,7 @@ internal object PdfiumNativePdfExporter {
       }
     }
     val fontResources = Array(text.fonts.size) { text.fonts[it].bytes.copyOf() }
+    val explicitFontSelections = IntArray(text.fonts.size) { if (text.fonts[it].explicitSelection) 1 else 0 }
     val maySubsetFonts = text.fonts.all { it.fsType and 0x0100 == 0 }
 
     nativeExport(
@@ -114,6 +115,7 @@ internal object PdfiumNativePdfExporter {
       textRunColors,
       textRunTransforms,
       fontResources,
+      explicitFontSelections,
       maySubsetFonts,
       forceSubsetSaveFailureForTesting,
       snapshot.color,
@@ -143,6 +145,7 @@ internal object PdfiumNativePdfExporter {
     textRunColors: IntArray,
     textRunTransforms: FloatArray,
     fontResources: Array<ByteArray>,
+    explicitFontSelections: IntArray,
     maySubsetFonts: Boolean,
     forceSubsetSaveFailureForTesting: Boolean,
     inkColor: Int,

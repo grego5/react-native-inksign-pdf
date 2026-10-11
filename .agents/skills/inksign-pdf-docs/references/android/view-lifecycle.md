@@ -23,9 +23,10 @@
 - Each worker-owned session shares text geometry/rules between placement paths.
   Its LRU cache holds at most eight pages and 8 MiB estimated storage; navigation
   retains entries, session replacement/closure releases them.
-- Handles retain analysis; coordinator targets retain source glyphs for fallback
-  after eviction. Page deletion releases affected targets/glyphs; document
-  teardown releases all.
+- The document owner retains prepared contexts; page handles reference them weakly.
+  Mode cancellation releases that session's prepared contexts. Coordinator targets
+  retain source glyphs for fallback after eviction. Page deletion releases affected
+  targets/glyphs; document teardown releases all prepared contexts and targets.
 
 ## Opening
 

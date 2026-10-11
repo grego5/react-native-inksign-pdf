@@ -26,6 +26,8 @@ namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `TextSelection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextSelection; }
+// Forward declaration of `NamedFontSource` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
@@ -72,11 +74,12 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "PageInfo.hpp"
 #include "TextSelection.hpp"
 #include <NitroModules/Promise.hpp>
+#include "NamedFontSource.hpp"
+#include <vector>
 #include "ViewportOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
 #include "PageType.hpp"
-#include <vector>
 #include "ImagePageSize.hpp"
 #include "AddPagesActivePage.hpp"
 #include "Viewport.hpp"
@@ -266,6 +269,14 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
+    inline std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) override {
+      auto __result = _swiftPart.loadFonts(fonts);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) override {
       auto __result = _swiftPart.open(path, options);
       if (__result.hasError()) [[unlikely]] {

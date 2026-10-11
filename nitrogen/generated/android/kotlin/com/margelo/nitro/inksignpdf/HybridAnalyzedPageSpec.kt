@@ -32,6 +32,10 @@ abstract class HybridAnalyzedPageSpec: HybridObject() {
   // Methods
   @DoNotStrip
   @Keep
+  abstract fun focusText(id: Double, options: TextFocusOptions?): Promise<Unit>
+  
+  @DoNotStrip
+  @Keep
   abstract fun resolveText(options: ResolveTextOptions): Double
   
   @DoNotStrip
@@ -40,7 +44,7 @@ abstract class HybridAnalyzedPageSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
-  abstract fun setTextValue(id: Double, text: String): Unit
+  abstract fun setTextValue(id: Double, text: String, options: TextAnnotationOptions?): Unit
   
   @DoNotStrip
   @Keep
@@ -57,10 +61,6 @@ abstract class HybridAnalyzedPageSpec: HybridObject() {
   @DoNotStrip
   @Keep
   abstract fun getTextEntries(): Array<TextEntry>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun focusText(id: Double, options: TextFocusOptions?): Promise<Unit>
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

@@ -202,8 +202,8 @@ internal class HybridInkSignViewTextKeyTest {
         overlay.finishForLifecycle()
         surface.switchPage(1)
       }
-      handle.setValue("updated")
-      handle.setOptions(TextAnnotationOptions(
+      handle.setValue("updated", null)
+      handle.setOptions(TextAnnotationOptions(font = null,
         fontSize = null,
         color = null,
         direction = null,
@@ -214,7 +214,7 @@ internal class HybridInkSignViewTextKeyTest {
       assertTrue("font size adjustment must return a positive size", handle.adjustSize(1.0) > 0.0)
       assertEquals("updated", handle.getValue())
       assertEquals("updated", page.getTextValue(textId))
-      handle.setValue("")
+      handle.setValue("", null)
       assertEquals("", handle.getValue())
 
       awaitOpen(instrumentation, view, sourceB.absolutePath)
@@ -343,12 +343,12 @@ internal class HybridInkSignViewTextKeyTest {
       val ordinary = awaitPreparedPage(view.getPage(null))
       val session = view.setMode(InputMode.INK, null)
       val scoped = awaitPreparedPage(session.getPage(null))
-      val id = scoped.resolveText(ResolveTextOptions(
+      val id = scoped.resolveText(ResolveTextOptions(font = null,
         fieldName = null, bounds = TextAnnotationBounds(50.0, 60.0, 100.0, 30.0),
         occurrence = null, fontSize = null, color = null, direction = null,
         maxLines = null, alignment = null, verticalAnchor = null,
       ))
-      scoped.setTextValue(id, "Ada")
+      scoped.setTextValue(id, "Ada", null)
       val before = view.getViewport()
       blockAnalysis.set(true)
       val pending = session.getPage(null)
@@ -364,7 +364,7 @@ internal class HybridInkSignViewTextKeyTest {
       assertTrue("mode cancellation must not wait for the worker", cancelled.await(5, TimeUnit.SECONDS))
       assertEquals(2, errors.size)
       assertTrue(errors.all { it is PdfSessionException && it.code == "operation_cancelled" })
-      try { scoped.setTextValue(id, "Stale"); throw AssertionError("Stale write admitted") }
+      try { scoped.setTextValue(id, "Stale", null); throw AssertionError("Stale write admitted") }
       catch (error: PdfSessionException) { assertEquals("operation_cancelled", error.code) }
       assertEquals("Ada", ordinary.getTextValue(id))
       releaseAnalysis.countDown()

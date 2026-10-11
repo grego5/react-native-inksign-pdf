@@ -10,7 +10,7 @@ package com.margelo.nitro.inksignpdf
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import java.util.Objects
-
+import com.margelo.nitro.core.NullType
 
 /**
  * Represents the JavaScript object/struct "ResolveTextOptions".
@@ -27,6 +27,9 @@ data class ResolveTextOptions(
   @DoNotStrip
   @Keep
   val occurrence: TextKeyOccurrence?,
+  @DoNotStrip
+  @Keep
+  val font: Variant_NullType_String?,
   @DoNotStrip
   @Keep
   val fontSize: Double?,
@@ -54,6 +57,7 @@ data class ResolveTextOptions(
     return Objects.deepEquals(this.fieldName, other.fieldName)
       && Objects.deepEquals(this.bounds, other.bounds)
       && Objects.deepEquals(this.occurrence, other.occurrence)
+      && Objects.deepEquals(this.font, other.font)
       && Objects.deepEquals(this.fontSize, other.fontSize)
       && Objects.deepEquals(this.color, other.color)
       && Objects.deepEquals(this.direction, other.direction)
@@ -67,6 +71,7 @@ data class ResolveTextOptions(
       fieldName,
       bounds,
       occurrence,
+      font,
       fontSize,
       color,
       direction,
@@ -84,8 +89,8 @@ data class ResolveTextOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(fieldName: String?, bounds: TextAnnotationBounds?, occurrence: TextKeyOccurrence?, fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?): ResolveTextOptions {
-      return ResolveTextOptions(fieldName, bounds, occurrence, fontSize, color, direction, maxLines, alignment, verticalAnchor)
+    private fun fromCpp(fieldName: String?, bounds: TextAnnotationBounds?, occurrence: TextKeyOccurrence?, font: Variant_NullType_String?, fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?): ResolveTextOptions {
+      return ResolveTextOptions(fieldName, bounds, occurrence, font, fontSize, color, direction, maxLines, alignment, verticalAnchor)
     }
   }
 }

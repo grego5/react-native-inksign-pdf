@@ -13,11 +13,15 @@
 #include "JTextAlignment.hpp"
 #include "JTextDirection.hpp"
 #include "JTextVerticalAnchor.hpp"
+#include "JVariant_NullType_String.hpp"
 #include "TextAlignment.hpp"
 #include "TextDirection.hpp"
 #include "TextVerticalAnchor.hpp"
+#include <NitroModules/JNull.hpp>
+#include <NitroModules/Null.hpp>
 #include <optional>
 #include <string>
+#include <variant>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -38,6 +42,8 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     TextAnnotationOptions toCpp() const {
       static const auto clazz = javaClassStatic();
+      static const auto fieldFont = clazz->getField<JVariant_NullType_String>("font");
+      jni::local_ref<JVariant_NullType_String> font = this->getFieldValue(fieldFont);
       static const auto fieldFontSize = clazz->getField<jni::JDouble>("fontSize");
       jni::local_ref<jni::JDouble> fontSize = this->getFieldValue(fieldFontSize);
       static const auto fieldColor = clazz->getField<jni::JString>("color");
@@ -51,6 +57,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto fieldVerticalAnchor = clazz->getField<JTextVerticalAnchor>("verticalAnchor");
       jni::local_ref<JTextVerticalAnchor> verticalAnchor = this->getFieldValue(fieldVerticalAnchor);
       return TextAnnotationOptions(
+        font != nullptr ? std::make_optional(font->toCpp()) : std::nullopt,
         fontSize != nullptr ? std::make_optional(fontSize->value()) : std::nullopt,
         color != nullptr ? std::make_optional(color->toStdString()) : std::nullopt,
         direction != nullptr ? std::make_optional(direction->toCpp()) : std::nullopt,
@@ -66,11 +73,12 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JTextAnnotationOptions::javaobject> fromCpp(const TextAnnotationOptions& value) {
-      using JSignature = JTextAnnotationOptions(jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JString>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextAlignment>, jni::alias_ref<JTextVerticalAnchor>);
+      using JSignature = JTextAnnotationOptions(jni::alias_ref<JVariant_NullType_String>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JString>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextAlignment>, jni::alias_ref<JTextVerticalAnchor>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
+        value.font.has_value() ? JVariant_NullType_String::fromCpp(value.font.value()) : nullptr,
         value.fontSize.has_value() ? jni::JDouble::valueOf(value.fontSize.value()) : nullptr,
         value.color.has_value() ? jni::make_jstring(value.color.value()) : nullptr,
         value.direction.has_value() ? JTextDirection::fromCpp(value.direction.value()) : nullptr,

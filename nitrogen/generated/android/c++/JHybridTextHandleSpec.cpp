@@ -18,8 +18,12 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 
 #include <string>
 #include "TextAnnotationOptions.hpp"
-#include "JTextAnnotationOptions.hpp"
 #include <optional>
+#include "JTextAnnotationOptions.hpp"
+#include <NitroModules/Null.hpp>
+#include <variant>
+#include "JVariant_NullType_String.hpp"
+#include <NitroModules/JNull.hpp>
 #include "TextDirection.hpp"
 #include "JTextDirection.hpp"
 #include "TextAlignment.hpp"
@@ -65,9 +69,9 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart);
     return __result->toStdString();
   }
-  void JHybridTextHandleSpec::setValue(const std::string& text) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */)>("setValue");
-    method(_javaPart, jni::make_jstring(text));
+  void JHybridTextHandleSpec::setValue(const std::string& text, const std::optional<TextAnnotationOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<jni::JString> /* text */, jni::alias_ref<JTextAnnotationOptions> /* options */)>("setValue");
+    method(_javaPart, jni::make_jstring(text), options.has_value() ? JTextAnnotationOptions::fromCpp(options.value()) : nullptr);
   }
   void JHybridTextHandleSpec::setOptions(const TextAnnotationOptions& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextAnnotationOptions> /* options */)>("setOptions");

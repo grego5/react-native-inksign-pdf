@@ -89,6 +89,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
+    std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) override;
     std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) override;
     std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) override;
     std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) override;

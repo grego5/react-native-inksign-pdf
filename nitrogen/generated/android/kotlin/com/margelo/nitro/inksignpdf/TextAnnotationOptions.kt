@@ -10,7 +10,7 @@ package com.margelo.nitro.inksignpdf
 import androidx.annotation.Keep
 import com.facebook.proguard.annotations.DoNotStrip
 import java.util.Objects
-
+import com.margelo.nitro.core.NullType
 
 /**
  * Represents the JavaScript object/struct "TextAnnotationOptions".
@@ -18,6 +18,9 @@ import java.util.Objects
 @DoNotStrip
 @Keep
 data class TextAnnotationOptions(
+  @DoNotStrip
+  @Keep
+  val font: Variant_NullType_String?,
   @DoNotStrip
   @Keep
   val fontSize: Double?,
@@ -42,7 +45,8 @@ data class TextAnnotationOptions(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is TextAnnotationOptions) return false
-    return Objects.deepEquals(this.fontSize, other.fontSize)
+    return Objects.deepEquals(this.font, other.font)
+      && Objects.deepEquals(this.fontSize, other.fontSize)
       && Objects.deepEquals(this.color, other.color)
       && Objects.deepEquals(this.direction, other.direction)
       && Objects.deepEquals(this.maxLines, other.maxLines)
@@ -52,6 +56,7 @@ data class TextAnnotationOptions(
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
+      font,
       fontSize,
       color,
       direction,
@@ -69,8 +74,8 @@ data class TextAnnotationOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?): TextAnnotationOptions {
-      return TextAnnotationOptions(fontSize, color, direction, maxLines, alignment, verticalAnchor)
+    private fun fromCpp(font: Variant_NullType_String?, fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?): TextAnnotationOptions {
+      return TextAnnotationOptions(font, fontSize, color, direction, maxLines, alignment, verticalAnchor)
     }
   }
 }

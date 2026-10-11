@@ -172,6 +172,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   // Methods
   @DoNotStrip
   @Keep
+  abstract fun loadFonts(fonts: Array<NamedFontSource>): Promise<Unit>
+  
+  @DoNotStrip
+  @Keep
   abstract fun open(path: String, options: ViewportOptions?): Promise<PageInfo>
   
   @DoNotStrip

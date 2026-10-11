@@ -58,6 +58,8 @@ export function validateTextAnnotationBounds(value: unknown): void {
 export function validateTextAnnotationOptions(value: unknown): void {
   if (value === undefined) return;
   if (!isRecord(value) ||
+    (value.font !== undefined && value.font !== null &&
+      (typeof value.font !== 'string' || value.font.trim() === '')) ||
     (value.fontSize !== undefined &&
       (typeof value.fontSize !== 'number' || !Number.isFinite(value.fontSize) || value.fontSize <= 0)) ||
     (value.color !== undefined &&

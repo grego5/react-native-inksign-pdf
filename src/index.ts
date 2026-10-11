@@ -1,5 +1,6 @@
+import { Platform } from 'react-native';
 import React, { useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { callback, getHostComponent } from 'react-native-nitro-modules';
+import { callback, getHostComponent, NitroModules } from 'react-native-nitro-modules';
 import InkSignViewConfig from '../nitrogen/generated/shared/json/InkSignViewConfig.json';
 import { createViewConnection } from './viewConnection';
 import {
@@ -16,6 +17,7 @@ import {
 } from './publicArguments';
 import type {
   AnalyzedPage,
+  PageTextMethods,
   ModeSession,
   InputMode,
   ResolveTextOptions,
@@ -54,6 +56,8 @@ import type {
   AnalyzedPage as AnalyzedPageNativeHandle,
   InkSignViewMethods,
 } from './InkSignView.nitro';
+import type { NamedFontSource, DocumentOpenOptions, DocumentAddPagesOptions, DocumentAddPagesResult, DocumentPage, InkSignDocument, InkSignDocumentFactory } from './InkSignDocument.nitro';
+export type { NamedFontSource, DocumentOpenOptions, DocumentAddPagesOptions, DocumentAddPagesResult, DocumentPage, InkSignDocument } from './InkSignDocument.nitro';
 
 export type {
   AnalyzedPage,
@@ -168,9 +172,10 @@ function createValidatedTextHandle(native: TextHandle): TextHandle {
     equals: other => native.equals(other),
     dispose: () => native.dispose(),
     getValue: () => native.getValue(),
-    setValue(text) {
+    setValue(text, options) {
       if (typeof text !== 'string') throw argumentError('invalid_text', 'Text must be a string');
-      native.setValue(text);
+      validateTextAnnotationOptions(options);
+      native.setValue(text, options);
     },
     setOptions(options) {
       if (options === undefined)
@@ -186,13 +191,8 @@ function createValidatedTextHandle(native: TextHandle): TextHandle {
   };
 }
 
-function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): AnalyzedPage {
+function createValidatedPageText(native: PageTextMethods): PageTextMethods {
   return {
-    __type: native.__type,
-    name: native.name,
-    toString: () => native.toString(),
-    equals: (other) => native.equals(other),
-    dispose: () => native.dispose(),
     resolveText(options) {
       validateResolveTextOptions(options);
       return native.resolveText(options);
@@ -201,10 +201,11 @@ function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): Analyzed
       validateTextId(id);
       return native.getTextValue(id);
     },
-    setTextValue(id, text) {
+    setTextValue(id, text, options) {
       validateTextId(id);
       if (typeof text !== 'string') throw argumentError('invalid_text', 'Text must be a string');
-      native.setTextValue(id, text);
+      validateTextAnnotationOptions(options);
+      native.setTextValue(id, text, options);
     },
     setTextOptions(id, options) {
       validateTextId(id);
@@ -224,6 +225,17 @@ function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): Analyzed
       return native.adjustTextSize(id, delta);
     },
     getTextEntries: () => native.getTextEntries(),
+  };
+}
+
+function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): AnalyzedPage {
+  return {
+    __type: native.__type,
+    name: native.name,
+    toString: () => native.toString(),
+    equals: (other) => native.equals(other),
+    dispose: () => native.dispose(),
+    ...createValidatedPageText(native),
     focusText(id, options) {
       validateTextId(id);
       return callAsync(
@@ -265,6 +277,9 @@ function createValidatedHandle(
           throw argumentError('invalid_close_options', 'Cancellation must be a boolean');
         }
       }, () => connection.invoke(native => native.close(cancelPending), cancelPending === true));
+    },
+    loadFonts(fonts) {
+      return callAsync(() => validateNamedFonts(fonts), () => connection.invoke(native => native.loadFonts(fonts)));
     },
     requestPageCoords: () => connection.invoke(native => native.requestPageCoords()),
     addPages(options) {
@@ -407,3 +422,71 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
     });
   },
 );
+
+function validateNamedFonts(fonts: NamedFontSource[]): void {
+  if (!Array.isArray(fonts) || fonts.some(font => typeof font !== 'object' || font === null ||
+    typeof font.name !== 'string' || font.name.trim() === '' || typeof font.uri !== 'string' || font.uri.trim() === '')) {
+    throw argumentError('invalid_font', 'Fonts must be an array of nonempty names and local URIs');
+  }
+}
+
+function requiredPageIndex(index: number): void {
+  if (index === undefined) throw argumentError('invalid_page_index', 'A page index is required');
+  validatePageIndex(index);
+}
+
+function createValidatedDocumentPage(native: DocumentPage): DocumentPage {
+  return {
+    __type: native.__type, name: native.name,
+    toString: () => native.toString(), equals: other => native.equals(other), dispose: () => native.dispose(),
+    getInfo: () => native.getInfo(),
+    ...createValidatedPageText(native),
+  };
+}
+
+function createValidatedDocument(native: InkSignDocument): InkSignDocument {
+  return {
+    __type: native.__type, name: native.name,
+    toString: () => native.toString(), equals: other => native.equals(other), dispose: () => native.dispose(),
+    get pageCount() { return native.pageCount; },
+    getPage(index) {
+      return callAsync(() => requiredPageIndex(index), async () => createValidatedDocumentPage(await native.getPage(index)));
+    },
+    loadFonts(fonts) { return callAsync(() => validateNamedFonts(fonts), () => native.loadFonts(fonts)); },
+    addPages(options) {
+      return callAsync(() => {
+        validateAddPagesOptions(options);
+        if (!options || !Array.isArray(options.sources)) throw argumentError('invalid_page_sources', 'Headless imports require explicit sources');
+      }, () => native.addPages(options));
+    },
+    removePage(index) { return callAsync(() => requiredPageIndex(index), () => native.removePage(index)); },
+    movePage(fromIndex, toIndex) {
+      return callAsync(() => { requiredPageIndex(fromIndex); requiredPageIndex(toIndex); }, () => native.movePage(fromIndex, toIndex));
+    },
+    rotatePage(index, degrees) {
+      return callAsync(() => {
+        requiredPageIndex(index);
+        if (degrees !== 90 && degrees !== 180 && degrees !== 270) throw argumentError('invalid_page_rotation', 'Use 90, 180, or 270 degrees');
+      }, () => native.rotatePage(index, degrees));
+    },
+    finalize: () => native.finalize(),
+    close: () => native.close(),
+  };
+}
+
+/** Loads a PDF or image into an independent native session without mounting a view. */
+export function openDoc(uri: string, options?: DocumentOpenOptions): Promise<InkSignDocument> {
+  return callAsync(() => {
+    if (Platform.OS !== 'android') throw argumentError('unsupported_platform', 'Headless documents are currently Android-only');
+    validateDocumentPath(uri);
+    validateAddPagesOptions(options);
+    if (options?.androidFallbackFont !== undefined) {
+      validateDocumentPath(options.androidFallbackFont.uri);
+      const index = options.androidFallbackFont.collectionIndex;
+      if (index !== undefined && (!Number.isInteger(index) || index < 0)) throw argumentError('invalid_fallback_font', 'A font face index must be a nonnegative integer');
+    }
+  }, async () => {
+    const factory = NitroModules.createHybridObject<InkSignDocumentFactory>('InkSignDocumentFactory');
+    return createValidatedDocument(await factory.openDoc(uri, options));
+  });
+}

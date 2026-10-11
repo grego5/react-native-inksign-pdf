@@ -330,6 +330,8 @@ internal class PdfSessionWorker(
   @Volatile private var requestedTileEpoch = Long.MIN_VALUE
   @Volatile private var requestedPreviewEpoch = Long.MIN_VALUE
   @Volatile private var closed = false
+  @Volatile internal var beforeCommitPreparedOpen: (() -> Unit)? = null
+  private val cleanup = java.util.concurrent.CompletableFuture<Unit>()
 
   /** Reserves a never-reused open identity without changing the committed render session. */
   fun reserveOpenAttemptId(afterGeneration: Long): Long = synchronized(stateLock) {
@@ -380,6 +382,7 @@ internal class PdfSessionWorker(
         try {
           executor.execute {
             val result = try {
+              beforeCommitPreparedOpen?.invoke()
               synchronized(stateLock) {
                 check(acceptedOpenAttemptIds.remove(attemptId)) { "Open candidate was not accepted" }
                 val candidate = preparedOpenSessions.remove(attemptId) ?: throw cancelled(attemptId)
@@ -872,10 +875,20 @@ internal class PdfSessionWorker(
       requestedPreviewEpoch = Long.MAX_VALUE
     }
     executor.execute {
-      closeCurrent()
-      outputs.forEach(retireOutput)
+      try {
+        closeCurrent()
+        outputs.forEach(retireOutput)
+        cleanup.complete(Unit)
+      } catch (error: Throwable) { cleanup.completeExceptionally(error) }
     }
     executor.shutdown()
+  }
+
+  fun closeAwaited(outputs: Collection<File>, retireOutput: (File) -> Unit, completion: (Result<Unit>) -> Unit) {
+    close(outputs, retireOutput)
+    cleanup.whenComplete { _, error ->
+      completion(if (error == null) Result.success(Unit) else Result.failure(error))
+    }
   }
 
   private fun isStale(generation: Long): Boolean {

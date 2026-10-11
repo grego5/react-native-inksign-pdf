@@ -35,7 +35,7 @@ abstract class HybridTextHandleSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
-  abstract fun setValue(text: String): Unit
+  abstract fun setValue(text: String, options: TextAnnotationOptions?): Unit
   
   @DoNotStrip
   @Keep

@@ -964,6 +964,13 @@ internal class SurfaceView(
     onTextContentChanged?.invoke()
   }
 
+  internal fun refreshCommittedText(pageId: String) {
+    val active = documentCoordinator.activePageId() == pageId
+    if (active) rebuildCommittedTextLayer()
+    notifyStateChange()
+    if (active) { invalidate(); onTextContentChanged?.invoke() }
+  }
+
   internal fun appendTextAnnotationForPage(
     generation: Long,
     pageId: String,

@@ -20,6 +20,16 @@ internal class AndroidFallbackFontResolver(
     it.openConnection() as HttpURLConnection
   },
 ) {
+  internal suspend fun readLocalFontBytes(source: String): ByteArray {
+    try {
+      return openLocal(Uri.parse(source).normalizeScheme(), source).use { readBytes(it) }
+    } catch (error: CancellationException) {
+      throw error
+    } catch (error: Exception) {
+      val code = if ((error as? PdfSessionException)?.code == "invalid_fallback_font") "invalid_font" else "font_load_failed"
+      throw PdfSessionException(code, "Unable to load the named font source", error)
+    }
+  }
   suspend fun resolve(font: AndroidFallbackFont): PdfFallbackFont = withContext(Dispatchers.IO) {
     val collectionIndex = font.collectionIndex ?: 0.0
     if (!collectionIndex.isFinite() || collectionIndex < 0.0 ||

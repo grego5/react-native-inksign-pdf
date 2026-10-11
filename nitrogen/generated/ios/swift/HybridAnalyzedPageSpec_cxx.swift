@@ -125,6 +125,25 @@ open class HybridAnalyzedPageSpec_cxx {
 
   // Methods
   @inline(__always)
+  public final func focusText(id: Double, options: bridge.std__optional_TextFocusOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
+    do {
+      let __result = try self.__implementation.focusText(id: id, options: options.value)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_void__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve() })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func resolveText(options: ResolveTextOptions) -> bridge.Result_double_ {
     do {
       let __result = try self.__implementation.resolveText(options: options)
@@ -149,9 +168,9 @@ open class HybridAnalyzedPageSpec_cxx {
   }
   
   @inline(__always)
-  public final func setTextValue(id: Double, text: std.string) -> bridge.Result_void_ {
+  public final func setTextValue(id: Double, text: std.string, options: bridge.std__optional_TextAnnotationOptions_) -> bridge.Result_void_ {
     do {
-      try self.__implementation.setTextValue(id: id, text: String(text))
+      try self.__implementation.setTextValue(id: id, text: String(text), options: options.value)
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
@@ -209,25 +228,6 @@ open class HybridAnalyzedPageSpec_cxx {
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
       return bridge.create_Result_std__vector_TextEntry__(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func focusText(id: Double, options: bridge.std__optional_TextFocusOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
-    do {
-      let __result = try self.__implementation.focusText(id: id, options: options.value)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
-        let __promise = bridge.create_std__shared_ptr_Promise_void__()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
-        __result
-          .then({ __result in __promiseHolder.resolve() })
-          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
-        return __promise
-      }()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
     }
   }
 }

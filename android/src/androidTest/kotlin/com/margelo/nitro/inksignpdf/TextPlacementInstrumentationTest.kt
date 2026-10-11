@@ -18,7 +18,6 @@ import android.widget.TextView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.AbstractExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -117,7 +116,7 @@ internal class TextPlacementInstrumentationTest {
           overlay.addTextAnnotation(
             bounds,
             "short",
-            TextAnnotationOptions(
+            TextAnnotationOptions(font = null,
               fontSize = null,
               color = null,
               direction = direction,
@@ -130,7 +129,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           bounds,
           "short",
-          TextAnnotationOptions(
+          TextAnnotationOptions(font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.RTL,
@@ -213,7 +212,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           box,
           "one\ntwo",
-          TextAnnotationOptions(
+          TextAnnotationOptions(font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -247,7 +246,7 @@ internal class TextPlacementInstrumentationTest {
       try {
         overlay.armPlacement(
           1L,
-          TextModeOptions(
+          TextModeOptions(font = null,
             direction = TextDirection.LTR,
             width = null,
             height = null,
@@ -288,7 +287,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           TextAnnotationBounds(50.0, 40.0, 42.0, 42.0),
           "one two three four five six seven eight nine ten",
-          TextAnnotationOptions(
+          TextAnnotationOptions(font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -300,7 +299,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           TextAnnotationBounds(208.0, 40.0, 42.0, 42.0),
           "RTL text wraps near the left edge",
-          TextAnnotationOptions(
+          TextAnnotationOptions(font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.RTL,
@@ -313,7 +312,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           TextAnnotationBounds(208.0, 100.0, 42.0, 50.0),
           "Auto follows app layout",
-          TextAnnotationOptions(
+          TextAnnotationOptions(font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.AUTO,
@@ -389,7 +388,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           TextAnnotationBounds(20.0, 180.0, 260.0, 80.0),
           "one\ntwo\nthree\nfour",
-          TextAnnotationOptions(
+          TextAnnotationOptions(font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -401,7 +400,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           TextAnnotationBounds(20.0, 230.0, 260.0, 30.0),
           "one\ntwo\nthree",
-          TextAnnotationOptions(
+          TextAnnotationOptions(font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -465,7 +464,7 @@ internal class TextPlacementInstrumentationTest {
       harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
-        val options = TextModeOptions(
+        val options = TextModeOptions(font = null,
           direction = TextDirection.LTR,
           width = 110.0,
           height = 80.0,
@@ -539,7 +538,7 @@ internal class TextPlacementInstrumentationTest {
           TextLayoutSpec.createPaint(defaultTextFontSize).measureText("MMMM").toDouble(),
         )
         val flowBounds = PageRect(20.0, 100.0, 20.0 + fourCharacterWidth, 250.0)
-        val options = TextModeOptions(
+        val options = TextModeOptions(font = null,
           direction = TextDirection.LTR,
           width = flowBounds.right - flowBounds.left,
           height = flowBounds.bottom - flowBounds.top,
@@ -650,7 +649,7 @@ internal class TextPlacementInstrumentationTest {
         val flowBounds = PageRect(20.0, 100.0, 20.0 + fourCharacterWidth, 250.0)
         overlay.armPlacement(
           1L,
-          TextModeOptions(
+          TextModeOptions(font = null,
             direction = TextDirection.LTR,
             width = flowBounds.right - flowBounds.left,
             height = flowBounds.bottom - flowBounds.top,
@@ -823,7 +822,7 @@ internal class TextPlacementInstrumentationTest {
         fitToPage = false,
       )
       overlay.syncContent()
-      overlay.armPlacement(1L, TextModeOptions(
+      overlay.armPlacement(1L, TextModeOptions(font = null,
         direction = null, width = null, height = null, maxLines = null,
         alignment = null, verticalAnchor = null, x = null, y = null, zoom = 2.5,
       ))
@@ -846,7 +845,7 @@ internal class TextPlacementInstrumentationTest {
       fittedZoom = harness.surface.currentViewportState().zoom
       harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
-      overlay.armPlacement(1L, TextModeOptions(
+      overlay.armPlacement(1L, TextModeOptions(font = null,
         direction = null, width = null, height = null, maxLines = null,
         alignment = null, verticalAnchor = null, x = null, y = null, zoom = null,
       ))
@@ -1143,13 +1142,14 @@ internal class TextPlacementInstrumentationTest {
     val sourceA = java.io.File.createTempFile("open-a-", ".pdf").apply { writeText("open-a") }
     val sourceB = java.io.File.createTempFile("open-b-", ".pdf").apply { writeText("open-b") }
     val operationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    var gate: ControlledExecutorService.Gate? = null
+    var gate: CommitGate? = null
     try {
       openCandidate(sourceA)
       val oldPath = harness.coordinator.sourcePath
       val oldGeneration = harness.coordinator.generation
-      val commitGate = harness.executor.pauseAfter(additionalSubmissions = 3)
+      val commitGate = CommitGate()
       gate = commitGate
+      harness.worker.beforeCommitPreparedOpen = commitGate::awaitRelease
       val replacement = operationScope.async { openCandidate(sourceB) }
       commitGate.awaitStarted()
 
@@ -1180,6 +1180,7 @@ internal class TextPlacementInstrumentationTest {
       assertReaderRenders(newGeneration)
     } finally {
       gate?.release()
+      harness.worker.beforeCommitPreparedOpen = null
       operationScope.cancel()
       sourceA.delete()
       sourceB.delete()
@@ -1986,7 +1987,7 @@ internal class TextPlacementInstrumentationTest {
         overlay.addTextAnnotation(
           TextAnnotationBounds(80.0, 70.0, 160.0, 90.0),
           "Programmatic flow text",
-          TextAnnotationOptions(
+          TextAnnotationOptions(font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -2528,7 +2529,7 @@ internal class TextPlacementInstrumentationTest {
       PdfPageDimensions(300.0, 300.0),
       PdfPageDimensions(300.0, 300.0),
     )
-    val executor = ControlledExecutorService()
+    val executor = Executors.newSingleThreadExecutor()
     val openedResources = mutableListOf<EmptyPdfResource>()
     val worker = PdfSessionWorker(
       opener = PdfSessionOpener { path, openedGeneration ->
@@ -2689,57 +2690,19 @@ internal class TextPlacementInstrumentationTest {
     override fun close() { closed = true }
   }
 
-  private class ControlledExecutorService : AbstractExecutorService() {
-    private data class Pause(
-      val sequence: Int,
-      val started: CountDownLatch = CountDownLatch(1),
-      val release: CountDownLatch = CountDownLatch(1),
-    )
+  private class CommitGate {
+    private val started = CountDownLatch(1)
+    private val releaseSignal = CountDownLatch(1)
 
-    class Gate internal constructor(
-      private val started: CountDownLatch,
-      private val releaseSignal: CountDownLatch,
-    ) {
-      fun awaitStarted() {
-        assertTrue("worker did not reach the queued commit", started.await(5L, TimeUnit.SECONDS))
-      }
-
-      fun release() { releaseSignal.countDown() }
+    fun awaitStarted() {
+      assertTrue("worker did not reach the prepared-open commit", started.await(5L, TimeUnit.SECONDS))
     }
 
-    private val delegate = Executors.newSingleThreadExecutor()
-    private val submissionCount = AtomicInteger()
-    @Volatile private var pause: Pause? = null
-
-    fun pauseAfter(additionalSubmissions: Int): Gate {
-      val target = submissionCount.get() + additionalSubmissions
-      val next = Pause(target)
-      synchronized(this) {
-        check(pause == null)
-        pause = next
-      }
-      return Gate(next.started, next.release)
+    fun awaitRelease() {
+      started.countDown()
+      check(releaseSignal.await(5L, TimeUnit.SECONDS)) { "test did not release the prepared-open commit" }
     }
 
-    override fun execute(command: Runnable) {
-      val sequence = submissionCount.incrementAndGet()
-      val taskPause = synchronized(this) {
-        pause?.takeIf { it.sequence == sequence }?.also { pause = null }
-      }
-      delegate.execute {
-        if (taskPause != null) {
-          taskPause.started.countDown()
-          check(taskPause.release.await(5L, TimeUnit.SECONDS)) { "test did not release the worker commit" }
-        }
-        command.run()
-      }
-    }
-
-    override fun shutdown() = delegate.shutdown()
-    override fun shutdownNow(): MutableList<Runnable> = delegate.shutdownNow()
-    override fun isShutdown(): Boolean = delegate.isShutdown
-    override fun isTerminated(): Boolean = delegate.isTerminated
-    override fun awaitTermination(timeout: Long, unit: TimeUnit): Boolean =
-      delegate.awaitTermination(timeout, unit)
+    fun release() { releaseSignal.countDown() }
   }
 }

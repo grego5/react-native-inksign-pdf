@@ -15,6 +15,9 @@
 #include <fbjni/fbjni.h>
 #include <NitroModules/HybridObjectRegistry.hpp>
 
+#include "JHybridDocumentPageSpec.hpp"
+#include "JHybridInkSignDocumentSpec.hpp"
+#include "JHybridInkSignDocumentFactorySpec.hpp"
 #include "JHybridAnalyzedPageSpec.hpp"
 #include "JHybridTextHandleSpec.hpp"
 #include "JHybridModeSessionSpec.hpp"
@@ -42,12 +45,12 @@ struct JHybridInkSignViewSpecImpl: public jni::JavaClass<JHybridInkSignViewSpecI
     return javaPart->getJHybridInkSignViewSpec();
   }
 };
-struct JHybridAnalyzedPageSpecImpl: public jni::JavaClass<JHybridAnalyzedPageSpecImpl, JHybridAnalyzedPageSpec::JavaPart> {
-  static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/inksignpdf/HybridAnalyzedPage;";
-  static std::shared_ptr<JHybridAnalyzedPageSpec> create() {
-    static const auto constructorFn = javaClassStatic()->getConstructor<JHybridAnalyzedPageSpecImpl::javaobject()>();
-    jni::local_ref<JHybridAnalyzedPageSpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
-    return javaPart->getJHybridAnalyzedPageSpec();
+struct JHybridInkSignDocumentFactorySpecImpl: public jni::JavaClass<JHybridInkSignDocumentFactorySpecImpl, JHybridInkSignDocumentFactorySpec::JavaPart> {
+  static constexpr auto kJavaDescriptor = "Lcom/margelo/nitro/inksignpdf/HybridInkSignDocumentFactory;";
+  static std::shared_ptr<JHybridInkSignDocumentFactorySpec> create() {
+    static const auto constructorFn = javaClassStatic()->getConstructor<JHybridInkSignDocumentFactorySpecImpl::javaobject()>();
+    jni::local_ref<JHybridInkSignDocumentFactorySpec::JavaPart> javaPart = javaClassStatic()->newObject(constructorFn);
+    return javaPart->getJHybridInkSignDocumentFactorySpec();
   }
 };
 
@@ -56,6 +59,9 @@ void registerAllNatives() {
   using namespace margelo::nitro::inksignpdf;
 
   // Register native JNI methods
+  margelo::nitro::inksignpdf::JHybridDocumentPageSpec::CxxPart::registerNatives();
+  margelo::nitro::inksignpdf::JHybridInkSignDocumentSpec::CxxPart::registerNatives();
+  margelo::nitro::inksignpdf::JHybridInkSignDocumentFactorySpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridAnalyzedPageSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridTextHandleSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridModeSessionSpec::CxxPart::registerNatives();
@@ -74,9 +80,9 @@ void registerAllNatives() {
     }
   );
   HybridObjectRegistry::registerHybridObjectConstructor(
-    "AnalyzedPage",
+    "InkSignDocumentFactory",
     []() -> std::shared_ptr<HybridObject> {
-      return JHybridAnalyzedPageSpecImpl::create();
+      return JHybridInkSignDocumentFactorySpecImpl::create();
     }
   );
 }

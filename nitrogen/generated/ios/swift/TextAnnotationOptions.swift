@@ -18,8 +18,21 @@ public extension TextAnnotationOptions {
   /**
    * Create a new instance of `TextAnnotationOptions`.
    */
-  init(fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?) {
-    self.init({ () -> bridge.std__optional_double_ in
+  init(font: Variant_NullType_String?, fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?) {
+    self.init({ () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
+      if let __unwrappedValue = font {
+        return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
+          switch __unwrappedValue {
+            case .first(let __value):
+              return bridge.create_std__variant_nitro__NullType__std__string_(margelo.nitro.NullType.null)
+            case .second(let __value):
+              return bridge.create_std__variant_nitro__NullType__std__string_(std.string(__value))
+          }
+        }().variant)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_double_ in
       if let __unwrappedValue = fontSize {
         return bridge.create_std__optional_double_(__unwrappedValue)
       } else {
@@ -58,6 +71,30 @@ public extension TextAnnotationOptions {
     }())
   }
 
+  @inline(__always)
+  var font: Variant_NullType_String? {
+    return { () -> Variant_NullType_String? in
+      if bridge.has_value_std__optional_std__variant_nitro__NullType__std__string__(self.__font) {
+        let __unwrapped = bridge.get_std__optional_std__variant_nitro__NullType__std__string__(self.__font)
+        return { () -> Variant_NullType_String in
+          let __variant = bridge.std__variant_nitro__NullType__std__string_(__unwrapped)
+          switch __variant.index() {
+            case 0:
+              let __actual = __variant.get_0()
+              return .first(NullType.null)
+            case 1:
+              let __actual = __variant.get_1()
+              return .second(String(__actual))
+            default:
+              fatalError("Variant can never have index \(__variant.index())!")
+          }
+        }()
+      } else {
+        return nil
+      }
+    }()
+  }
+  
   @inline(__always)
   var fontSize: Double? {
     return { () -> Double? in

@@ -142,7 +142,7 @@ Prepare once with `getPage()`; text resolution and value operations are synchron
 - `resolveText(options)` — Resolve a complete printed field name or free
   `bounds: { x, y, width, height }` to a numeric ID. Scanned labels need a text layer.
 - `getTextValue(id)` — Read entered text, falling back to embedded PDF text or `''`.
-- `setTextValue(id, text)` — Write module text. Pass `''` to remove it and reveal
+- `setTextValue(id, text, options?)` — Atomically write module text and optional formatting on Android. Pass `''` to remove it and reveal
   any embedded value. Committed edits are undoable.
 - `setTextOptions(id, options)` — Update formatting; omitted options retain their values.
 - `adjustTextSize(id, delta)` — Increase or decrease font size by page points;
@@ -179,7 +179,7 @@ retarget it; document closure, page deletion, or target invalidation rejects
 operations.
 
 - `getValue()` — Read the current value.
-- `setValue(text)` — Update text; `''` removes module text.
+- `setValue(text, options?)` — Update text and optional formatting on Android; `''` removes module text.
 - `setOptions(options)` — Update formatting.
 - `adjustSize(delta)` — Adjust font size by page points and return the result.
 
@@ -257,3 +257,52 @@ Expo packaged asset. Android keeps the font in memory for the document session.
 <InkSignView androidFallbackFont={{ uri: fontUri }} />
 ```
 
+
+### Headless documents and named fonts (Android)
+
+`openDoc(uri, options?)` opens a PDF or image without mounting a view. It exposes
+`pageCount`, `getPage(index)`, `addPages({ sources })`, `removePage(index)`,
+`movePage(fromIndex, toIndex)`, and `rotatePage(index, 90 | 180 | 270)`.
+A page provides `getInfo()` and the prepared-page text methods without focus.
+`finalize()` creates a new PDF using the existing export pipeline; source files
+remain unchanged. Visible signatures and supported source annotations follow the
+same preservation rules as viewer export; cryptographic signature validity is
+outside the editing contract. Returned files are caller-owned and survive close.
+`close()` immediately rejects new commands and reads, including `pageCount` and
+`getInfo()`. It is terminal, idempotent, and resolves after admitted work and native
+resource cleanup complete. Retained page handles reject edits after close.
+
+```ts
+import { openDoc } from '@grego5/react-native-inksign-pdf';
+
+const document = await openDoc(file.uri);
+try {
+  await document.loadFonts([{ name: 'template', uri: bundledFontUri }]);
+  const page = await document.getPage(0);
+  const id = page.resolveText({ bounds: template.reportNumberBounds });
+  page.setTextValue(id, report.number, {
+    font: 'template', alignment: 'center', maxLines: 1,
+  });
+  const outputUri = await document.finalize();
+} finally {
+  await document.close();
+}
+```
+
+The viewer exposes the same `loadFonts([{ name, uri }])` method and named `font`
+option in text resolution, insertion, and formatting. Font names are exact and
+case-sensitive. Omit `font` to retain the current selection; use `font: null` to
+restore the system font. Alignment uses the target rectangle, which the template
+owns, rather than the whole page.
+
+Named fonts accept local files, Android content/resource URIs, and Expo bundled
+asset URIs. Static single-face TrueType outlines are supported; collections,
+variable fonts, CFF outlines, and restricted embedding reject. Missing glyphs do
+not reject text input. Android uses system fallback in the editor and in API 31+
+PDF export. On API 24–30, named-font export uses the selected font's missing-glyph
+appearance because system fallback font resources are unavailable to this path.
+Each document/view caches a source once and shares it between names. Resources
+remain available through export and are released on document close or view
+teardown. Caller font files remain unchanged. Headless documents and named fonts
+are currently Android-only; iOS retains its existing PDFKit implementation.
+Headless automatic text direction follows the React Native app direction.

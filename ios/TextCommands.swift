@@ -102,6 +102,15 @@ enum InkSignPdfKeyRuleSelector {
 }
 
 extension InkSignView {
+  enum HeadlessFeatureError: LocalizedError {
+    case androidOnly
+    var errorDescription: String? { "unsupported_platform: Headless documents and named text fonts currently require Android" }
+  }
+
+  func loadFonts(fonts: [NamedFontSource]) throws -> Promise<Void> {
+    fonts.isEmpty ? .resolved() : .rejected(withError: HeadlessFeatureError.androidOnly)
+  }
+
   func setTextDirection(direction: TextDirection) throws {
     try performOnMainSync {
       guard !self.disposed else { throw TextError.cancelled }
@@ -151,6 +160,7 @@ extension InkSignView {
   }
 
   func resolvePreparedText(_ handle: HybridAnalyzedPage, options: ResolveTextOptions) throws -> Double {
+    if case .second? = options.font { throw HeadlessFeatureError.androidOnly }
     try validateTextPageContext(handle)
     guard let document = documentCoordinator.document,
           let pageIndex = document.index(of: handle.pageID) else { throw TextError.cancelled }
@@ -273,6 +283,7 @@ extension InkSignView {
 
   func setPreparedTextOptions(_ handle: any InkSignPdfTextPageContext, id: Double,
                               options: TextAnnotationOptions) throws {
+    if case .second? = options.font { throw HeadlessFeatureError.androidOnly }
     let (page, target) = try preparedTarget(handle, id: id)
     try documentCoordinator.updateTextTarget(target.id, pageID: page.id) {
       if let value = options.fontSize { $0.options.fontSize = value }
@@ -321,7 +332,7 @@ extension InkSignView {
       ?? target.options.fontSize ?? textInteractionOverlay.preparedDefaultFontSize
     let adjusted = textInteractionOverlay.adjustedFontSize(size, delta: delta)
     if adjusted != size {
-      let options = TextAnnotationOptions(fontSize: adjusted, color: nil, direction: nil,
+      let options = TextAnnotationOptions(font: nil, fontSize: adjusted, color: nil, direction: nil,
         maxLines: nil, alignment: nil, verticalAnchor: nil)
       try setPreparedTextOptions(handle, id: id, options: options)
     }
@@ -537,7 +548,7 @@ extension InkSignView {
 
 private extension ResolveTextOptions {
   var annotationOptions: TextAnnotationOptions {
-    TextAnnotationOptions(fontSize: fontSize, color: color, direction: direction,
+    TextAnnotationOptions(font: nil, fontSize: fontSize, color: color, direction: direction,
       maxLines: maxLines, alignment: alignment, verticalAnchor: verticalAnchor ?? (fieldName == nil ? .top : .bottom))
   }
 }

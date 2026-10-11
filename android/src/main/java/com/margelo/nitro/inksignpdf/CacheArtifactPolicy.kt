@@ -28,6 +28,7 @@ internal class CacheArtifactPolicy private constructor(
   private val debugArtifactsEnabled: Boolean,
 ) : DocumentArtifactPolicy {
   override fun allocateSignedOutput(): File = allocateReservedFile("signed-", ".pdf")
+  fun allocateNamedFont(): File = allocateReservedFile(".font-", ".ttf")
 
   override fun allocateDebugRecording(): File {
     check(debugArtifactsEnabled) { "Stroke trace recording is available only in debug builds" }
@@ -113,7 +114,7 @@ internal class CacheArtifactPolicy private constructor(
     if (!isOwnedDirectChild(file)) return false
     return SIGNED_OUTPUT.matches(file.name) || EXPORT_SCRATCH.matches(file.name) ||
       STAGED_INPUT.matches(file.name) || WORKING_PDF.matches(file.name) ||
-      MUTATION_SCRATCH.matches(file.name) ||
+      MUTATION_SCRATCH.matches(file.name) || NAMED_FONT.matches(file.name) ||
       (debugArtifactsEnabled && DEBUG_RECORDING.matches(file.name))
   }
 
@@ -134,6 +135,7 @@ internal class CacheArtifactPolicy private constructor(
     private val WORKING_PDF = Regex("\\.working-[^/\\\\]+\\.pdf")
     private val MUTATION_SCRATCH = Regex("\\.mutation-[^/\\\\]+\\.tmp")
     private val DEBUG_RECORDING = Regex("android-stroke-[^/\\\\]+\\.csv")
+    private val NAMED_FONT = Regex("\\.font-[^/\\\\]+\\.ttf")
 
     @Volatile private var initialized: CacheArtifactPolicy? = null
     private val initializationLock = Any()

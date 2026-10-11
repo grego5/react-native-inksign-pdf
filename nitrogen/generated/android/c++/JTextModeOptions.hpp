@@ -13,10 +13,15 @@
 #include "JTextAlignment.hpp"
 #include "JTextDirection.hpp"
 #include "JTextVerticalAnchor.hpp"
+#include "JVariant_NullType_String.hpp"
 #include "TextAlignment.hpp"
 #include "TextDirection.hpp"
 #include "TextVerticalAnchor.hpp"
+#include <NitroModules/JNull.hpp>
+#include <NitroModules/Null.hpp>
 #include <optional>
+#include <string>
+#include <variant>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -37,6 +42,8 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     TextModeOptions toCpp() const {
       static const auto clazz = javaClassStatic();
+      static const auto fieldFont = clazz->getField<JVariant_NullType_String>("font");
+      jni::local_ref<JVariant_NullType_String> font = this->getFieldValue(fieldFont);
       static const auto fieldDirection = clazz->getField<JTextDirection>("direction");
       jni::local_ref<JTextDirection> direction = this->getFieldValue(fieldDirection);
       static const auto fieldWidth = clazz->getField<jni::JDouble>("width");
@@ -56,6 +63,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto fieldZoom = clazz->getField<jni::JDouble>("zoom");
       jni::local_ref<jni::JDouble> zoom = this->getFieldValue(fieldZoom);
       return TextModeOptions(
+        font != nullptr ? std::make_optional(font->toCpp()) : std::nullopt,
         direction != nullptr ? std::make_optional(direction->toCpp()) : std::nullopt,
         width != nullptr ? std::make_optional(width->value()) : std::nullopt,
         height != nullptr ? std::make_optional(height->value()) : std::nullopt,
@@ -74,11 +82,12 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JTextModeOptions::javaobject> fromCpp(const TextModeOptions& value) {
-      using JSignature = JTextModeOptions(jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextAlignment>, jni::alias_ref<JTextVerticalAnchor>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>);
+      using JSignature = JTextModeOptions(jni::alias_ref<JVariant_NullType_String>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextAlignment>, jni::alias_ref<JTextVerticalAnchor>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
+        value.font.has_value() ? JVariant_NullType_String::fromCpp(value.font.value()) : nullptr,
         value.direction.has_value() ? JTextDirection::fromCpp(value.direction.value()) : nullptr,
         value.width.has_value() ? jni::JDouble::valueOf(value.width.value()) : nullptr,
         value.height.has_value() ? jni::JDouble::valueOf(value.height.value()) : nullptr,

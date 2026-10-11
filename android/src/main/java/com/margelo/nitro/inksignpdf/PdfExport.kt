@@ -109,6 +109,7 @@ internal data class PdfiumFontResource(
   val bytes: ByteArray,
   val collectionIndex: Int,
   val fsType: Int,
+  val explicitSelection: Boolean = false,
 )
 
 internal data class PdfiumTextSnapshot(
@@ -146,11 +147,12 @@ internal object PdfExportTextResolver {
     val fontCache = mutableMapOf<FontKey, PdfiumFontResource?>()
     val runs = mutableListOf<PdfiumTextRunEntry>()
     var nextLineId = 0
+    val customIndices = java.util.IdentityHashMap<NamedFontResource, Int>()
 
     snapshot.pages.forEach { page ->
       page.textAnnotations.forEach { annotation ->
         val firstRun = runs.size
-        val paint = TextLayoutSpec.createPaint(annotation.fontSize)
+        val paint = TextLayoutSpec.createPaint(annotation.fontSize, typeface = annotation.font?.typeface ?: TextLayoutSpec.typeface)
         val metrics = paint.fontMetrics
         val lineHeight = metrics.descent - metrics.ascent
         val firstBaseline = annotation.position.y.toFloat() - metrics.ascent
@@ -190,7 +192,28 @@ internal object PdfExportTextResolver {
         exportLines.forEach { (line, baselineFromTop) ->
           if (line.isEmpty()) return@forEach
           val lineId = nextLineId++
-          if (apiLevel >= Build.VERSION_CODES.S) {
+          val custom = annotation.font
+          val customIndex = custom?.let {
+            customIndices.getOrPut(it) {
+              fonts.add(PdfiumFontResource(custom.bytes, 0, custom.fsType, explicitSelection = true))
+              fonts.lastIndex
+            }
+          } ?: -1
+          if (custom != null && apiLevel < Build.VERSION_CODES.S) {
+            val bidi = Bidi(line, if (annotation.directionRtl) Bidi.DIRECTION_RIGHT_TO_LEFT else Bidi.DIRECTION_LEFT_TO_RIGHT)
+            val units = mutableListOf<SourceUnit>()
+            var offset = 0
+            while (offset < line.length) {
+              val codePoint = line.codePointAt(offset)
+              val end = offset + Character.charCount(codePoint)
+              units += SourceUnit(offset, end, codePoint, bidi.getLevelAt(offset), Character.UnicodeScript.of(codePoint), customIndex)
+              offset = end
+            }
+            appendUnits(page.pageIndex, lineId, line,
+              (flowBounds?.left ?: annotation.bounds.left).toFloat(), (flowBounds?.right ?: annotation.bounds.right).toFloat(),
+              annotation.directionRtl, resolvedTextAlignment(annotation.alignment, annotation.directionRtl),
+              baselineFromTop, annotation.fontSize.toFloat(), annotation.textColor, paint, units, runs)
+          } else if (apiLevel >= Build.VERSION_CODES.S) {
             Api31FontResolver.appendLine(
               pageIndex = page.pageIndex,
               lineId = lineId,
@@ -207,6 +230,8 @@ internal object PdfExportTextResolver {
               resourceIndices = resourceIndices,
               fontCache = fontCache,
               runs = runs,
+              preferredFont = custom,
+              preferredFontIndex = customIndex,
             )
           } else {
             runs += PdfiumTextRunEntry(
@@ -245,6 +270,108 @@ internal object PdfExportTextResolver {
     )
   }
 
+  private fun appendUnits(
+    pageIndex: Int, lineId: Int, line: String, boundsLeft: Float, boundsRight: Float,
+    baseDirectionRtl: Boolean, textAlignment: Int, baselineFromTop: Float,
+    fontSize: Float, color: Int, paint: TextPaint, units: MutableList<SourceUnit>,
+    runs: MutableList<PdfiumTextRunEntry>,
+  ) {
+    inheritCommonScripts(units)
+    inheritWeakFontSelections(units)
+    val logicalSegments = mutableListOf<TextSegment>()
+    var unitStart = 0
+    while (unitStart < units.size) {
+      val first = units[unitStart]
+      var unitEnd = unitStart + 1
+      while (unitEnd < units.size &&
+        units[unitEnd].start == units[unitEnd - 1].end &&
+        units[unitEnd].bidiLevel == first.bidiLevel &&
+        units[unitEnd].script == first.script &&
+        units[unitEnd].fontIndex == first.fontIndex
+      ) unitEnd += 1
+      val sourceEnd = units[unitEnd - 1].end
+      logicalSegments += TextSegment(
+        sourceStart = first.start,
+        sourceLength = sourceEnd - first.start,
+        bidiLevel = first.bidiLevel,
+        script = first.script,
+        fontIndex = first.fontIndex,
+        visualOrder = -1,
+        estimatedAdvance = paint.measureText(line, first.start, sourceEnd),
+      )
+      unitStart = unitEnd
+    }
+
+    val visualSegments: Array<Any> = logicalSegments.map { it as Any }.toTypedArray()
+    val levels = ByteArray(logicalSegments.size) { logicalSegments[it].bidiLevel.toByte() }
+    Bidi.reorderVisually(levels, 0, visualSegments, 0, visualSegments.size)
+    val visualOrderByStart = visualSegments.mapIndexed { index, segment ->
+      (segment as TextSegment).sourceStart to index
+    }.toMap()
+    logicalSegments.forEach { segment ->
+      runs += PdfiumTextRunEntry(
+        pageIndex = pageIndex,
+        lineId = lineId,
+        text = line,
+        sourceStart = segment.sourceStart,
+        sourceLength = segment.sourceLength,
+        bidiLevel = segment.bidiLevel,
+        visualOrder = visualOrderByStart.getValue(segment.sourceStart),
+        fontIndex = segment.fontIndex,
+        baseDirectionRtl = baseDirectionRtl,
+        textAlignment = textAlignment,
+        boundsLeft = boundsLeft,
+        boundsRight = boundsRight,
+        baselineFromTop = baselineFromTop,
+        fontSize = fontSize,
+        estimatedAdvance = segment.estimatedAdvance,
+        color = color,
+      )
+    }
+  }
+
+  private fun inheritCommonScripts(units: MutableList<SourceUnit>) {
+    for (index in units.indices) {
+      if (!isWeakScript(units[index].script)) continue
+      val previous = (index - 1 downTo 0).firstOrNull {
+        units[it].bidiLevel == units[index].bidiLevel && !isWeakScript(units[it].script)
+      }
+      val next = (index + 1 until units.size).firstOrNull {
+        units[it].bidiLevel == units[index].bidiLevel && !isWeakScript(units[it].script)
+      }
+      units[index] = units[index].copy(script = previous?.let { units[it].script }
+        ?: next?.let { units[it].script } ?: Character.UnicodeScript.COMMON)
+    }
+  }
+
+  private fun inheritWeakFontSelections(units: MutableList<SourceUnit>) {
+    for (index in units.indices) {
+      // Keep Android's resolved face, including fallback for punctuation and marks.
+      if (units[index].fontIndex >= 0) continue
+      if (!isWeakScript(Character.UnicodeScript.of(units[index].codePoint)) &&
+        Character.getType(units[index].codePoint) !in setOf(
+          Character.NON_SPACING_MARK.toInt(),
+          Character.COMBINING_SPACING_MARK.toInt(),
+          Character.ENCLOSING_MARK.toInt(),
+        )
+      ) continue
+      val previous = (index - 1 downTo 0).firstOrNull {
+        units[it].bidiLevel == units[index].bidiLevel && units[it].fontIndex >= 0
+      }
+      val next = (index + 1 until units.size).firstOrNull {
+        units[it].bidiLevel == units[index].bidiLevel && units[it].fontIndex >= 0
+      }
+      val inherited = previous?.let { units[it].fontIndex } ?: next?.let { units[it].fontIndex }
+      if (inherited != null) units[index] = units[index].copy(fontIndex = inherited)
+    }
+  }
+
+  private fun isWeakScript(script: Character.UnicodeScript) =
+    script == Character.UnicodeScript.COMMON ||
+      script == Character.UnicodeScript.INHERITED ||
+      script == Character.UnicodeScript.UNKNOWN
+
+
   @androidx.annotation.RequiresApi(Build.VERSION_CODES.S)
   private object Api31FontResolver {
     fun appendLine(
@@ -263,6 +390,8 @@ internal object PdfExportTextResolver {
       resourceIndices: MutableMap<FontKey, Int>,
       fontCache: MutableMap<FontKey, PdfiumFontResource?>,
       runs: MutableList<PdfiumTextRunEntry>,
+      preferredFont: NamedFontResource?,
+      preferredFontIndex: Int,
     ) {
       val bidi = Bidi(
         line,
@@ -287,7 +416,9 @@ internal object PdfExportTextResolver {
           paint,
         )
         val fontIndex = if (shaped.glyphCount() == 0) -1 else {
-          fontResourceIndex(shaped.getFont(0), fonts, resourceIndices, fontCache)
+          val selected = shaped.getFont(0)
+          if (preferredFont != null && selected.file == preferredFont.file) preferredFontIndex
+          else fontResourceIndex(selected, fonts, resourceIndices, fontCache)
         }
         units += SourceUnit(
           start = sourceIndex,
@@ -300,98 +431,9 @@ internal object PdfExportTextResolver {
         sourceIndex = sourceEnd
       }
 
-      inheritCommonScripts(units)
-      inheritWeakFontSelections(units)
-      val logicalSegments = mutableListOf<TextSegment>()
-      var unitStart = 0
-      while (unitStart < units.size) {
-        val first = units[unitStart]
-        var unitEnd = unitStart + 1
-        while (unitEnd < units.size &&
-          units[unitEnd].start == units[unitEnd - 1].end &&
-          units[unitEnd].bidiLevel == first.bidiLevel &&
-          units[unitEnd].script == first.script &&
-          units[unitEnd].fontIndex == first.fontIndex
-        ) unitEnd += 1
-        val sourceEnd = units[unitEnd - 1].end
-        logicalSegments += TextSegment(
-          sourceStart = first.start,
-          sourceLength = sourceEnd - first.start,
-          bidiLevel = first.bidiLevel,
-          script = first.script,
-          fontIndex = first.fontIndex,
-          visualOrder = -1,
-          estimatedAdvance = paint.measureText(line, first.start, sourceEnd),
-        )
-        unitStart = unitEnd
-      }
-
-      val visualSegments: Array<Any> = logicalSegments.map { it as Any }.toTypedArray()
-      val levels = ByteArray(logicalSegments.size) { logicalSegments[it].bidiLevel.toByte() }
-      Bidi.reorderVisually(levels, 0, visualSegments, 0, visualSegments.size)
-      val visualOrderByStart = visualSegments.mapIndexed { index, segment ->
-        (segment as TextSegment).sourceStart to index
-      }.toMap()
-      logicalSegments.forEach { segment ->
-        runs += PdfiumTextRunEntry(
-          pageIndex = pageIndex,
-          lineId = lineId,
-          text = line,
-          sourceStart = segment.sourceStart,
-          sourceLength = segment.sourceLength,
-          bidiLevel = segment.bidiLevel,
-          visualOrder = visualOrderByStart.getValue(segment.sourceStart),
-          fontIndex = segment.fontIndex,
-          baseDirectionRtl = baseDirectionRtl,
-          textAlignment = textAlignment,
-          boundsLeft = boundsLeft,
-          boundsRight = boundsRight,
-          baselineFromTop = baselineFromTop,
-          fontSize = fontSize,
-          estimatedAdvance = segment.estimatedAdvance,
-          color = color,
-        )
-      }
+      appendUnits(pageIndex, lineId, line, boundsLeft, boundsRight, baseDirectionRtl, textAlignment,
+        baselineFromTop, fontSize, color, paint, units, runs)
     }
-
-    private fun inheritCommonScripts(units: MutableList<SourceUnit>) {
-      for (index in units.indices) {
-        if (!isWeakScript(units[index].script)) continue
-        val previous = (index - 1 downTo 0).firstOrNull {
-          units[it].bidiLevel == units[index].bidiLevel && !isWeakScript(units[it].script)
-        }
-        val next = (index + 1 until units.size).firstOrNull {
-          units[it].bidiLevel == units[index].bidiLevel && !isWeakScript(units[it].script)
-        }
-        units[index] = units[index].copy(script = previous?.let { units[it].script }
-          ?: next?.let { units[it].script } ?: Character.UnicodeScript.COMMON)
-      }
-    }
-
-    private fun inheritWeakFontSelections(units: MutableList<SourceUnit>) {
-      for (index in units.indices) {
-        if (!isWeakScript(Character.UnicodeScript.of(units[index].codePoint)) &&
-          Character.getType(units[index].codePoint) !in setOf(
-            Character.NON_SPACING_MARK.toInt(),
-            Character.COMBINING_SPACING_MARK.toInt(),
-            Character.ENCLOSING_MARK.toInt(),
-          )
-        ) continue
-        val previous = (index - 1 downTo 0).firstOrNull {
-          units[it].bidiLevel == units[index].bidiLevel && units[it].fontIndex >= 0
-        }
-        val next = (index + 1 until units.size).firstOrNull {
-          units[it].bidiLevel == units[index].bidiLevel && units[it].fontIndex >= 0
-        }
-        val inherited = previous?.let { units[it].fontIndex } ?: next?.let { units[it].fontIndex }
-        if (inherited != null) units[index] = units[index].copy(fontIndex = inherited)
-      }
-    }
-
-    private fun isWeakScript(script: Character.UnicodeScript) =
-      script == Character.UnicodeScript.COMMON ||
-        script == Character.UnicodeScript.INHERITED ||
-        script == Character.UnicodeScript.UNKNOWN
 
     private fun fontResourceIndex(
       font: Font,
