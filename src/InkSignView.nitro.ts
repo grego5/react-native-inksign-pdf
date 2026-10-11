@@ -212,7 +212,7 @@ export interface ViewportOptions {
 }
 
 export interface AndroidFallbackFont {
-  url: string
+  /** Font source: HTTP(S), local file, content/resource URI, or packaged Android resource name. */
   uri: string
   /** Font collection face index. Defaults to 0. */
   collectionIndex?: number
@@ -232,7 +232,7 @@ export interface DoubleTapOptions {
 }
 
 export interface InkSignViewProps extends HybridViewProps {
-  /** Android PDFium font asset. Reuses uri when present, otherwise downloads url there; iOS ignores this. */
+  /** Android PDFium font source, loaded into memory for the document session; iOS ignores this. */
   androidFallbackFont?: AndroidFallbackFont
   strokeColor?: StrokeColor
   strokeMinWidth?: number

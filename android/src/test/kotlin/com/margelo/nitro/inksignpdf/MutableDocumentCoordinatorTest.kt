@@ -618,20 +618,21 @@ class MutableDocumentCoordinatorTest {
       sessionWorker = worker,
       artifactPolicy = artifactPolicy,
     )
-    val fontA = PdfFallbackFont("a.ttf", null)
-    val fontB = PdfFallbackFont("b.ttf", null)
-    val fontC = PdfFallbackFont("c.ttf", null)
-    val fontD = PdfFallbackFont("d.ttf", null)
+    val fontA = PdfFallbackFont("a.ttf", byteArrayOf(1), 0.0)
+    val fontB = PdfFallbackFont("b.ttf", byteArrayOf(2), 0.0)
+    val fontC = PdfFallbackFont("c.ttf", byteArrayOf(3), 0.0)
+    val fontD = PdfFallbackFont("d.ttf", byteArrayOf(4), 0.0)
     suspend fun open(
       path: File,
       font: PdfFallbackFont,
       prepare: (PdfSessionInfo) -> Unit = {},
       awaitReady: suspend () -> Unit = {},
+      sourcePath: String = path.absolutePath,
     ) =
       coordinator.executeOpen(
-        sourcePath = path.absolutePath,
-        fallbackFont = AndroidFallbackFont("https://font.test/fallback.ttf", font.path, font.collectionIndex),
-        resolveFallbackFont = { PdfFallbackFont(it.uri, it.collectionIndex) },
+        sourcePath = sourcePath,
+        fallbackFont = AndroidFallbackFont(font.source, font.collectionIndex),
+        resolveFallbackFont = { font },
         preparePresentation = { info, _ -> prepare(info); info },
         publishPresentation = { it },
         awaitContainerSize = {
@@ -641,7 +642,7 @@ class MutableDocumentCoordinatorTest {
       )
 
     assertTrue(!coordinator.hasDocument)
-    val openedA = open(sourceA, fontA)
+    val openedA = open(sourceA, fontA, sourcePath = sourceA.toURI().toString())
     assertEquals(1, openedA.pageCount)
     val committedAPath = coordinator.sourcePath
     val committedAGeneration = coordinator.generation
@@ -664,9 +665,9 @@ class MutableDocumentCoordinatorTest {
     assertTrue(coordinator.generation > committedAGeneration)
 
     val failedC = runCatching {
-      open(sourceC, fontC) {
+      open(sourceC, fontC, prepare = {
         throw PdfSessionException("pdf_load_failed", "candidate preparation failed")
-      }
+      })
     }
     assertTrue(failedC.isFailure)
     assertFalse(coordinator.hasDocument)
@@ -704,6 +705,8 @@ class MutableDocumentCoordinatorTest {
     assertTrue(opened.single { it.info.pages.single().width == 200.0 }.closed)
     assertTrue(opened.single { it.info.pages.single().width == 300.0 }.closed)
     assertFalse(opened.single { it.info.pages.single().width == 400.0 }.closed)
+    coordinator.closeDocument()
+    assertEquals(null, coordinator.fallbackFont)
     worker.close()
     sourceA.delete()
     sourceB.delete()

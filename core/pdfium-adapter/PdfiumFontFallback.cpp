@@ -3,25 +3,35 @@
 
 #include <memory>
 #include <string_view>
+#include <utility>
 
 namespace margelo::nitro::inksignpdf::pdfium {
 namespace {
 
 class FontSubstitutionRegistryImpl final {
  public:
-  bool setSuppliedFont(const std::string& path,
+  bool setSuppliedFont(std::string source,
+                       std::vector<std::uint8_t> bytes,
                        std::size_t collectionIndex,
                        std::string* errorMessage) {
-    supplied_ = loadFontResource(path, collectionIndex, errorMessage);
-    return supplied_ != nullptr;
+    auto resource = loadFontResource(
+        std::move(source), std::move(bytes), collectionIndex, errorMessage);
+    if (resource == nullptr) {
+      supplied_.reset();
+      return false;
+    }
+    supplied_ = std::make_shared<const PdfiumResolvedFont>(
+        PdfiumResolvedFont{std::move(resource->source), resource->collectionIndex,
+                          std::move(resource->bytes)});
+    return true;
   }
 
-  std::shared_ptr<const FontResource> fallbackFont() const {
+  std::shared_ptr<const PdfiumResolvedFont> fallbackFont() const {
     return supplied_;
   }
 
  private:
-  std::shared_ptr<FontResource> supplied_;
+  std::shared_ptr<const PdfiumResolvedFont> supplied_;
 };
 
 thread_local FontSubstitutionRegistry* activeFontRegistry = nullptr;
@@ -34,12 +44,13 @@ FontSubstitutionRegistry::FontSubstitutionRegistry()
 FontSubstitutionRegistry::~FontSubstitutionRegistry() = default;
 
 bool FontSubstitutionRegistry::setSuppliedFont(
-    const std::string& path,
+    std::string source,
+    std::vector<std::uint8_t> bytes,
     std::size_t collectionIndex,
     std::string* errorMessage) {
   auto implementation =
       std::static_pointer_cast<FontSubstitutionRegistryImpl>(impl_);
-  return implementation->setSuppliedFont(path, collectionIndex, errorMessage);
+  return implementation->setSuppliedFont(std::move(source), std::move(bytes), collectionIndex, errorMessage);
 }
 
 std::shared_ptr<const PdfiumResolvedFont> FontSubstitutionRegistry::resolveFont(
@@ -51,12 +62,7 @@ std::shared_ptr<const PdfiumResolvedFont> FontSubstitutionRegistry::resolveFont(
   (void)face;
   (void)weight;
   (void)italic;
-  const auto resource = implementation->fallbackFont();
-  if (resource == nullptr) return nullptr;
-  return std::make_shared<PdfiumResolvedFont>(
-      PdfiumResolvedFont{resource->selection.path,
-                         resource->selection.collectionIndex,
-                         resource->bytes});
+  return implementation->fallbackFont();
 }
 
 ScopedFontRegistry::ScopedFontRegistry(FontSubstitutionRegistry* registry)

@@ -149,7 +149,8 @@ struct PdfiumPageRenderRequest final {
 };
 
 struct PdfiumFallbackFont final {
-  std::string path;
+  std::string source;
+  std::vector<std::uint8_t> bytes;
   std::size_t collectionIndex = 0;
 };
 

@@ -207,7 +207,8 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeOpen(
     JNIEnv* env,
     jclass,
     jbyteArray documentBytes,
-    jstring fallbackPath,
+    jstring fallbackSource,
+    jbyteArray fallbackBytes,
     jdouble fallbackCollectionIndex) {
   if (documentBytes == nullptr) return 0;
   const auto length = env->GetArrayLength(documentBytes);
@@ -220,7 +221,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeOpen(
 
   std::optional<margelo::nitro::inksignpdf::pdfium::PdfiumFallbackFont>
       fallbackFont;
-  if (fallbackPath != nullptr) {
+  if (fallbackBytes != nullptr) {
     if (!std::isfinite(fallbackCollectionIndex) ||
         fallbackCollectionIndex < 0.0 ||
         std::floor(fallbackCollectionIndex) != fallbackCollectionIndex ||
@@ -230,11 +231,21 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeOpen(
                     "Fallback font collectionIndex must be a non-negative integer");
       return 0;
     }
-    const char* utfPath = env->GetStringUTFChars(fallbackPath, nullptr);
-    if (utfPath == nullptr) return 0;
+    const auto fontLength = env->GetArrayLength(fallbackBytes);
+    if (fontLength <= 0 || fontLength > 64 * 1024 * 1024) {
+      env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"),
+                    "Fallback font byte length is unsupported");
+      return 0;
+    }
+    std::vector<std::uint8_t> fontBytes(static_cast<std::size_t>(fontLength));
+    env->GetByteArrayRegion(fallbackBytes, 0, fontLength,
+                           reinterpret_cast<jbyte*>(fontBytes.data()));
+    if (env->ExceptionCheck()) return 0;
+    const char* utfSource = env->GetStringUTFChars(fallbackSource, nullptr);
+    if (utfSource == nullptr) return 0;
     fallbackFont = margelo::nitro::inksignpdf::pdfium::PdfiumFallbackFont{
-        utfPath, static_cast<std::size_t>(fallbackCollectionIndex)};
-    env->ReleaseStringUTFChars(fallbackPath, utfPath);
+        utfSource, std::move(fontBytes), static_cast<std::size_t>(fallbackCollectionIndex)};
+    env->ReleaseStringUTFChars(fallbackSource, utfSource);
   }
 
   auto opened = PdfiumDocumentSession::open(

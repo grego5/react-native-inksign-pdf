@@ -1,6 +1,5 @@
 package com.margelo.nitro.inksignpdf
 
-import android.net.Uri
 import java.io.File
 import java.util.LinkedHashSet
 import kotlinx.coroutines.CompletableDeferred
@@ -443,8 +442,8 @@ internal class MutableDocumentCoordinator(
       val preparedOpen: Pair<PdfSessionInfo, PdfFallbackFont?> = awaitUnlessSuperseded(request) {
         withContext(Dispatchers.IO) {
           val source = try {
-            val uri = Uri.parse(sourcePath)
-            val path = if (uri.scheme.equals("file", ignoreCase = true)) {
+            val path = if (sourcePath.startsWith("file:", ignoreCase = true)) {
+              val uri = java.net.URI(sourcePath)
               val authority = uri.authority
               if (!authority.isNullOrEmpty() && !authority.equals("localhost", ignoreCase = true)) {
                 throw IllegalArgumentException("File URI must refer to the local device")
@@ -572,7 +571,6 @@ internal class MutableDocumentCoordinator(
         activeOperation = null
         generationValue = attemptId
         clearPublishedDocument()
-        this.fallbackFont = null
         val operationID = nextOperation()
         trackWorkingFile(workingFile)
         previousWorkingFile?.let(::trackWorkingFile)
@@ -829,6 +827,7 @@ internal class MutableDocumentCoordinator(
     mutablePages.clear()
     activePageId = null
     sourcePath = ""
+    fallbackFont = null
     clearTextTargets()
     markStructuralClean()
   }

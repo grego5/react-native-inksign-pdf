@@ -6,5 +6,9 @@
         android:showWhenLocked="true"
         android:turnScreenOn="true"
         android:exported="false" />
+    <provider
+      android:name="com.margelo.nitro.inksignpdf.FallbackFontTestProvider"
+      android:authorities="com.margelo.nitro.inksignpdf.testfonts"
+      android:exported="true" />
   </application>
 </manifest>

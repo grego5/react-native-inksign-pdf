@@ -18,8 +18,8 @@ public extension AndroidFallbackFont {
   /**
    * Create a new instance of `AndroidFallbackFont`.
    */
-  init(url: String, uri: String, collectionIndex: Double?) {
-    self.init(std.string(url), std.string(uri), { () -> bridge.std__optional_double_ in
+  init(uri: String, collectionIndex: Double?) {
+    self.init(std.string(uri), { () -> bridge.std__optional_double_ in
       if let __unwrappedValue = collectionIndex {
         return bridge.create_std__optional_double_(__unwrappedValue)
       } else {
@@ -28,11 +28,6 @@ public extension AndroidFallbackFont {
     }())
   }
 
-  @inline(__always)
-  var url: String {
-    return String(self.__url)
-  }
-  
   @inline(__always)
   var uri: String {
     return String(self.__uri)

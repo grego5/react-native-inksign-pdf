@@ -9,18 +9,15 @@
 
 namespace margelo::nitro::inksignpdf::pdfium {
 
-struct FontSelection final {
-  std::string path;
-  std::size_t collectionIndex = 0;
-};
-
 struct FontResource final {
-  FontSelection selection;
+  std::string source;
+  std::size_t collectionIndex = 0;
   std::shared_ptr<const std::vector<std::uint8_t>> bytes;
 };
 
 std::shared_ptr<FontResource> loadFontResource(
-    const std::string& path,
+    std::string source,
+    std::vector<std::uint8_t> bytes,
     std::size_t collectionIndex,
     std::string* errorMessage);
 

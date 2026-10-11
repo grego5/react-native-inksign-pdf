@@ -13,7 +13,7 @@ import {
   type ViewportOptions,
   type InkSignViewHandle,
 } from '@grego5/react-native-inksign-pdf';
-import { androidFallbackFont, ensureFallbackFont } from './fallbackFont';
+import { androidFallbackFont } from './fallbackFont';
 import { DebugRecorder } from './DebugRecorder';
 
 export default function App() {
@@ -49,7 +49,6 @@ export default function App() {
         throw new Error('The InkSignView is not available');
       }
 
-      if (Platform.OS === 'android') await ensureFallbackFont();
       const result = await inkSignView.addPages(options);
       if (result.pageInfo !== undefined) setPageInfo(result.pageInfo);
     } catch (error) {

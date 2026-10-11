@@ -10,9 +10,18 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.SmallTest
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.ByteArrayOutputStream
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -287,7 +296,7 @@ class PdfiumSmokeInstrumentationTest {
     val withoutFallback = renderPixels(source, null)
     val withFallback = renderPixels(
       source,
-      PdfFallbackFont(fallback!!.absolutePath, null),
+      PdfFallbackFont(fallback!!.absolutePath, fallback.readBytes(), 0.0),
     )
 
     assertTrue(
@@ -302,29 +311,135 @@ class PdfiumSmokeInstrumentationTest {
   }
 
   @Test
-  fun appPreloadedFontUriResolvesAndRendersWithoutFetchingFallbackUrl() = runBlocking {
-    val context = InstrumentationRegistry.getInstrumentation().targetContext
+  fun fontSourceUrisResolveIdenticalBytesAndRenderWithoutADiskDependency() = runBlocking {
+    val context = InstrumentationRegistry.getInstrumentation().context
+    val resourceId = context.resources.getIdentifier("inksign_fallback", "raw", context.packageName)
+    val expected = context.resources.openRawResource(resourceId).use { it.readBytes() }
     val cacheFile = File(context.cacheDir, "inksign-test-font/fallback.ttf")
     check(cacheFile.parentFile?.mkdirs() == true || cacheFile.parentFile?.isDirectory == true)
-    InstrumentationRegistry.getInstrumentation().context.assets
-      .open("liberation-sans-regular.ttf").use { source ->
-        cacheFile.outputStream().use { destination -> source.copyTo(destination) }
-      }
-    val resolver = AndroidFallbackFontResolver(openConnection = {
-      throw AssertionError("A valid app-preloaded font must not fetch its fallback URL")
+    cacheFile.writeBytes(expected)
+    val resolver = AndroidFallbackFontResolver(context, openConnection = {
+      throw AssertionError("A local or packaged font must not access the network")
     })
+    try {
+      val sources = listOf(cacheFile.absolutePath, cacheFile.toURI().toString(),
+        "file:///android_res/raw/inksign_fallback.ttf",
+        "file:///android_res/raw-v21/inksign_fallback.ttf", "inksign_fallback",
+        "android.resource://${context.packageName}/raw/inksign_fallback",
+        "android.resource://${context.packageName}/$resourceId",
+        "content://com.margelo.nitro.inksignpdf.testfonts/font")
+      val source = missingFontPdf()
+      val withoutFallback = renderPixels(source, null)
+      for (uri in sources) {
+        val resolved = resolver.resolve(AndroidFallbackFont(uri, null))
+        assertArrayEquals(uri, expected, resolved.bytes)
+        assertNotEquals(uri, withoutFallback.toList(), renderPixels(source, resolved).toList())
+      }
+      val retained = resolver.resolve(AndroidFallbackFont(cacheFile.toURI().toString(), null))
+      check(cacheFile.delete())
+      assertNotEquals(withoutFallback.toList(), renderPixels(source, retained).toList())
+    } finally {
+      cacheFile.delete()
+    }
+  }
 
-    val resolved = resolver.resolve(AndroidFallbackFont(
-      url = "https://assets.example.test/fonts/fallback.ttf",
-      uri = cacheFile.absolutePath,
-      collectionIndex = null,
-    ))
-    assertEquals(cacheFile.canonicalPath, resolved.path)
-
+  @Test
+  fun httpFontIsRetainedAndConnectionClosesAfterReading() = runBlocking {
+    val context = InstrumentationRegistry.getInstrumentation().context
+    val bytes = context.assets.open("liberation-sans-regular.ttf").use { it.readBytes() }
+    val connection = MemoryFontConnection(bytes)
+    var requests = 0
+    val resolver = AndroidFallbackFontResolver(context, openConnection = { requests++; connection })
+    val font = resolver.resolve(AndroidFallbackFont("https://fonts.test/fallback.ttf", null))
+    assertArrayEquals(bytes, font.bytes)
+    assertTrue(connection.streamClosed && connection.disconnected)
     val source = missingFontPdf()
-    val withoutFallback = renderPixels(source, null)
-    val withFallback = renderPixels(source, resolved)
-    assertNotEquals(withoutFallback.toList(), withFallback.toList())
+    val first = renderPixels(source, font)
+    assertNotEquals(renderPixels(source, null).toList(), first.toList())
+    assertArrayEquals(first, renderPixels(source, font))
+    assertEquals(1, requests)
+  }
+
+  @Test
+  fun cancelledFontReadClosesStreamAndDoesNotReturnAFont() = runBlocking {
+    val context = InstrumentationRegistry.getInstrumentation().context
+    val bytes = context.assets.open("liberation-sans-regular.ttf").use { it.readBytes() }
+    val enteredRead = CountDownLatch(1)
+    val releaseRead = CountDownLatch(1)
+    val connection = MemoryFontConnection(bytes, beforeRead = {
+      enteredRead.countDown()
+      check(releaseRead.await(5, TimeUnit.SECONDS))
+    })
+    val resolver = AndroidFallbackFontResolver(context, openConnection = { connection })
+    val pending = async(Dispatchers.IO) {
+      resolver.resolve(AndroidFallbackFont("https://fonts.test/fallback.ttf", null))
+    }
+    try {
+      assertTrue(enteredRead.await(5, TimeUnit.SECONDS))
+      pending.cancel()
+    } finally {
+      releaseRead.countDown()
+    }
+    assertTrue(runCatching { pending.await() }.exceptionOrNull() is CancellationException)
+    pending.join()
+    assertTrue(connection.streamClosed && connection.disconnected)
+  }
+
+  @Test
+  fun invalidDownloadedFontIsRejectedByTheNativeLoader() = runBlocking {
+    val context = InstrumentationRegistry.getInstrumentation().context
+    val connection = MemoryFontConnection("not a font".toByteArray())
+    val resolver = AndroidFallbackFontResolver(context, openConnection = { connection })
+    val font = resolver.resolve(AndroidFallbackFont("https://fonts.test/fallback.ttf", null))
+    val failure = runCatching { PdfiumRenderSession.open(missingFontPdf(), font).use {} }.exceptionOrNull()
+    assertTrue(failure is PdfSessionException)
+    assertEquals("invalid_fallback_font", (failure as PdfSessionException).code)
+    assertTrue(connection.streamClosed && connection.disconnected)
+  }
+
+  @Test
+  fun overlappingCollectionTablesRejectOversizedFaceBeforeReconstruction() {
+    val tableCount = 1025
+    val tableLength = 64 * 1024
+    val payloadOffset = 16 + 12 + tableCount * 16
+    val bytes = ByteArray(payloadOffset + tableLength)
+    val buffer = java.nio.ByteBuffer.wrap(bytes)
+    buffer.putInt(0x74746366) // TTC header, one face at offset 16.
+    buffer.putInt(0x00010000)
+    buffer.putInt(1)
+    buffer.putInt(16)
+    buffer.putInt(0x00010000)
+    buffer.putShort(tableCount.toShort())
+    buffer.position(28)
+    repeat(tableCount) {
+      buffer.putInt(0x636D6170) // Each table references the same small payload.
+      buffer.putInt(0)
+      buffer.putInt(payloadOffset)
+      buffer.putInt(tableLength)
+    }
+    val font = PdfFallbackFont("overlapping.ttc", bytes, 0.0)
+    val failure = runCatching { PdfiumRenderSession.open(missingFontPdf(), font).use {} }.exceptionOrNull()
+    assertTrue(failure is PdfSessionException)
+    assertEquals("invalid_fallback_font", (failure as PdfSessionException).code)
+    assertTrue(failure.message.orEmpty().contains("font face exceeds the size limit"))
+  }
+
+  private class MemoryFontConnection(bytes: ByteArray, beforeRead: () -> Unit = {}) :
+    HttpURLConnection(URL("https://fonts.test/fallback.ttf")) {
+    var disconnected = false
+    var streamClosed = false
+    private val input = object : ByteArrayInputStream(bytes) {
+      override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        beforeRead()
+        return super.read(buffer, offset, length)
+      }
+      override fun close() { streamClosed = true; super.close() }
+    }
+    override fun connect() {}
+    override fun disconnect() { disconnected = true }
+    override fun usingProxy() = false
+    override fun getResponseCode() = 200
+    override fun getInputStream() = input
   }
 
   private fun renderPixels(

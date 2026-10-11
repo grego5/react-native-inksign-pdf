@@ -2,14 +2,15 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <fstream>
-#include <limits>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace margelo::nitro::inksignpdf::pdfium {
 namespace {
+
+constexpr std::size_t kMaximumFontBytes = 64 * 1024 * 1024;
 
 bool readU16(const std::vector<std::uint8_t>& bytes,
              std::size_t offset,
@@ -92,14 +93,15 @@ std::optional<std::size_t> fontFaceOffset(
 }
 
 std::vector<std::uint8_t> standaloneFontFace(
-    const FontSelection& selection,
-    const std::vector<std::uint8_t>& bytes) {
+    std::size_t collectionIndex,
+    std::vector<std::uint8_t> bytes,
+    std::string& errorMessage) {
   std::uint32_t signature = 0;
   if (!readU32(bytes, 0, signature) || signature != 0x74746366) {
-    return selection.collectionIndex == 0 ? bytes
-                                         : std::vector<std::uint8_t>{};
+    return collectionIndex == 0 ? std::move(bytes)
+                                : std::vector<std::uint8_t>{};
   }
-  const auto faceOffset = fontFaceOffset(bytes, selection.collectionIndex);
+  const auto faceOffset = fontFaceOffset(bytes, collectionIndex);
   if (!faceOffset || *faceOffset > bytes.size() ||
       bytes.size() - *faceOffset < 12) {
     return {};
@@ -113,16 +115,18 @@ std::vector<std::uint8_t> standaloneFontFace(
     return {};
   }
 
-  std::vector<std::uint8_t> result(
-      12 + static_cast<std::size_t>(tableCount) * 16, 0);
-  std::copy(bytes.begin() + *faceOffset,
-            bytes.begin() + *faceOffset + 12,
-            result.begin());
-  std::size_t dataOffset = result.size();
+  struct TableCopy final {
+    std::size_t sourceOffset;
+    std::size_t length;
+    std::size_t destinationOffset;
+  };
+  std::vector<TableCopy> tables;
+  tables.reserve(tableCount);
+  std::size_t faceSize = 12 + static_cast<std::size_t>(tableCount) * 16;
+  // Validate the complete copy plan before allocating the reconstructed face.
   for (std::uint16_t index = 0; index < tableCount; ++index) {
     const auto sourceRecord =
         recordsOffset + static_cast<std::size_t>(index) * 16;
-    const auto resultRecord = 12 + static_cast<std::size_t>(index) * 16;
     std::uint32_t tableOffset = 0;
     std::uint32_t tableLength = 0;
     if (!readU32(bytes, sourceRecord + 8, tableOffset) ||
@@ -131,22 +135,32 @@ std::vector<std::uint8_t> standaloneFontFace(
         tableLength > bytes.size() - tableOffset) {
       return {};
     }
-    std::copy(bytes.begin() + sourceRecord,
-              bytes.begin() + sourceRecord + 8,
-              result.begin() + resultRecord);
-    dataOffset = (dataOffset + 3) & ~static_cast<std::size_t>(3);
-    if (dataOffset > (std::numeric_limits<std::size_t>::max)() -
-            tableLength) {
+    const auto dataOffset = (faceSize + 3) & ~static_cast<std::size_t>(3);
+    if (dataOffset > kMaximumFontBytes ||
+        tableLength > kMaximumFontBytes - dataOffset) {
+      errorMessage = "font face exceeds the size limit";
       return {};
     }
-    result.resize(dataOffset + tableLength, 0);
-    std::copy(bytes.begin() + tableOffset,
-              bytes.begin() + tableOffset + tableLength,
-              result.begin() + dataOffset);
-    if (dataOffset > (std::numeric_limits<std::uint32_t>::max)()) return {};
+    tables.push_back({tableOffset, tableLength, dataOffset});
+    faceSize = dataOffset + tableLength;
+  }
+
+  std::vector<std::uint8_t> result(faceSize, 0);
+  std::copy(bytes.begin() + *faceOffset,
+            bytes.begin() + *faceOffset + 12,
+            result.begin());
+  for (std::size_t index = 0; index < tables.size(); ++index) {
+    const auto sourceRecord = recordsOffset + index * 16;
+    const auto resultRecord = 12 + index * 16;
+    const auto& table = tables[index];
+    std::copy(bytes.begin() + sourceRecord,
+              bytes.begin() + sourceRecord + 16,
+              result.begin() + resultRecord);
+    std::copy(bytes.begin() + table.sourceOffset,
+              bytes.begin() + table.sourceOffset + table.length,
+              result.begin() + table.destinationOffset);
     writeU32(result, resultRecord + 8,
-             static_cast<std::uint32_t>(dataOffset));
-    dataOffset += tableLength;
+             static_cast<std::uint32_t>(table.destinationOffset));
   }
   return result;
 }
@@ -154,36 +168,20 @@ std::vector<std::uint8_t> standaloneFontFace(
 }  // namespace
 
 std::shared_ptr<FontResource> loadFontResource(
-    const std::string& path,
+    std::string source,
+    std::vector<std::uint8_t> bytes,
     std::size_t collectionIndex,
     std::string* errorMessage) {
-  if (path.empty() || path.front() != '/') {
-    if (errorMessage != nullptr) *errorMessage = "font path must be absolute";
-    return nullptr;
-  }
-  std::ifstream input(path, std::ios::binary | std::ios::ate);
-  if (!input) {
-    if (errorMessage != nullptr) *errorMessage = "font path is not readable";
-    return nullptr;
-  }
-  const auto end = input.tellg();
-  constexpr std::streamoff kMaximumFontBytes = 64 * 1024 * 1024;
-  if (end <= 0 || end > kMaximumFontBytes) {
+  if (bytes.empty() || bytes.size() > kMaximumFontBytes) {
     if (errorMessage != nullptr) *errorMessage = "font file size is unsupported";
     return nullptr;
   }
-  std::vector<std::uint8_t> sourceBytes(static_cast<std::size_t>(end));
-  input.seekg(0, std::ios::beg);
-  if (!input.read(reinterpret_cast<char*>(sourceBytes.data()), end)) {
-    if (errorMessage != nullptr) *errorMessage = "font file could not be read";
-    return nullptr;
-  }
-
-  FontSelection selection{path, collectionIndex};
-  const auto standalone = standaloneFontFace(selection, sourceBytes);
+  std::string faceError;
+  auto standalone = standaloneFontFace(collectionIndex, std::move(bytes), faceError);
   if (standalone.empty()) {
     if (errorMessage != nullptr) {
-      *errorMessage = "font collection index is invalid";
+      *errorMessage = faceError.empty()
+          ? "font collection index or table data is invalid" : faceError;
     }
     return nullptr;
   }
@@ -195,9 +193,10 @@ std::shared_ptr<FontResource> loadFontResource(
   }
 
   auto resource = std::make_shared<FontResource>();
-  resource->selection = std::move(selection);
+  resource->source = std::move(source);
+  resource->collectionIndex = collectionIndex;
   resource->bytes = std::make_shared<const std::vector<std::uint8_t>>(
-      standalone);
+      std::move(standalone));
   return resource;
 }
 

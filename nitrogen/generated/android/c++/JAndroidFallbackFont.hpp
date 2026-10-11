@@ -32,14 +32,11 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     AndroidFallbackFont toCpp() const {
       static const auto clazz = javaClassStatic();
-      static const auto fieldUrl = clazz->getField<jni::JString>("url");
-      jni::local_ref<jni::JString> url = this->getFieldValue(fieldUrl);
       static const auto fieldUri = clazz->getField<jni::JString>("uri");
       jni::local_ref<jni::JString> uri = this->getFieldValue(fieldUri);
       static const auto fieldCollectionIndex = clazz->getField<jni::JDouble>("collectionIndex");
       jni::local_ref<jni::JDouble> collectionIndex = this->getFieldValue(fieldCollectionIndex);
       return AndroidFallbackFont(
-        url->toStdString(),
         uri->toStdString(),
         collectionIndex != nullptr ? std::make_optional(collectionIndex->value()) : std::nullopt
       );
@@ -51,12 +48,11 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JAndroidFallbackFont::javaobject> fromCpp(const AndroidFallbackFont& value) {
-      using JSignature = JAndroidFallbackFont(jni::alias_ref<jni::JString>, jni::alias_ref<jni::JString>, jni::alias_ref<jni::JDouble>);
+      using JSignature = JAndroidFallbackFont(jni::alias_ref<jni::JString>, jni::alias_ref<jni::JDouble>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
-        jni::make_jstring(value.url),
         jni::make_jstring(value.uri),
         value.collectionIndex.has_value() ? jni::JDouble::valueOf(value.collectionIndex.value()) : nullptr
       );
