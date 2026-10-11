@@ -7,9 +7,9 @@ permissions:
   contents: read
 
 env:
-  PDFIUM_WORKFLOW_REV: 9dd99a8991bed3a2f37658a31bcd5b403800fd03
-  PDFIUM_UPSTREAM_BRANCH: chromium/8021
-  PDFIUM_VERSION: 154.0.8021.0
+  PDFIUM_WORKFLOW_REV: 5325fa6d0d9379329f10f98fdc4839b4e40f2e79
+  PDFIUM_UPSTREAM_BRANCH: chromium/8086
+  PDFIUM_VERSION: 157.0.8086.0
   PDFIUM_ANDROID_NDK: 27.1.12297006
 
 jobs:
@@ -102,11 +102,6 @@ jobs:
           sed -i 's|android_ndk_root = "//third_party/android_toolchain/ndk"|android_ndk_root = "//third_party/inksign_android_ndk"|' "$android_config"
           grep -Fq 'android_ndk_root = "//third_party/inksign_android_ndk"' "$android_config"
           ./steps/05-configure.sh
-          printf '\nuse_custom_libcxx = false\n' >> "$PDFium_BUILD_DIR/args.gn"
-          (
-            cd "$PDFium_SOURCE_DIR"
-            gn gen "$PDFium_BUILD_DIR"
-          )
           test -f "$PDFium_BUILD_DIR/build.ninja"
           grep -R -F -q --include='*.ninja' 'third_party/inksign_android_ndk' "$PDFium_BUILD_DIR"
           ./steps/06-build.sh

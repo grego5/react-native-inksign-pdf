@@ -1,0 +1,171 @@
+name: Build Apple PDFium static XCFramework
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PDFIUM_WORKFLOW_REV: 5325fa6d0d9379329f10f98fdc4839b4e40f2e79
+  PDFIUM_UPSTREAM_BRANCH: chromium/8086
+  PDFIUM_VERSION: 157.0.8086.0
+
+jobs:
+  build:
+    name: Build ${{ matrix.slice }}
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - slice: ios-arm64
+            os: ios
+            cpu: arm64
+            arch: arm64
+            environment: device
+          - slice: ios-arm64-simulator
+            os: ios
+            cpu: arm64
+            arch: arm64
+            environment: simulator
+          - slice: ios-x86_64-simulator
+            os: ios
+            cpu: x64
+            arch: x86_64
+            environment: simulator
+          - slice: macos-arm64
+            os: mac
+            cpu: arm64
+            arch: arm64
+            environment: ''
+          - slice: macos-x86_64
+            os: mac
+            cpu: x64
+            arch: x86_64
+            environment: ''
+    env:
+      PDFium_BUILD_TYPE: static
+      PDFium_TARGET_OS: ${{ matrix.os }}
+      PDFium_TARGET_CPU: ${{ matrix.cpu }}
+      PDFium_TARGET_ENVIRONMENT: ${{ matrix.environment }}
+      PDFium_IS_DEBUG: 'false'
+      PDFium_ENABLE_V8: 'false'
+    defaults:
+      run:
+        shell: bash
+        working-directory: .pdfium-binaries
+    steps:
+      - name: Check out the pinned PDFium build workflow
+        uses: actions/checkout@v7
+        with:
+          repository: bblanchon/pdfium-binaries
+          ref: ${{ env.PDFIUM_WORKFLOW_REV }}
+          path: .pdfium-binaries
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Initialize PDFium build environment
+        run: ./steps/00-environment.sh
+
+      - name: Install build tools
+        run: |
+          set -euxo pipefail
+          xcodebuild -version
+          git clone --quiet https://chromium.googlesource.com/chromium/tools/depot_tools.git
+          echo "$PWD/depot_tools" >> "$GITHUB_PATH"
+
+      - name: Build static PDFium archive
+        env:
+          PDFium_BRANCH: ${{ env.PDFIUM_UPSTREAM_BRANCH }}
+          PDFium_VERSION: ${{ env.PDFIUM_VERSION }}
+        run: |
+          set -euxo pipefail
+          ./steps/02-checkout.sh
+          ./steps/03-patch.sh
+          ./steps/04-install-extras.sh
+          ./steps/05-configure.sh
+          ./steps/06-build.sh
+          ./steps/07-stage.sh
+          ./steps/08-licenses.sh
+
+      - name: Validate and record the slice
+        run: |
+          set -euxo pipefail
+          archive="$PWD/staging/lib/libpdfium.a"
+          xcrun lipo "$archive" -verify_arch '${{ matrix.arch }}'
+          xcrun nm -gU "$archive" > "$RUNNER_TEMP/pdfium-symbols.txt"
+          for symbol in FPDF_InitLibraryWithConfig FPDF_DestroyLibrary FPDFText_LoadPage FPDFPage_New; do
+            grep -q "_$symbol" "$RUNNER_TEMP/pdfium-symbols.txt"
+          done
+          {
+            echo "version=$PDFIUM_VERSION"
+            echo "source=$(git -C "$PDFium_SOURCE_DIR" rev-parse HEAD)"
+            echo "tooling=$PDFIUM_WORKFLOW_REV"
+            echo "slice=${{ matrix.slice }}"
+            xcodebuild -version
+          } > staging/BUILD_INFO
+
+      - name: Upload Apple static slice
+        uses: actions/upload-artifact@v7
+        with:
+          name: pdfium-static-apple-${{ matrix.slice }}
+          path: .pdfium-binaries/staging/
+          if-no-files-found: error
+
+  package:
+    name: Package Apple XCFramework
+    needs: build
+    runs-on: macos-26
+    steps:
+      - name: Download Apple static slices
+        uses: actions/download-artifact@v8
+        with:
+          pattern: pdfium-static-apple-*
+          path: slices
+
+      - name: Package static libraries and licenses
+        shell: bash
+        run: |
+          set -euxo pipefail
+          slice_root="$GITHUB_WORKSPACE/slices/pdfium-static-apple"
+          mkdir -p combined/simulator combined/macos release-assets
+          xcrun lipo -create \
+            "$slice_root-ios-arm64-simulator/lib/libpdfium.a" \
+            "$slice_root-ios-x86_64-simulator/lib/libpdfium.a" \
+            -output combined/simulator/libpdfium.a
+          xcrun lipo -create \
+            "$slice_root-macos-arm64/lib/libpdfium.a" \
+            "$slice_root-macos-x86_64/lib/libpdfium.a" \
+            -output combined/macos/libpdfium.a
+          xcrun lipo combined/simulator/libpdfium.a -verify_arch arm64 x86_64
+          xcrun lipo combined/macos/libpdfium.a -verify_arch arm64 x86_64
+          headers="$slice_root-ios-arm64/include"
+          xcodebuild -create-xcframework \
+            -library "$slice_root-ios-arm64/lib/libpdfium.a" -headers "$headers" \
+            -library "$GITHUB_WORKSPACE/combined/simulator/libpdfium.a" -headers "$headers" \
+            -library "$GITHUB_WORKSPACE/combined/macos/libpdfium.a" -headers "$headers" \
+            -output release-assets/PDFium.xcframework
+          cp "$slice_root-ios-arm64/LICENSE" release-assets/LICENSE
+          mkdir -p release-assets/licenses release-assets/build-info
+          for slice in "$GITHUB_WORKSPACE"/slices/pdfium-static-apple-*; do
+            name="$(basename "$slice")"
+            cp -R "$slice/licenses" "release-assets/licenses/$name"
+            cp "$slice/BUILD_INFO" "release-assets/build-info/$name.txt"
+            cp "$slice/args.gn" "release-assets/build-info/$name.args.gn"
+          done
+          (
+            cd release-assets
+            tar -czf "PDFium-static-${PDFIUM_VERSION}.xcframework.tar.gz" \
+              PDFium.xcframework LICENSE licenses build-info
+            shasum -a 256 "PDFium-static-${PDFIUM_VERSION}.xcframework.tar.gz" > SHA256SUMS
+          )
+
+      - name: Upload Apple XCFramework bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: pdfium-static-apple-${{ env.PDFIUM_VERSION }}
+          path: |
+            release-assets/*.tar.gz
+            release-assets/SHA256SUMS
+          if-no-files-found: error
