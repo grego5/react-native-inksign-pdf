@@ -398,6 +398,12 @@ namespace margelo::nitro::inksignpdf {
         std::rethrow_exception(__result.error());
       }
     }
+    inline void resetDirty() override {
+      auto __result = _swiftPart.resetDirty();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline void setTextDirection(TextDirection direction) override {
       auto __result = _swiftPart.setTextDirection(static_cast<int>(direction));
       if (__result.hasError()) [[unlikely]] {

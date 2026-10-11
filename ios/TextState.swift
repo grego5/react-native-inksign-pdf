@@ -295,6 +295,7 @@ struct InkSignPdfPageContentHistoryAction {
   let type: InkSignPdfPageContentActionType
   let before: InkSignPdfPageContentSnapshot
   let after: InkSignPdfPageContentSnapshot
+  let stateRevision: UInt64
 }
 
 /// One ordered, page-local history for both PencilKit drawing and text.
@@ -303,6 +304,7 @@ final class InkSignPdfPageContentHistory {
   private(set) var undoStack: [InkSignPdfPageContentHistoryAction] = []
   private(set) var redoStack: [InkSignPdfPageContentHistoryAction] = []
   private(set) var revision: UInt64 = 0
+  private var cleanStateRevision: UInt64?
 
   init(content: InkSignPdfPageContentSnapshot = InkSignPdfPageContentSnapshot(
     drawing: PKDrawing(), textAnnotations: [])) {
@@ -310,7 +312,12 @@ final class InkSignPdfPageContentHistory {
   }
 
   var state: (canUndo: Bool, canRedo: Bool, isDirty: Bool) {
-    (canUndo: !undoStack.isEmpty, canRedo: !redoStack.isEmpty, isDirty: !content.isEmpty)
+    (canUndo: !undoStack.isEmpty, canRedo: !redoStack.isEmpty,
+     isDirty: cleanStateRevision.map { $0 != (undoStack.last?.stateRevision ?? 0) } ?? !content.isEmpty)
+  }
+
+  func resetDirty() {
+    cleanStateRevision = undoStack.last?.stateRevision ?? 0
   }
 
   @discardableResult
@@ -322,7 +329,8 @@ final class InkSignPdfPageContentHistory {
     guard !before.equals(after) else { return false }
     guard content.equals(before) else { return false }
     content = after
-    undoStack.append(InkSignPdfPageContentHistoryAction(type: type, before: before, after: after))
+    undoStack.append(InkSignPdfPageContentHistoryAction(type: type, before: before, after: after,
+                                                     stateRevision: revision &+ 1))
     redoStack.removeAll(keepingCapacity: true)
     revision &+= 1
     return true

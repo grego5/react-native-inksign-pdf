@@ -38,6 +38,9 @@
 
 - Histories follow stable page IDs; structural dirty state is separate from
   page-content history. Clear/clearInk are undoable page-local edits.
+- `resetDirty()` checkpoints committed histories on all pages and clears structural
+  dirty state. Undo/redo track checkpoint identity across branches; live input and
+  history stacks are preserved. Dirty changes emit `onStateChange` on the UI thread.
 - Rotation updates orientation/geometry revision while preserving source and
   content identity. Assembly retains orientation; [export](export.md) persists it.
 - `clearInk()` cancels live ink; `hasInk()` reads committed active-page ink.

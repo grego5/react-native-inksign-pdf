@@ -331,6 +331,10 @@ internal class MutableDocumentCoordinator(
   fun activePageHasInk(): Boolean =
     hasDocument && activeHistory().hasInk()
   fun isDirty(): Boolean = structuralDirty || mutablePages.any { it.history.state().isDirty }
+  fun resetDirty() {
+    mutablePages.forEach { it.history.resetDirty() }
+    structuralDirty = false
+  }
 
   fun activatePage(index: Int): PageSnapshot {
     setActivePage(index)
