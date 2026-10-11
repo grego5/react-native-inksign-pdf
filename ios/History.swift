@@ -56,6 +56,13 @@ extension InkSignView {
     }
   }
 
+  func resetDirty() throws {
+    try performOnMainSync {
+      self.documentCoordinator.resetDirty()
+      self.emitChange()
+    }
+  }
+
   func emitChange(force: Bool = false) {
     guard !disposed else { return }
     guard !suppressesOpenPresentationCallbacks else { return }

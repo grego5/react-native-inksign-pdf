@@ -7,6 +7,58 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport {
+  func testResetDirtyCheckpointsAllPagesAndPreservesHistoryAcrossBranches() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let coordinator = view.documentCoordinator
+    let document = try XCTUnwrap(coordinator.document)
+    var annotations: [InkSignPdfTextAnnotation] = []
+    for index in 0..<2 {
+      let annotation = makeCenteredTextAnnotation(id: UInt64(index + 1), text: "Keep",
+        fontSize: 16, pageSize: document.pages[index].geometry.displaySize)
+      annotations.append(try appendTextAnnotationForTest(annotation, in: view, pageIndex: index))
+    }
+    let first = document.pages[0].history
+    let second = document.pages[1].history
+    let content = document.pages.map { $0.history.content }
+    let revision = first.revision
+    coordinator.setStructuralDirty(true)
+    var states: [ViewerState] = []
+    view.onStateChange = { states.append($0) }
+
+    try view.resetDirty()
+    XCTAssertFalse(coordinator.isDirty)
+    XCTAssertEqual(states.last?.isDirty, false)
+    XCTAssertEqual(first.revision, revision)
+    XCTAssertTrue(first.state.canUndo)
+    for index in 0..<2 { XCTAssertTrue(document.pages[index].history.content.equals(content[index])) }
+
+    XCTAssertTrue(first.undo())
+    XCTAssertTrue(coordinator.isDirty)
+    XCTAssertTrue(first.redo())
+    XCTAssertFalse(coordinator.isDirty)
+    first.clear()
+    XCTAssertTrue(coordinator.isDirty)
+    XCTAssertTrue(first.undo())
+    XCTAssertFalse(coordinator.isDirty)
+
+    XCTAssertTrue(first.undo())
+    let replacement = makeCenteredTextAnnotation(id: annotations[0].id, text: "New branch",
+      fontSize: 16, pageSize: document.pages[0].geometry.displaySize)
+    XCTAssertTrue(first.appendText(replacement))
+    XCTAssertTrue(coordinator.isDirty)
+    try view.resetDirty()
+    XCTAssertTrue(second.undo())
+    XCTAssertTrue(coordinator.isDirty)
+    XCTAssertTrue(second.redo())
+    XCTAssertFalse(coordinator.isDirty)
+    coordinator.setStructuralDirty(true)
+    XCTAssertTrue(coordinator.isDirty)
+    try view.resetDirty()
+    XCTAssertFalse(coordinator.isDirty)
+  }
+
   func testHasInkTracksActivePageCommittedInkHistory() throws {
     let emptyView = InkSignView()
     XCTAssertFalse(try emptyView.hasInk())

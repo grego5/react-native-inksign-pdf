@@ -14,6 +14,9 @@
 - Undo, redo, and clear settle transient input before restoring a page snapshot.
 - `onStateChange` reports undo/redo availability for the active page; dirty state
   is aggregated across the document.
+- `resetDirty()` checkpoints committed histories on all pages and clears structural
+  dirty state. Undo/redo track checkpoint identity across branches; live input and
+  history stacks are preserved. Dirty changes emit `onStateChange` on the main thread.
 - Page changes install that page's committed content. Delayed ink callbacks
   cannot commit to a different page.
 - Export reads committed snapshots without changing live input. Disposal releases

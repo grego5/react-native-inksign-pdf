@@ -640,6 +640,12 @@ class HybridInkSignView internal constructor(
   override fun clearInk() {
     runOnMainSync { surface.clearInk() }
   }
+  override fun resetDirty() {
+    runOnMainSync {
+      coordinator.resetDirty()
+      surface.notifyStateChange()
+    }
+  }
 
   override fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec> = preparePage(pageIndex)
 

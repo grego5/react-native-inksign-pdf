@@ -332,6 +332,7 @@ function createValidatedHandle(
     redo: () => getNative().redo(),
     clear: () => getNative().clear(),
     clearInk: () => getNative().clearInk(),
+    resetDirty: () => getNative().resetDirty(),
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
         throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');

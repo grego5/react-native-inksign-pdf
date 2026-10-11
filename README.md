@@ -127,6 +127,8 @@ x, y }`, then return to view mode. Page or mode changes and teardown cancel
 - `clear()` — Remove editable ink and module text from the current page as one
   undoable edit. Original PDF content is preserved.
 - `clearInk()` — Remove only editable ink from the current page as one undoable edit.
+- `resetDirty()` — Mark the whole document clean after saving. Preserves content
+  and undo/redo; edits or undo away from the saved state make it dirty again.
 - `setTextDirection(direction)` — Set the base text direction: `'ltr'`, `'rtl'`,
   or `'auto'` to follow app direction.
 - `finalize()` — Export to a temporary PDF `file://` URI. Copy it to persistent

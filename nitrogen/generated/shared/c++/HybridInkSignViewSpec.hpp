@@ -157,6 +157,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void redo() = 0;
       virtual void clear() = 0;
       virtual void clearInk() = 0;
+      virtual void resetDirty() = 0;
       virtual void setTextDirection(TextDirection direction) = 0;
       virtual std::shared_ptr<Promise<std::string>> finalize() = 0;
       virtual void startDebugRecording() = 0;

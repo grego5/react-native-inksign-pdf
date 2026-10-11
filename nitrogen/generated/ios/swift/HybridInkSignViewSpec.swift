@@ -48,6 +48,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func redo() throws -> Void
   func clear() throws -> Void
   func clearInk() throws -> Void
+  func resetDirty() throws -> Void
   func setTextDirection(direction: TextDirection) throws -> Void
   func finalize() throws -> Promise<String>
   func startDebugRecording() throws -> Void

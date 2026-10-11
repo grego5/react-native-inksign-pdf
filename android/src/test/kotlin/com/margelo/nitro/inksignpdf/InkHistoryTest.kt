@@ -6,6 +6,50 @@ import org.junit.Test
 
 class InkHistoryTest {
   @Test
+  fun resetDirtyCheckpointsAllPagesAndPreservesHistoryAcrossBranches() {
+    val document = MutableDocumentCoordinator(
+      sourcePath = "multi-page.pdf", generation = 1L,
+      pages = listOf(PdfPageDimensions(300.0, 400.0), PdfPageDimensions(300.0, 400.0)),
+      sessionWorker = PdfSessionWorker(), artifactPolicy = TestDocumentArtifactPolicy(),
+    )
+    val first = document.page(0).history
+    val second = document.page(1).history
+    first.append(outline(0f))
+    second.appendText(text(1L, "Keep", 24.0, 40.0))
+    document.markStructuralDirty()
+    val content = document.completedPagesSnapshot()
+    val revision = first.revision
+
+    document.resetDirty()
+    assertEquals(false, document.isDirty())
+    assertEquals(content, document.completedPagesSnapshot())
+    assertEquals(revision, first.revision)
+    assertEquals(InkState(true, false, false), first.state())
+
+    first.undoMutation()
+    assertTrue(document.isDirty())
+    first.redoMutation()
+    assertEquals(false, document.isDirty())
+    first.clearMutation()
+    assertTrue(document.isDirty())
+    first.undoMutation()
+    assertEquals(false, document.isDirty())
+
+    first.undoMutation()
+    first.append(outline(20f)) // Same history depth, different branch.
+    assertTrue(document.isDirty())
+    document.resetDirty()
+    second.undoMutation()
+    assertTrue(document.isDirty())
+    second.redoMutation()
+    assertEquals(false, document.isDirty())
+    document.markStructuralDirty()
+    assertTrue(document.isDirty())
+    document.resetDirty()
+    assertEquals(false, document.isDirty())
+  }
+
+  @Test
   fun clearInkPreservesTextAndRestoresOrderInOneUndoStep() {
     val history = InkHistory()
     val first = outline(0f)

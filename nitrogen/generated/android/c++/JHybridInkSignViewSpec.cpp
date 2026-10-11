@@ -517,6 +517,10 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clearInk");
     method(_javaPart);
   }
+  void JHybridInkSignViewSpec::resetDirty() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("resetDirty");
+    method(_javaPart);
+  }
   void JHybridInkSignViewSpec::setTextDirection(TextDirection direction) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JTextDirection> /* direction */)>("setTextDirection");
     method(_javaPart, JTextDirection::fromCpp(direction));

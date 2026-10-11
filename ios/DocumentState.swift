@@ -243,7 +243,12 @@ final class InkSignPdfDocumentCoordinator {
   }
 
   var isDirty: Bool {
-    structuralDirty || document?.pages.contains { !$0.history.content.isEmpty } == true
+    structuralDirty || document?.pages.contains { $0.history.state.isDirty } == true
+  }
+
+  func resetDirty() {
+    document?.pages.forEach { $0.history.resetDirty() }
+    structuralDirty = false
   }
 
   func selectPage(id: UUID) -> Int? {

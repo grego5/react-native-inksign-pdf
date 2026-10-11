@@ -299,6 +299,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   clear(): void
   /** Clears only editable ink on the active page as one undoable change. */
   clearInk(): void
+  /** Marks committed content on all pages and page structure as clean, preserving undo/redo and live input. No-op without a document. Later edits or undo away from this baseline become dirty. */
+  resetDirty(): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
   /** Returns a temporary local PDF file URI (file://). */

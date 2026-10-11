@@ -68,6 +68,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
       prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
       prototype.registerHybridMethod("clearInk", &HybridInkSignViewSpec::clearInk);
+      prototype.registerHybridMethod("resetDirty", &HybridInkSignViewSpec::resetDirty);
       prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);
       prototype.registerHybridMethod("finalize", &HybridInkSignViewSpec::finalize);
       prototype.registerHybridMethod("startDebugRecording", &HybridInkSignViewSpec::startDebugRecording);

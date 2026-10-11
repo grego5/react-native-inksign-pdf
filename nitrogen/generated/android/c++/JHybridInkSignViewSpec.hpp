@@ -107,6 +107,7 @@ namespace margelo::nitro::inksignpdf {
     void redo() override;
     void clear() override;
     void clearInk() override;
+    void resetDirty() override;
     void setTextDirection(TextDirection direction) override;
     std::shared_ptr<Promise<std::string>> finalize() override;
     void startDebugRecording() override;
