@@ -25,22 +25,12 @@ release pin and checksums are maintained in `android/ink-engine-release.json`.
 
 ## PDFium
 
-The `core/third_party/pdfium` package contains PDFium `154.0.8021.0` from the
-`chromium/8021` branch at commit
-`784a524ddaa26d86c0f499625b97902095c26dfe`. This repository builds the
-static Android archives and iOS XCFramework from that source revision using
-the pinned `bblanchon/pdfium-binaries` workflow and patches. The published
-release URLs, SHA-256 checksums, architecture slices, and measured sizes are
-recorded in `core/third_party/pdfium/manifest.json`.
-
-The Android archives and iOS XCFramework are generated from the pinned
-`bblanchon/pdfium-binaries` workflow with `build_type=static`. Android uses
-NDK `27.1.12297006`. The workflow publishes static Android and iOS binaries
-as checksummed GitHub Release assets for Gradle and the macOS npm postinstall
-fetcher after both platforms finish successfully.
-No PDFium binaries are checked in. Archive structure and symbols are validated
-in CI; Android device acceptance and iOS runtime integration remain separate
-validation steps, and iOS is explicitly experimental until runtime-tested.
+The `core/third_party/pdfium` package contains PDFium `157.0.8086.0` from
+`chromium/8086` at commit `2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec`.
+Android links static archives built with NDK `27.1.12297006` and pinned
+`bblanchon/pdfium-binaries` tooling. Release provenance, archive sizes, and
+SHA-256 checksums are recorded in `core/third_party/pdfium/manifest.json`.
+Gradle downloads and verifies these release assets; binaries are not committed.
 
 PDFium is distributed under its BSD license. The package also includes the
 licenses for its bundled third-party dependencies under

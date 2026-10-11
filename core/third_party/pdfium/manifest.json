@@ -1,10 +1,10 @@
 {
   "name": "PDFium",
-  "version": "154.0.8021.0",
+  "version": "157.0.8086.0",
   "upstream": {
     "repository": "https://pdfium.googlesource.com/pdfium",
-    "branch": "chromium/8021",
-    "commit": "784a524ddaa26d86c0f499625b97902095c26dfe",
+    "branch": "chromium/8086",
+    "commit": "2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec",
     "publicHeaders": [
       "fpdfview.h",
       "fpdf_text.h",
@@ -35,10 +35,10 @@
   },
   "buildWorkflow": {
     "repository": "https://github.com/bblanchon/pdfium-binaries",
-    "releaseCommit": "9dd99a8991bed3a2f37658a31bcd5b403800fd03",
+    "releaseCommit": "5325fa6d0d9379329f10f98fdc4839b4e40f2e79",
     "script": "build.sh",
     "staticBuildType": "static",
-    "staticArguments": "./build.sh -b chromium/8021 -s android <abi>",
+    "staticArguments": "./build.sh -b chromium/8086 -s android <abi>",
     "androidNdk": "27.1.12297006",
     "staticGnArguments": [
       "pdf_is_complete_lib = true",
@@ -49,14 +49,14 @@
   "distribution": {
     "staticRelease": {
       "repository": "https://github.com/grego5/react-native-inksign-pdf",
-      "tag": "pdfium-154.0.8021.0-static",
-      "androidAsset": "154.0.8021.0-android-static.zip",
-      "checksumsAsset": "SHA256SUMS",
+      "tag": "pdfium-157.0.8086.0-static",
+      "androidAsset": "157.0.8086.0-android-static.zip",
+      "checksumsAsset": "SHA256SUMS-ANDROID",
       "status": "published; archive structure and symbols validated in CI",
-      "androidAssetBytes": 25750810,
-      "androidAssetSha256": "ec0e59ec5d3058e0518fe602413419bce5b719ef25282a67f167f9ad23d29a3c",
-      "checksumsAssetBytes": 210,
-      "checksumsAssetSha256": "f733fde3f7486f7f7155d37d1ad449e0e7fcf607faa992aef8488da7b22ae1e4",
+      "androidAssetBytes": 26945983,
+      "androidAssetSha256": "31776b9aa7d5fe5950794aa0d1547182fae593214f0005708e6a5e94acb7cbf2",
+      "checksumsAssetBytes": 98,
+      "checksumsAssetSha256": "d7531ae0d22f3c2556b1ba5a19a2e9d49f90f0c5667994a2c705b5f6e43342e9",
       "artifacts": [
         {
           "target": "android",
@@ -64,8 +64,8 @@
           "abi": "arm64-v8a",
           "architecture": "AARCH64",
           "packagedLibrary": "android/build/pdfium/arm64-v8a/libpdfium.a",
-          "packagedLibraryBytes": 43434854,
-          "packagedLibrarySha256": "75075ce114a0c66b1129ec11ecb046c60802ae206a4547c1453daeaf0d6df9dd",
+          "packagedLibraryBytes": 44835524,
+          "packagedLibrarySha256": "1cc871f85b4cb2060ecac190be62ff42fbfdb30f0801fab85f03a84493a86058",
           "expectedElfMachine": "AARCH64"
         },
         {
@@ -74,8 +74,8 @@
           "abi": "x86_64",
           "architecture": "X86_64",
           "packagedLibrary": "android/build/pdfium/x86_64/libpdfium.a",
-          "packagedLibraryBytes": 43363000,
-          "packagedLibrarySha256": "f380eca5fe383ec7036254c21fa8fa57ed60509af03c3ce7738d5377f4a60bc8",
+          "packagedLibraryBytes": 44795700,
+          "packagedLibrarySha256": "1d7d1047e52ea0358ddc41bd765eb4a667fce1220aeecb70cdaea57108304883",
           "expectedElfMachine": "X86_64"
         }
       ]
@@ -99,14 +99,14 @@
     }
   ],
   "sizeImpact": {
-    "baseline": "No PDFium binary was present before this task; the incremental value is therefore the packaged Android library size.",
+    "baseline": "Static archive sizes; final linked module size depends on retained code and stripping.",
     "androidReleaseAbi": {
       "abi": "arm64-v8a",
-      "incrementalBytes": 43434854
+      "incrementalBytes": 44835524
     },
     "androidX86_64": {
       "abi": "x86_64",
-      "incrementalBytes": 43363000
+      "incrementalBytes": 44795700
     }
   }
 }
