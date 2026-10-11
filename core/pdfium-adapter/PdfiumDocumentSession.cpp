@@ -283,7 +283,8 @@ PdfiumOpenResult PdfiumDocumentSession::open(
   if (fallbackFont.has_value()) {
     std::string fontError;
     if (!fontRegistry->setSuppliedFont(
-            fallbackFont->path, fallbackFont->collectionIndex, &fontError)) {
+            std::move(fallbackFont->source), std::move(fallbackFont->bytes),
+            fallbackFont->collectionIndex, &fontError)) {
       result.error = {
           PdfiumErrorCode::InvalidFallbackFont,
           "Invalid fallback font: " + fontError};

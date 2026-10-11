@@ -37,7 +37,7 @@ class HybridInkSignView internal constructor(
     sessionWorker: PdfSessionWorker = PdfSessionWorker(),
 ) : HybridInkSignViewSpec() {
   private val artifactPolicy = CacheArtifactPolicy.initialize(context)
-  private val fallbackFontResolver = AndroidFallbackFontResolver()
+  private val fallbackFontResolver = AndroidFallbackFontResolver(context.applicationContext)
   private val pageInputCoordinator = PageInputCoordinator(context, artifactPolicy)
   private val container: FrameLayout = object : FrameLayout(context) {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {

@@ -12,7 +12,7 @@
 namespace margelo::nitro::inksignpdf::pdfium {
 
 struct PdfiumResolvedFont final {
-  std::string path;
+  std::string source;
   std::size_t collectionIndex = 0;
   std::shared_ptr<const std::vector<std::uint8_t>> bytes;
 };
@@ -25,7 +25,8 @@ class FontSubstitutionRegistry final {
   FontSubstitutionRegistry(const FontSubstitutionRegistry&) = delete;
   FontSubstitutionRegistry& operator=(const FontSubstitutionRegistry&) = delete;
 
-  bool setSuppliedFont(const std::string& path,
+  bool setSuppliedFont(std::string source,
+                       std::vector<std::uint8_t> bytes,
                        std::size_t collectionIndex,
                        std::string* errorMessage);
 

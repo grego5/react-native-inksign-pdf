@@ -11,11 +11,15 @@
   Document/structural publication and disposal release it; navigation/viewport
   changes reuse it. See [rendering](rendering-front-buffer.md#pdf-pages)
   and [handoff](viewport-input.md#ink-and-navigation).
-- The app owns `androidFallbackFont.uri`. Android validates/reuses it or downloads
-  to a temporary sibling, validates, and publishes atomically. React preloading
-  also requires atomic publication; native cleanup preserves the app's font file.
-  `open()` and document creation through `addPages()` resolve the configured font;
-  later imports retain the document's resolved font.
+- `androidFallbackFont.uri` identifies one source: HTTP(S), local file/path,
+  content/resource URI, Expo `file:///android_res/` URI, or bare resource name.
+  IO resolves bytes on `Dispatchers.IO`; source and reconstructed font faces are
+  capped at 64 MiB. JNI copies bytes into worker-owned C++ storage for font
+  validation and PDFium callbacks. Streams and
+  HTTP connections close when resolution exits; cancellation prevents publication.
+  `open()` and first-document `addPages()` capture the configuration. Document
+  state retains resolved bytes for structural reopen; replacement/closure releases
+  them after worker users finish. iOS ignores this option.
 - Each worker-owned session shares text geometry/rules between placement paths.
   Its LRU cache holds at most eight pages and 8 MiB estimated storage; navigation
   retains entries, session replacement/closure releases them.
@@ -50,3 +54,4 @@
   [import defaults](../architecture.md#system-boundaries) apply.
 - Disposal follows shared cancellation/cleanup rules; worker access serializes
   PDFium reader and file release.
+

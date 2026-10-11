@@ -250,10 +250,10 @@ if (page) {
 
 ### Configure an Android fallback font
 
-A valid font at `uri` is reused; otherwise it is downloaded from `url` to that
-app-owned cache file.
+Pass one source URI: HTTP(S), a local file, Android content/resource URI, or an
+Expo packaged asset. Android keeps the font in memory for the document session.
 
 ```tsx
-<InkSignView androidFallbackFont={{ url: fontDownloadUrl, uri: fontCacheFileUri }} />
+<InkSignView androidFallbackFont={{ uri: fontUri }} />
 ```
 

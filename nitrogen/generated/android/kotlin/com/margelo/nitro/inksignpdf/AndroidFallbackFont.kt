@@ -20,9 +20,6 @@ import java.util.Objects
 data class AndroidFallbackFont(
   @DoNotStrip
   @Keep
-  val url: String,
-  @DoNotStrip
-  @Keep
   val uri: String,
   @DoNotStrip
   @Keep
@@ -33,14 +30,12 @@ data class AndroidFallbackFont(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is AndroidFallbackFont) return false
-    return Objects.deepEquals(this.url, other.url)
-      && Objects.deepEquals(this.uri, other.uri)
+    return Objects.deepEquals(this.uri, other.uri)
       && Objects.deepEquals(this.collectionIndex, other.collectionIndex)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
-      url,
       uri,
       collectionIndex
     ).contentDeepHashCode()
@@ -54,8 +49,8 @@ data class AndroidFallbackFont(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(url: String, uri: String, collectionIndex: Double?): AndroidFallbackFont {
-      return AndroidFallbackFont(url, uri, collectionIndex)
+    private fun fromCpp(uri: String, collectionIndex: Double?): AndroidFallbackFont {
+      return AndroidFallbackFont(uri, collectionIndex)
     }
   }
 }

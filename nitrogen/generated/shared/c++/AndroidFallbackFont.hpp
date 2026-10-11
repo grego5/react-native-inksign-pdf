@@ -40,13 +40,12 @@ namespace margelo::nitro::inksignpdf {
    */
   struct AndroidFallbackFont final {
   public:
-    std::string url     SWIFT_PRIVATE;
     std::string uri     SWIFT_PRIVATE;
     std::optional<double> collectionIndex     SWIFT_PRIVATE;
 
   public:
     AndroidFallbackFont() = default;
-    explicit AndroidFallbackFont(std::string url, std::string uri, std::optional<double> collectionIndex): url(url), uri(uri), collectionIndex(collectionIndex) {}
+    explicit AndroidFallbackFont(std::string uri, std::optional<double> collectionIndex): uri(uri), collectionIndex(collectionIndex) {}
 
   public:
     friend bool operator==(const AndroidFallbackFont& lhs, const AndroidFallbackFont& rhs) = default;
@@ -62,14 +61,12 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::AndroidFallbackFont fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::AndroidFallbackFont(
-        JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "url"))),
         JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "uri"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "collectionIndex")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::AndroidFallbackFont& arg) {
       jsi::Object obj(runtime);
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "url"), JSIConverter<std::string>::toJSI(runtime, arg.url));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "uri"), JSIConverter<std::string>::toJSI(runtime, arg.uri));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "collectionIndex"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.collectionIndex));
       return obj;
@@ -82,7 +79,6 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
-      if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "url")))) return false;
       if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "uri")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "collectionIndex")))) return false;
       return true;

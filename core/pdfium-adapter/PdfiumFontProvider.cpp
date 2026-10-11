@@ -230,13 +230,13 @@ class CallerFontSystemInfo final {
     auto* provider = from(info);
     if (provider->owns(font)) {
       const auto* handle = static_cast<const ProviderFontHandle*>(font);
-      const auto& path = handle->resource->path;
-      if (buffer == nullptr || bufferSize < path.size() + 1) {
-        return static_cast<unsigned long>(path.size() + 1);
+      const auto& name = handle->resource->source;
+      if (buffer == nullptr || bufferSize < name.size() + 1) {
+        return static_cast<unsigned long>(name.size() + 1);
       }
-      std::copy(path.begin(), path.end(), buffer);
-      buffer[path.size()] = '\0';
-      return static_cast<unsigned long>(path.size() + 1);
+      std::copy(name.begin(), name.end(), buffer);
+      buffer[name.size()] = '\0';
+      return static_cast<unsigned long>(name.size() + 1);
     }
     if (provider->defaultInfo_ == nullptr ||
         provider->defaultInfo_->GetFaceName == nullptr) {

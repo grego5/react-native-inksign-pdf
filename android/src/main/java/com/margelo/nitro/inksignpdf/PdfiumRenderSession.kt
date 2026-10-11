@@ -174,10 +174,10 @@ internal class PdfiumRenderSession private constructor(
       fallbackFont: PdfFallbackFont? = null,
     ): PdfiumRenderSession {
       require(documentBytes.isNotEmpty()) { "PDFium requires non-empty document bytes" }
-      val fallbackPath = fallbackFont?.path
+      val fallbackBytes = fallbackFont?.bytes
       val fallbackCollectionIndex = fallbackFont?.collectionIndex ?: 0.0
       val handle = try {
-        nativeOpen(documentBytes, fallbackPath, fallbackCollectionIndex)
+        nativeOpen(documentBytes, fallbackFont?.source, fallbackBytes, fallbackCollectionIndex)
       } catch (error: IllegalArgumentException) {
         throw PdfSessionException(
           "invalid_fallback_font",
@@ -205,7 +205,8 @@ internal class PdfiumRenderSession private constructor(
     @JvmStatic
     private external fun nativeOpen(
       documentBytes: ByteArray,
-      fallbackPath: String?,
+      fallbackSource: String?,
+      fallbackBytes: ByteArray?,
       fallbackCollectionIndex: Double,
     ): Long
 

@@ -93,8 +93,8 @@ Use repository runners instead of manually reconstructing their commands:
 tools\test-android.ps1 -Mode jvm
 tools\test-android.ps1 -Mode jvm -Test <fully.qualified.TestClass>
 tools\test-android.ps1 -Mode build
-tools\test-android.ps1 -Mode build -Abi x86
-tools\test-android.ps1 -Mode connected -Abi x86
+tools\test-android.ps1 -Mode build -Abi x86_64
+tools\test-android.ps1 -Mode connected -Abi x86_64
 tools\test-android.ps1 -Mode connected
 tools\test-android.ps1 -Mode connected -Test <fully.qualified.TestClass>
 tools\test-native.ps1 -Suite geometry

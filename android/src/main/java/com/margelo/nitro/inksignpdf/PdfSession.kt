@@ -9,8 +9,8 @@ import java.util.concurrent.ThreadFactory
 
 internal const val pdfiumAndroidDisplayFlags = 0x13
 
-/** Local font path passed from open preparation to PDFium. */
-internal data class PdfFallbackFont(val path: String, val collectionIndex: Double?)
+/** Document-owned source bytes, reused when the worker reopens structural candidates. */
+internal class PdfFallbackFont(val source: String, val bytes: ByteArray, val collectionIndex: Double)
 
 /** Point dimensions reported by one page of an opened source PDF. */
 internal data class PdfPageDimensions(
