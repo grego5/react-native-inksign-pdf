@@ -468,14 +468,14 @@ open class HybridInkSignViewSpec_cxx {
     }
   }
   
-  public final var onPageChange: bridge.std__optional_std__function_void_const_PageInfo_____event______ {
+  public final var onPageChange: bridge.std__optional_std__function_void_const_PageChangeEvent_____event______ {
     @inline(__always)
     get {
-      return { () -> bridge.std__optional_std__function_void_const_PageInfo_____event______ in
+      return { () -> bridge.std__optional_std__function_void_const_PageChangeEvent_____event______ in
         if let __unwrappedValue = self.__implementation.onPageChange {
-          return bridge.create_std__optional_std__function_void_const_PageInfo_____event______({ () -> bridge.Func_void_PageInfo in
-            let __closureWrapper = Func_void_PageInfo(__unwrappedValue)
-            return bridge.create_Func_void_PageInfo(__closureWrapper.toUnsafe())
+          return bridge.create_std__optional_std__function_void_const_PageChangeEvent_____event______({ () -> bridge.Func_void_PageChangeEvent in
+            let __closureWrapper = Func_void_PageChangeEvent(__unwrappedValue)
+            return bridge.create_Func_void_PageChangeEvent(__closureWrapper.toUnsafe())
           }())
         } else {
           return .init()
@@ -484,12 +484,12 @@ open class HybridInkSignViewSpec_cxx {
     }
     @inline(__always)
     set {
-      self.__implementation.onPageChange = { () -> ((_ event: PageInfo) -> Void)? in
-        if bridge.has_value_std__optional_std__function_void_const_PageInfo_____event______(newValue) {
-          let __unwrapped = bridge.get_std__optional_std__function_void_const_PageInfo_____event______(newValue)
-          return { () -> (PageInfo) -> Void in
-            let __wrappedFunction = bridge.wrap_Func_void_PageInfo(__unwrapped)
-            return { (__event: PageInfo) -> Void in
+      self.__implementation.onPageChange = { () -> ((_ event: PageChangeEvent) -> Void)? in
+        if bridge.has_value_std__optional_std__function_void_const_PageChangeEvent_____event______(newValue) {
+          let __unwrapped = bridge.get_std__optional_std__function_void_const_PageChangeEvent_____event______(newValue)
+          return { () -> (PageChangeEvent) -> Void in
+            let __wrappedFunction = bridge.wrap_Func_void_PageChangeEvent(__unwrapped)
+            return { (__event: PageChangeEvent) -> Void in
               __wrappedFunction.call(__event)
             }
           }()
@@ -772,14 +772,14 @@ open class HybridInkSignViewSpec_cxx {
   }
   
   @inline(__always)
-  public final func hasInk() -> bridge.Result_bool_ {
+  public final func getState() -> bridge.Result_DocumentState_ {
     do {
-      let __result = try self.__implementation.hasInk()
+      let __result = try self.__implementation.getState()
       let __resultCpp = __result
-      return bridge.create_Result_bool_(__resultCpp)
+      return bridge.create_Result_DocumentState_(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_bool_(__exceptionPtr)
+      return bridge.create_Result_DocumentState_(__exceptionPtr)
     }
   }
   
@@ -886,17 +886,6 @@ open class HybridInkSignViewSpec_cxx {
   public final func clearInk() -> bridge.Result_void_ {
     do {
       try self.__implementation.clearInk()
-      return bridge.create_Result_void_()
-    } catch (let __error) {
-      let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_void_(__exceptionPtr)
-    }
-  }
-  
-  @inline(__always)
-  public final func resetDirty() -> bridge.Result_void_ {
-    do {
-      try self.__implementation.resetDirty()
       return bridge.create_Result_void_()
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()

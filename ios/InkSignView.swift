@@ -114,7 +114,8 @@ final class InkSignView: HybridInkSignViewSpec {
   var endedDrawingPageToOverlayTransform: CGAffineTransform?
   var endedDrawingTransactionID: UInt64?
   var nextDrawingTransactionID: UInt64 = 0
-  var lastChange: (Bool, Bool, Bool, String, String?, String?)?
+  var lastChange: (Int, Bool, String, String?, String?, Int?)?
+  var lastPublicPage: PageChangeEvent?
   var documentID: String?
   var loadError: String?
   var isPickingPageCoords: Bool { interaction.isPickingCoordinates }
@@ -199,7 +200,7 @@ final class InkSignView: HybridInkSignViewSpec {
   var onStateChange: ((ViewerState) -> Void)? {
     didSet { performOnMain { self.emitChange(force: true) } }
   }
-  var onPageChange: ((PageInfo) -> Void)?
+  var onPageChange: ((PageChangeEvent) -> Void)?
   var onZoomChange: ((Double) -> Void)?
 
   var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Void)?

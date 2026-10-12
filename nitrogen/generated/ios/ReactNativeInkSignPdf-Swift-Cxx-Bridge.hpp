@@ -16,6 +16,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `AndroidFallbackFont` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
+// Forward declaration of `DocumentState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
@@ -34,6 +36,8 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
+// Forward declaration of `PageChangeEvent` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageChangeEvent; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `PageInfo` to properly resolve imports.
@@ -86,6 +90,7 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "AddPagesOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AndroidFallbackFont.hpp"
+#include "DocumentState.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
@@ -95,6 +100,7 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "ImagePageSize.hpp"
 #include "InteractionMode.hpp"
 #include "NamedFontSource.hpp"
+#include "PageChangeEvent.hpp"
 #include "PageCoords.hpp"
 #include "PageInfo.hpp"
 #include "PageType.hpp"
@@ -366,6 +372,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
+  // pragma MARK: std::optional<bool>
+  /**
+   * Specialized version of `std::optional<bool>`.
+   */
+  using std__optional_bool_ = std::optional<bool>;
+  inline std::optional<bool> create_std__optional_bool_(const bool& value) noexcept {
+    return std::optional<bool>(value);
+  }
+  inline bool has_value_std__optional_bool_(const std::optional<bool>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline bool get_std__optional_bool_(const std::optional<bool>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::optional<TextAnnotationOptions>
   /**
    * Specialized version of `std::optional<TextAnnotationOptions>`.
@@ -403,6 +424,15 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   // pragma MARK: std::weak_ptr<HybridAnalyzedPageSpec>
   using std__weak_ptr_HybridAnalyzedPageSpec_ = std::weak_ptr<HybridAnalyzedPageSpec>;
   inline std__weak_ptr_HybridAnalyzedPageSpec_ weakify_std__shared_ptr_HybridAnalyzedPageSpec_(const std::shared_ptr<HybridAnalyzedPageSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<PageInfo>
+  using Result_PageInfo_ = Result<PageInfo>;
+  inline Result_PageInfo_ create_Result_PageInfo_(const PageInfo& value) noexcept {
+    return Result<PageInfo>::withValue(value);
+  }
+  inline Result_PageInfo_ create_Result_PageInfo_(const std::exception_ptr& error) noexcept {
+    return Result<PageInfo>::withError(error);
+  }
   
   // pragma MARK: Result<std::shared_ptr<Promise<void>>>
   using Result_std__shared_ptr_Promise_void___ = Result<std::shared_ptr<Promise<void>>>;
@@ -598,21 +628,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::optional<bool>
-  /**
-   * Specialized version of `std::optional<bool>`.
-   */
-  using std__optional_bool_ = std::optional<bool>;
-  inline std::optional<bool> create_std__optional_bool_(const bool& value) noexcept {
-    return std::optional<bool>(value);
-  }
-  inline bool has_value_std__optional_bool_(const std::optional<bool>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline bool get_std__optional_bool_(const std::optional<bool>& optional) noexcept {
-    return optional.value();
-  }
-  
   // pragma MARK: std::optional<DoubleTapOptions>
   /**
    * Specialized version of `std::optional<DoubleTapOptions>`.
@@ -640,6 +655,50 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline PagerDirection get_std__optional_PagerDirection_(const std::optional<PagerDirection>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::variant<nitro::NullType, double>
+  /**
+   * Wrapper struct for `std::variant<nitro::NullType, double>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
+   */
+  struct std__variant_nitro__NullType__double_ final {
+    std::variant<nitro::NullType, double> variant;
+    std__variant_nitro__NullType__double_(std::variant<nitro::NullType, double> variant): variant(variant) { }
+    operator std::variant<nitro::NullType, double>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline nitro::NullType get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline double get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_nitro__NullType__double_ create_std__variant_nitro__NullType__double_(nitro::NullType value) noexcept {
+    return std__variant_nitro__NullType__double_(value);
+  }
+  inline std__variant_nitro__NullType__double_ create_std__variant_nitro__NullType__double_(double value) noexcept {
+    return std__variant_nitro__NullType__double_(value);
+  }
+  
+  // pragma MARK: std::optional<std::variant<nitro::NullType, double>>
+  /**
+   * Specialized version of `std::optional<std::variant<nitro::NullType, double>>`.
+   */
+  using std__optional_std__variant_nitro__NullType__double__ = std::optional<std::variant<nitro::NullType, double>>;
+  inline std::optional<std::variant<nitro::NullType, double>> create_std__optional_std__variant_nitro__NullType__double__(const std::variant<nitro::NullType, double>& value) noexcept {
+    return std::optional<std::variant<nitro::NullType, double>>(value);
+  }
+  inline bool has_value_std__optional_std__variant_nitro__NullType__double__(const std::optional<std::variant<nitro::NullType, double>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::variant<nitro::NullType, double> get_std__optional_std__variant_nitro__NullType__double__(const std::optional<std::variant<nitro::NullType, double>>& optional) noexcept {
     return optional.value();
   }
   
@@ -680,40 +739,40 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::function<void(const PageInfo& /* event */)>
+  // pragma MARK: std::function<void(const PageChangeEvent& /* event */)>
   /**
-   * Specialized version of `std::function<void(const PageInfo&)>`.
+   * Specialized version of `std::function<void(const PageChangeEvent&)>`.
    */
-  using Func_void_PageInfo = std::function<void(const PageInfo& /* event */)>;
+  using Func_void_PageChangeEvent = std::function<void(const PageChangeEvent& /* event */)>;
   /**
-   * Wrapper class for a `std::function<void(const PageInfo& / * event * /)>`, this can be used from Swift.
+   * Wrapper class for a `std::function<void(const PageChangeEvent& / * event * /)>`, this can be used from Swift.
    */
-  class Func_void_PageInfo_Wrapper final {
+  class Func_void_PageChangeEvent_Wrapper final {
   public:
-    explicit Func_void_PageInfo_Wrapper(std::function<void(const PageInfo& /* event */)>&& func): _function(std::make_unique<std::function<void(const PageInfo& /* event */)>>(std::move(func))) {}
-    inline void call(PageInfo event) const noexcept {
+    explicit Func_void_PageChangeEvent_Wrapper(std::function<void(const PageChangeEvent& /* event */)>&& func): _function(std::make_unique<std::function<void(const PageChangeEvent& /* event */)>>(std::move(func))) {}
+    inline void call(PageChangeEvent event) const noexcept {
       _function->operator()(event);
     }
   private:
-    std::unique_ptr<std::function<void(const PageInfo& /* event */)>> _function;
+    std::unique_ptr<std::function<void(const PageChangeEvent& /* event */)>> _function;
   } SWIFT_NONCOPYABLE;
-  Func_void_PageInfo create_Func_void_PageInfo(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_PageInfo_Wrapper wrap_Func_void_PageInfo(Func_void_PageInfo value) noexcept {
-    return Func_void_PageInfo_Wrapper(std::move(value));
+  Func_void_PageChangeEvent create_Func_void_PageChangeEvent(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_PageChangeEvent_Wrapper wrap_Func_void_PageChangeEvent(Func_void_PageChangeEvent value) noexcept {
+    return Func_void_PageChangeEvent_Wrapper(std::move(value));
   }
   
-  // pragma MARK: std::optional<std::function<void(const PageInfo& /* event */)>>
+  // pragma MARK: std::optional<std::function<void(const PageChangeEvent& /* event */)>>
   /**
-   * Specialized version of `std::optional<std::function<void(const PageInfo& / * event * /)>>`.
+   * Specialized version of `std::optional<std::function<void(const PageChangeEvent& / * event * /)>>`.
    */
-  using std__optional_std__function_void_const_PageInfo_____event______ = std::optional<std::function<void(const PageInfo& /* event */)>>;
-  inline std::optional<std::function<void(const PageInfo& /* event */)>> create_std__optional_std__function_void_const_PageInfo_____event______(const std::function<void(const PageInfo& /* event */)>& value) noexcept {
-    return std::optional<std::function<void(const PageInfo& /* event */)>>(value);
+  using std__optional_std__function_void_const_PageChangeEvent_____event______ = std::optional<std::function<void(const PageChangeEvent& /* event */)>>;
+  inline std::optional<std::function<void(const PageChangeEvent& /* event */)>> create_std__optional_std__function_void_const_PageChangeEvent_____event______(const std::function<void(const PageChangeEvent& /* event */)>& value) noexcept {
+    return std::optional<std::function<void(const PageChangeEvent& /* event */)>>(value);
   }
-  inline bool has_value_std__optional_std__function_void_const_PageInfo_____event______(const std::optional<std::function<void(const PageInfo& /* event */)>>& optional) noexcept {
+  inline bool has_value_std__optional_std__function_void_const_PageChangeEvent_____event______(const std::optional<std::function<void(const PageChangeEvent& /* event */)>>& optional) noexcept {
     return optional.has_value();
   }
-  inline std::function<void(const PageInfo& /* event */)> get_std__optional_std__function_void_const_PageInfo_____event______(const std::optional<std::function<void(const PageInfo& /* event */)>>& optional) noexcept {
+  inline std::function<void(const PageChangeEvent& /* event */)> get_std__optional_std__function_void_const_PageChangeEvent_____event______(const std::optional<std::function<void(const PageChangeEvent& /* event */)>>& optional) noexcept {
     return optional.value();
   }
   
@@ -856,6 +915,28 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline PromiseHolder<PageInfo> wrap_std__shared_ptr_Promise_PageInfo__(std::shared_ptr<Promise<PageInfo>> promise) noexcept {
     return PromiseHolder<PageInfo>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const PageInfo& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const PageInfo&)>`.
+   */
+  using Func_void_PageInfo = std::function<void(const PageInfo& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const PageInfo& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_PageInfo_Wrapper final {
+  public:
+    explicit Func_void_PageInfo_Wrapper(std::function<void(const PageInfo& /* result */)>&& func): _function(std::make_unique<std::function<void(const PageInfo& /* result */)>>(std::move(func))) {}
+    inline void call(PageInfo result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const PageInfo& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_PageInfo create_Func_void_PageInfo(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_PageInfo_Wrapper wrap_Func_void_PageInfo(Func_void_PageInfo value) noexcept {
+    return Func_void_PageInfo_Wrapper(std::move(value));
   }
   
   // pragma MARK: std::optional<PageInfo>
@@ -1110,13 +1191,13 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Result<Viewport>::withError(error);
   }
   
-  // pragma MARK: Result<bool>
-  using Result_bool_ = Result<bool>;
-  inline Result_bool_ create_Result_bool_(bool value) noexcept {
-    return Result<bool>::withValue(std::move(value));
+  // pragma MARK: Result<DocumentState>
+  using Result_DocumentState_ = Result<DocumentState>;
+  inline Result_DocumentState_ create_Result_DocumentState_(const DocumentState& value) noexcept {
+    return Result<DocumentState>::withValue(value);
   }
-  inline Result_bool_ create_Result_bool_(const std::exception_ptr& error) noexcept {
-    return Result<bool>::withError(error);
+  inline Result_DocumentState_ create_Result_DocumentState_(const std::exception_ptr& error) noexcept {
+    return Result<DocumentState>::withError(error);
   }
   
   // pragma MARK: Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>

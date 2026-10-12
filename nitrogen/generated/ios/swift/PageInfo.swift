@@ -18,10 +18,20 @@ public extension PageInfo {
   /**
    * Create a new instance of `PageInfo`.
    */
-  init(pageIndex: Double, pageCount: Double, width: Double, height: Double) {
-    self.init(pageIndex, pageCount, width, height)
+  init(hasInk: Bool, hasText: Bool, pageIndex: Double, pageCount: Double, isDirty: Bool, pageId: String, width: Double, height: Double, rotation: Double, canUndo: Bool, canRedo: Bool) {
+    self.init(hasInk, hasText, pageIndex, pageCount, isDirty, std.string(pageId), width, height, rotation, canUndo, canRedo)
   }
 
+  @inline(__always)
+  var hasInk: Bool {
+    return self.__hasInk
+  }
+  
+  @inline(__always)
+  var hasText: Bool {
+    return self.__hasText
+  }
+  
   @inline(__always)
   var pageIndex: Double {
     return self.__pageIndex
@@ -33,6 +43,16 @@ public extension PageInfo {
   }
   
   @inline(__always)
+  var isDirty: Bool {
+    return self.__isDirty
+  }
+  
+  @inline(__always)
+  var pageId: String {
+    return String(self.__pageId)
+  }
+  
+  @inline(__always)
   var width: Double {
     return self.__width
   }
@@ -40,5 +60,20 @@ public extension PageInfo {
   @inline(__always)
   var height: Double {
     return self.__height
+  }
+  
+  @inline(__always)
+  var rotation: Double {
+    return self.__rotation
+  }
+  
+  @inline(__always)
+  var canUndo: Bool {
+    return self.__canUndo
+  }
+  
+  @inline(__always)
+  var canRedo: Bool {
+    return self.__canRedo
   }
 }

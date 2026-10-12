@@ -35,10 +35,10 @@ namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 
+#include <optional>
 #include <NitroModules/Null.hpp>
 #include <string>
 #include <variant>
-#include <optional>
 #include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
@@ -50,6 +50,7 @@ namespace margelo::nitro::inksignpdf {
    */
   struct TextAnnotationOptions final {
   public:
+    std::optional<bool> untracked     SWIFT_PRIVATE;
     std::optional<std::variant<nitro::NullType, std::string>> font     SWIFT_PRIVATE;
     std::optional<double> fontSize     SWIFT_PRIVATE;
     std::optional<std::string> color     SWIFT_PRIVATE;
@@ -60,7 +61,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     TextAnnotationOptions() = default;
-    explicit TextAnnotationOptions(std::optional<std::variant<nitro::NullType, std::string>> font, std::optional<double> fontSize, std::optional<std::string> color, std::optional<TextDirection> direction, std::optional<double> maxLines, std::optional<TextAlignment> alignment, std::optional<TextVerticalAnchor> verticalAnchor): font(font), fontSize(fontSize), color(color), direction(direction), maxLines(maxLines), alignment(alignment), verticalAnchor(verticalAnchor) {}
+    explicit TextAnnotationOptions(std::optional<bool> untracked, std::optional<std::variant<nitro::NullType, std::string>> font, std::optional<double> fontSize, std::optional<std::string> color, std::optional<TextDirection> direction, std::optional<double> maxLines, std::optional<TextAlignment> alignment, std::optional<TextVerticalAnchor> verticalAnchor): untracked(untracked), font(font), fontSize(fontSize), color(color), direction(direction), maxLines(maxLines), alignment(alignment), verticalAnchor(verticalAnchor) {}
 
   public:
     friend bool operator==(const TextAnnotationOptions& lhs, const TextAnnotationOptions& rhs) = default;
@@ -76,6 +77,7 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::TextAnnotationOptions fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::TextAnnotationOptions(
+        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "untracked"))),
         JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "font"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontSize"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "color"))),
@@ -87,6 +89,7 @@ namespace margelo::nitro {
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::TextAnnotationOptions& arg) {
       jsi::Object obj(runtime);
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "untracked"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.untracked));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "font"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.font));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "fontSize"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.fontSize));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "color"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.color));
@@ -104,6 +107,7 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
+      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "untracked")))) return false;
       if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "font")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "fontSize")))) return false;
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "color")))) return false;

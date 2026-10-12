@@ -96,7 +96,7 @@ extension InkSignView {
     { [weak self] result in
       switch result {
       case .success(let info):
-        self?.onPageChange?(info)
+        self?.emitPageState()
       case .failure(let error):
         self?.reportPageNavigationFailure(error)
       }
@@ -145,7 +145,7 @@ extension InkSignView {
       pending.settlement.resolve(pageInfo)
       if !disposed, documentCoordinator.generation == pending.operation.generation,
          documentCoordinator.document === state, state.activePage.id == pageID {
-        onPageChange?(pageInfo)
+        emitPageState()
       }
       emitChange(force: true)
       return true

@@ -13,6 +13,7 @@ public protocol HybridAnalyzedPageSpec_protocol: HybridObject {
   
 
   // Methods
+  func getState() throws -> PageInfo
   func focusText(id: Double, options: TextFocusOptions?) throws -> Promise<Void>
   func resolveText(options: ResolveTextOptions) throws -> Double
   func getTextValue(id: Double) throws -> String

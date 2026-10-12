@@ -280,7 +280,7 @@ test('initial load errors use the current callback and ignore retired sessions',
     });
     const failure = new Error('pdf_load_failed: unreadable PDF');
     const snapshot = {
-      documentId: null, mode: 'view', canUndo: false, canRedo: false, isDirty: false,
+      documentId: null, pageCount: 0, pageIndex: null, mode: 'view', isDirty: false,
       error: failure.message,
     };
     await act(async () => {

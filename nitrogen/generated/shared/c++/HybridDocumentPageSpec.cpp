@@ -14,7 +14,7 @@ namespace margelo::nitro::inksignpdf {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
-      prototype.registerHybridMethod("getInfo", &HybridDocumentPageSpec::getInfo);
+      prototype.registerHybridMethod("getState", &HybridDocumentPageSpec::getState);
       prototype.registerHybridMethod("resolveText", &HybridDocumentPageSpec::resolveText);
       prototype.registerHybridMethod("getTextValue", &HybridDocumentPageSpec::getTextValue);
       prototype.registerHybridMethod("setTextValue", &HybridDocumentPageSpec::setTextValue);

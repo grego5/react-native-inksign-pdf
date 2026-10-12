@@ -61,7 +61,7 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Methods
-      virtual PageInfo getInfo() = 0;
+      virtual PageInfo getState() = 0;
       virtual double resolveText(const ResolveTextOptions& options) = 0;
       virtual std::string getTextValue(double id) = 0;
       virtual void setTextValue(double id, const std::string& text, const std::optional<TextAnnotationOptions>& options) = 0;

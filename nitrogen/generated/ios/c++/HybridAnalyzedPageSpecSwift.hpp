@@ -12,6 +12,8 @@
 // Forward declaration of `HybridAnalyzedPageSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridAnalyzedPageSpec_cxx; }
 
+// Forward declaration of `PageInfo` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `TextFocusOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
 // Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
@@ -35,12 +37,13 @@ namespace margelo::nitro::inksignpdf { struct TextEntry; }
 // Forward declaration of `TextValueSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
 
+#include "PageInfo.hpp"
+#include <string>
 #include <NitroModules/Promise.hpp>
 #include "TextFocusOptions.hpp"
 #include <optional>
 #include "FieldFocusVerticalAnchor.hpp"
 #include "ResolveTextOptions.hpp"
-#include <string>
 #include "TextAnnotationBounds.hpp"
 #include "TextKeyOccurrence.hpp"
 #include <NitroModules/Null.hpp>
@@ -103,6 +106,14 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
+    inline PageInfo getState() override {
+      auto __result = _swiftPart.getState();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) override {
       auto __result = _swiftPart.focusText(std::forward<decltype(id)>(id), options);
       if (__result.hasError()) [[unlikely]] {

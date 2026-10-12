@@ -31,11 +31,11 @@
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 
+#include "InteractionMode.hpp"
 #include <NitroModules/Null.hpp>
 #include <string>
 #include <variant>
 #include <optional>
-#include "InteractionMode.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -44,16 +44,16 @@ namespace margelo::nitro::inksignpdf {
    */
   struct ViewerState final {
   public:
-    std::optional<std::variant<nitro::NullType, std::string>> documentId     SWIFT_PRIVATE;
-    bool canUndo     SWIFT_PRIVATE;
-    bool canRedo     SWIFT_PRIVATE;
-    bool isDirty     SWIFT_PRIVATE;
     InteractionMode mode     SWIFT_PRIVATE;
     std::optional<std::variant<nitro::NullType, std::string>> error     SWIFT_PRIVATE;
+    std::optional<std::variant<nitro::NullType, double>> pageIndex     SWIFT_PRIVATE;
+    std::optional<std::variant<nitro::NullType, std::string>> documentId     SWIFT_PRIVATE;
+    double pageCount     SWIFT_PRIVATE;
+    bool isDirty     SWIFT_PRIVATE;
 
   public:
     ViewerState() = default;
-    explicit ViewerState(std::optional<std::variant<nitro::NullType, std::string>> documentId, bool canUndo, bool canRedo, bool isDirty, InteractionMode mode, std::optional<std::variant<nitro::NullType, std::string>> error): documentId(documentId), canUndo(canUndo), canRedo(canRedo), isDirty(isDirty), mode(mode), error(error) {}
+    explicit ViewerState(InteractionMode mode, std::optional<std::variant<nitro::NullType, std::string>> error, std::optional<std::variant<nitro::NullType, double>> pageIndex, std::optional<std::variant<nitro::NullType, std::string>> documentId, double pageCount, bool isDirty): mode(mode), error(error), pageIndex(pageIndex), documentId(documentId), pageCount(pageCount), isDirty(isDirty) {}
 
   public:
     friend bool operator==(const ViewerState& lhs, const ViewerState& rhs) = default;
@@ -69,22 +69,22 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::ViewerState fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::ViewerState(
-        JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "documentId"))),
-        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canUndo"))),
-        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canRedo"))),
-        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty"))),
         JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode"))),
-        JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "error")))
+        JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "error"))),
+        JSIConverter<std::optional<std::variant<nitro::NullType, double>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageIndex"))),
+        JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "documentId"))),
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageCount"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::ViewerState& arg) {
       jsi::Object obj(runtime);
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "documentId"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.documentId));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "canUndo"), JSIConverter<bool>::toJSI(runtime, arg.canUndo));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "canRedo"), JSIConverter<bool>::toJSI(runtime, arg.canRedo));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "isDirty"), JSIConverter<bool>::toJSI(runtime, arg.isDirty));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "mode"), JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::toJSI(runtime, arg.mode));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "error"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.error));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageIndex"), JSIConverter<std::optional<std::variant<nitro::NullType, double>>>::toJSI(runtime, arg.pageIndex));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "documentId"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.documentId));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageCount"), JSIConverter<double>::toJSI(runtime, arg.pageCount));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "isDirty"), JSIConverter<bool>::toJSI(runtime, arg.isDirty));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -95,12 +95,12 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
-      if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "documentId")))) return false;
-      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canUndo")))) return false;
-      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canRedo")))) return false;
-      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty")))) return false;
       if (!JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode")))) return false;
       if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "error")))) return false;
+      if (!JSIConverter<std::optional<std::variant<nitro::NullType, double>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageIndex")))) return false;
+      if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "documentId")))) return false;
+      if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageCount")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty")))) return false;
       return true;
     }
   };

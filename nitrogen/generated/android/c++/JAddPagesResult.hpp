@@ -13,6 +13,7 @@
 #include "JPageInfo.hpp"
 #include "PageInfo.hpp"
 #include <optional>
+#include <string>
 
 namespace margelo::nitro::inksignpdf {
 

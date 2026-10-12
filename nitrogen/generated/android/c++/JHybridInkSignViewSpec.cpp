@@ -17,16 +17,20 @@ namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
 namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
-// Forward declaration of `PageInfo` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PageInfo; }
+// Forward declaration of `PageChangeEvent` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageChangeEvent; }
 // Forward declaration of `TextSelection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextSelection; }
+// Forward declaration of `PageInfo` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
+// Forward declaration of `DocumentState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `HybridTextHandleSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
@@ -69,15 +73,16 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "JFunc_void_ViewerState.hpp"
 #include <NitroModules/JNICallable.hpp>
 #include "JViewerState.hpp"
+#include "InteractionMode.hpp"
+#include "JInteractionMode.hpp"
 #include <NitroModules/Null.hpp>
 #include <variant>
 #include "JVariant_NullType_String.hpp"
 #include <NitroModules/JNull.hpp>
-#include "InteractionMode.hpp"
-#include "JInteractionMode.hpp"
-#include "PageInfo.hpp"
-#include "JFunc_void_PageInfo.hpp"
-#include "JPageInfo.hpp"
+#include "JVariant_NullType_Double.hpp"
+#include "PageChangeEvent.hpp"
+#include "JFunc_void_PageChangeEvent.hpp"
+#include "JPageChangeEvent.hpp"
 #include "JFunc_void_double.hpp"
 #include "TextSelection.hpp"
 #include "JFunc_void_std__optional_std__variant_nitro__NullType__TextSelection__.hpp"
@@ -86,12 +91,16 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
 #include <NitroModules/JUnit.hpp>
+#include "PageInfo.hpp"
+#include "JPageInfo.hpp"
 #include "AddPagesResult.hpp"
 #include "JAddPagesResult.hpp"
 #include "Viewport.hpp"
 #include "JViewport.hpp"
 #include "PageCoords.hpp"
 #include "JPageCoords.hpp"
+#include "DocumentState.hpp"
+#include "JDocumentState.hpp"
 #include <memory>
 #include "HybridTextHandleSpec.hpp"
 #include "JVariant_HybridTextHandleSpec_NullType.hpp"
@@ -297,22 +306,22 @@ namespace margelo::nitro::inksignpdf {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_ViewerState::javaobject> /* onStateChange */)>("setOnStateChange_cxx");
     method(_javaPart, onStateChange.has_value() ? JFunc_void_ViewerState_cxx::fromCpp(onStateChange.value()) : nullptr);
   }
-  std::optional<std::function<void(const PageInfo& /* event */)>> JHybridInkSignViewSpec::getOnPageChange() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_PageInfo::javaobject>()>("getOnPageChange_cxx");
+  std::optional<std::function<void(const PageChangeEvent& /* event */)>> JHybridInkSignViewSpec::getOnPageChange() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_PageChangeEvent::javaobject>()>("getOnPageChange_cxx");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const PageInfo& /* event */)> {
-      if (__result->isInstanceOf(JFunc_void_PageInfo_cxx::javaClassStatic())) [[likely]] {
-        auto downcast = jni::static_ref_cast<JFunc_void_PageInfo_cxx::javaobject>(__result);
+    return __result != nullptr ? std::make_optional([&]() -> std::function<void(const PageChangeEvent& /* event */)> {
+      if (__result->isInstanceOf(JFunc_void_PageChangeEvent_cxx::javaClassStatic())) [[likely]] {
+        auto downcast = jni::static_ref_cast<JFunc_void_PageChangeEvent_cxx::javaobject>(__result);
         return downcast->cthis()->getFunction();
       } else {
         auto __resultRef = jni::make_global(__result);
-        return JNICallable<JFunc_void_PageInfo, void(PageInfo)>(std::move(__resultRef));
+        return JNICallable<JFunc_void_PageChangeEvent, void(PageChangeEvent)>(std::move(__resultRef));
       }
     }()) : std::nullopt;
   }
-  void JHybridInkSignViewSpec::setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_PageInfo::javaobject> /* onPageChange */)>("setOnPageChange_cxx");
-    method(_javaPart, onPageChange.has_value() ? JFunc_void_PageInfo_cxx::fromCpp(onPageChange.value()) : nullptr);
+  void JHybridInkSignViewSpec::setOnPageChange(const std::optional<std::function<void(const PageChangeEvent& /* event */)>>& onPageChange) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JFunc_void_PageChangeEvent::javaobject> /* onPageChange */)>("setOnPageChange_cxx");
+    method(_javaPart, onPageChange.has_value() ? JFunc_void_PageChangeEvent_cxx::fromCpp(onPageChange.value()) : nullptr);
   }
   std::optional<std::function<void(double /* zoom */)>> JHybridInkSignViewSpec::getOnZoomChange() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JFunc_void_double::javaobject>()>("getOnZoomChange_cxx");
@@ -498,10 +507,10 @@ namespace margelo::nitro::inksignpdf {
       return __promise;
     }();
   }
-  bool JHybridInkSignViewSpec::hasInk() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jboolean()>("hasInk");
+  DocumentState JHybridInkSignViewSpec::getState() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JDocumentState>()>("getState");
     auto __result = method(_javaPart);
-    return static_cast<bool>(__result);
+    return __result->toCpp();
   }
   std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> JHybridInkSignViewSpec::getSelectedText() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JVariant_HybridTextHandleSpec_NullType>()>("getSelectedText");
@@ -543,10 +552,6 @@ namespace margelo::nitro::inksignpdf {
   }
   void JHybridInkSignViewSpec::clearInk() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clearInk");
-    method(_javaPart);
-  }
-  void JHybridInkSignViewSpec::resetDirty() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("resetDirty");
     method(_javaPart);
   }
   void JHybridInkSignViewSpec::setTextDirection(TextDirection direction) {

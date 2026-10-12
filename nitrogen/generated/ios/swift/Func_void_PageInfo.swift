@@ -8,21 +8,21 @@
 import NitroModules
 
 /**
- * Wraps a Swift `(_ event: PageInfo) -> Void` as a class.
+ * Wraps a Swift `(_ value: PageInfo) -> Void` as a class.
  * This class can be used from C++, e.g. to wrap the Swift closure as a `std::function`.
  */
 public final class Func_void_PageInfo {
   public typealias bridge = margelo.nitro.inksignpdf.bridge.swift
 
-  private let closure: (_ event: PageInfo) -> Void
+  private let closure: (_ value: PageInfo) -> Void
 
-  public init(_ closure: @escaping (_ event: PageInfo) -> Void) {
+  public init(_ closure: @escaping (_ value: PageInfo) -> Void) {
     self.closure = closure
   }
 
   @inline(__always)
-  public func call(event: PageInfo) -> Void {
-    self.closure(event)
+  public func call(value: PageInfo) -> Void {
+    self.closure(value)
   }
 
   /**

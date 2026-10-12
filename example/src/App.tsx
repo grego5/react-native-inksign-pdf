@@ -8,7 +8,7 @@ import {
   InkSignView,
   isOperationCancelled,
   type AddPagesOptions,
-  type PageInfo,
+  type PageChangeEvent,
   type ViewerState,
   type ViewportOptions,
   type InkSignViewHandle,
@@ -22,22 +22,22 @@ export default function App() {
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
   const modeRef = useRef<ViewerState['mode']>('view');
   const zoomRef = useRef(1);
-  const [pageInfo, setPageInfo] = useState<PageInfo | null>(null);
+  const [pageInfo, setPageInfo] = useState<PageChangeEvent | null>(null);
   const [textSelected, setTextSelected] = useState(false);
   const [signingFieldName, setSigningFieldName] = useState<string | null>(null);
   const [fieldRtl, setFieldRtl] = useState(false);
 
   const [state, setState] = useState<ViewerState>({
     documentId: null,
-    canUndo: false,
-    canRedo: false,
+    pageCount: 0,
+    pageIndex: null,
     isDirty: false,
     mode: 'view',
     error: null,
   });
 
   function handleStateChange(nextState: ViewerState) {
-    if (nextState.documentId === null) zoomRef.current = 1;
+    if (nextState.documentId === null) { zoomRef.current = 1; setPageInfo(null); }
     modeRef.current = nextState.mode;
     setState(nextState);
   }
@@ -116,7 +116,7 @@ export default function App() {
 
   async function toggleTextPlacement() {
     const inkSignView = inkSignViewRef.current;
-    if (inkSignView === null || pageInfo === null) return;
+    if (inkSignView === null || state.pageIndex === null) return;
     const placementArmed = modeRef.current === 'textAdd';
 
     try {
@@ -159,9 +159,8 @@ export default function App() {
     }
   }
 
-  function handlePageChange(next: PageInfo) {
+  function handlePageChange(next: PageChangeEvent) {
     setPageInfo(next);
-    setTextSelected(false);
   }
 
   function navigatePage(direction: 'next' | 'previous') {
@@ -190,9 +189,9 @@ export default function App() {
 
   async function moveActivePageBy(delta: -1 | 1) {
     const inkSignView = inkSignViewRef.current;
-    if (inkSignView === null || pageInfo === null) return;
+    if (inkSignView === null || state.pageIndex === null) return;
     try {
-      setPageInfo(await inkSignView.movePage(pageInfo.pageIndex + delta));
+      setPageInfo(await inkSignView.movePage(state.pageIndex + delta));
     } catch (error) {
       Alert.alert('Move page failed', String(error));
     }
@@ -259,7 +258,7 @@ export default function App() {
             />
             <Action
               label="Remove page"
-              disabled={pageInfo === null || pageInfo.pageCount <= 1}
+              disabled={state.pageIndex === null || state.pageCount <= 1}
               onPress={() => void removeActivePage()}
             />
           </View>
@@ -268,31 +267,31 @@ export default function App() {
             <Action
               label="<"
               accessibilityLabel="Previous page"
-              disabled={pageInfo === null || pageInfo.pageIndex === 0}
+              disabled={state.pageIndex === null || state.pageIndex === 0}
               onPress={() => void navigatePage('previous')}
             />
             <Text style={styles.pageIndicator}>
-              {pageInfo === null
+              {state.pageIndex === null
                 ? 'Page: N/A'
-                : `Page: ${pageInfo.pageIndex + 1}/${pageInfo.pageCount}`}
+                : `Page: ${state.pageIndex + 1}/${state.pageCount}`}
             </Text>
             <Action
               label=">"
               accessibilityLabel="Next Page"
-              disabled={pageInfo === null || pageInfo.pageIndex >= pageInfo.pageCount - 1}
+              disabled={state.pageIndex === null || state.pageIndex >= state.pageCount - 1}
               onPress={() => void navigatePage('next')}
             />
             <Action
               label="<"
               accessibilityLabel="Move page backward"
-              disabled={pageInfo === null || pageInfo.pageIndex === 0}
+              disabled={state.pageIndex === null || state.pageIndex === 0}
               onPress={() => void moveActivePageBy(-1)}
             />
             <Text style={styles.pageIndicator}>Move</Text>
             <Action
               label=">"
               accessibilityLabel="Move page forward"
-              disabled={pageInfo === null || pageInfo.pageIndex >= pageInfo.pageCount - 1}
+              disabled={state.pageIndex === null || state.pageIndex >= state.pageCount - 1}
               onPress={() => void moveActivePageBy(1)}
             />
           </View>
@@ -308,12 +307,12 @@ export default function App() {
             <Action label="Fit" onPress={fitPage} />
             <Action
               label="Undo"
-              disabled={!state.canUndo}
+              disabled={!pageInfo?.canUndo}
               onPress={() => inkSignViewRef.current?.undo()}
             />
             <Action
               label="Redo"
-              disabled={!state.canRedo}
+              disabled={!pageInfo?.canRedo}
               onPress={() => inkSignViewRef.current?.redo()}
             />
             {['ink', 'textEdit'].includes(state.mode) && (

@@ -54,6 +54,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
+    PageInfo getState() override;
     std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) override;
     double resolveText(const ResolveTextOptions& options) override;
     std::string getTextValue(double id) override;

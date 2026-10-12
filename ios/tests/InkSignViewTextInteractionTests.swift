@@ -7,61 +7,31 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport {
-  func testResetDirtyCheckpointsAllPagesAndPreservesHistoryAcrossBranches() throws {
+  func testDirtyStateFollowsAppliedTrackedHistoryAcrossPages() throws {
     let fixture = makeFixture(pageCount: 2)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let coordinator = view.documentCoordinator
     let document = try XCTUnwrap(coordinator.document)
-    var annotations: [InkSignPdfTextAnnotation] = []
-    for index in 0..<2 {
-      let annotation = makeCenteredTextAnnotation(id: UInt64(index + 1), text: "Keep",
-        fontSize: 16, pageSize: document.pages[index].geometry.displaySize)
-      annotations.append(try appendTextAnnotationForTest(annotation, in: view, pageIndex: index))
-    }
-    let first = document.pages[0].history
-    let second = document.pages[1].history
-    let content = document.pages.map { $0.history.content }
-    let revision = first.revision
-    coordinator.setStructuralDirty(true)
-    var states: [ViewerState] = []
-    view.onStateChange = { states.append($0) }
-
-    try view.resetDirty()
-    XCTAssertFalse(coordinator.isDirty)
-    XCTAssertEqual(states.last?.isDirty, false)
-    XCTAssertEqual(first.revision, revision)
-    XCTAssertTrue(first.state.canUndo)
-    for index in 0..<2 { XCTAssertTrue(document.pages[index].history.content.equals(content[index])) }
-
-    XCTAssertTrue(first.undo())
-    XCTAssertTrue(coordinator.isDirty)
-    XCTAssertTrue(first.redo())
-    XCTAssertFalse(coordinator.isDirty)
-    first.clear()
-    XCTAssertTrue(coordinator.isDirty)
-    XCTAssertTrue(first.undo())
-    XCTAssertFalse(coordinator.isDirty)
-
-    XCTAssertTrue(first.undo())
-    let replacement = makeCenteredTextAnnotation(id: annotations[0].id, text: "New branch",
+    let annotation = makeCenteredTextAnnotation(id: 1, text: "Keep",
       fontSize: 16, pageSize: document.pages[0].geometry.displaySize)
-    XCTAssertTrue(first.appendText(replacement))
+    _ = try appendTextAnnotationForTest(annotation, in: view, pageIndex: 0)
+    let first = document.pages[0].history
     XCTAssertTrue(coordinator.isDirty)
-    try view.resetDirty()
-    XCTAssertTrue(second.undo())
-    XCTAssertTrue(coordinator.isDirty)
-    XCTAssertTrue(second.redo())
+    XCTAssertTrue(first.undo())
+    XCTAssertFalse(first.state.isDirty)
+    XCTAssertTrue(first.state.canRedo)
     XCTAssertFalse(coordinator.isDirty)
+    XCTAssertTrue(first.redo())
+    XCTAssertTrue(coordinator.isDirty)
+    XCTAssertTrue(first.undo())
     coordinator.setStructuralDirty(true)
     XCTAssertTrue(coordinator.isDirty)
-    try view.resetDirty()
-    XCTAssertFalse(coordinator.isDirty)
   }
 
-  func testHasInkTracksActivePageCommittedInkHistory() throws {
+  func testPageStateTracksActivePageCommittedInkHistory() throws {
     let emptyView = InkSignView()
-    XCTAssertFalse(try emptyView.hasInk())
+    XCTAssertEqual(try emptyView.getState().pageCount, 0)
     emptyView.dispose()
 
     let fixture = makeFixture(pageCount: 2, activePageIndex: 1)
@@ -83,14 +53,14 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertTrue(page.history.record(type: .ink,
                                      before: before,
                                      after: before.replacingDrawing(PKDrawing(strokes: [stroke]))))
-    XCTAssertTrue(try view.hasInk())
+    XCTAssertTrue(view.toPublicPageInfo(try view.currentPageInfo()).hasInk)
 
     let annotationDraft = makeCenteredTextAnnotation(id: 42, text: "Keep", fontSize: 16,
                                                      pageSize: page.geometry.displaySize)
     let annotation = try appendTextAnnotationForTest(annotationDraft, in: view, pageIndex: 1)
     let original = page.history.content
     try view.clearInk()
-    XCTAssertFalse(try view.hasInk())
+    XCTAssertFalse(view.toPublicPageInfo(try view.currentPageInfo()).hasInk)
     XCTAssertEqual(page.history.content.textAnnotations, [annotation])
     let revision = page.history.revision
     try view.clearInk()
@@ -98,22 +68,22 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     try view.undo()
     XCTAssertTrue(page.history.content.equals(original))
     try view.redo()
-    XCTAssertFalse(try view.hasInk())
+    XCTAssertFalse(view.toPublicPageInfo(try view.currentPageInfo()).hasInk)
     XCTAssertEqual(page.history.content.textAnnotations, [annotation])
     try view.undo()
     try view.undo() // Restore the original ink-only fixture before navigation checks.
 
     _ = try view.switchPage(to: 0)
-    XCTAssertFalse(try view.hasInk())
+    XCTAssertFalse(view.toPublicPageInfo(try view.currentPageInfo()).hasInk)
     _ = try view.switchPage(to: 1)
-    XCTAssertTrue(try view.hasInk())
+    XCTAssertTrue(view.toPublicPageInfo(try view.currentPageInfo()).hasInk)
 
     try view.undo()
-    XCTAssertFalse(try view.hasInk())
+    XCTAssertFalse(view.toPublicPageInfo(try view.currentPageInfo()).hasInk)
     try view.redo()
-    XCTAssertTrue(try view.hasInk())
+    XCTAssertTrue(view.toPublicPageInfo(try view.currentPageInfo()).hasInk)
     try view.clear()
-    XCTAssertFalse(try view.hasInk())
+    XCTAssertFalse(view.toPublicPageInfo(try view.currentPageInfo()).hasInk)
   }
 
   private func cachePlacementRules(_ rules: [InkSignPdfPlacementRule],
@@ -199,7 +169,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let overlay = view.textInteractionOverlay
     let original = try insertTextForTest("bounded text",
       bounds: TextAnnotationBounds(x: 150, y: 100, width: 130, height: 80),
-      options: TextAnnotationOptions(fontSize: nil, color: nil, direction: .ltr,
+      options: TextAnnotationOptions(untracked: nil, font: nil, fontSize: nil, color: nil, direction: .ltr,
         maxLines: nil, alignment: .start, verticalAnchor: nil), in: view)
     let tapPoint = CGPoint(x: original.bounds.midX, y: original.bounds.midY)
     XCTAssertTrue(overlay.routeTap(at: tapPoint))
@@ -242,7 +212,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
       options: nil, in: view)
     try insertTextForTest("right to left",
       bounds: TextAnnotationBounds(x: 30, y: 80, width: 80, height: 40),
-      options: TextAnnotationOptions(fontSize: nil, color: nil, direction: .auto,
+      options: TextAnnotationOptions(untracked: nil, font: nil, fontSize: nil, color: nil, direction: .auto,
         maxLines: nil, alignment: .start, verticalAnchor: nil), in: view)
     try view.setTextDirection(direction: .auto)
     try insertTextForTest("resolved app direction",
@@ -272,7 +242,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     try insertTextForTest(
       "first line\nsecond line\nthird line",
       bounds: TextAnnotationBounds(x: 80, y: 180, width: 200, height: 100),
-      options: TextAnnotationOptions(fontSize: nil, color: nil, direction: .ltr,
+      options: TextAnnotationOptions(untracked: nil, font: nil, fontSize: nil, color: nil, direction: .ltr,
         maxLines: 2, alignment: .start, verticalAnchor: .bottom), in: fixture.view)
     let annotation = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history
       .content.textAnnotations.first)
@@ -292,7 +262,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
       "only visible line\nhidden second line",
       bounds: TextAnnotationBounds(x: 20, y: 20, width: 160,
                                     height: Double(lineHeight + 0.1)),
-      options: TextAnnotationOptions(fontSize: nil, color: nil, direction: .ltr,
+      options: TextAnnotationOptions(untracked: nil, font: nil, fontSize: nil, color: nil, direction: .ltr,
         maxLines: 2, alignment: .start, verticalAnchor: .top), in: fixture.view)
     let heightLimited = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.history
       .content.textAnnotations.last)
@@ -315,7 +285,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let overlay = view.textInteractionOverlay
-    let options = TextModeOptions(direction: .ltr,
+    let options = TextModeOptions(font: nil, direction: .ltr,
                                         width: 120,
                                         height: 120,
                                         maxLines: 2,
@@ -385,6 +355,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let view = fixture.view
     let overlay = view.textInteractionOverlay
     try view.setMode(mode: .text, options: TextModeOptions(
+      font: nil,
       direction: .ltr,
       width: nil,
       height: nil,
@@ -428,6 +399,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let overlay = view.textInteractionOverlay
     let flowBounds = CGRect(x: 50, y: 160, width: 160, height: 120)
     try view.setMode(mode: .text, options: TextModeOptions(
+      font: nil,
       direction: .ltr,
       width: 160,
       height: 120,
@@ -491,6 +463,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let overlay = view.textInteractionOverlay
     try view.setTextDirection(direction: .ltr)
     try view.setMode(mode: .text, options: TextModeOptions(
+      font: nil,
       direction: nil,
       width: nil,
       height: nil,
@@ -1033,13 +1006,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertNil(textEditor(in: overlay))
 
     try view.setMode(mode: .text, options: TextModeOptions(
-      direction: nil, width: nil, height: nil, maxLines: 1,
+      font: nil, direction: nil, width: nil, height: nil, maxLines: 1,
       alignment: nil, verticalAnchor: nil, x: nil, y: nil, zoom: nil))
     try place()
     XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
 
     try view.setMode(mode: .text, options: TextModeOptions(
-      direction: nil, width: nil, height: nil, maxLines: nil,
+      font: nil, direction: nil, width: nil, height: nil, maxLines: nil,
       alignment: nil, verticalAnchor: nil, x: 150, y: 200, zoom: 2))
     XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
     try place()
@@ -1049,7 +1022,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fittedZoom = try view.getViewport().zoom
     try awaitModeChange(view.setMode(mode: .ink, options: nil).setViewport(options: ViewportOptions(x: nil, y: nil, zoom: 3)))
     try view.setMode(mode: .text, options: TextModeOptions(
-      direction: nil, width: nil, height: nil, maxLines: nil,
+      font: nil, direction: nil, width: nil, height: nil, maxLines: nil,
       alignment: nil, verticalAnchor: nil, x: nil, y: nil, zoom: nil))
     XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.01)
     try place()
@@ -1465,11 +1438,11 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(try text.getValue(), "note")
     overlay.finishForLifecycle()
     XCTAssertTrue(view.documentCoordinator.selectPage(at: 1))
-    try text.setValue(text: "updated")
+    try text.setValue(text: "updated", options: nil)
     let document = try XCTUnwrap(view.documentCoordinator.document)
     XCTAssertEqual(document.pages[0].history.content.textAnnotations.first?.text, "updated")
     XCTAssertTrue(document.pages[1].history.content.textAnnotations.isEmpty)
-    try text.setValue(text: "")
+    try text.setValue(text: "", options: nil)
     XCTAssertEqual(try text.getValue(), "")
     XCTAssertTrue(document.pages[0].history.content.textAnnotations.isEmpty)
     view.dispose()

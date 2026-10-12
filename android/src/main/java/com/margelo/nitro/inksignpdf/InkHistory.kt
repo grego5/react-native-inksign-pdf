@@ -119,200 +119,212 @@ internal sealed interface InkHistoryMutation {
   data object NoOp : InkHistoryMutation
 }
 
-/** UI-thread-owned ordered page content and undo/redo state. */
+/** UI-thread-owned permanent base and ordered, undoable overrides. */
 internal class InkHistory(private val recordHistory: Boolean = true) {
-  private sealed class HistoryAction(val stateRevision: Long) {
-    class Added(
-      val index: Int, val content: PageContent, stateRevision: Long,
-    ) : HistoryAction(stateRevision)
-    class Removed(
-      val index: Int, val content: PageContent, stateRevision: Long,
-    ) : HistoryAction(stateRevision)
-    class Replaced(
-      val index: Int,
-      val before: PageContent,
-      val after: PageContent,
-      stateRevision: Long,
-    ) : HistoryAction(stateRevision)
-    class Clear(
-      val before: List<PageContent>, val after: List<PageContent>, stateRevision: Long,
-    ) : HistoryAction(stateRevision)
+  private sealed interface Key {
+    data class Ink(val outline: StrokeOutline) : Key
+    data class Text(val id: Long) : Key
+  }
+  /** A null content entry hides a base item until the tracked deletion is undone. */
+  private data class Entry(val key: Key, val content: PageContent?)
+  private sealed class HistoryAction {
+    class Edit(val index: Int, val before: Entry?, val after: Entry?) : HistoryAction()
+    class Clear(val before: List<Entry>, val after: List<Entry>) : HistoryAction()
   }
 
-  private val completed = ArrayList<PageContent>()
+  private val base = ArrayList<Entry>()
+  private val tracked = ArrayList<Entry>()
+  /** Text targets keep their identity after deletion or undo, until document retirement. */
+  private val insertedTextIds = HashSet<Long>()
   private val undoStack = ArrayList<HistoryAction>()
   private val redoStack = ArrayList<HistoryAction>()
   var revision: Long = 0L
     private set
-  private var cleanStateRevision: Long? = null
 
-  fun state() = InkState(
-    undoStack.isNotEmpty(), redoStack.isNotEmpty(),
-    cleanStateRevision?.let { it != currentStateRevision() }
-      ?: completed.isNotEmpty(),
-  )
-  private fun currentStateRevision(): Long =
-    if (recordHistory) undoStack.lastOrNull()?.stateRevision ?: 0L else revision
-
-  fun resetDirty() {
-    cleanStateRevision = currentStateRevision()
-  }
-  fun hasInk(): Boolean = completed.any { it is PageContent.Ink }
-  /** Ink-only projection retained for the existing ink renderer and exporter. */
-  fun snapshot(): List<StrokeOutline> = completed.inkOutlines()
-
-  /** Immutable ordered page-content snapshot for text-aware consumers. */
-  fun contentSnapshot(): List<PageContent> = completed.toList()
-
-  fun append(outline: StrokeOutline) {
-    append(PageContent.Ink(outline))
+  private fun PageContent.key(): Key = when (this) {
+    is PageContent.Ink -> Key.Ink(outline)
+    is PageContent.Text -> Key.Text(annotation.id)
   }
 
-  fun append(content: PageContent) {
-    val index = completed.size
-    completed += content
-    if (recordHistory) undoStack += HistoryAction.Added(index, content, revision + 1L)
+  val canUndo: Boolean get() = undoStack.isNotEmpty()
+  val canRedo: Boolean get() = redoStack.isNotEmpty()
+
+  fun state() = InkState(canUndo, canRedo, isDirty = canUndo)
+
+  /** Base first, then tracked content; overrides suppress the matching base identity. */
+  fun contentSnapshot(): List<PageContent> {
+    val overridden = tracked.mapTo(HashSet()) { it.key }
+    return base.filterNot { it.key in overridden }.mapNotNull { it.content } +
+      tracked.mapNotNull { it.content }
+  }
+  fun snapshot(): List<StrokeOutline> = contentSnapshot().inkOutlines()
+  fun hasInk(): Boolean = contentSnapshot().any { it is PageContent.Ink }
+  fun hasText(): Boolean = contentSnapshot().any { it is PageContent.Text }
+
+  private fun HistoryAction.affects(key: Key): Boolean = when (this) {
+    is HistoryAction.Edit -> before?.key == key || after?.key == key
+    is HistoryAction.Clear -> before.any { it.key == key } || after.any { it.key == key }
+  }
+
+  /** Includes retained redo entries, so an untracked call cannot bypass a tracked branch. */
+  private fun isTracked(key: Key): Boolean = tracked.any { it.key == key } ||
+    undoStack.any { it.affects(key) } || redoStack.any { it.affects(key) }
+
+  private fun applyEntry(index: Int, before: Entry?, after: Entry?) {
+    if (before == null) {
+      tracked.add(index, checkNotNull(after))
+    } else {
+      check(tracked[index] == before) { "History entry does not match the current tracked content" }
+      if (after == null) tracked.removeAt(index) else tracked[index] = after
+    }
+  }
+
+  private fun edit(key: Key, after: PageContent?, untracked: Boolean) {
+    if (!recordHistory || (untracked && !isTracked(key))) {
+      val index = base.indexOfFirst { it.key == key }
+      if (after == null) {
+        check(index >= 0) { "Base removal target is missing" }
+        base.removeAt(index)
+      } else if (index < 0) base += Entry(key, after) else base[index] = Entry(key, after)
+      revision += 1L
+      return
+    }
+
+    val existingIndex = tracked.indexOfFirst { it.key == key }
+    val index = if (existingIndex < 0) tracked.size else existingIndex
+    val before = tracked.getOrNull(existingIndex)
+    val entry = if (after != null || base.any { it.key == key }) Entry(key, after) else null
+    check(before != entry) { "A tracked edit must change its override" }
+    applyEntry(index, before, entry)
+    undoStack += HistoryAction.Edit(index, before, entry)
     redoStack.clear()
     revision += 1L
   }
 
-  fun appendText(annotation: TextAnnotation) {
-    append(PageContent.Text(annotation))
+  /** Newly allocated content has no override or retained history to look up. */
+  private fun appendFresh(content: PageContent, untracked: Boolean = false) {
+    val entry = Entry(content.key(), content)
+    if (!recordHistory || untracked) {
+      base += entry
+    } else {
+      val index = tracked.size
+      tracked += entry
+      undoStack += HistoryAction.Edit(index, null, entry)
+      redoStack.clear()
+    }
+    revision += 1L
   }
 
+  fun append(outline: StrokeOutline) = appendFresh(PageContent.Ink(outline))
+  fun append(content: PageContent) = when (content) {
+    is PageContent.Ink -> append(content.outline)
+    is PageContent.Text -> appendText(content.annotation)
+  }
+  fun appendText(annotation: TextAnnotation, untracked: Boolean = false) {
+    if (insertedTextIds.add(annotation.id)) {
+      appendFresh(PageContent.Text(annotation), untracked)
+      return
+    }
+    check(contentSnapshot().none { it.key() == Key.Text(annotation.id) }) { "Text identity already exists" }
+    edit(Key.Text(annotation.id), PageContent.Text(annotation), untracked)
+  }
   fun replace(before: PageContent, after: PageContent) {
-    require(before != after) { "Page content replacement must change the entry" }
-    val index = completed.indexOfFirst { it === before || it == before }
-    check(index >= 0) { "Page content replacement target is not in history" }
-    completed[index] = after
-    if (recordHistory) undoStack += HistoryAction.Replaced(index, before, after, revision + 1L)
-    redoStack.clear()
-    revision += 1L
+    require(before != after && before.key() == after.key()) { "Replacement must retain content identity" }
+    check(before in contentSnapshot()) { "Replacement target is missing" }
+    edit(before.key(), after, untracked = false)
   }
-
-  fun replaceText(before: TextAnnotation, after: TextAnnotation) {
-    replace(PageContent.Text(before), PageContent.Text(after))
+  fun replaceText(before: TextAnnotation, after: TextAnnotation, untracked: Boolean = false) {
+    require(before != after && before.id == after.id) { "Replacement must retain text identity" }
+    check(PageContent.Text(before) in contentSnapshot()) { "Text replacement target is missing" }
+    edit(Key.Text(before.id), PageContent.Text(after), untracked)
   }
-
   fun remove(content: PageContent) {
-    val index = completed.indexOfFirst { it === content || it == content }
-    check(index >= 0) { "Page content removal target is not in history" }
-    completed.removeAt(index)
-    if (recordHistory) undoStack += HistoryAction.Removed(index, content, revision + 1L)
-    redoStack.clear()
-    revision += 1L
+    check(content in contentSnapshot()) { "Removal target is missing" }
+    edit(content.key(), null, untracked = false)
+  }
+  fun removeTextAnnotation(annotation: TextAnnotation, untracked: Boolean = false) {
+    check(PageContent.Text(annotation) in contentSnapshot()) { "Text removal target is missing" }
+    edit(Key.Text(annotation.id), null, untracked)
   }
 
-  fun removeTextAnnotation(annotation: TextAnnotation) {
-    remove(PageContent.Text(annotation))
+  private fun HistoryAction.Edit.mutation(undo: Boolean): InkHistoryMutation {
+    val removed = if (undo) after else before
+    val added = if (undo) before else after
+    return when {
+      removed == null && added?.content is PageContent.Ink ->
+        InkHistoryMutation.Appended(added.content.outline)
+      added == null && removed?.content is PageContent.Ink ->
+        InkHistoryMutation.Removed(removed.content.outline)
+      else -> InkHistoryMutation.Replaced(contentSnapshot())
+    }
   }
 
   fun undoMutation(): InkHistoryMutation {
     val action = undoStack.removeLastOrNull() ?: return InkHistoryMutation.NoOp
-    return when (action) {
-      is HistoryAction.Added -> {
-        check(completed.removeAt(action.index) === action.content)
-        redoStack += action
-        revision += 1L
-        mutationForContentChange(action.content, added = false)
-      }
-      is HistoryAction.Removed -> {
-        completed.add(action.index, action.content)
-        redoStack += action
-        revision += 1L
-        mutationForContentChange(action.content, added = true)
-      }
-      is HistoryAction.Replaced -> {
-        check(completed[action.index] === action.after || completed[action.index] == action.after)
-        completed[action.index] = action.before
-        redoStack += action
-        revision += 1L
-        InkHistoryMutation.Replaced(contentSnapshot())
-      }
+    when (action) {
+      is HistoryAction.Edit -> applyEntry(action.index, action.after, action.before)
       is HistoryAction.Clear -> {
-        check(completed == action.after)
-        completed.clear()
-        completed.addAll(action.before)
-        redoStack += action
-        revision += 1L
-        InkHistoryMutation.Replaced(contentSnapshot())
+        check(tracked == action.after) { "Undo tracked state does not match history" }
+        tracked.clear()
+        tracked.addAll(action.before)
       }
     }
+    redoStack += action
+    revision += 1L
+    return if (action is HistoryAction.Edit) action.mutation(undo = true)
+      else InkHistoryMutation.Replaced(contentSnapshot())
   }
 
   fun redoMutation(): InkHistoryMutation {
     val action = redoStack.removeLastOrNull() ?: return InkHistoryMutation.NoOp
-    return when (action) {
-      is HistoryAction.Added -> {
-        check(action.index == completed.size)
-        completed.add(action.index, action.content)
-        undoStack += action
-        revision += 1L
-        mutationForContentChange(action.content, added = true)
-      }
-      is HistoryAction.Removed -> {
-        check(completed[action.index] === action.content || completed[action.index] == action.content)
-        completed.removeAt(action.index)
-        undoStack += action
-        revision += 1L
-        mutationForContentChange(action.content, added = false)
-      }
-      is HistoryAction.Replaced -> {
-        check(completed[action.index] === action.before || completed[action.index] == action.before)
-        completed[action.index] = action.after
-        undoStack += action
-        revision += 1L
-        InkHistoryMutation.Replaced(contentSnapshot())
-      }
+    when (action) {
+      is HistoryAction.Edit -> applyEntry(action.index, action.before, action.after)
       is HistoryAction.Clear -> {
-        completed.clear()
-        completed.addAll(action.after)
-        undoStack += action
-        revision += 1L
-        if (action.after.isEmpty()) InkHistoryMutation.Cleared(action.before)
-        else InkHistoryMutation.Replaced(contentSnapshot())
+        check(tracked == action.before) { "Redo tracked state does not match history" }
+        tracked.clear()
+        tracked.addAll(action.after)
       }
     }
-  }
-
-  fun clearMutation(): InkHistoryMutation {
-    if (completed.isEmpty()) return InkHistoryMutation.NoOp
-    val content = contentSnapshot()
-    if (recordHistory) undoStack += HistoryAction.Clear(content, emptyList(), revision + 1L)
-    completed.clear()
-    redoStack.clear()
+    undoStack += action
     revision += 1L
-    return InkHistoryMutation.Cleared(content)
+    return if (action is HistoryAction.Edit) action.mutation(undo = false)
+      else InkHistoryMutation.Replaced(contentSnapshot())
   }
 
-  fun clearInkMutation(): InkHistoryMutation {
-    if (!hasInk()) return InkHistoryMutation.NoOp
-    val before = contentSnapshot()
-    val after = completed.filterNot { it is PageContent.Ink }
-    if (recordHistory) undoStack += HistoryAction.Clear(before, after, revision + 1L)
-    completed.clear()
-    completed.addAll(after)
-    redoStack.clear()
+  private fun clearMatching(predicate: (PageContent) -> Boolean): InkHistoryMutation {
+    val beforeContent = contentSnapshot()
+    if (beforeContent.none(predicate)) return InkHistoryMutation.NoOp
+    if (!recordHistory) {
+      base.removeAll { it.content?.let(predicate) == true }
+    } else {
+      val after = tracked.mapNotNull { entry ->
+        if (entry.content?.let(predicate) != true) entry
+        else if (base.any { it.key == entry.key }) Entry(entry.key, null) else null
+      }.toMutableList()
+      base.filter { it.content?.let(predicate) == true }.forEach { entry ->
+        if (after.none { it.key == entry.key }) after += Entry(entry.key, null)
+      }
+      undoStack += HistoryAction.Clear(tracked.toList(), after.toList())
+      tracked.clear()
+      tracked.addAll(after)
+      redoStack.clear()
+    }
     revision += 1L
     return InkHistoryMutation.Replaced(contentSnapshot())
   }
+  fun clearMutation(): InkHistoryMutation {
+    val before = contentSnapshot()
+    val mutation = clearMatching { true }
+    return if (mutation == InkHistoryMutation.NoOp) mutation else InkHistoryMutation.Cleared(before)
+  }
+  fun clearInkMutation(): InkHistoryMutation = clearMatching { it is PageContent.Ink }
 
   fun reset() {
-    completed.clear(); undoStack.clear(); redoStack.clear(); revision += 1L
-    cleanStateRevision = null
-  }
-
-  private fun mutationForContentChange(
-    content: PageContent,
-    added: Boolean,
-  ): InkHistoryMutation {
-    return when (content) {
-      is PageContent.Ink -> if (added) {
-        InkHistoryMutation.Appended(content.outline)
-      } else {
-        InkHistoryMutation.Removed(content.outline)
-      }
-      is PageContent.Text -> InkHistoryMutation.Replaced(contentSnapshot())
-    }
+    base.clear()
+    tracked.clear()
+    insertedTextIds.clear()
+    undoStack.clear()
+    redoStack.clear()
+    revision += 1L
   }
 }

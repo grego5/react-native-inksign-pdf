@@ -30,7 +30,7 @@
 
 
 
-
+#include <string>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -39,14 +39,21 @@ namespace margelo::nitro::inksignpdf {
    */
   struct PageInfo final {
   public:
+    bool hasInk     SWIFT_PRIVATE;
+    bool hasText     SWIFT_PRIVATE;
     double pageIndex     SWIFT_PRIVATE;
     double pageCount     SWIFT_PRIVATE;
+    bool isDirty     SWIFT_PRIVATE;
+    std::string pageId     SWIFT_PRIVATE;
     double width     SWIFT_PRIVATE;
     double height     SWIFT_PRIVATE;
+    double rotation     SWIFT_PRIVATE;
+    bool canUndo     SWIFT_PRIVATE;
+    bool canRedo     SWIFT_PRIVATE;
 
   public:
     PageInfo() = default;
-    explicit PageInfo(double pageIndex, double pageCount, double width, double height): pageIndex(pageIndex), pageCount(pageCount), width(width), height(height) {}
+    explicit PageInfo(bool hasInk, bool hasText, double pageIndex, double pageCount, bool isDirty, std::string pageId, double width, double height, double rotation, bool canUndo, bool canRedo): hasInk(hasInk), hasText(hasText), pageIndex(pageIndex), pageCount(pageCount), isDirty(isDirty), pageId(pageId), width(width), height(height), rotation(rotation), canUndo(canUndo), canRedo(canRedo) {}
 
   public:
     friend bool operator==(const PageInfo& lhs, const PageInfo& rhs) = default;
@@ -62,18 +69,32 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::PageInfo fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::PageInfo(
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasInk"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasText"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageIndex"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageCount"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty"))),
+        JSIConverter<std::string>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageId"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "width"))),
-        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "height")))
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "height"))),
+        JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "rotation"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canUndo"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canRedo")))
       );
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::PageInfo& arg) {
       jsi::Object obj(runtime);
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "hasInk"), JSIConverter<bool>::toJSI(runtime, arg.hasInk));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "hasText"), JSIConverter<bool>::toJSI(runtime, arg.hasText));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageIndex"), JSIConverter<double>::toJSI(runtime, arg.pageIndex));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageCount"), JSIConverter<double>::toJSI(runtime, arg.pageCount));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "isDirty"), JSIConverter<bool>::toJSI(runtime, arg.isDirty));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageId"), JSIConverter<std::string>::toJSI(runtime, arg.pageId));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "width"), JSIConverter<double>::toJSI(runtime, arg.width));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "height"), JSIConverter<double>::toJSI(runtime, arg.height));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "rotation"), JSIConverter<double>::toJSI(runtime, arg.rotation));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "canUndo"), JSIConverter<bool>::toJSI(runtime, arg.canUndo));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "canRedo"), JSIConverter<bool>::toJSI(runtime, arg.canRedo));
       return obj;
     }
     static inline bool canConvert(jsi::Runtime& runtime, const jsi::Value& value) {
@@ -84,10 +105,17 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasInk")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasText")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageIndex")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageCount")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty")))) return false;
+      if (!JSIConverter<std::string>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageId")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "width")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "height")))) return false;
+      if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "rotation")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canUndo")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "canRedo")))) return false;
       return true;
     }
   };

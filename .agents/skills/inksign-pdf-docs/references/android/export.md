@@ -8,6 +8,8 @@
   Unpublished output remains core-owned until worker completion and retirement.
 - Export snapshots committed page content from the published working document.
   Viewer finalize finishes text editing before capture; live ink is excluded.
+  Snapshots read composed committed content; see
+  [page history](view-lifecycle.md#page-history-and-disposal).
 - The PDFium worker preserves source pages and their order, adds ink as vector paths
   and text as positioned PDF text objects, then serializes a candidate.
 - Reopen the candidate with PDFium and validate page metadata, object counts, path

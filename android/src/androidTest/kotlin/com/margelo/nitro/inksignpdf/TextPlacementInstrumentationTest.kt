@@ -83,7 +83,7 @@ internal class TextPlacementInstrumentationTest {
       )
       val overlay = harness.createOverlay()
 
-      overlay.addTextAnnotation(TextAnnotationBounds(20.0, 30.0, 280.0, 270.0), "Approved", null)
+      harness.insertText(TextAnnotationBounds(20.0, 30.0, 280.0, 270.0), "Approved", null)
 
       val annotation = harness.surface.textPresentationSnapshot()?.annotations?.single()
       assertNotNull(annotation)
@@ -113,10 +113,10 @@ internal class TextPlacementInstrumentationTest {
           TextDirection.RTL to TextAlignment.CENTER,
         )
         cases.forEach { (direction, alignment) ->
-          overlay.addTextAnnotation(
+          harness.insertText(
             bounds,
             "short",
-            TextAnnotationOptions(font = null,
+            TextAnnotationOptions(untracked = null, font = null,
               fontSize = null,
               color = null,
               direction = direction,
@@ -126,10 +126,10 @@ internal class TextPlacementInstrumentationTest {
             ),
           )
         }
-        overlay.addTextAnnotation(
+        harness.insertText(
           bounds,
           "short",
-          TextAnnotationOptions(font = null,
+          TextAnnotationOptions(untracked = null, font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.RTL,
@@ -176,7 +176,7 @@ internal class TextPlacementInstrumentationTest {
 
         val before = annotations.toList()
         val error = assertThrows(PdfSessionException::class.java) {
-          overlay.addTextAnnotation(
+          harness.insertText(
             TextAnnotationBounds(280.0, 20.0, 40.0, 40.0),
             "outside page",
             null,
@@ -209,10 +209,10 @@ internal class TextPlacementInstrumentationTest {
           100.0,
           oneLineLayout.height + 0.01,
         )
-        overlay.addTextAnnotation(
+        harness.insertText(
           box,
           "one\ntwo",
-          TextAnnotationOptions(font = null,
+          TextAnnotationOptions(untracked = null, font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -284,10 +284,10 @@ internal class TextPlacementInstrumentationTest {
       harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
-        overlay.addTextAnnotation(
+        harness.insertText(
           TextAnnotationBounds(50.0, 40.0, 42.0, 42.0),
           "one two three four five six seven eight nine ten",
-          TextAnnotationOptions(font = null,
+          TextAnnotationOptions(untracked = null, font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -296,10 +296,10 @@ internal class TextPlacementInstrumentationTest {
             verticalAnchor = null,
           ),
         )
-        overlay.addTextAnnotation(
+        harness.insertText(
           TextAnnotationBounds(208.0, 40.0, 42.0, 42.0),
           "RTL text wraps near the left edge",
-          TextAnnotationOptions(font = null,
+          TextAnnotationOptions(untracked = null, font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.RTL,
@@ -309,10 +309,10 @@ internal class TextPlacementInstrumentationTest {
           ),
         )
         harness.surface.layoutDirection = View.LAYOUT_DIRECTION_RTL
-        overlay.addTextAnnotation(
+        harness.insertText(
           TextAnnotationBounds(208.0, 100.0, 42.0, 50.0),
           "Auto follows app layout",
-          TextAnnotationOptions(font = null,
+          TextAnnotationOptions(untracked = null, font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.AUTO,
@@ -385,10 +385,10 @@ internal class TextPlacementInstrumentationTest {
       harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
-        overlay.addTextAnnotation(
+        harness.insertText(
           TextAnnotationBounds(20.0, 180.0, 260.0, 80.0),
           "one\ntwo\nthree\nfour",
-          TextAnnotationOptions(font = null,
+          TextAnnotationOptions(untracked = null, font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -397,10 +397,10 @@ internal class TextPlacementInstrumentationTest {
             verticalAnchor = TextVerticalAnchor.BOTTOM,
           ),
         )
-        overlay.addTextAnnotation(
+        harness.insertText(
           TextAnnotationBounds(20.0, 230.0, 260.0, 30.0),
           "one\ntwo\nthree",
-          TextAnnotationOptions(font = null,
+          TextAnnotationOptions(untracked = null, font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -1263,7 +1263,7 @@ internal class TextPlacementInstrumentationTest {
         assertEquals(17.0, updated.fontSize, 0.0)
         assertEquals(original.bounds.top, updated.bounds.top, 0.0)
 
-        harness.surface.undo()
+        harness.undo()
         val undone = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         assertEquals(original, undone)
       } finally {
@@ -1980,10 +1980,10 @@ internal class TextPlacementInstrumentationTest {
       harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
-        overlay.addTextAnnotation(
+        harness.insertText(
           TextAnnotationBounds(80.0, 70.0, 160.0, 90.0),
           "Programmatic flow text",
-          TextAnnotationOptions(font = null,
+          TextAnnotationOptions(untracked = null, font = null,
             fontSize = null,
             color = null,
             direction = TextDirection.LTR,
@@ -2430,29 +2430,36 @@ internal class TextPlacementInstrumentationTest {
   }
 
   private fun assertReaderRenders(generation: Long) {
-    val tileEpoch = generation + 100L
+    val result = renderReaderPage(generation)
+    assertTrue("PDF reader returned a render failure: ${result.exceptionOrNull()}", result.isSuccess)
+    val tile = result.getOrThrow()
+    try {
+      assertEquals(32, tile.bitmap.width)
+      assertEquals(32, tile.bitmap.height)
+      assertFalse(tile.bitmap.isRecycled)
+    } finally {
+      tile.bitmap.recycle()
+    }
+  }
+
+  private fun assertReaderCancelled(generation: Long) {
+    val result = renderReaderPage(generation)
+    result.onSuccess { it.bitmap.recycle() }
+    assertTrue("stale PDF reader unexpectedly rendered a page", result.isFailure)
+  }
+
+  private fun renderReaderPage(generation: Long): Result<PdfTile> {
     val completed = CountDownLatch(1)
-    val result = java.util.concurrent.atomic.AtomicReference<Result<List<PdfTile>>>()
-    harness.worker.updateTileEpoch(generation, tileEpoch)
-    harness.worker.renderTiles(generation, tileEpoch, emptyList()) {
+    val result = java.util.concurrent.atomic.AtomicReference<Result<PdfTile>>()
+    val request = PdfTileRequest(PdfTileKey(generation, 0L, 0, 0, 0, 0),
+      leftPx = 0, topPx = 0, widthPx = 32, heightPx = 32, scale = 1.0)
+    // Reader lifetime is independent of the viewer's changing tile-demand epoch.
+    harness.worker.renderPageBase(generation, request) {
       result.set(it)
       completed.countDown()
     }
     assertTrue("PDF reader did not answer the render request", completed.await(5L, TimeUnit.SECONDS))
-    assertTrue("PDF reader returned a render failure: ${result.get().exceptionOrNull()}", result.get().isSuccess)
-  }
-
-  private fun assertReaderCancelled(generation: Long) {
-    val tileEpoch = generation + 100L
-    val completed = CountDownLatch(1)
-    val result = java.util.concurrent.atomic.AtomicReference<Result<List<PdfTile>>>()
-    harness.worker.updateTileEpoch(generation, tileEpoch)
-    harness.worker.renderTiles(generation, tileEpoch, emptyList()) {
-      result.set(it)
-      completed.countDown()
-    }
-    assertTrue("PDF reader did not answer the stale render request", completed.await(5L, TimeUnit.SECONDS))
-    assertTrue("stale PDF reader unexpectedly rendered tiles", result.get().isFailure)
+    return result.get()
   }
 
   private fun choosePlacementDirection(overlay: TextInteractionOverlay, rtl: Boolean) {
@@ -2508,7 +2515,7 @@ internal class TextPlacementInstrumentationTest {
   }
 
   private fun appendTestText(annotation: TextAnnotation): TextAnnotation {
-    val coordinator = harness.surface.documentCoordinator
+    val coordinator = harness.coordinator
     val page = coordinator.page(0)
     val slot = coordinator.reserveTextTarget(
       page.id,
@@ -2519,7 +2526,7 @@ internal class TextPlacementInstrumentationTest {
     )
     assertEquals(annotation.id, slot.id)
     val registered = annotation.copy(id = slot.id)
-    harness.surface.appendTextAnnotation(coordinator.generation, 0, registered)
+    harness.core.text.applyEdit(DocumentPageContext(coordinator.generation, page.id), null, registered)
     return registered
   }
 
@@ -2544,21 +2551,19 @@ internal class TextPlacementInstrumentationTest {
       },
       executorOverride = executor,
     )
-    private val generation = worker.reserveOpenAttemptId(0L)
     private val engine = InkEngine()
-    val coordinator = MutableDocumentCoordinator(
-      generation = generation,
-      sessionWorker = worker,
-      artifactPolicy = CacheArtifactPolicy.initialize(instrumentation.targetContext),
+    val core = DocumentCore(
+      instrumentation.targetContext, worker, recordHistory = true, exportOwnership = ExportOwnership.DOCUMENT,
     )
-    fun activeHistoryRevision(): Long = coordinator.activeHistoryRevision()
+    val coordinator get() = core.coordinator
+    fun activeHistoryRevision(): Long = coordinator.pageHistoryRevision(surface.documentState.activePageIndex)
+    fun undo() {
+      surface.prepareContentMutation()
+      core.undo(surface.documentState.activePageId())
+    }
     lateinit var surface: SurfaceView
     var overlay: TextInteractionOverlay? = null
-    val info = PdfSessionInfo(
-      sourcePath = "text.pdf",
-      pages = pages,
-      generation = generation,
-    )
+    val info: PdfSessionInfo
 
     init {
       val created = java.util.concurrent.atomic.AtomicReference<SurfaceView>()
@@ -2567,33 +2572,46 @@ internal class TextPlacementInstrumentationTest {
           SurfaceView(
             instrumentation.targetContext,
             engine,
-            documentCoordinator = coordinator,
+            core = core,
           ),
         )
         surface = created.get()
         surface.layout(0, 0, 300, 300)
       }
-      val result = java.util.concurrent.atomic.AtomicReference<Result<PdfSessionInfo>>()
-      val completed = CountDownLatch(1)
-      worker.prepareOpen(generation, "text.pdf", null) { prepared ->
-        result.set(prepared)
-        worker.commitPreparedOpen(generation) { committed ->
-          if (committed.isFailure) result.set(Result.failure(checkNotNull(committed.exceptionOrNull())))
-          completed.countDown()
+      info = runBlocking {
+        withContext(Dispatchers.Main) {
+          val pending = coordinator.prepareOpen(null, { error("Unexpected fallback font") }, { it.writeText("initial") })
+          try { coordinator.commitOpen(pending) }
+          finally { coordinator.finishOpen(pending) }
         }
       }
-      assertTrue(completed.await(5L, TimeUnit.SECONDS))
-      runOnMain { setDocument(result.get().getOrThrow()) }
+      runOnMain {
+        setDocument(info)
+        core.observe { change ->
+          when (change) {
+            is DocumentChange.Text -> surface.refreshCommittedText(change.pageId)
+            is DocumentChange.Content -> surface.presentContentChange(change)
+            else -> Unit
+          }
+        }
+      }
     }
 
     fun setSurfaceSize(widthPx: Int, heightPx: Int) {
       surface.layout(0, 0, widthPx, heightPx)
     }
 
+    fun insertText(bounds: TextAnnotationBounds, text: String, options: TextAnnotationOptions?) {
+      val presentation = checkNotNull(surface.textPresentationSnapshot())
+      core.text.insert(DocumentPageContext(presentation.generation, presentation.pageId), bounds, text, options,
+        directionRtl = checkNotNull(overlay).resolveDirection(options?.direction))
+    }
+
     fun createOverlay(): TextInteractionOverlay {
       val overlay = TextInteractionOverlay(
         instrumentation.targetContext,
         surface,
+        core,
       )
       this.overlay = overlay
       surface.onTextContentChanged = overlay::syncContent
@@ -2612,7 +2630,7 @@ internal class TextPlacementInstrumentationTest {
       val pages = next.pages.map { dimensions ->
         InkPageState(PageRecord.newId(), dimensions)
       }
-      surface.documentCoordinator.installCandidate(next.sourcePath, pages, pages.first().id)
+      coordinator.installCandidate(next.sourcePath, pages)
       surface.installDocumentPresentation(zoom, focus, fitToPage)
     }
 
@@ -2649,7 +2667,7 @@ internal class TextPlacementInstrumentationTest {
         surface.clearDocument()
       }
       engine.close()
-      worker.close()
+      runBlocking { core.close(cancelPending = true).await() }
     }
   }
 

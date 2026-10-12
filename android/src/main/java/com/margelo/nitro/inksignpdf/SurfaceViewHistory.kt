@@ -40,7 +40,15 @@ internal fun SurfaceView.withStateTransaction(action: () -> Unit) {
   }
 }
 
-internal fun SurfaceView.presentHistoryMutation(mutation: InkHistoryMutation) {
+internal fun SurfaceView.presentContentChange(change: DocumentChange.Content) {
+  requireOnUiThread()
+  check(change.generation == documentState.generation)
+  val mutation = change.mutation
+  if (documentState.activePageId() != change.pageId) {
+    notifyStateChange()
+    invalidate()
+    return
+  }
   when (mutation) {
     InkHistoryMutation.NoOp -> return
     is InkHistoryMutation.Appended -> inkRenderer.addCompletedOutline(mutation.outline)
@@ -50,14 +58,15 @@ internal fun SurfaceView.presentHistoryMutation(mutation: InkHistoryMutation) {
     )
     is InkHistoryMutation.Cleared -> inkRenderer.clearCompleted()
   }
-  rebuildCommittedTextLayer()
+  val textChanged = mutation is InkHistoryMutation.Replaced || mutation is InkHistoryMutation.Cleared
+  if (textChanged) rebuildCommittedTextLayer()
   notifyStateChange()
   invalidate()
-  onTextContentChanged?.invoke()
+  if (textChanged) onTextContentChanged?.invoke()
 }
 
 internal fun SurfaceView.rebuildCommittedTextLayer() {
-  val state = documentCoordinator.takeIf { it.hasDocument }
+  val state = documentState.takeIf { it.hasDocument }
   if (state == null) {
     committedTextLayer = TextRenderLayer.empty()
     return
@@ -67,47 +76,12 @@ internal fun SurfaceView.rebuildCommittedTextLayer() {
   )
 }
 
-internal fun SurfaceView.validateTextMutation(generation: Long, pageIndex: Int) {
-  requireOnUiThread()
-  if (disposed) {
-    throw PdfSessionException("operation_cancelled", "PDF view was disposed")
-  }
-  val state = documentCoordinator.takeIf { it.hasDocument }
-  if (state == null || state.generation != generation || state.activePageIndex != pageIndex) {
-    throw PdfSessionException(
-      "operation_cancelled",
-      "Text editing was superseded by a document or page change",
-    )
-  }
-}
-
-internal fun SurfaceView.resolveTextMutationPage(generation: Long, pageId: String): InkPageState {
-  requireOnUiThread()
-  if (disposed) {
-    throw PdfSessionException("operation_cancelled", "PDF view was disposed")
-  }
-  if (!documentCoordinator.hasDocument || documentCoordinator.generation != generation) {
-    throw PdfSessionException(
-      "operation_cancelled",
-      "The document or captured page changed during text insertion",
-    )
-  }
-  return documentCoordinator.pageForId(pageId) ?: throw PdfSessionException(
-    "operation_cancelled",
-    "The document or captured page changed during text insertion",
-  )
-}
-
 internal fun SurfaceView.reportedState(): InkState {
-  val state = documentCoordinator.takeIf { it.hasDocument } ?: return InkState(false, false, false)
+  val state = documentState.takeIf { it.hasDocument } ?: return InkState(false, false, false)
   val active = state.activeHistoryState()
   return InkState(
     canUndo = active.canUndo,
     canRedo = active.canRedo,
     isDirty = state.isDirty(),
   )
-}
-
-internal fun SurfaceView.resetDocumentHistories() {
-  if (documentCoordinator.hasDocument) documentCoordinator.resetHistories()
 }

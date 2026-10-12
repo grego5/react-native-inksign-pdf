@@ -6,7 +6,64 @@ import org.junit.Test
 
 class InkHistoryTest {
   @Test
-  fun resetDirtyCheckpointsAllPagesAndPreservesHistoryAcrossBranches() {
+  fun untrackedBaseSurvivesUndoAndRedoWithoutBecomingDirty() {
+    val history = InkHistory()
+    val ink = outline(0f)
+    val base = text(1L, "Base", 24.0, 40.0)
+    history.append(ink)
+    history.undoMutation()
+    history.appendText(base, untracked = true)
+    assertEquals(InkState(false, true, false), history.state())
+    history.redoMutation()
+    assertEquals(listOf(PageContent.Text(base), PageContent.Ink(ink)), history.contentSnapshot())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(base)), history.contentSnapshot())
+    history.replaceText(base, base.copy(text = "New base"), untracked = true)
+    assertEquals(false, history.state().isDirty)
+    history.redoMutation()
+    history.undoMutation()
+    assertEquals("New base", history.contentSnapshot().single().textAnnotationOrNull()?.text)
+    assertEquals(false, history.state().isDirty)
+  }
+
+  @Test
+  fun untrackedFlagIsIgnoredForTextWithRetainedTrackedEdits() {
+    val history = InkHistory()
+    val base = text(1L, "Base", 24.0, 40.0)
+    val tracked = base.copy(text = "Tracked")
+    val later = base.copy(text = "Later")
+    history.appendText(base, untracked = true)
+    history.replaceText(base, tracked)
+    history.undoMutation()
+    history.replaceText(base, later, untracked = true)
+    assertEquals(InkState(true, false, true), history.state())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(base)), history.contentSnapshot())
+    history.redoMutation()
+    assertEquals(listOf(PageContent.Text(later)), history.contentSnapshot())
+  }
+
+  @Test
+  fun trackedDeletionAndClearDoNotRetireThePermanentBase() {
+    val history = InkHistory()
+    val base = text(1L, "Base", 24.0, 40.0)
+    val laterBase = text(2L, "Later base", 24.0, 80.0)
+    history.appendText(base, untracked = true)
+    history.removeTextAnnotation(base)
+    assertEquals(emptyList<PageContent>(), history.contentSnapshot())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(base)), history.contentSnapshot())
+    history.clearMutation()
+    history.appendText(laterBase, untracked = true)
+    assertEquals(listOf(PageContent.Text(laterBase)), history.contentSnapshot())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(base), PageContent.Text(laterBase)), history.contentSnapshot())
+    history.redoMutation()
+    assertEquals(listOf(PageContent.Text(laterBase)), history.contentSnapshot())
+  }
+
+  @Test
+  fun dirtyStateFollowsAppliedTrackedHistoryAcrossPages() {
     val document = MutableDocumentCoordinator(
       sourcePath = "multi-page.pdf", generation = 1L,
       pages = listOf(PdfPageDimensions(300.0, 400.0), PdfPageDimensions(300.0, 400.0)),
@@ -14,39 +71,33 @@ class InkHistoryTest {
     )
     val first = document.page(0).history
     val second = document.page(1).history
+    second.appendText(text(1L, "Base", 24.0, 40.0), untracked = true)
+    assertEquals(false, document.isDirty())
     first.append(outline(0f))
-    second.appendText(text(1L, "Keep", 24.0, 40.0))
-    document.markStructuralDirty()
-    val content = document.completedPagesSnapshot()
-    val revision = first.revision
-
-    document.resetDirty()
-    assertEquals(false, document.isDirty())
-    assertEquals(content, document.completedPagesSnapshot())
-    assertEquals(revision, first.revision)
-    assertEquals(InkState(true, false, false), first.state())
-
-    first.undoMutation()
     assertTrue(document.isDirty())
+    first.undoMutation()
+    assertEquals(InkState(false, true, false), first.state())
+    assertEquals(false, document.isDirty())
     first.redoMutation()
-    assertEquals(false, document.isDirty())
-    first.clearMutation()
     assertTrue(document.isDirty())
     first.undoMutation()
-    assertEquals(false, document.isDirty())
-
+    first.append(outline(20f))
+    assertEquals(InkState(true, false, true), first.state())
     first.undoMutation()
-    first.append(outline(20f)) // Same history depth, different branch.
-    assertTrue(document.isDirty())
-    document.resetDirty()
-    second.undoMutation()
-    assertTrue(document.isDirty())
-    second.redoMutation()
-    assertEquals(false, document.isDirty())
     document.markStructuralDirty()
     assertTrue(document.isDirty())
-    document.resetDirty()
-    assertEquals(false, document.isDirty())
+  }
+
+  @Test
+  fun headlessContentDoesNotCreateHistoryOrDirtyState() {
+    val history = InkHistory(recordHistory = false)
+    val annotation = text(1L, "Base", 24.0, 40.0)
+    history.appendText(annotation)
+    history.replaceText(annotation, annotation.copy(text = "Updated"))
+    assertEquals(InkState(false, false, false), history.state())
+    assertEquals("Updated", history.contentSnapshot().single().textAnnotationOrNull()?.text)
+    history.clearMutation()
+    assertEquals(InkState(false, false, false), history.state())
   }
 
   @Test
@@ -91,7 +142,7 @@ class InkHistoryTest {
     assertEquals(listOf(second), document.page(1).history.snapshot())
     assertTrue(document.pages.any { it.history.state().isDirty })
 
-    document.clearActiveInk()
+    document.clearInk(document.page(0))
     assertTrue(document.page(0).history.snapshot().isEmpty())
     assertEquals(listOf(second), document.page(1).history.snapshot())
     document.page(0).history.undoMutation()

@@ -22,12 +22,14 @@ namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
 namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
-// Forward declaration of `PageInfo` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PageInfo; }
+// Forward declaration of `PageChangeEvent` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageChangeEvent; }
 // Forward declaration of `TextSelection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextSelection; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
+// Forward declaration of `PageInfo` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
@@ -44,6 +46,8 @@ namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
+// Forward declaration of `DocumentState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `HybridTextHandleSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
@@ -68,14 +72,15 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "PagerDirection.hpp"
 #include "ViewerState.hpp"
 #include <functional>
+#include "InteractionMode.hpp"
 #include <NitroModules/Null.hpp>
 #include <variant>
-#include "InteractionMode.hpp"
-#include "PageInfo.hpp"
+#include "PageChangeEvent.hpp"
 #include "TextSelection.hpp"
 #include <NitroModules/Promise.hpp>
 #include "NamedFontSource.hpp"
 #include <vector>
+#include "PageInfo.hpp"
 #include "ViewportOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
@@ -84,6 +89,7 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "AddPagesActivePage.hpp"
 #include "Viewport.hpp"
 #include "PageCoords.hpp"
+#include "DocumentState.hpp"
 #include <memory>
 #include "HybridTextHandleSpec.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
@@ -245,11 +251,11 @@ namespace margelo::nitro::inksignpdf {
     inline void setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) noexcept override {
       _swiftPart.setOnStateChange(onStateChange);
     }
-    inline std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() noexcept override {
+    inline std::optional<std::function<void(const PageChangeEvent& /* event */)>> getOnPageChange() noexcept override {
       auto __result = _swiftPart.getOnPageChange();
       return __result;
     }
-    inline void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) noexcept override {
+    inline void setOnPageChange(const std::optional<std::function<void(const PageChangeEvent& /* event */)>>& onPageChange) noexcept override {
       _swiftPart.setOnPageChange(onPageChange);
     }
     inline std::optional<std::function<void(double /* zoom */)>> getOnZoomChange() noexcept override {
@@ -353,8 +359,8 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline bool hasInk() override {
-      auto __result = _swiftPart.hasInk();
+    inline DocumentState getState() override {
+      auto __result = _swiftPart.getState();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
@@ -405,12 +411,6 @@ namespace margelo::nitro::inksignpdf {
     }
     inline void clearInk() override {
       auto __result = _swiftPart.clearInk();
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
-    inline void resetDirty() override {
-      auto __result = _swiftPart.resetDirty();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

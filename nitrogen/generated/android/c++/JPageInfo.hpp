@@ -10,7 +10,7 @@
 #include <fbjni/fbjni.h>
 #include "PageInfo.hpp"
 
-
+#include <string>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -31,19 +31,40 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     PageInfo toCpp() const {
       static const auto clazz = javaClassStatic();
+      static const auto fieldHasInk = clazz->getField<jboolean>("hasInk");
+      jboolean hasInk = this->getFieldValue(fieldHasInk);
+      static const auto fieldHasText = clazz->getField<jboolean>("hasText");
+      jboolean hasText = this->getFieldValue(fieldHasText);
       static const auto fieldPageIndex = clazz->getField<double>("pageIndex");
       double pageIndex = this->getFieldValue(fieldPageIndex);
       static const auto fieldPageCount = clazz->getField<double>("pageCount");
       double pageCount = this->getFieldValue(fieldPageCount);
+      static const auto fieldIsDirty = clazz->getField<jboolean>("isDirty");
+      jboolean isDirty = this->getFieldValue(fieldIsDirty);
+      static const auto fieldPageId = clazz->getField<jni::JString>("pageId");
+      jni::local_ref<jni::JString> pageId = this->getFieldValue(fieldPageId);
       static const auto fieldWidth = clazz->getField<double>("width");
       double width = this->getFieldValue(fieldWidth);
       static const auto fieldHeight = clazz->getField<double>("height");
       double height = this->getFieldValue(fieldHeight);
+      static const auto fieldRotation = clazz->getField<double>("rotation");
+      double rotation = this->getFieldValue(fieldRotation);
+      static const auto fieldCanUndo = clazz->getField<jboolean>("canUndo");
+      jboolean canUndo = this->getFieldValue(fieldCanUndo);
+      static const auto fieldCanRedo = clazz->getField<jboolean>("canRedo");
+      jboolean canRedo = this->getFieldValue(fieldCanRedo);
       return PageInfo(
+        static_cast<bool>(hasInk),
+        static_cast<bool>(hasText),
         pageIndex,
         pageCount,
+        static_cast<bool>(isDirty),
+        pageId->toStdString(),
         width,
-        height
+        height,
+        rotation,
+        static_cast<bool>(canUndo),
+        static_cast<bool>(canRedo)
       );
     }
 
@@ -53,15 +74,22 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JPageInfo::javaobject> fromCpp(const PageInfo& value) {
-      using JSignature = JPageInfo(double, double, double, double);
+      using JSignature = JPageInfo(jboolean, jboolean, double, double, jboolean, jni::alias_ref<jni::JString>, double, double, double, jboolean, jboolean);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
+        value.hasInk,
+        value.hasText,
         value.pageIndex,
         value.pageCount,
+        value.isDirty,
+        jni::make_jstring(value.pageId),
         value.width,
-        value.height
+        value.height,
+        value.rotation,
+        value.canUndo,
+        value.canRedo
       );
     }
   };

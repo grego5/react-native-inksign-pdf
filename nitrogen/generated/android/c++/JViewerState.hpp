@@ -12,6 +12,7 @@
 
 #include "InteractionMode.hpp"
 #include "JInteractionMode.hpp"
+#include "JVariant_NullType_Double.hpp"
 #include "JVariant_NullType_String.hpp"
 #include <NitroModules/JNull.hpp>
 #include <NitroModules/Null.hpp>
@@ -38,25 +39,25 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     ViewerState toCpp() const {
       static const auto clazz = javaClassStatic();
-      static const auto fieldDocumentId = clazz->getField<JVariant_NullType_String>("documentId");
-      jni::local_ref<JVariant_NullType_String> documentId = this->getFieldValue(fieldDocumentId);
-      static const auto fieldCanUndo = clazz->getField<jboolean>("canUndo");
-      jboolean canUndo = this->getFieldValue(fieldCanUndo);
-      static const auto fieldCanRedo = clazz->getField<jboolean>("canRedo");
-      jboolean canRedo = this->getFieldValue(fieldCanRedo);
-      static const auto fieldIsDirty = clazz->getField<jboolean>("isDirty");
-      jboolean isDirty = this->getFieldValue(fieldIsDirty);
       static const auto fieldMode = clazz->getField<JInteractionMode>("mode");
       jni::local_ref<JInteractionMode> mode = this->getFieldValue(fieldMode);
       static const auto fieldError = clazz->getField<JVariant_NullType_String>("error");
       jni::local_ref<JVariant_NullType_String> error = this->getFieldValue(fieldError);
+      static const auto fieldPageIndex = clazz->getField<JVariant_NullType_Double>("pageIndex");
+      jni::local_ref<JVariant_NullType_Double> pageIndex = this->getFieldValue(fieldPageIndex);
+      static const auto fieldDocumentId = clazz->getField<JVariant_NullType_String>("documentId");
+      jni::local_ref<JVariant_NullType_String> documentId = this->getFieldValue(fieldDocumentId);
+      static const auto fieldPageCount = clazz->getField<double>("pageCount");
+      double pageCount = this->getFieldValue(fieldPageCount);
+      static const auto fieldIsDirty = clazz->getField<jboolean>("isDirty");
+      jboolean isDirty = this->getFieldValue(fieldIsDirty);
       return ViewerState(
-        documentId != nullptr ? std::make_optional(documentId->toCpp()) : std::nullopt,
-        static_cast<bool>(canUndo),
-        static_cast<bool>(canRedo),
-        static_cast<bool>(isDirty),
         mode->toCpp(),
-        error != nullptr ? std::make_optional(error->toCpp()) : std::nullopt
+        error != nullptr ? std::make_optional(error->toCpp()) : std::nullopt,
+        pageIndex != nullptr ? std::make_optional(pageIndex->toCpp()) : std::nullopt,
+        documentId != nullptr ? std::make_optional(documentId->toCpp()) : std::nullopt,
+        pageCount,
+        static_cast<bool>(isDirty)
       );
     }
 
@@ -66,17 +67,17 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JViewerState::javaobject> fromCpp(const ViewerState& value) {
-      using JSignature = JViewerState(jni::alias_ref<JVariant_NullType_String>, jboolean, jboolean, jboolean, jni::alias_ref<JInteractionMode>, jni::alias_ref<JVariant_NullType_String>);
+      using JSignature = JViewerState(jni::alias_ref<JInteractionMode>, jni::alias_ref<JVariant_NullType_String>, jni::alias_ref<JVariant_NullType_Double>, jni::alias_ref<JVariant_NullType_String>, double, jboolean);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
-        value.documentId.has_value() ? JVariant_NullType_String::fromCpp(value.documentId.value()) : nullptr,
-        value.canUndo,
-        value.canRedo,
-        value.isDirty,
         JInteractionMode::fromCpp(value.mode),
-        value.error.has_value() ? JVariant_NullType_String::fromCpp(value.error.value()) : nullptr
+        value.error.has_value() ? JVariant_NullType_String::fromCpp(value.error.value()) : nullptr,
+        value.pageIndex.has_value() ? JVariant_NullType_Double::fromCpp(value.pageIndex.value()) : nullptr,
+        value.documentId.has_value() ? JVariant_NullType_String::fromCpp(value.documentId.value()) : nullptr,
+        value.pageCount,
+        value.isDirty
       );
     }
   };

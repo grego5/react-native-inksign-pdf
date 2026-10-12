@@ -61,7 +61,7 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("previousPage", &HybridInkSignViewSpec::previousPage);
       prototype.registerHybridMethod("getViewport", &HybridInkSignViewSpec::getViewport);
       prototype.registerHybridMethod("requestPageCoords", &HybridInkSignViewSpec::requestPageCoords);
-      prototype.registerHybridMethod("hasInk", &HybridInkSignViewSpec::hasInk);
+      prototype.registerHybridMethod("getState", &HybridInkSignViewSpec::getState);
       prototype.registerHybridMethod("getSelectedText", &HybridInkSignViewSpec::getSelectedText);
       prototype.registerHybridMethod("getPage", &HybridInkSignViewSpec::getPage);
       prototype.registerHybridMethod("setMode", &HybridInkSignViewSpec::setMode);
@@ -69,7 +69,6 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
       prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
       prototype.registerHybridMethod("clearInk", &HybridInkSignViewSpec::clearInk);
-      prototype.registerHybridMethod("resetDirty", &HybridInkSignViewSpec::resetDirty);
       prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);
       prototype.registerHybridMethod("finalize", &HybridInkSignViewSpec::finalize);
       prototype.registerHybridMethod("startDebugRecording", &HybridInkSignViewSpec::startDebugRecording);

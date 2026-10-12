@@ -5,6 +5,11 @@ internal interface TextPageContext {
   val pageId: String
 }
 
+internal data class DocumentPageContext(
+  override val generation: Long,
+  override val pageId: String,
+) : TextPageContext
+
 internal class PreparedPageContext(
   override val generation: Long,
   override val pageId: String,

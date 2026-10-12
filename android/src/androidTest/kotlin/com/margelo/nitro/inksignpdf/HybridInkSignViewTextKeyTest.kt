@@ -201,7 +201,7 @@ internal class HybridInkSignViewTextKeyTest {
         surface.switchPage(1)
       }
       handle.setValue("updated", null)
-      handle.setOptions(TextAnnotationOptions(font = null,
+      handle.setOptions(TextAnnotationOptions(untracked = null, font = null,
         fontSize = null,
         color = null,
         direction = null,
@@ -267,7 +267,7 @@ internal class HybridInkSignViewTextKeyTest {
         view.view.layout(0, 0, 300, 300)
       }
       awaitOpen(instrumentation, viewRef.get(), sourceA.absolutePath, expectedPageCount = 1.0)
-      val originalPath = viewRef.get().coordinator.sourcePath
+      val originalPath = viewRef.get().documentState.sourcePath
 
       val lookupSettled = CountDownLatch(1)
       val rejectionCount = AtomicInteger()
@@ -299,14 +299,14 @@ internal class HybridInkSignViewTextKeyTest {
       assertEquals("operation_cancelled", (lookupError.get() as? PdfSessionException)?.code)
       assertEquals(1, rejectionCount.get())
       assertTrue("replacement did not clear the active document", documentCleared.await(5L, TimeUnit.SECONDS))
-      instrumentation.runOnMainSync { assertTrue(!viewRef.get().coordinator.hasDocument) }
+      instrumentation.runOnMainSync { assertTrue(!viewRef.get().documentState.hasDocument) }
       releaseAnalysis.countDown()
       assertTrue("replacement open did not settle", openSettled.await(10L, TimeUnit.SECONDS))
       replacementError.get()?.let { throw AssertionError("replacement open failed", it) }
       assertEquals(1.0, replacementInfo.get().pageCount, 0.0)
       instrumentation.runOnMainSync {
-        assertTrue(viewRef.get().coordinator.sourcePath != originalPath)
-        assertTrue(viewRef.get().coordinator.pageSnapshot(0).content.isEmpty())
+        assertTrue(viewRef.get().documentState.sourcePath != originalPath)
+        assertTrue(viewRef.get().documentState.pageSnapshot(0).content.isEmpty())
       }
     } finally {
       releaseAnalysis.countDown()
@@ -393,10 +393,10 @@ internal class HybridInkSignViewTextKeyTest {
   }
 
   private fun pageHistoryStates(view: HybridInkSignView): List<PageHistoryState> =
-    (0 until view.coordinator.pageCount).map { pageIndex ->
+    (0 until view.documentState.pageCount).map { pageIndex ->
       PageHistoryState(
-        content = view.coordinator.pageSnapshot(pageIndex).content,
-        revision = view.coordinator.pageHistoryRevision(pageIndex),
+        content = view.documentState.pageSnapshot(pageIndex).content,
+        revision = view.documentState.pageHistoryRevision(pageIndex),
       )
     }
 

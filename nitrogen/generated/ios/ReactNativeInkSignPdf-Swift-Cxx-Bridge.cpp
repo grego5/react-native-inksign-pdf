@@ -105,10 +105,10 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     };
   }
   
-  // pragma MARK: std::function<void(const PageInfo& /* event */)>
-  Func_void_PageInfo create_Func_void_PageInfo(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_PageInfo::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const PageInfo& event) mutable -> void {
+  // pragma MARK: std::function<void(const PageChangeEvent& /* event */)>
+  Func_void_PageChangeEvent create_Func_void_PageChangeEvent(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeInkSignPdf::Func_void_PageChangeEvent::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const PageChangeEvent& event) mutable -> void {
       swiftClosure.call(event);
     };
   }
@@ -126,6 +126,14 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     auto swiftClosure = ReactNativeInkSignPdf::Func_void_std__optional_std__variant_nitro__NullType__TextSelection__::fromUnsafe(swiftClosureWrapper);
     return [swiftClosure = std::move(swiftClosure)](const std::optional<std::variant<nitro::NullType, TextSelection>>& selection) mutable -> void {
       swiftClosure.call(selection);
+    };
+  }
+  
+  // pragma MARK: std::function<void(const PageInfo& /* result */)>
+  Func_void_PageInfo create_Func_void_PageInfo(void* NON_NULL swiftClosureWrapper) noexcept {
+    auto swiftClosure = ReactNativeInkSignPdf::Func_void_PageInfo::fromUnsafe(swiftClosureWrapper);
+    return [swiftClosure = std::move(swiftClosure)](const PageInfo& result) mutable -> void {
+      swiftClosure.call(result);
     };
   }
   

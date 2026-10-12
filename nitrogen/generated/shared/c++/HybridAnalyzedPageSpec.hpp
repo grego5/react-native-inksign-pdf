@@ -13,6 +13,8 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `PageInfo` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `TextFocusOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
 // Forward declaration of `ResolveTextOptions` to properly resolve imports.
@@ -22,6 +24,7 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextEntry` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextEntry; }
 
+#include "PageInfo.hpp"
 #include <NitroModules/Promise.hpp>
 #include "TextFocusOptions.hpp"
 #include <optional>
@@ -62,6 +65,7 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Methods
+      virtual PageInfo getState() = 0;
       virtual std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) = 0;
       virtual double resolveText(const ResolveTextOptions& options) = 0;
       virtual std::string getTextValue(double id) = 0;

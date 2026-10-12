@@ -299,6 +299,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                                         pageSize: CGSize, layoutRotation: Int)? = nil,
                          targetID: UInt64? = nil) throws {
     guard let owner else { throw InkSignView.TextError.notReady }
+    if options?.untracked == true { throw InkSignView.HeadlessFeatureError.androidOnly }
     let context: (generation: UInt64, pageIndex: Int?, pageID: UUID?)
     if let capturedPage {
       context = (capturedPage.generation, nil, capturedPage.pageID)

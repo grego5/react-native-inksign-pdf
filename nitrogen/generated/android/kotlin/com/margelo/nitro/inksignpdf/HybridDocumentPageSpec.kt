@@ -31,7 +31,7 @@ abstract class HybridDocumentPageSpec: HybridObject() {
   // Methods
   @DoNotStrip
   @Keep
-  abstract fun getInfo(): PageInfo
+  abstract fun getState(): PageInfo
   
   @DoNotStrip
   @Keep

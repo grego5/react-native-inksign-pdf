@@ -96,7 +96,7 @@ extension InkSignView {
                self.documentCoordinator.document === state,
                state.activePage.id == pageID,
                state.activePage.geometryRevision == geometryRevision {
-              self.onPageChange?(pageInfo)
+              self.emitPageState()
             }
           }
         }

@@ -41,6 +41,15 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContex
     super.init()
   }
 
+  func getState() throws -> PageInfo {
+    try withOwner { owner in
+      let document = owner.documentCoordinator.document!
+      let index = document.pages.firstIndex { $0.id == self.pageID }!
+      return owner.toPublicPageInfo(InkSignPdfNativePageInfo(
+        pageIndex: index, pageCount: document.pages.count, geometry: document.pages[index].geometry))
+    }
+  }
+
   func resolveText(options: ResolveTextOptions) throws -> Double {
     try withOwner { try $0.resolvePreparedText(self, options: options) }
   }

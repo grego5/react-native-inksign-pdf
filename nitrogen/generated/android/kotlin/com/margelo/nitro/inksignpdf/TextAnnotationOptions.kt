@@ -20,6 +20,9 @@ import com.margelo.nitro.core.NullType
 data class TextAnnotationOptions(
   @DoNotStrip
   @Keep
+  val untracked: Boolean?,
+  @DoNotStrip
+  @Keep
   val font: Variant_NullType_String?,
   @DoNotStrip
   @Keep
@@ -45,7 +48,8 @@ data class TextAnnotationOptions(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is TextAnnotationOptions) return false
-    return Objects.deepEquals(this.font, other.font)
+    return Objects.deepEquals(this.untracked, other.untracked)
+      && Objects.deepEquals(this.font, other.font)
       && Objects.deepEquals(this.fontSize, other.fontSize)
       && Objects.deepEquals(this.color, other.color)
       && Objects.deepEquals(this.direction, other.direction)
@@ -56,6 +60,7 @@ data class TextAnnotationOptions(
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
+      untracked,
       font,
       fontSize,
       color,
@@ -74,8 +79,8 @@ data class TextAnnotationOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(font: Variant_NullType_String?, fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?): TextAnnotationOptions {
-      return TextAnnotationOptions(font, fontSize, color, direction, maxLines, alignment, verticalAnchor)
+    private fun fromCpp(untracked: Boolean?, font: Variant_NullType_String?, fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?): TextAnnotationOptions {
+      return TextAnnotationOptions(untracked, font, fontSize, color, direction, maxLines, alignment, verticalAnchor)
     }
   }
 }

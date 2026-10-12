@@ -3,6 +3,7 @@ package com.margelo.nitro.inksignpdf
 import android.view.View
 import android.view.MotionEvent
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.Canvas
 import android.widget.EditText
 import android.content.ContentValues
@@ -45,16 +46,16 @@ class PageRotationInstrumentationTest {
       val workingPath = AtomicReference<String>()
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        workingPath.set(view.coordinator.sourcePath)
+        workingPath.set(view.documentState.sourcePath)
         setPreparedText(initialPage, TextAnnotationBounds(40.0, 50.0, 180.0, 24.0), "Original")
-        before.set(view.coordinator.pageSnapshot(0).content.single().textAnnotationOrNull())
+        before.set(view.documentState.pageSnapshot(0).content.single().textAnnotationOrNull())
       }
       await(instrumentation, viewRef.get().rotatePage(90.0))
       val rotatedPage = awaitPreparedPage(instrumentation, viewRef.get())
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        assertEquals(workingPath.get(), view.coordinator.sourcePath)
-        assertEquals(PdfPageDimensions(320.0, 240.0, 0), view.coordinator.page(0).sourceDimensions)
+        assertEquals(workingPath.get(), view.documentState.sourcePath)
+        assertEquals(PdfPageDimensions(320.0, 240.0, 0), view.documentState.pageMetadata(0).sourceDimensions)
         val container = view.view as FrameLayout
         val surface = container.getChildAt(0) as SurfaceView
         val overlay = (0 until container.childCount).map(container::getChildAt)
@@ -73,19 +74,19 @@ class PageRotationInstrumentationTest {
         assertTrue("Editing must retain the original horizontal layout width", editor.width > editor.height)
         editor.setText("Edited")
         view.setMode(InputMode.VIEW, null)
-        val edited = checkNotNull(view.coordinator.pageSnapshot(0).content.single().textAnnotationOrNull())
+        val edited = checkNotNull(view.documentState.pageSnapshot(0).content.single().textAnnotationOrNull())
         assertEquals(annotation.flowBounds, edited.flowBounds)
         assertEquals(annotation.layoutPage, edited.layoutPage)
 
         view.defaultTextColor = "#D00000"
         setPreparedText(rotatedPage, TextAnnotationBounds(60.0, 160.0, 160.0, 24.0), "New text")
-        val newText = checkNotNull(view.coordinator.pageSnapshot(0).content.last().textAnnotationOrNull())
+        val newText = checkNotNull(view.documentState.pageSnapshot(0).content.last().textAnnotationOrNull())
         assertEquals(PdfPageDimensions(240.0, 320.0, 1), newText.layoutPage)
         val actual = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
         val expected = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
         try {
           val canvas = Canvas(actual)
-          canvas.concat(PageCoordinates(view.coordinator.page(0).dimensions)
+          canvas.concat(PageCoordinates(view.documentState.pageMetadata(0).dimensions)
             .rawToView(PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)).toCanvasMatrix())
           TextRenderLayer.from(listOf(newText)).draw(canvas)
           TextRenderLayer.from(listOf(newText.copy(layoutPage = null))).draw(Canvas(expected))
@@ -160,7 +161,7 @@ class PageRotationInstrumentationTest {
       )))
       instrumentation.runOnMainSync {
         val annotation = checkNotNull(
-          viewRef.get().coordinator.pageSnapshot(0).content.single().textAnnotationOrNull(),
+          viewRef.get().documentState.pageSnapshot(0).content.single().textAnnotationOrNull(),
         )
         assertEquals("OK", annotation.text)
         assertEquals(2, annotation.layoutPage?.rotation)
@@ -212,7 +213,7 @@ class PageRotationInstrumentationTest {
             assertEquals("text_rule_not_found", (error.cause as? PdfSessionException)?.code)
           }
           instrumentation.runOnMainSync {
-            assertTrue(view.coordinator.pageSnapshot(0).content.isEmpty())
+            assertTrue(view.documentState.pageSnapshot(0).content.isEmpty())
             val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
             assertTrue(!surface.isEditMode)
           }
@@ -229,7 +230,7 @@ class PageRotationInstrumentationTest {
         val ruleY = if (angle == 0) 132.0 else 268.0
         val field = PageRect(if (angle == 0) 210.0 else 190.0, 0.0, 280.0, ruleY)
         instrumentation.runOnMainSync {
-          val annotation = checkNotNull(view.coordinator.pageSnapshot(0).content.single().textAnnotationOrNull())
+          val annotation = checkNotNull(view.documentState.pageSnapshot(0).content.single().textAnnotationOrNull())
           assertEquals(field, annotation.flowBounds)
           assertEquals(angle / 90, annotation.layoutPage?.rotation)
         }
@@ -291,6 +292,128 @@ class PageRotationInstrumentationTest {
   }
 
   @Test
+  fun pageInspectionExcludesImportedInkAndUsesDisplayedGeometryAfterReopen() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    val source = File.createTempFile("page-inspection-", ".pdf", context.cacheDir)
+    val view = AtomicReference<HybridInkSignView>()
+    val pageEvents = ArrayList<PageChangeEvent>()
+    var reopened: HybridInkSignDocumentSpec? = null
+    val outputs = ArrayList<File>()
+    try {
+      source.writeBytes(sourcePdf(320, 240, importedInk = true))
+      instrumentation.runOnMainSync {
+        view.set(HybridInkSignView(context).also {
+          it.strokeColor = "#000000"
+          it.onPageChange = { state -> pageEvents += state }
+          val size = View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY)
+          it.view.measure(size, size)
+          it.view.layout(0, 0, 480, 480)
+        })
+      }
+      await(instrumentation, view.get().open(source.absolutePath, null))
+      val page = awaitPreparedPage(instrumentation, view.get())
+      instrumentation.runOnMainSync {
+        assertTrue("Imported PDF Ink annotations are not session ink", !page.getState().hasInk)
+        assertTrue(!page.getState().hasText)
+        assertTrue(!page.getState().isDirty)
+        assertEquals(1.0, view.get().getState().pageCount, 0.0)
+        assertEquals(0.0, page.getState().rotation, 0.0)
+        view.get().core.commitInk(DocumentPageContext(view.get().documentState.generation,
+          view.get().documentState.activePageId()), StrokeOutline.fromCommands(listOf(
+          InkPathCommand(InkPathCommand.MOVE, 140f, 130f),
+          InkPathCommand(InkPathCommand.LINE, 160f, 130f),
+          InkPathCommand(InkPathCommand.LINE, 160f, 145f),
+          InkPathCommand(InkPathCommand.LINE, 140f, 145f),
+          InkPathCommand(InkPathCommand.CLOSE),
+        )))
+        assertTrue(page.getState().hasInk)
+        assertTrue(page.getState().isDirty)
+        assertTrue(page.getState().canUndo)
+        assertEquals(page.getState().pageId, pageEvents.last().pageId)
+        assertTrue(pageEvents.last().canUndo)
+        view.get().undo()
+        assertTrue(!page.getState().hasInk)
+        view.get().redo()
+        assertTrue(page.getState().hasInk)
+      }
+      await(instrumentation, view.get().addPages(AddPagesOptions(null,
+        arrayOf(source.absolutePath), null, null, null, null)))
+      val otherPage = await(instrumentation, view.get().getPage(1.0))
+      instrumentation.runOnMainSync {
+        val surface = (view.get().view as FrameLayout).getChildAt(0) as SurfaceView
+        surface.switchPage(1)
+        assertTrue(!otherPage.getState().hasInk)
+        assertTrue("Inspection must remain bound to the nonactive page", page.getState().hasInk)
+        assertEquals(0.0, page.getState().pageIndex, 0.0)
+        assertEquals(2.0, page.getState().pageCount, 0.0)
+        assertEquals(1, view.get().documentState.activePageIndex)
+        surface.switchPage(0)
+        assertTrue(view.get().getState().isDirty)
+        assertTrue(page.getState().isDirty)
+        assertTrue(page.getState().canUndo)
+        assertEquals(page.getState().pageId, pageEvents.last().pageId)
+        assertTrue(pageEvents.last().canUndo)
+      }
+      val rotated = await(instrumentation, view.get().rotatePage(90.0))
+      assertEquals(90.0, rotated.rotation, 0.0)
+      instrumentation.runOnMainSync {
+        assertEquals(240.0, page.getState().width, 0.0)
+        assertEquals(320.0, page.getState().height, 0.0)
+        assertEquals(90.0, page.getState().rotation, 0.0)
+        assertTrue(page.getState().hasInk)
+      }
+      val uri = await(instrumentation, view.get().finalize())
+      outputs += File(java.net.URI(uri))
+      val reopenedDocument = await(instrumentation, HybridInkSignDocument(context).open(uri, null))
+      reopened = reopenedDocument
+      val reopenedPage = await(instrumentation, reopenedDocument.getPage(0.0))
+      val stampBounds = TextAnnotationBounds(30.0, 60.0, 160.0, 30.0)
+      instrumentation.runOnMainSync {
+        assertTrue("Exported ink is imported content on reopen", !reopenedPage.getState().hasInk)
+        assertEquals(2.0, reopenedDocument.getState().pageCount, 0.0)
+        assertTrue(!reopenedDocument.getState().isDirty)
+        val info = reopenedPage.getState()
+        assertEquals(240.0, info.width, 0.0)
+        assertEquals(320.0, info.height, 0.0)
+        assertEquals(90.0, info.rotation, 0.0)
+        val id = reopenedPage.resolveText(fieldResolutionOptions().copy(
+          fieldName = null, bounds = stampBounds, fontSize = 16.0,
+          color = "#D00000", verticalAnchor = TextVerticalAnchor.TOP))
+        reopenedPage.setTextValue(id, "STAMP", null)
+        assertTrue(!reopenedPage.getState().hasInk)
+        assertTrue(reopenedPage.getState().hasText)
+        assertTrue(!reopenedPage.getState().isDirty)
+        assertTrue(!reopenedDocument.getState().isDirty)
+        assertTrue("Headless documents do not record undo", !reopenedPage.getState().canUndo)
+      }
+      val stampedUri = await(instrumentation, reopenedDocument.finalize())
+      outputs += File(java.net.URI(stampedUri))
+      PdfiumRenderSession.open(outputs.last().readBytes()).use { exported ->
+        assertEquals(PdfiumPageSize(240.0, 320.0, 1), exported.pageSize(0))
+        val bitmap = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888)
+        try {
+          assertTrue(exported.renderPageIntoBitmap(0, bitmap,
+            PdfiumAffineMatrix(1.0, 0.0, 0.0, 1.0, 0.0, 0.0),
+            PdfiumRect(0.0, 0.0, 240.0, 320.0), flags = pdfiumAndroidDisplayFlags))
+          val stamp = redPixelBounds(bitmap)
+          assertTrue("Stamp must use displayed top-left bounds: $stamp",
+            stamp.left >= 28 && stamp.right <= 192 && stamp.top >= 58 && stamp.bottom <= 92)
+          val inkCenter = PageCoordinates(PdfPageDimensions(240.0, 320.0, 1))
+            .canonicalToDisplay(PagePoint(150.0, 137.0))
+          assertEquals("Exported session ink must remain visible", Color.BLACK,
+            bitmap.getPixel(inkCenter.x.toInt(), inkCenter.y.toInt()))
+        } finally { bitmap.recycle() }
+      }
+    } finally {
+      reopened?.let { await(instrumentation, it.close()) }
+      instrumentation.runOnMainSync { view.get()?.onDropView() }
+      outputs.forEach { it.delete() }
+      source.delete()
+    }
+  }
+
+  @Test
   fun rotationPreservesHistoryCancelsLiveInputAndPersistsExportedOrientation() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
@@ -317,17 +440,16 @@ class PageRotationInstrumentationTest {
       ))
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        originalPageId.set(view.coordinator.page(0).id)
+        originalPageId.set(view.documentState.pageMetadata(0).id)
         view.defaultTextColor = "#D00000"
         setPreparedText(preparedPage, TextAnnotationBounds(20.0, 90.0, 180.0, 30.0), "Approved")
-        view.coordinator.appendActiveInk(originalInk)
+        view.core.commitInk(DocumentPageContext(view.documentState.generation, view.documentState.activePageId()), originalInk)
         val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
-        surface.inkRenderer.addCompletedOutline(originalInk)
         view.undo()
-        contentBeforeRotation.set(view.coordinator.pageSnapshot(0).content)
+        contentBeforeRotation.set(view.documentState.pageSnapshot(0).content)
         surface.activePointerId = 7
-        assertTrue(view.coordinator.activeHistoryState().canUndo)
-        assertTrue(view.coordinator.activeHistoryState().canRedo)
+        assertTrue(view.documentState.activeHistoryState().canUndo)
+        assertTrue(view.documentState.activeHistoryState().canRedo)
       }
 
       val rotated = await(instrumentation, viewRef.get().rotatePage(90.0))
@@ -335,13 +457,13 @@ class PageRotationInstrumentationTest {
         val view = viewRef.get()
         val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
         assertEquals(SurfaceView.noPointer, surface.activePointerId)
-        assertEquals(originalPageId.get(), view.coordinator.page(0).id)
-        assertEquals(PdfPageDimensions(240.0, 320.0, rotation = 1), view.coordinator.page(0).dimensions)
-        assertTrue(view.coordinator.activeHistoryState().canUndo)
-        assertTrue(view.coordinator.activeHistoryState().canRedo)
-        assertEquals(listOf("Approved"), view.coordinator.pageSnapshot(0).content
+        assertEquals(originalPageId.get(), view.documentState.pageMetadata(0).id)
+        assertEquals(PdfPageDimensions(240.0, 320.0, rotation = 1), view.documentState.pageMetadata(0).dimensions)
+        assertTrue(view.documentState.activeHistoryState().canUndo)
+        assertTrue(view.documentState.activeHistoryState().canRedo)
+        assertEquals(listOf("Approved"), view.documentState.pageSnapshot(0).content
           .mapNotNull { it.textAnnotationOrNull()?.text })
-        assertEquals(contentBeforeRotation.get(), view.coordinator.pageSnapshot(0).content)
+        assertEquals(contentBeforeRotation.get(), view.documentState.pageSnapshot(0).content)
       }
       assertEquals(240.0, rotated.width, 0.0)
       assertEquals(320.0, rotated.height, 0.0)
@@ -352,25 +474,25 @@ class PageRotationInstrumentationTest {
         targetDpi = null, jpegQuality = null, activePage = null,
       )))
       instrumentation.runOnMainSync {
-        assertEquals(originalPageId.get(), viewRef.get().coordinator.page(0).id)
-        assertEquals(1, viewRef.get().coordinator.page(0).dimensions.rotation)
+        assertEquals(originalPageId.get(), viewRef.get().documentState.pageMetadata(0).id)
+        assertEquals(1, viewRef.get().documentState.pageMetadata(0).dimensions.rotation)
       }
       await(instrumentation, viewRef.get().movePage(1.0))
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        assertEquals(originalPageId.get(), view.coordinator.page(1).id)
-        assertEquals(contentBeforeRotation.get(), view.coordinator.pageSnapshot(1).content)
-        assertTrue(view.coordinator.activeHistoryState().canRedo)
+        assertEquals(originalPageId.get(), view.documentState.pageMetadata(1).id)
+        assertEquals(contentBeforeRotation.get(), view.documentState.pageSnapshot(1).content)
+        assertTrue(view.documentState.activeHistoryState().canRedo)
         ((view.view as FrameLayout).getChildAt(0) as SurfaceView).switchPage(0)
       }
       await(instrumentation, viewRef.get().removePage())
       instrumentation.runOnMainSync {
-        val page = viewRef.get().coordinator.page(0)
+        val page = viewRef.get().documentState.pageMetadata(0)
         assertEquals(originalPageId.get(), page.id)
         assertEquals(PdfPageDimensions(240.0, 320.0, 1), page.dimensions)
         assertEquals(PdfPageDimensions(320.0, 240.0, 0), page.sourceDimensions)
-        assertEquals(contentBeforeRotation.get(), viewRef.get().coordinator.pageSnapshot(0).content)
-        assertTrue(viewRef.get().coordinator.activeHistoryState().canRedo)
+        assertEquals(contentBeforeRotation.get(), viewRef.get().documentState.pageSnapshot(0).content)
+        assertTrue(viewRef.get().documentState.activeHistoryState().canRedo)
       }
       instrumentation.runOnMainSync { viewRef.get().redo() }
       val outputPath = await(instrumentation, viewRef.get().finalize())
@@ -415,9 +537,9 @@ class PageRotationInstrumentationTest {
       repeat(3) { await(instrumentation, viewRef.get().rotatePage(90.0)) }
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        assertEquals(PdfPageDimensions(320.0, 240.0, rotation = 0), view.coordinator.page(0).dimensions)
-        assertEquals(4L, view.coordinator.page(0).geometryRevision)
-        assertTrue(view.coordinator.activePageHasInk())
+        assertEquals(PdfPageDimensions(320.0, 240.0, rotation = 0), view.documentState.pageMetadata(0).dimensions)
+        assertEquals(4L, view.documentState.pageMetadata(0).geometryRevision)
+        assertTrue(view.documentState.pageInfo(view.documentState.activePageIndex).hasInk)
       }
     } catch (error: Throwable) {
       failure.set(error)
@@ -451,7 +573,7 @@ class PageRotationInstrumentationTest {
     verticalAnchor = TextVerticalAnchor.BOTTOM,
   )
 
-  private fun sourcePdf(width: Int, height: Int, fieldRules: Boolean = false): ByteArray {
+  private fun sourcePdf(width: Int, height: Int, fieldRules: Boolean = false, importedInk: Boolean = false): ByteArray {
     val content = if (fieldRules) {
       "BT /F1 16 Tf 1 0 0 1 140 ${height - 132} Tm (Name) Tj ET\n" +
         "0 0 0 RG 1 w 20 ${height - 132} m 110 ${height - 132} l S\n" +
@@ -462,11 +584,15 @@ class PageRotationInstrumentationTest {
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
       "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
       "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $width $height] " +
-        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
+        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R " +
+        (if (importedInk) "/Annots [6 0 R] " else "") + ">>\nendobj\n",
       "4 0 obj\n<< /Length ${content.toByteArray(Charsets.ISO_8859_1).size} >>\nstream\n$content" +
         "endstream\nendobj\n",
       "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
-    )
+    ) + if (importedInk) listOf(
+      "6 0 obj\n<< /Type /Annot /Subtype /Ink /Rect [10 10 80 50] " +
+        "/InkList [[20 20 60 40]] /C [0 0 1] /BS << /W 2 >> >>\nendobj\n",
+    ) else emptyList()
     val pdf = StringBuilder("%PDF-1.4\n")
     val offsets = objects.map { value ->
       val offset = pdf.toString().toByteArray(Charsets.ISO_8859_1).size
@@ -474,9 +600,9 @@ class PageRotationInstrumentationTest {
       offset
     }
     val xref = pdf.toString().toByteArray(Charsets.ISO_8859_1).size
-    pdf.append("xref\n0 6\n0000000000 65535 f \n")
+    pdf.append("xref\n0 ${objects.size + 1}\n0000000000 65535 f \n")
     offsets.forEach { pdf.append("%010d 00000 n \n".format(it)) }
-    pdf.append("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n")
+    pdf.append("trailer\n<< /Size ${objects.size + 1} /Root 1 0 R >>\nstartxref\n$xref\n%%EOF\n")
     return pdf.toString().toByteArray(Charsets.ISO_8859_1)
   }
 

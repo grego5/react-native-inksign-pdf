@@ -32,6 +32,10 @@ abstract class HybridAnalyzedPageSpec: HybridObject() {
   // Methods
   @DoNotStrip
   @Keep
+  abstract fun getState(): PageInfo
+  
+  @DoNotStrip
+  @Keep
   abstract fun focusText(id: Double, options: TextFocusOptions?): Promise<Unit>
   
   @DoNotStrip

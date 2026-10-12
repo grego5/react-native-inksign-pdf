@@ -16,6 +16,7 @@ import {
   validateViewportOptions,
 } from './publicArguments';
 import type {
+  DocumentState,
   AnalyzedPage,
   PageTextMethods,
   ModeSession,
@@ -30,9 +31,11 @@ import type {
   TextFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
+  PageChangeEvent,
   PageCoords,
   TextAnnotationBounds,
   TextAnnotationOptions,
+  TextPresentationOptions,
   TextKeyOccurrence,
   TextModeOptions,
   PageType,
@@ -60,15 +63,18 @@ import type { NamedFontSource, DocumentOpenOptions, DocumentAddPagesOptions, Doc
 export type { NamedFontSource, DocumentOpenOptions, DocumentAddPagesOptions, DocumentAddPagesResult, DocumentPage, InkSignDocument } from './InkSignDocument.nitro';
 
 export type {
+  DocumentState,
   AnalyzedPage,
   ModeSession,
   InputMode,
   TextFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
+  PageChangeEvent,
   PageCoords,
   TextAnnotationBounds,
   TextAnnotationOptions,
+  TextPresentationOptions,
   TextKeyOccurrence,
   TextModeOptions,
   PageType,
@@ -235,6 +241,7 @@ function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): Analyzed
     toString: () => native.toString(),
     equals: (other) => native.equals(other),
     dispose: () => native.dispose(),
+    getState: () => native.getState(),
     ...createValidatedPageText(native),
     focusText(id, options) {
       validateTextId(id);
@@ -322,7 +329,7 @@ function createValidatedHandle(
     nextPage: () => getNative().nextPage(),
     previousPage: () => getNative().previousPage(),
     getViewport: () => getNative().getViewport(),
-    hasInk: () => getNative().hasInk(),
+    getState: () => getNative().getState(),
     getSelectedText() {
       const text = getNative().getSelectedText();
       return text === null ? null : createValidatedTextHandle(text);
@@ -347,7 +354,6 @@ function createValidatedHandle(
     redo: () => getNative().redo(),
     clear: () => getNative().clear(),
     clearInk: () => getNative().clearInk(),
-    resetDirty: () => getNative().resetDirty(),
     setTextDirection(direction) {
       if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
         throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');
@@ -393,7 +399,7 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
     });
     const [nativeCallbacks] = useState(() => ({
       onStateChange: callback((event: ViewerState) => callbacks.current.onStateChange?.(event)),
-      onPageChange: callback((event: PageInfo) => callbacks.current.onPageChange?.(event)),
+      onPageChange: callback((event: PageChangeEvent) => callbacks.current.onPageChange?.(event)),
       onTextSelectionChange: callback((selection: TextSelection | null) =>
         callbacks.current.onTextSelectionChange?.(selection)),
       onZoomChange: callback((zoom: number) =>
@@ -439,7 +445,7 @@ function createValidatedDocumentPage(native: DocumentPage): DocumentPage {
   return {
     __type: native.__type, name: native.name,
     toString: () => native.toString(), equals: other => native.equals(other), dispose: () => native.dispose(),
-    getInfo: () => native.getInfo(),
+    getState: () => native.getState(),
     ...createValidatedPageText(native),
   };
 }
@@ -449,6 +455,7 @@ function createValidatedDocument(native: InkSignDocument): InkSignDocument {
     __type: native.__type, name: native.name,
     toString: () => native.toString(), equals: other => native.equals(other), dispose: () => native.dispose(),
     get pageCount() { return native.pageCount; },
+    getState: () => native.getState(),
     getPage(index) {
       return callAsync(() => requiredPageIndex(index), async () => createValidatedDocumentPage(await native.getPage(index)));
     },

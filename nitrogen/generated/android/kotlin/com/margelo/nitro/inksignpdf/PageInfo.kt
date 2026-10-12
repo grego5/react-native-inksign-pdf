@@ -20,34 +20,69 @@ import java.util.Objects
 data class PageInfo(
   @DoNotStrip
   @Keep
+  val hasInk: Boolean,
+  @DoNotStrip
+  @Keep
+  val hasText: Boolean,
+  @DoNotStrip
+  @Keep
   val pageIndex: Double,
   @DoNotStrip
   @Keep
   val pageCount: Double,
   @DoNotStrip
   @Keep
+  val isDirty: Boolean,
+  @DoNotStrip
+  @Keep
+  val pageId: String,
+  @DoNotStrip
+  @Keep
   val width: Double,
   @DoNotStrip
   @Keep
-  val height: Double
+  val height: Double,
+  @DoNotStrip
+  @Keep
+  val rotation: Double,
+  @DoNotStrip
+  @Keep
+  val canUndo: Boolean,
+  @DoNotStrip
+  @Keep
+  val canRedo: Boolean
 ) {
   /* primary constructor */
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is PageInfo) return false
-    return Objects.deepEquals(this.pageIndex, other.pageIndex)
+    return Objects.deepEquals(this.hasInk, other.hasInk)
+      && Objects.deepEquals(this.hasText, other.hasText)
+      && Objects.deepEquals(this.pageIndex, other.pageIndex)
       && Objects.deepEquals(this.pageCount, other.pageCount)
+      && Objects.deepEquals(this.isDirty, other.isDirty)
+      && Objects.deepEquals(this.pageId, other.pageId)
       && Objects.deepEquals(this.width, other.width)
       && Objects.deepEquals(this.height, other.height)
+      && Objects.deepEquals(this.rotation, other.rotation)
+      && Objects.deepEquals(this.canUndo, other.canUndo)
+      && Objects.deepEquals(this.canRedo, other.canRedo)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
+      hasInk,
+      hasText,
       pageIndex,
       pageCount,
+      isDirty,
+      pageId,
       width,
-      height
+      height,
+      rotation,
+      canUndo,
+      canRedo
     ).contentDeepHashCode()
   }
 
@@ -59,8 +94,8 @@ data class PageInfo(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(pageIndex: Double, pageCount: Double, width: Double, height: Double): PageInfo {
-      return PageInfo(pageIndex, pageCount, width, height)
+    private fun fromCpp(hasInk: Boolean, hasText: Boolean, pageIndex: Double, pageCount: Double, isDirty: Boolean, pageId: String, width: Double, height: Double, rotation: Double, canUndo: Boolean, canRedo: Boolean): PageInfo {
+      return PageInfo(hasInk, hasText, pageIndex, pageCount, isDirty, pageId, width, height, rotation, canUndo, canRedo)
     }
   }
 }

@@ -30,6 +30,7 @@ internal sealed interface DocumentChange {
   data object WillChangePages : DocumentChange
   data object Cleared : DocumentChange
   data class Text(val pageId: String) : DocumentChange
+  data class Content(val generation: Long, val pageId: String, val mutation: InkHistoryMutation) : DocumentChange
 }
 
 internal enum class ExportOwnership { DOCUMENT, CALLER }
@@ -37,12 +38,13 @@ internal enum class ExportOwnership { DOCUMENT, CALLER }
 /** Owns document work and resources; clients own presentation and interaction. */
 internal class DocumentCore(
   context: Context,
-  worker: PdfSessionWorker = PdfSessionWorker(),
+  val sessionWorker: PdfSessionWorker = PdfSessionWorker(),
   recordHistory: Boolean,
   private val exportOwnership: ExportOwnership,
 ) {
   val artifacts = CacheArtifactPolicy.initialize(context)
-  val coordinator = MutableDocumentCoordinator(sessionWorker = worker, artifactPolicy = artifacts, recordHistory = recordHistory)
+  internal val coordinator = MutableDocumentCoordinator(sessionWorker = sessionWorker, artifactPolicy = artifacts, recordHistory = recordHistory)
+  val state: DocumentReadState = coordinator
   val fonts = NamedFontRegistry(context)
   val text = DocumentTextCommands(this,
     appDirectionIsRtl = { com.facebook.react.modules.i18nmanager.I18nUtil.getInstance().isRTL(context) })
@@ -85,15 +87,50 @@ internal class DocumentCore(
     observers.toList().forEach { it(change) }
   }
 
-  internal fun <T> withDocument(action: () -> T): T = onMain {
+  private fun <T> withActiveCore(action: () -> T): T = onMain {
     synchronized(admissions) { if (lifecycle != Lifecycle.ACTIVE) throw cancelled() }
+    action()
+  }
+
+  internal fun <T> withDocument(action: () -> T): T = withActiveCore {
     if (!coordinator.hasDocument) throw cancelled()
     action()
   }
 
-  internal fun <T> withPage(context: TextPageContext, action: (InkPageState) -> T): T = withDocument {
+  internal fun <T> withMutablePage(context: TextPageContext, action: (InkPageState) -> T): T = withDocument {
     if (context.generation != coordinator.generation) throw cancelled()
     action(coordinator.pageForId(context.pageId) ?: throw cancelled())
+  }
+
+  internal fun <T> withPage(context: TextPageContext, action: (DocumentPageMetadata) -> T): T =
+    withMutablePage(context) { action(it.metadata()) }
+
+  fun pageInfo(context: TextPageContext): PageInfo = withPage(context) { page ->
+    state.pageInfo(checkNotNull(state.pageIndexForId(page.id)))
+  }
+
+  fun documentInfo(): DocumentState = withActiveCore { state.documentInfo() }
+
+  fun commitInk(context: TextPageContext, outline: StrokeOutline) = withMutablePage(context) { page ->
+    page.history.append(outline)
+    changed(DocumentChange.Content(coordinator.generation, page.id, InkHistoryMutation.Appended(outline)))
+  }
+
+  private fun mutateHistory(pageId: String, operation: (InkPageState) -> InkHistoryMutation) = withDocument {
+    val page = coordinator.pageForId(pageId) ?: throw cancelled()
+    val mutation = operation(page)
+    if (mutation != InkHistoryMutation.NoOp) changed(DocumentChange.Content(coordinator.generation, pageId, mutation))
+  }
+
+  fun undo(pageId: String) = mutateHistory(pageId, coordinator::undoHistory)
+  fun redo(pageId: String) = mutateHistory(pageId, coordinator::redoHistory)
+  fun clearContent(pageId: String) = mutateHistory(pageId, coordinator::clearHistory)
+  fun clearInk(pageId: String) = mutateHistory(pageId, coordinator::clearInk)
+
+  fun requestSnapCandidates(generation: Long, pageIndex: Int,
+                            completion: (Result<List<PdfiumHorizontalSnapCandidate>>) -> Unit) {
+    checkMainThread()
+    coordinator.horizontalSnapCandidates(generation, pageIndex, completion)
   }
 
   suspend fun open(uri: String, options: DocumentOpenOptions? = null): PdfSessionInfo {
@@ -171,7 +208,7 @@ internal class DocumentCore(
         coordinator.executeStructuralMutation(generation,
           PdfiumAssemblyRequest(if (count == 0) PdfiumAssemblyOperation.CREATE else PdfiumAssemblyOperation.APPEND,
             appendInputs = requests),
-          candidateBuilder = { info -> coordinator.appendCandidate(info.pages.drop(count), options.activePage ?: AddPagesActivePage.CURRENT) },
+          candidateBuilder = { info -> coordinator.appendCandidate(info.pages.drop(count)) },
           notifyPublished = ::pagesChanged, fontFallback = font)
       }
       return coordinator.pageCount - count
@@ -217,7 +254,7 @@ internal class DocumentCore(
       coordinator.ensureCurrent(generation)
       val dimensions = PageCoordinates(page.dimensions).withRotation((page.dimensions.rotation + degrees.toInt() / 90) % 4)
       val candidate = coordinator.rotatePageCandidate(page.id, dimensions)
-      coordinator.installCandidate(coordinator.sourcePath, candidate.pages, candidate.activePageId)
+      coordinator.installCandidate(coordinator.sourcePath, candidate.pages)
       pagesChanged()
     } finally { coordinator.endOperation(operation) }
   }

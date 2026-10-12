@@ -25,7 +25,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   var keyboardAvoidanceEnabled: Bool? { get set }
   var pagerDirection: PagerDirection? { get set }
   var onStateChange: ((_ event: ViewerState) -> Void)? { get set }
-  var onPageChange: ((_ event: PageInfo) -> Void)? { get set }
+  var onPageChange: ((_ event: PageChangeEvent) -> Void)? { get set }
   var onZoomChange: ((_ zoom: Double) -> Void)? { get set }
   var onTextSelectionChange: ((_ selection: Variant_NullType_TextSelection?) -> Void)? { get set }
 
@@ -41,7 +41,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func previousPage() throws -> Void
   func getViewport() throws -> Viewport
   func requestPageCoords() throws -> Promise<PageCoords>
-  func hasInk() throws -> Bool
+  func getState() throws -> DocumentState
   func getSelectedText() throws -> Variant__any_HybridTextHandleSpec__NullType
   func getPage(pageIndex: Double?) throws -> Promise<(any HybridAnalyzedPageSpec)>
   func setMode(mode: InputMode, options: TextModeOptions?) throws -> (any HybridModeSessionSpec)
@@ -49,7 +49,6 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func redo() throws -> Void
   func clear() throws -> Void
   func clearInk() throws -> Void
-  func resetDirty() throws -> Void
   func setTextDirection(direction: TextDirection) throws -> Void
   func finalize() throws -> Promise<String>
   func startDebugRecording() throws -> Void

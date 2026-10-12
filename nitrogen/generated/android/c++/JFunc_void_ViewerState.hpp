@@ -14,14 +14,15 @@
 #include <functional>
 #include <NitroModules/JNICallable.hpp>
 #include "JViewerState.hpp"
+#include "InteractionMode.hpp"
+#include "JInteractionMode.hpp"
 #include <NitroModules/Null.hpp>
 #include <string>
 #include <variant>
 #include <optional>
 #include "JVariant_NullType_String.hpp"
 #include <NitroModules/JNull.hpp>
-#include "InteractionMode.hpp"
-#include "JInteractionMode.hpp"
+#include "JVariant_NullType_Double.hpp"
 
 namespace margelo::nitro::inksignpdf {
 

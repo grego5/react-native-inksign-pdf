@@ -23,7 +23,7 @@ extension InkSignView {
       attachedOverlayPage = nil
       documentCoordinator.selectPage(id: state.pages[index].id)
       let request = interaction.beginPresentation(page: state.activePage) { [weak self] result in
-        if case .success(let info) = result { self?.onPageChange?(info) }
+        if case .success = result { self?.emitPageState() }
       }
       guard interaction.presentation === request else { return }
       textInteractionOverlay.clearPlacementRules()

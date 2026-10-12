@@ -20,7 +20,7 @@ function Assert-NotContains([string]$Text, [string]$Pattern, [string]$Name) {
 $view = Read-Source "ios/InkSignView.swift"
 $overlayProvider = Read-Source "ios/PageOverlay.swift"
 $pageNavigation = Read-Source "ios/InkSignView+PageNavigation.swift"
-$documentState = Read-Source "ios/DocumentState.swift"
+$documentState = Read-Source "ios/InkSignDocumentState.swift"
 $candidateLoader = Read-Source "ios/DocumentCandidateLoader.swift"
 $mutableTransactions = Read-Source "ios/MutableDocumentTransactions.swift"
 $inputCoordinator = Read-Source "ios/PageInputCoordinator.swift"

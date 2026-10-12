@@ -13,6 +13,8 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `DocumentState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
@@ -22,6 +24,7 @@ namespace margelo::nitro::inksignpdf { struct DocumentAddPagesResult; }
 // Forward declaration of `DocumentAddPagesOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
 
+#include "DocumentState.hpp"
 #include <memory>
 #include "HybridDocumentPageSpec.hpp"
 #include <NitroModules/Promise.hpp>
@@ -62,6 +65,7 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Methods
+      virtual DocumentState getState() = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> getPage(double index) = 0;
       virtual std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) = 0;
       virtual std::shared_ptr<Promise<DocumentAddPagesResult>> addPages(const DocumentAddPagesOptions& options) = 0;

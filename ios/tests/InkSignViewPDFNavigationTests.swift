@@ -18,7 +18,7 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
   func testCoordinatorFollowsPDFViewPageChanges() throws {
     let fixture = makeFixture()
     defer { fixture.window.isHidden = true }
-    var changes = [PageInfo]()
+    var changes = [PageChangeEvent]()
     fixture.view.onPageChange = { changes.append($0) }
 
     let page = try XCTUnwrap(fixture.view.documentCoordinator.document?.pages[1].page)
@@ -32,7 +32,7 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
                                          for: page)
 
     XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.id, fixture.pages[1])
-    XCTAssertEqual(changes.map(\.pageIndex), [1])
+    XCTAssertEqual(changes.map(\.pageId), [fixture.pages[1].uuidString])
     XCTAssertNil(fixture.view.interaction.presentation)
   }
 

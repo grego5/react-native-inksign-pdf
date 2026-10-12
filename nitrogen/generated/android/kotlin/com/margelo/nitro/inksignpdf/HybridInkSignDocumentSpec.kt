@@ -34,6 +34,10 @@ abstract class HybridInkSignDocumentSpec: HybridObject() {
   // Methods
   @DoNotStrip
   @Keep
+  abstract fun getState(): DocumentState
+  
+  @DoNotStrip
+  @Keep
   abstract fun getPage(index: Double): Promise<HybridDocumentPageSpec>
   
   @DoNotStrip

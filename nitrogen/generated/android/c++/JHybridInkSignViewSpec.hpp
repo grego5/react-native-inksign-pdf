@@ -80,8 +80,8 @@ namespace margelo::nitro::inksignpdf {
     void setPagerDirection(std::optional<PagerDirection> pagerDirection) override;
     std::optional<std::function<void(const ViewerState& /* event */)>> getOnStateChange() override;
     void setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) override;
-    std::optional<std::function<void(const PageInfo& /* event */)>> getOnPageChange() override;
-    void setOnPageChange(const std::optional<std::function<void(const PageInfo& /* event */)>>& onPageChange) override;
+    std::optional<std::function<void(const PageChangeEvent& /* event */)>> getOnPageChange() override;
+    void setOnPageChange(const std::optional<std::function<void(const PageChangeEvent& /* event */)>>& onPageChange) override;
     std::optional<std::function<void(double /* zoom */)>> getOnZoomChange() override;
     void setOnZoomChange(const std::optional<std::function<void(double /* zoom */)>>& onZoomChange) override;
     std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>> getOnTextSelectionChange() override;
@@ -100,7 +100,7 @@ namespace margelo::nitro::inksignpdf {
     void previousPage() override;
     Viewport getViewport() override;
     std::shared_ptr<Promise<PageCoords>> requestPageCoords() override;
-    bool hasInk() override;
+    DocumentState getState() override;
     std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() override;
     std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) override;
     std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) override;
@@ -108,7 +108,6 @@ namespace margelo::nitro::inksignpdf {
     void redo() override;
     void clear() override;
     void clearInk() override;
-    void resetDirty() override;
     void setTextDirection(TextDirection direction) override;
     std::shared_ptr<Promise<std::string>> finalize() override;
     void startDebugRecording() override;

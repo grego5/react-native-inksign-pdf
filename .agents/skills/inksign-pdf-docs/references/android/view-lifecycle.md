@@ -6,6 +6,12 @@
   [architecture](../architecture.md#android-document-ownership).
   `SurfaceView` owns presentation/input; `TextInteractionOverlay` owns drafts
   and editor state. `PdfSessionWorker` serializes backend access and cleanup.
+- `SurfaceView` owns `ViewerDocumentState`, which holds active-page selection
+  while borrowing document reads from the core. Open selects the first page;
+  reorder and rotation preserve selected identity. Removing that page selects
+  the page at its former index, or the last surviving page. Import selection
+  applies when the viewer installs published pages; headless mutations have no
+  active-page state.
 - Document inputs accept local files and Android content/resource URIs. The viewer
   picker supplies URIs to the shared loader; streams close after copying.
   Cancellation retires staged files and releases request ownership before reuse.
@@ -58,15 +64,30 @@
 
 ## Page history and disposal
 
-- Histories follow stable page IDs; structural dirty state is separate from
-  page-content history. Viewer clear/clearInk edits are page-local and undoable.
-  Headless documents retain committed content without recording undo actions.
-- `resetDirty()` checkpoints committed histories on all pages and clears structural
-  dirty state. Undo/redo track checkpoint identity across branches; live input and
-  history stacks are preserved. Dirty changes emit `onStateChange` on the UI thread.
+- The core owns histories keyed by stable page IDs; structural dirty state is
+  separate from page-content history. Viewer clear/clearInk commands enter the
+  core with explicit page IDs and remain page-local and undoable. Headless documents retain committed
+  content without recording undo actions.
+- Each history owns a permanent base and ordered tracked overrides. Composed
+  snapshots suppress base entries overridden or deleted by a tracked identity,
+  then append tracked content. Rendering, text lookup, and export use that composition.
+- Stroke commits and first text insertions append directly without identity searches
+  or composed-content snapshots.
+  History indexes previously inserted text IDs until document retirement, so an
+  empty target with retained edits uses the existing-identity mutation policy.
+- Programmatic text `untracked: true` mutates the base without adding an undo
+  action or discarding unrelated redo. If the identity occurs in current tracked
+  content or retained undo/redo, the edit records normally. Untracked edits leave
+  dirty state unchanged. See [state contracts](../architecture.md#state-inspection-and-events).
+  Tracked clear/delete masks base content; undo restores it. New base entries
+  survive older clears.
+- Presentation installation and surface disposal release viewer resources only.
+  Document replacement, viewer close, and terminal cleanup retire committed content
+  and history through the core lifecycle.
 - Rotation updates orientation/geometry revision while preserving source and
   content identity. Assembly retains orientation; [export](export.md) persists it.
-- `clearInk()` cancels live ink; `hasInk()` reads committed active-page ink.
+- `clearInk()` cancels live ink; page state reads committed session content.
+  See [state contracts](../architecture.md#state-inspection-and-events).
 - Reopened assembly candidates validate page count, order, and source geometry.
   Image geometry uses reopened PDFium precision; existing pages retain orientation.
   Import selection follows shared

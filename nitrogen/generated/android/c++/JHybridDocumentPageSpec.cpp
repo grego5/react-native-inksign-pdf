@@ -89,8 +89,8 @@ namespace margelo::nitro::inksignpdf {
   
 
   // Methods
-  PageInfo JHybridDocumentPageSpec::getInfo() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPageInfo>()>("getInfo");
+  PageInfo JHybridDocumentPageSpec::getState() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPageInfo>()>("getState");
     auto __result = method(_javaPart);
     return __result->toCpp();
   }

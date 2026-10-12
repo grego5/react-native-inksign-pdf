@@ -28,6 +28,9 @@
   the stream until release; manual navigation pauses caret following until text changes.
   Lifecycle cancellation consumes the retired stream through release.
   Text gestures bypass ink/page navigation.
+- Final annotation construction uses the core text service with explicit
+  layout/flow bounds and optional editor-measured intrinsic size. Drafts remain
+  local; accepted edits publish through the core change subscription.
 - Shared [bounds/line limits](../architecture.md#system-boundaries) apply.
   Alignment and `verticalAnchor` position text inside fixed edges.
 - `setMode('text')` arms placement and reports `textAdd`. A valid tap opens

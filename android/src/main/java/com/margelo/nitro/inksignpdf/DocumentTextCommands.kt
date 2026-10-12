@@ -1,5 +1,7 @@
 package com.margelo.nitro.inksignpdf
 
+internal data class TextTargetFocus(val bounds: PageRect, val rule: PdfiumHorizontalSnapCandidate?)
+
 /** Committed text and target operations; drafts and mode sessions belong to clients. */
 internal class DocumentTextCommands(
   private val core: DocumentCore,
@@ -16,16 +18,80 @@ internal class DocumentTextCommands(
     else -> appDirectionIsRtl()
   }
 
-  private fun commit(page: InkPageState, before: TextAnnotation?, after: TextAnnotation?) {
+  private fun commit(page: InkPageState, before: TextAnnotation?, after: TextAnnotation?, untracked: Boolean = false) {
+    if (before == after) return
     when {
-      before == null -> coordinator.appendText(page, checkNotNull(after))
-      after == null -> page.history.removeTextAnnotation(before)
-      before != after -> coordinator.replaceText(page, before, after)
+      before == null -> coordinator.appendText(page, checkNotNull(after), untracked)
+      after == null -> page.history.removeTextAnnotation(before, untracked)
+      else -> coordinator.replaceText(page, before, after, untracked)
     }
     core.changed(DocumentChange.Text(page.id))
   }
 
+  internal fun applyEdit(context: TextPageContext, before: TextAnnotation?, after: TextAnnotation?) =
+    core.withMutablePage(context) { page ->
+      val id = checkNotNull(after?.id ?: before?.id)
+      target(context, id.toDouble())
+      check(before == null || before.id == id) { "An edit cannot change text identity" }
+      val current = moduleAnnotations(page.id).firstOrNull { it.id == id }
+      if (current != before) throw PdfSessionException(
+        "operation_cancelled", "The committed text changed during editing",
+      )
+      commit(page, before, after)
+    }
+
+  internal fun reserve(context: TextPageContext, canonicalBounds: PageRect,
+                       options: TextAnnotationOptions? = null): Long = core.withMutablePage(context) { page ->
+    fonts.resolve(options?.font)
+    coordinator.reserveTextTarget(page.id, null, null, canonicalBounds, options).id
+  }
+
+  internal fun targetId(context: TextPageContext, rawId: Double): Long = core.withMutablePage(context) {
+    target(context, rawId).id
+  }
+
+  internal fun focusTarget(context: TextPageContext, rawId: Double): TextTargetFocus = core.withMutablePage(context) { page ->
+    val slot = target(context, rawId)
+    TextTargetFocus(displayedTargetBounds(slot, page), requireHorizontalRule(slot, page))
+  }
+
+  internal fun buildAnnotation(
+    id: Long, text: String, bounds: PageRect, page: PdfPageDimensions,
+    fontSize: Double, textColor: Int, directionRtl: Boolean,
+    flowBounds: PageRect? = null, maxLines: Int = 0,
+    verticalAnchor: TextVerticalAnchor = TextVerticalAnchor.TOP,
+    alignment: TextAlignment = TextAlignment.START,
+    layoutPage: PdfPageDimensions? = page, font: NamedFontResource? = null,
+    intrinsicSize: TextIntrinsicSize? = null,
+  ): TextAnnotation = TextAnnotationLayout.reflow(TextAnnotation(
+    id = id, text = text, bounds = bounds, fontSize = fontSize, textColor = textColor,
+    directionRtl = directionRtl, flowBounds = flowBounds, maxLines = maxLines,
+    verticalAnchor = verticalAnchor, alignment = alignment, layoutPage = layoutPage, font = font,
+  ), page, intrinsicSize)
+
+  internal fun insert(context: TextPageContext, bounds: TextAnnotationBounds, text: String,
+                      options: TextAnnotationOptions? = null, requireVisibleLine: Boolean = false,
+                      directionRtl: Boolean = resolveDirection(options?.direction)): TextAnnotation = core.withMutablePage(context) { page ->
+    val flow = programmaticTextFlowBounds(bounds, page.dimensions)
+    val font = fonts.resolve(options?.font)
+    val slot = coordinator.prepareTextTarget(page.id, null, null,
+      PageCoordinates(page.dimensions).displayToCanonical(flow), options)
+    val annotation = buildAnnotation(slot.id, text, flow, page.dimensions,
+      options?.fontSize ?: defaultFontSize, parseTextColor(options?.color, defaultTextColor), directionRtl,
+      flowBounds = flow, maxLines = options?.maxLines?.toInt() ?: 0,
+      verticalAnchor = options?.verticalAnchor ?: TextVerticalAnchor.TOP,
+      alignment = options?.alignment ?: TextAlignment.START, font = font)
+    if (requireVisibleLine && (annotation.bounds.right <= annotation.bounds.left ||
+      annotation.bounds.bottom <= annotation.bounds.top)) {
+      throw PdfSessionException("text_rule_not_found", "No complete text line fits beside the selected rule")
+    }
+    coordinator.publishTextTarget(slot)
+    commit(page, null, annotation, untracked = options?.untracked == true)
+    annotation
+  }
+
   private fun merged(previous: TextAnnotationOptions?, options: TextAnnotationOptions?) = TextAnnotationOptions(
+    null,
     options?.font ?: previous?.font, options?.fontSize ?: previous?.fontSize,
     options?.color ?: previous?.color, options?.direction ?: previous?.direction,
     options?.maxLines ?: previous?.maxLines, options?.alignment ?: previous?.alignment,
@@ -34,13 +100,14 @@ internal class DocumentTextCommands(
 
   /** Snapshot current formatting only when removing content leaves an empty target. */
   private fun emptyTargetOptions(annotation: TextAnnotation) = TextAnnotationOptions(
+    null,
     fonts.selection(annotation.font), annotation.fontSize,
     String.format(java.util.Locale.ROOT, "#%06X", annotation.textColor and 0xffffff),
     if (annotation.directionRtl) TextDirection.RTL else TextDirection.LTR,
     annotation.maxLines.toDouble(), annotation.alignment, annotation.verticalAnchor,
   )
 
-  internal fun getValue(context: TextPageContext, rawId: Double): String = core.withPage(context) { page ->
+  internal fun getValue(context: TextPageContext, rawId: Double): String = core.withMutablePage(context) { page ->
     val slot = target(context, rawId)
     moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.text ?: slot.embeddedValue
   }
@@ -49,8 +116,9 @@ internal class DocumentTextCommands(
                          options: TextAnnotationOptions): TextAnnotation {
     val font = fonts.resolve(options.font, current?.font)
     val flow = if (current == null) displayedTargetBounds(slot, page) else current.flowBounds
-    requireHorizontalRule(slot, page)
-    val candidate = TextAnnotation(
+    if (current == null) requireHorizontalRule(slot, page)
+    val layoutPage = if (current == null) page.dimensions else current.layoutPage
+    return buildAnnotation(
       id = slot.id, text = text, bounds = current?.bounds ?: checkNotNull(flow),
       fontSize = options.fontSize ?: current?.fontSize ?: defaultFontSize,
       textColor = parseTextColor(options.color, current?.textColor ?: defaultTextColor),
@@ -59,13 +127,13 @@ internal class DocumentTextCommands(
       maxLines = options.maxLines?.toInt() ?: current?.maxLines ?: 0,
       alignment = options.alignment ?: current?.alignment ?: TextAlignment.START,
       verticalAnchor = options.verticalAnchor ?: current?.verticalAnchor ?: TextVerticalAnchor.TOP,
-      layoutPage = current?.layoutPage ?: page.dimensions, font = font,
+      layoutPage = layoutPage, font = font,
+      page = layoutPage ?: PageCoordinates(page.dimensions).rawPage,
     )
-    return TextAnnotationLayout.reflow(candidate, checkNotNull(candidate.layoutPage))
   }
 
   internal fun setValue(context: TextPageContext, rawId: Double, text: String,
-                        options: TextAnnotationOptions? = null) = core.withPage(context) { page ->
+                        options: TextAnnotationOptions? = null) = core.withMutablePage(context) { page ->
     val slot = target(context, rawId)
     val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
     val proposed = merged(if (current == null) slot.options else null, options)
@@ -74,31 +142,31 @@ internal class DocumentTextCommands(
     val updated = if (text.isEmpty()) null else annotation(page, slot, current, text, proposed)
     slot.options = if (text.isEmpty() && current != null) merged(emptyTargetOptions(current), options)
       else merged(slot.options, options)
-    if (current != updated) commit(page, current, updated)
+    commit(page, current, updated, untracked = options?.untracked == true)
   }
 
   internal fun setOptions(context: TextPageContext, rawId: Double,
-                          options: TextAnnotationOptions) = core.withPage(context) { page ->
+                          options: TextAnnotationOptions) = core.withMutablePage(context) { page ->
     val slot = target(context, rawId)
     val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
     val proposed = merged(if (current == null) slot.options else null, options)
     fonts.resolve(proposed.font, current?.font)
     val updated = current?.let { annotation(page, slot, it, it.text, proposed) }
     slot.options = merged(slot.options, options)
-    if (current != updated) commit(page, current, updated)
+    commit(page, current, updated, untracked = options.untracked == true)
   }
 
-  internal fun adjustSize(context: TextPageContext, rawId: Double, delta: Double): Double = core.withPage(context) { page ->
+  internal fun adjustSize(context: TextPageContext, rawId: Double, delta: Double): Double = core.withMutablePage(context) { page ->
     val slot = target(context, rawId)
     val size = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.fontSize ?: slot.options?.fontSize ?: defaultFontSize
     val adjusted = (size + delta).coerceIn(minimumTextFontSize, maximumTextFontSize)
     if (adjusted != size) setOptions(context, rawId,
-      TextAnnotationOptions(null, adjusted, null, null, null, null, null))
+      TextAnnotationOptions(null, null, adjusted, null, null, null, null, null))
     adjusted
   }
 
   internal fun resolve(context: PreparedPageContext, options: ResolveTextOptions): Double =
-    core.withPage(context) { page ->
+    core.withMutablePage(context) { page ->
       fonts.resolve(options.font)
       val coordinates = PageCoordinates(page.dimensions)
       val transform = coordinates.canonicalToDisplayTransform()
@@ -187,7 +255,7 @@ internal class DocumentTextCommands(
     }
 
   internal fun getEntry(context: TextPageContext, rawId: Double): TextEntry =
-    core.withPage(context) { page ->
+    core.withMutablePage(context) { page ->
       val slot = target(context, rawId)
       val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
       val value = annotation?.text ?: slot.embeddedValue
@@ -200,7 +268,7 @@ internal class DocumentTextCommands(
     }
 
   internal fun getEntries(context: TextPageContext): Array<TextEntry> =
-    core.withPage(context) { page ->
+    core.withMutablePage(context) { page ->
       val annotations = moduleAnnotations(page.id).associateBy { it.id }
       coordinator.textTargetsForPage(page.id).map { slot ->
         val annotation = annotations[slot.id]
@@ -214,7 +282,7 @@ internal class DocumentTextCommands(
       }.toTypedArray()
     }
 
-  internal fun target(context: TextPageContext, rawId: Double): TextTargetSlot {
+  private fun target(context: TextPageContext, rawId: Double): TextTargetSlot {
     if (!rawId.isFinite() || rawId <= 0.0 || rawId % 1.0 != 0.0 ||
       rawId > 9_007_199_254_740_991.0) {
       throw PdfSessionException("invalid_text_id", "Text IDs must be positive safe integers")
@@ -246,7 +314,7 @@ internal class DocumentTextCommands(
   private fun displayedAnnotationBounds(annotation: TextAnnotation, page: InkPageState): PageRect =
     textAnnotationOuterBounds(annotation.bounds, annotation.layoutToDisplay(page.dimensions), 0.0, 0.0)
 
-  internal fun displayedTargetBounds(slot: TextTargetSlot, page: InkPageState): PageRect {
+  private fun displayedTargetBounds(slot: TextTargetSlot, page: InkPageState): PageRect {
     val transform = PageCoordinates(page.dimensions).canonicalToDisplayTransform()
     slot.canonicalWritingRule?.let { rule ->
       val start = transform.map(rule.start)
@@ -261,7 +329,7 @@ internal class DocumentTextCommands(
     return textAnnotationOuterBounds(slot.canonicalBounds, transform, 0.0, 0.0)
   }
 
-  internal fun requireHorizontalRule(slot: TextTargetSlot, page: InkPageState): PdfiumHorizontalSnapCandidate? {
+  private fun requireHorizontalRule(slot: TextTargetSlot, page: InkPageState): PdfiumHorizontalSnapCandidate? {
     val rule = slot.canonicalWritingRule ?: return null
     val transform = PageCoordinates(page.dimensions).canonicalToDisplayTransform()
     val start = transform.map(rule.start)

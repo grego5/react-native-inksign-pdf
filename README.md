@@ -42,12 +42,12 @@ import { Button, Text, View } from 'react-native';
 import {
   InkSignView,
   type InkSignViewHandle,
-  type PageInfo,
+  type ViewerState,
 } from '@grego5/react-native-inksign-pdf';
 
 export function SigningView({ pdfPath, sessionId }: { pdfPath: string; sessionId: string }) {
   const pdf = useRef<InkSignViewHandle>(null);
-  const [page, setPage] = useState<PageInfo | null>(null);
+  const [state, setState] = useState<ViewerState | null>(null);
   const [savedPath, setSavedPath] = useState('');
 
   async function savePdf() {
@@ -61,16 +61,16 @@ export function SigningView({ pdfPath, sessionId }: { pdfPath: string; sessionId
         key={sessionId}
         ref={pdf}
         initialDocument={pdfPath}
-        onStateChange={(state) => {
-          if (state.error) console.error(state.error);
+        onStateChange={(next) => {
+          setState(next);
+          if (next.error) console.error(next.error);
         }}
         style={{ flex: 1 }}
         strokeColor="#111827"
-        onPageChange={setPage}
       />
-      {page && (
+      {state && state.pageIndex !== null && (
         <Text>
-          Page {page.pageIndex + 1} of {page.pageCount}
+          Page {state.pageIndex + 1} of {state.pageCount}
         </Text>
       )}
       <Button title="Draw" onPress={() => pdf.current?.setMode('ink')} />
@@ -120,7 +120,8 @@ to persistent storage if you need it after closing the viewer.
 - `requestPageCoords()` — Wait for one page tap and return `{ pageId, pageIndex,
 x, y }`, then return to view mode. Page or mode changes and teardown cancel
   the request. Use `setMode('view')` for Back.
-- `hasInk()` — Check whether the current page has committed ink.
+- `getState()` — Read document identity, page count, and document-wide dirty state
+  synchronously. An empty viewer reports null identity, zero pages, and clean state.
 - `getSelectedText()` — Read the current native selection as a text handle, or
   `null`. Use it when executing actions; keep `onTextSelectionChange` for button
   availability.
@@ -129,8 +130,6 @@ x, y }`, then return to view mode. Page or mode changes and teardown cancel
 - `clear()` — Remove editable ink and module text from the current page as one
   undoable edit. Original PDF content is preserved.
 - `clearInk()` — Remove only editable ink from the current page as one undoable edit.
-- `resetDirty()` — Mark the whole document clean after saving. Preserves content
-  and undo/redo; edits or undo away from the saved state make it dirty again.
 - `setTextDirection(direction)` — Set the base text direction: `'ltr'`, `'rtl'`,
   or `'auto'` to follow app direction.
 - `finalize()` — Export to a temporary PDF `file://` URI. Copy it to persistent
@@ -141,11 +140,25 @@ x, y }`, then return to view mode. Page or mode changes and teardown cancel
 
 Prepare once with `getPage()`; text resolution and value operations are synchronous.
 
+- `getState()` — Read stable page identity, current index/count, displayed
+  width/height, clockwise rotation (`0`, `90`, `180`, `270`), `hasInk`, `hasText`,
+  page-content `isDirty`, `canUndo`, and `canRedo`.
+  Does not switch pages or scan the PDF. Content flags exclude live drafts and
+  imported PDF content, including signatures in reopened InkSign exports.
+  Dirty/history fields read stack metadata; content flags inspect committed
+  session content in memory.
+
+Page dimensions and text bounds use displayed PDF points (1/72 inch), with the
+origin at the rotated page's top-left, x increasing rightward and y downward.
+New text uses that orientation; existing text retains its captured layout when
+the page rotates. A 320 × 240 page rotated 90° reports 240 × 320.
+
 - `resolveText(options)` — Resolve a complete printed field name or free
   `bounds: { x, y, width, height }` to a numeric ID. Scanned labels need a text layer.
 - `getTextValue(id)` — Read entered text, falling back to embedded PDF text or `''`.
 - `setTextValue(id, text, options?)` — Atomically write module text and optional formatting on Android. Pass `''` to remove it and reveal
-  any embedded value. Committed edits are undoable.
+  any embedded value. Viewer commits are tracked by default; headless commits
+  are untracked.
 - `setTextOptions(id, options)` — Update formatting; omitted options retain their values.
 - `adjustTextSize(id, delta)` — Increase or decrease font size by page points;
   return the resulting size.
@@ -154,6 +167,19 @@ Prepare once with `getPage()`; text resolution and value operations are synchron
 - `focusText(id, options?)` — Focus a resolved target without changing mode.
   Options are `zoom`, `verticalAnchor` (`'top'`, `'bottom'`, or `'center'`), and
   `edgeOffset` in page points. Defaults to zoom 2 and center.
+
+On Android, pass `untracked: true` to a programmatic text mutation to update the
+permanent base outside undo/redo history:
+
+```ts
+page.setTextValue(id, report.number, { untracked: true });
+```
+
+The option defaults to `false` and applies only to that call. Base edits leave
+dirty state unchanged, survive undo/redo, and preserve unrelated history. If that
+text ID has tracked edits in current content or retained undo/redo, the flag is
+ignored and the edit records normally. Headless documents retain all edits without
+undo history or content dirty state. iOS does not support `untracked: true`.
 
 ### Mode session
 
@@ -195,9 +221,20 @@ Available in Android debug builds:
 
 ## Events and paging
 
-- `onStateChange` — Viewer state, including mode, document identity, edit history,
-  and load error.
-- `onPageChange` — Current page information after opening, importing, or changing pages.
+- `onStateChange` — Document identity/count/dirty state, active `pageIndex`, viewer
+  mode, and load error. `pageIndex` is zero-based and `null` without a document;
+  combine it with `pageCount` from this event for a page counter.
+- `onPageChange` — Active `pageId`, `width`, `height`, `rotation`, `canUndo`, and
+  `canRedo`. Read content flags (`hasInk`, `hasText`), page `isDirty`, and that
+  page's current index/count through page `getState()`.
+
+Both events suppress unchanged payloads. An edit need not emit
+an event. Viewer/document `getState()` returns global `documentId`, `pageCount`,
+and `isDirty`; active index, mode, and error are available in `onStateChange`.
+Page dirty state equals `canUndo`: undoing all tracked edits makes it clean, even
+with redo entries or untracked content remaining. Document dirty state also includes
+structural changes. Export leaves history and dirty state unchanged.
+  Identical snapshots are deduplicated.
 - `onTextSelectionChange` — Selected text ID and page ID, or `null`.
 - `onZoomChange` — Settled zoom relative to page fit: `1` is fitted, above `1`
   is zoomed in, below `1` is zoomed out.
@@ -265,13 +302,17 @@ Expo packaged asset. Android keeps the font in memory for the document session.
 `openDoc(uri, options?)` opens a PDF or image without mounting a view. It exposes
 `pageCount`, `getPage(index)`, `addPages({ sources })`, `removePage(index)`,
 `movePage(fromIndex, toIndex)`, and `rotatePage(index, 90 | 180 | 270)`.
-A page provides `getInfo()` and the prepared-page text methods without focus.
+`document.getState()` returns document-wide metadata. `page.getState()` and the
+prepared-page text methods work without focus, using the same geometry and
+session-content contracts as viewer page handles. Headless pages retain content
+without recording undo actions or making page content dirty. Document dirty state
+still reflects structural edits such as adding, removing, moving, or rotating pages.
 `finalize()` creates a new PDF using the existing export pipeline; source files
 remain unchanged. Visible signatures and supported source annotations follow the
 same preservation rules as viewer export; cryptographic signature validity is
 outside the editing contract. Returned files are caller-owned and survive close.
 `close()` immediately rejects new commands and reads, including `pageCount` and
-`getInfo()`. It is terminal, idempotent, and resolves after admitted work and native
+`getState()`. It is terminal, idempotent, and resolves after admitted work and native
 resource cleanup complete. Retained page handles reject edits after close.
 
 ```ts

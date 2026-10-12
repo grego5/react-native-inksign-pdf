@@ -184,7 +184,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let neverFinishes = Promise<PageInfo>()
     let running = fixture.view.enqueueViewerCommand { neverFinishes }
     let queued = fixture.view.enqueueViewerCommand { Promise<PageInfo>.resolved(withResult:
-      PageInfo(pageIndex: 0, pageCount: 1, width: 300, height: 400)) }
+      PageInfo(hasInk: false, hasText: false, pageIndex: 0, pageCount: 1, isDirty: false, pageId: "queued",
+        width: 300, height: 400, rotation: 0, canUndo: false, canRedo: false)) }
     let session = try fixture.view.setMode(mode: .ink, options: nil)
     let queuedPage = try session.getPage(pageIndex: nil)
     var cancellationCount = 0
@@ -201,7 +202,9 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertFalse(fixture.view.interaction.isInk)
     XCTAssertFalse(fixture.view.textInteractionOverlay.hasPendingPlacement())
     // Late completion cannot revive the cancelled queue or current document.
-    neverFinishes.resolve(withResult: PageInfo(pageIndex: 0, pageCount: 1, width: 300, height: 400))
+    neverFinishes.resolve(withResult: PageInfo(hasInk: false, hasText: false,
+      pageIndex: 0, pageCount: 1, isDirty: false, pageId: "pending", width: 300, height: 400, rotation: 0,
+      canUndo: false, canRedo: false))
     XCTAssertNil(fixture.view.documentCoordinator.document)
   }
 
@@ -971,7 +974,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       let modeBefore = view.interaction.isInk
       let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
       let textOptions = ResolveTextOptions(fieldName: "Name", bounds: nil, occurrence: nil,
-        fontSize: nil, color: nil, direction: .ltr, maxLines: 2,
+        font: nil, fontSize: nil, color: nil, direction: .ltr, maxLines: 2,
         alignment: nil, verticalAnchor: .bottom)
       if angle == 90 || angle == 270 {
         do {
@@ -983,7 +986,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
         continue
       }
       let textID = try page.resolveText(options: textOptions)
-      try page.setTextValue(id: textID, text: "OK")
+      try page.setTextValue(id: textID, text: "OK", options: nil)
       let annotation = try XCTUnwrap(state.activePage.history.content.textAnnotations.last)
       let ruleY: CGFloat = angle == 0 ? 132 : 268
       let field = CGRect(x: angle == 0 ? 210 : 190, y: 0,
@@ -1250,9 +1253,9 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(try view.switchPage(to: 1).pageIndex, 1)
     XCTAssertEqual(coordinator.document?.activePageIndex, 1)
     let textID = try page.resolveText(options: ResolveTextOptions(
-      fieldName: "Name", bounds: nil, occurrence: nil, fontSize: nil, color: nil,
+      fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil, color: nil,
       direction: nil, maxLines: nil, alignment: nil, verticalAnchor: nil))
-    try page.setTextValue(id: textID, text: "filled")
+    try page.setTextValue(id: textID, text: "filled", options: nil)
     XCTAssertEqual(coordinator.document?.activePageIndex, 1)
     XCTAssertEqual(coordinator.document?.pages[0].history.content.textAnnotations.map(\.text), ["filled"])
     XCTAssertTrue(coordinator.document?.pages[1].history.content.textAnnotations.isEmpty == true)
@@ -1293,7 +1296,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(document.activePage.geometryRevision, 1)
     XCTAssertTrue(document.activePage.history.content.textAnnotations.isEmpty)
     XCTAssertThrowsError(try page.resolveText(options: ResolveTextOptions(
-      fieldName: "Name", bounds: nil, occurrence: nil, fontSize: nil, color: nil,
+      fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil, color: nil,
       direction: .ltr, maxLines: nil, alignment: nil, verticalAnchor: .bottom))) {
       XCTAssertTrue($0.localizedDescription.hasPrefix("text_rule_not_found"))
     }
@@ -1333,7 +1336,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(view.documentCoordinator.document?.activePage.geometryRevision, 1)
     XCTAssertTrue(view.documentCoordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
     XCTAssertThrowsError(try page.resolveText(options: ResolveTextOptions(
-      fieldName: "Name", bounds: nil, occurrence: nil, fontSize: nil, color: nil,
+      fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil, color: nil,
       direction: .ltr, maxLines: nil, alignment: nil, verticalAnchor: nil))) {
       XCTAssertTrue($0.localizedDescription.hasPrefix("text_rule_not_found"))
     }
@@ -1348,11 +1351,11 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
     let textID = try page.resolveText(options: ResolveTextOptions(
       fieldName: nil, bounds: TextAnnotationBounds(x: 50, y: 60, width: 100, height: 30),
-      occurrence: nil, fontSize: nil, color: nil, direction: nil, maxLines: nil,
+      occurrence: nil, font: nil, fontSize: nil, color: nil, direction: nil, maxLines: nil,
       alignment: nil, verticalAnchor: nil))
     var modes: [String] = []
     view.onStateChange = { modes.append($0.mode.stringValue) }
-    try page.setTextValue(id: textID, text: "Ada")
+    try page.setTextValue(id: textID, text: "Ada", options: nil)
     let beforeFocus = try view.interaction.viewport.currentViewportSnapshot().zoom
     let gate = Promise<Void>()
     let blocked = view.enqueueViewerCommand { gate }
@@ -1368,7 +1371,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertFalse(view.interaction.isInk)
     XCTAssertTrue(view.textInteractionOverlay.hasPendingPlacement())
     wait(for: [cancelled], timeout: 2)
-    XCTAssertThrowsError(try page.setTextValue(id: textID, text: "Stale"))
+    XCTAssertThrowsError(try page.setTextValue(id: textID, text: "Stale", options: nil))
     XCTAssertEqual(try ordinaryPage.getTextValue(id: textID), "Ada")
 
     gate.resolve()
@@ -2141,7 +2144,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
 
     XCTAssertNil(weakView)
 
-    let info = PageInfo(pageIndex: 1, pageCount: 2, width: 612, height: 792)
+    let info = PageInfo(hasInk: false, hasText: false, pageIndex: 1, pageCount: 2, isDirty: false, pageId: "target",
+      width: 612, height: 792, rotation: 0, canUndo: false, canRedo: false)
     completion?(.success(info))
   }
 

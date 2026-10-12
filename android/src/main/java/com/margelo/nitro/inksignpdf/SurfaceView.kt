@@ -41,7 +41,7 @@ internal class SurfaceView(
   private val pageNavigationPreviewScheduler: PageNavigationPreviewScheduler? = null,
   private val pageNavigationSettlementDriver: PageNavigationSettlementDriver? = null,
   private val pageTileFrameCommitRegistrar: ((Runnable) -> Unit)? = null,
-  internal val documentCoordinator: MutableDocumentCoordinator,
+  internal val core: DocumentCore,
 ) : android.view.View(context) {
   internal companion object {
     internal const val CANCELLATION_NONE = 0
@@ -69,7 +69,8 @@ internal class SurfaceView(
   }
   private val pagePreviewMatrix = Matrix()
   internal val inkRenderer = InkRenderer()
-  internal val sessionWorker: PdfSessionWorker = documentCoordinator.sessionWorker
+  internal val documentState = ViewerDocumentState(core.state)
+  internal val sessionWorker: PdfSessionWorker = core.sessionWorker
   private var pageSwitchRequestId = 0L
   private var pagerDirectionOverride: PagerDirection? = null
   internal val currentPageSwitchId: Long get() = pageSwitchRequestId
@@ -78,9 +79,9 @@ internal class SurfaceView(
     sessionWorker = sessionWorker,
     requestInvalidate = { invalidate() },
     requestAnimation = { postInvalidateOnAnimation() },
-    currentDocumentGeneration = { documentCoordinator.generation.takeIf { documentCoordinator.hasDocument } },
-    currentPageIndex = { documentCoordinator.activePageIndex.takeIf { documentCoordinator.hasDocument } },
-    currentPageSwitchId = { pageSwitchRequestId.takeIf { documentCoordinator.hasDocument } },
+    currentDocumentGeneration = { documentState.generation.takeIf { documentState.hasDocument } },
+    currentPageIndex = { documentState.activePageIndex.takeIf { documentState.hasDocument } },
+    currentPageSwitchId = { pageSwitchRequestId.takeIf { documentState.hasDocument } },
   )
   private var activeBasePending: Pair<Long, String>? = null
   internal val baseRasterCache: PageBaseRasterCache = PageBaseRasterCache(
@@ -90,24 +91,24 @@ internal class SurfaceView(
       else sessionWorker.renderPageBase(generation, request, completion)
     },
     protectedPages = {
-      if (!documentCoordinator.hasDocument) emptySet() else buildSet {
-        add(documentCoordinator.activePageId())
+      if (!documentState.hasDocument) emptySet() else buildSet {
+        add(documentState.activePageId())
         pageNavigationController.presentation().selectedPreview?.let { preview ->
           val index = preview.request.key.targetPageIndex
-          if (index in 0 until documentCoordinator.pageCount) add(documentCoordinator.page(index).id)
+          if (index in 0 until documentState.pageCount) add(documentState.pageMetadata(index).id)
         }
       }
     },
     onEvicted = { bitmap -> pageNavigationController.onPreviewEvicted(bitmap) },
     renderingAllowed = { pageId ->
-      !disposed && !openHandoffInProgress && documentCoordinator.hasDocument &&
-        (pageId == documentCoordinator.activePageId() || (!editMode && pageNavigationWindowFocus))
+      !disposed && !openHandoffInProgress && documentState.hasDocument &&
+        (pageId == documentState.activePageId() || (!editMode && pageNavigationWindowFocus))
     },
     wantedPages = {
-      if (!documentCoordinator.hasDocument) emptySet() else buildSet {
-        add(documentCoordinator.activePageId())
+      if (!documentState.hasDocument) emptySet() else buildSet {
+        add(documentState.activePageId())
         pageNavigationController.requestedPageIndex()?.let { index ->
-          if (index in 0 until documentCoordinator.pageCount) add(documentCoordinator.page(index).id)
+          if (index in 0 until documentState.pageCount) add(documentState.pageMetadata(index).id)
         }
       }
     },
@@ -116,12 +117,12 @@ internal class SurfaceView(
     override fun renderPreview(generation: Long, request: PdfTileRequest,
       completion: (Result<PdfTile>) -> Unit) {
       val index = request.key.pageIndex
-      if (disposed || !documentCoordinator.hasDocument || documentCoordinator.generation != generation ||
-        index !in 0 until documentCoordinator.pageCount) {
+      if (disposed || !documentState.hasDocument || documentState.generation != generation ||
+        index !in 0 until documentState.pageCount) {
         completion(Result.failure(PdfSessionException("operation_cancelled", "Page raster is stale")))
         return
       }
-      val record = documentCoordinator.page(index)
+      val record = documentState.pageMetadata(index)
       baseRasterCache.request(generation, record.id, record.dimensions, request, completion)
     }
   }
@@ -132,20 +133,20 @@ internal class SurfaceView(
     currentContext = ::pageNavigationContext,
     currentViewportState = { documentController.viewportSnapshot() },
     targetPage = { index ->
-      if (documentCoordinator.hasDocument) documentCoordinator.page(index).dimensions else null
+      if (documentState.hasDocument) documentState.pageMetadata(index).dimensions else null
     },
     targetInkPaths = { index ->
-      if (documentCoordinator.hasDocument) documentCoordinator.pageSnapshot(index).content
+      if (documentState.hasDocument) documentState.pageSnapshot(index).content
         .mapNotNull { it.inkOutlineOrNull() }
         .flatMap { it.contourPathData } else emptyList()
     },
     targetTextAnnotations = { index ->
-      if (documentCoordinator.hasDocument) documentCoordinator.pageSnapshot(index).content
+      if (documentState.hasDocument) documentState.pageSnapshot(index).content
         .mapNotNull { it.textAnnotationOrNull() } else emptyList()
     },
     fitZoomFor = documentController::usableFitZoomFor,
     previewPreparationAllowed = {
-      documentCoordinator.hasDocument && !openHandoffInProgress && !editMode && pageNavigationWindowFocus
+      documentState.hasDocument && !openHandoffInProgress && !editMode && pageNavigationWindowFocus
     },
     releasePreviewBitmap = {},
     installCommittedPage = { handoff ->
@@ -239,14 +240,14 @@ internal class SurfaceView(
   private val reportSettledZoom = object : Runnable {
     override fun run() {
       if (disposed) return
-      if (!documentCoordinator.hasDocument) return
+      if (!documentState.hasDocument) return
       if (zoomTouchActive || pageNavigationController.state() != NavigationState.Idle) {
         postDelayed(this, 120L)
         return
       }
       val sample = currentZoomReportSample() ?: return
       val zoom = sample.second / sample.third
-      val generation = documentCoordinator.generation
+      val generation = documentState.generation
       if (reportedZoomDocument != generation || reportedZoomPage != sample.first || reportedZoom != zoom) {
         reportedZoomDocument = generation
         reportedZoomPage = sample.first
@@ -258,15 +259,15 @@ internal class SurfaceView(
 
   private fun observeZoomForReporting() {
     val sample = currentZoomReportSample() ?: return
-    if (sample == zoomReportSample && reportedZoomDocument == documentCoordinator.generation &&
+    if (sample == zoomReportSample && reportedZoomDocument == documentState.generation &&
       reportedZoomPage == sample.first && reportedZoom == sample.second / sample.third) return
     zoomReportSample = sample
     removeCallbacks(reportSettledZoom)
     postDelayed(reportSettledZoom, 120L)
   }
   private fun currentZoomReportSample(): Triple<String, Double, Double>? {
-    if (!documentCoordinator.hasDocument) return null
-    val page = documentCoordinator.page(documentCoordinator.activePageIndex)
+    if (!documentState.hasDocument) return null
+    val page = documentState.pageMetadata(documentState.activePageIndex)
     val viewport = documentController.viewportSnapshot() ?: return null
     val fit = documentController.usableFitZoomFor(page.dimensions) ?: return null
     return Triple(page.id, viewport.zoom, fit)
@@ -297,14 +298,16 @@ internal class SurfaceView(
     fitToPage: Boolean = true,
     notifyState: Boolean = false,
   ) {
-    val snapshot = documentCoordinator.presentationSnapshot()
-    val dimensions = snapshot.pages[snapshot.activePageIndex].dimensions
+    documentState.opened()
+    val snapshot = documentState.presentationSnapshot()
+    val dimensions = snapshot.pages[documentState.activePageIndex].dimensions
     installDocumentPresentationForPage(dimensions, zoom, focus, fitToPage, notifyState)
   }
 
   fun publishOpenDocumentPresentation(prepared: PreparedDocumentPresentation): PdfPageInfo {
     requireOnUiThread()
     if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
+    documentState.opened()
     activeBasePending = null
     baseRasterCache.clear()
     lastReportedState = InkState(false, false, false)
@@ -396,7 +399,6 @@ internal class SurfaceView(
     pageNavigationController.reset()
     activeBasePending = null
     baseRasterCache.clear()
-    resetDocumentHistories()
     clearSnapCandidateMeasurement()
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()
@@ -409,9 +411,9 @@ internal class SurfaceView(
       focus = focus,
       fitToPage = fitToPage,
     )
-    if (documentCoordinator.hasDocument) {
-      val snapshot = documentCoordinator.presentationSnapshot()
-      val active = snapshot.pages[snapshot.activePageIndex]
+    if (documentState.hasDocument) {
+      val snapshot = documentState.presentationSnapshot()
+      val active = snapshot.pages[documentState.activePageIndex]
       inkRenderer.setCompletedHistory(active.content.mapNotNull { it.inkOutlineOrNull() })
     }
     rebuildCommittedTextLayer()
@@ -425,12 +427,12 @@ internal class SurfaceView(
   fun clearDocument() {
     requireOnUiThread()
     if (disposed) return
+    documentState.cleared()
     openHandoffInProgress = false
     cancelInputGesture()
     pageNavigationController.reset()
     activeBasePending = null
     baseRasterCache.clear()
-    resetDocumentHistories()
     clearSnapCandidateMeasurement()
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()
@@ -443,16 +445,17 @@ internal class SurfaceView(
   }
 
   /** Installs a coordinator-published candidate through a non-failing presentation path. */
-  fun installStructuralPresentation(): PdfPageInfo {
+  fun installStructuralPresentation(importSelection: AddPagesActivePage = AddPagesActivePage.CURRENT): PdfPageInfo {
     requireOnUiThread()
-    val state = documentCoordinator
+    val state = documentState
+    state.pagesPublished(importSelection)
     val snapshot = state.presentationSnapshot()
     cancelInputGesture()
     pageNavigationController.reset()
     activeBasePending = null
     baseRasterCache.clear()
     pageSwitchRequestId += 1L
-    val active = snapshot.pages[snapshot.activePageIndex]
+    val active = snapshot.pages[state.activePageIndex]
     clearSnapCandidateMeasurement()
     documentController.setPage(dimensions = active.dimensions, fitToPage = true)
     inkRenderer.setCompletedHistory(active.content.mapNotNull { it.inkOutlineOrNull() })
@@ -468,7 +471,7 @@ internal class SurfaceView(
   fun requireStructuralMutationReady(creatingDocument: Boolean = false) {
     requireOnUiThread()
     if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
-    if (documentCoordinator.hasDocument == creatingDocument) {
+    if (documentState.hasDocument == creatingDocument) {
       val message = if (creatingDocument) {
         "The view already has a document"
       } else {
@@ -495,7 +498,7 @@ internal class SurfaceView(
         "PDF view was disposed",
       )
     }
-    val state = documentCoordinator.takeIf { it.hasDocument } ?: throw PdfSessionException(
+    val state = documentState.takeIf { it.hasDocument } ?: throw PdfSessionException(
       "view_not_ready",
       "A PDF must be opened before document inspection",
     )
@@ -510,7 +513,7 @@ internal class SurfaceView(
         "PDF view was disposed",
       )
     }
-    val state = documentCoordinator.takeIf { it.hasDocument } ?: throw PdfSessionException(
+    val state = documentState.takeIf { it.hasDocument } ?: throw PdfSessionException(
       "view_not_ready",
       "A PDF must be opened before page navigation",
     )
@@ -536,7 +539,7 @@ internal class SurfaceView(
         "PDF view was disposed",
       )
     }
-    val state = documentCoordinator.takeIf { it.hasDocument } ?: throw PdfSessionException(
+    val state = documentState.takeIf { it.hasDocument } ?: throw PdfSessionException(
       "view_not_ready",
       "A PDF must be opened before page navigation",
     )
@@ -561,7 +564,7 @@ internal class SurfaceView(
 
   private fun installCommittedPageSwitch(handoff: PageSwitchHandoff): Boolean {
     requireOnUiThread()
-    val state = documentCoordinator.takeIf { it.hasDocument } ?: return false
+    val state = documentState.takeIf { it.hasDocument } ?: return false
     if (state.generation != handoff.documentGeneration ||
       state.activePageIndex != handoff.sourcePageIndex ||
       pageSwitchRequestId + 1L != handoff.pageSwitchId ||
@@ -646,13 +649,13 @@ internal class SurfaceView(
 
   internal fun pageCoordinatesAt(x: Double, y: Double): PageCoords? {
     requireOnUiThread()
-    if (disposed || !documentCoordinator.hasDocument) return null
+    if (disposed || !documentState.hasDocument) return null
     val transform = documentController.pageToViewTransform() ?: return null
     val point = transform.inverse().map(PagePoint(x, y))
     val page = currentPageInfo()
     if (!point.x.isFinite() || !point.y.isFinite() ||
       point.x !in 0.0..page.dimensions.width || point.y !in 0.0..page.dimensions.height) return null
-    return PageCoords(documentCoordinator.activePageId(), page.pageIndex.toDouble(), point.x, point.y)
+    return PageCoords(documentState.activePageId(), page.pageIndex.toDouble(), point.x, point.y)
   }
 
   private fun updateZoomTouchState(event: MotionEvent) {
@@ -729,9 +732,9 @@ internal class SurfaceView(
       runOnUi {
         if (pendingTileFrameCommit !== committed || pendingTilePresentation != handoff) return@runOnUi
         cancelTilePresentationAcknowledgement()
-        if (disposed || !documentCoordinator.hasDocument ||
-          documentCoordinator.generation != handoff.documentGeneration ||
-          documentCoordinator.activePageIndex != handoff.targetPageIndex ||
+        if (disposed || !documentState.hasDocument ||
+          documentState.generation != handoff.documentGeneration ||
+          documentState.activePageIndex != handoff.targetPageIndex ||
           pageSwitchRequestId != handoff.pageSwitchId) return@runOnUi
         if (documentController.visibleTilePresentationEpoch() != tileEpoch) {
           invalidate()
@@ -767,7 +770,7 @@ internal class SurfaceView(
 
   private fun pageNavigationContext(): NavigationContext? {
     requireOnUiThread()
-    val document = documentCoordinator.takeIf { it.hasDocument } ?: return null
+    val document = documentState.takeIf { it.hasDocument } ?: return null
     if (editMode || width <= 0 || height <= 0) return null
     val viewport = documentController.viewportSnapshot() ?: return null
     val rtl = when (pagerDirectionOverride) {
@@ -865,7 +868,7 @@ internal class SurfaceView(
     if (disposed) {
       throw PdfSessionException("operation_cancelled", "PDF view was disposed")
     }
-    if (!documentCoordinator.hasDocument) {
+    if (!documentState.hasDocument) {
       throw PdfSessionException(
         "view_not_ready",
         "A PDF must be opened before adding text",
@@ -877,7 +880,7 @@ internal class SurfaceView(
   internal fun textPresentationSnapshot(): TextPresentationSnapshot? {
     requireOnUiThread()
     if (disposed) return null
-    val state = documentCoordinator.takeIf { it.hasDocument } ?: return null
+    val state = documentState.takeIf { it.hasDocument } ?: return null
     val transform = documentController.pageToViewTransform() ?: return null
     val page = state.pageSnapshot(state.activePageIndex)
     return TextPresentationSnapshot(
@@ -885,7 +888,7 @@ internal class SurfaceView(
       pageIndex = state.activePageIndex,
       pageId = page.id,
       page = page.dimensions,
-      geometryRevision = state.page(state.activePageIndex).geometryRevision,
+      geometryRevision = state.pageMetadata(state.activePageIndex).geometryRevision,
       transform = transform,
       annotations = page.content.mapNotNull { it.textAnnotationOrNull() },
       snapCandidates = snapCandidateMeasurement
@@ -907,7 +910,7 @@ internal class SurfaceView(
     candidates: List<PdfiumHorizontalSnapCandidate>,
   ) {
     requireOnUiThread()
-    val state = documentCoordinator.takeIf { it.hasDocument } ?: return
+    val state = documentState.takeIf { it.hasDocument } ?: return
     if (state.generation != generation || state.activePageIndex != pageIndex ||
       pageSwitchRequestId != pageSwitchId
     ) return
@@ -921,7 +924,7 @@ internal class SurfaceView(
   internal fun textTransformSnapshot(): TextTransformSnapshot? {
     requireOnUiThread()
     if (disposed) return null
-    val state = documentCoordinator.takeIf { it.hasDocument } ?: return null
+    val state = documentState.takeIf { it.hasDocument } ?: return null
     val transform = documentController.pageToViewTransform() ?: return null
     val page = state.pageSnapshot(state.activePageIndex)
     return TextTransformSnapshot(
@@ -932,106 +935,12 @@ internal class SurfaceView(
     )
   }
 
-  internal fun appendTextAnnotation(
-    generation: Long,
-    pageIndex: Int,
-    annotation: TextAnnotation,
-  ) {
-    validateTextMutation(generation, pageIndex)
-    documentCoordinator.appendActiveText(annotation)
-    rebuildCommittedTextLayer()
-    notifyStateChange()
-    invalidate()
-    onTextContentChanged?.invoke()
-  }
-
   internal fun refreshCommittedText(pageId: String) {
-    val active = documentCoordinator.activePageId() == pageId
+    val active = documentState.activePageId() == pageId
     if (active) rebuildCommittedTextLayer()
     notifyStateChange()
-    if (active) { invalidate(); onTextContentChanged?.invoke() }
-  }
-
-  internal fun appendTextAnnotationForPage(
-    generation: Long,
-    pageId: String,
-    annotation: TextAnnotation,
-  ) {
-    val targetPage = resolveTextMutationPage(generation, pageId)
-    documentCoordinator.appendText(
-      targetPage,
-      annotation,
-    )
-    val targetIsActive = documentCoordinator.activePageId() == targetPage.id
-    if (targetIsActive) rebuildCommittedTextLayer()
-    notifyStateChange()
-    if (targetIsActive) {
-      invalidate()
-      onTextContentChanged?.invoke()
-    }
-  }
-
-  internal fun replaceTextAnnotation(
-    generation: Long,
-    pageIndex: Int,
-    before: TextAnnotation,
-    after: TextAnnotation,
-  ) {
-    validateTextMutation(generation, pageIndex)
-    documentCoordinator.replaceActiveText(
-      before,
-      after,
-    )
-    rebuildCommittedTextLayer()
-    notifyStateChange()
     invalidate()
-    onTextContentChanged?.invoke()
-  }
-
-  internal fun removeTextAnnotation(
-    generation: Long,
-    pageIndex: Int,
-    annotation: TextAnnotation,
-  ) {
-    validateTextMutation(generation, pageIndex)
-    documentCoordinator.removeActiveText(annotation)
-    rebuildCommittedTextLayer()
-    notifyStateChange()
-    invalidate()
-    onTextContentChanged?.invoke()
-  }
-
-  internal fun replaceTextAnnotationForPage(
-    generation: Long,
-    pageId: String,
-    before: TextAnnotation,
-    after: TextAnnotation,
-  ) {
-    val targetPage = resolveTextMutationPage(generation, pageId)
-    documentCoordinator.replaceText(targetPage, before, after)
-    val targetIsActive = documentCoordinator.activePageId() == targetPage.id
-    if (targetIsActive) rebuildCommittedTextLayer()
-    notifyStateChange()
-    if (targetIsActive) {
-      invalidate()
-      onTextContentChanged?.invoke()
-    }
-  }
-
-  internal fun removeTextAnnotationForPage(
-    generation: Long,
-    pageId: String,
-    annotation: TextAnnotation,
-  ) {
-    val targetPage = resolveTextMutationPage(generation, pageId)
-    targetPage.history.removeTextAnnotation(annotation)
-    val targetIsActive = documentCoordinator.activePageId() == targetPage.id
-    if (targetIsActive) rebuildCommittedTextLayer()
-    notifyStateChange()
-    if (targetIsActive) {
-      invalidate()
-      onTextContentChanged?.invoke()
-    }
+    if (active) onTextContentChanged?.invoke()
   }
 
   fun currentViewportState(): PageViewportState {
@@ -1047,7 +956,7 @@ internal class SurfaceView(
 
   fun refreshVisibleTiles() {
     requireOnUiThread()
-    if (!disposed && documentCoordinator.hasDocument) documentController.refreshVisibleTiles()
+    if (!disposed && documentState.hasDocument) documentController.refreshVisibleTiles()
   }
 
   fun setPenConfiguration(
@@ -1072,45 +981,15 @@ internal class SurfaceView(
     }
   }
 
-  fun undo() {
-    runOnUi {
-      if (disposed) return@runOnUi
-      pageNavigationController.cancelGesture()
-      cancelInputGesture()
-      presentHistoryMutation(documentCoordinator.undoActiveHistory())
-    }
-  }
-
-  fun redo() {
-    runOnUi {
-      if (disposed) return@runOnUi
-      pageNavigationController.cancelGesture()
-      cancelInputGesture()
-      presentHistoryMutation(documentCoordinator.redoActiveHistory())
-    }
-  }
-
-  fun clear() {
-    runOnUi {
-      if (disposed) return@runOnUi
-      pageNavigationController.cancelGesture()
-      cancelInputGesture()
-      presentHistoryMutation(documentCoordinator.clearActiveHistory())
-    }
-  }
-
-  fun clearInk() {
-    runOnUi {
-      if (disposed) return@runOnUi
-      pageNavigationController.cancelGesture()
-      cancelInputGesture()
-      presentHistoryMutation(documentCoordinator.clearActiveInk())
-    }
+  internal fun prepareContentMutation() {
+    requireOnUiThread()
+    pageNavigationController.cancelGesture()
+    cancelInputGesture()
   }
 
   fun completedPagesSnapshot(): List<PdfPageContentSnapshot> {
     requireOnUiThread()
-    return documentCoordinator.completedPagesSnapshot()
+    return documentState.completedPagesSnapshot()
   }
 
   internal fun rendererDiagnostics(): InkRendererDiagnostics {
@@ -1179,16 +1058,16 @@ internal class SurfaceView(
   }
 
   private fun activeBaseRaster(): android.graphics.Bitmap? {
-    if (disposed || !documentCoordinator.hasDocument) return null
-    val page = documentCoordinator.page(documentCoordinator.activePageIndex)
-    val generation = documentCoordinator.generation
+    if (disposed || !documentState.hasDocument) return null
+    val page = documentState.pageMetadata(documentState.activePageIndex)
+    val generation = documentState.generation
     baseRasterCache.get(generation, page.id, page.dimensions)?.let { return it }
     if (openHandoffInProgress) return null
     val identity = generation to page.id
     if (activeBasePending != identity) {
       activeBasePending = identity
       val request = pageBaseRequest(PdfTileKey(generation, pageSwitchRequestId,
-        documentCoordinator.activePageIndex, 0, 0, 0), page.dimensions)
+        documentState.activePageIndex, 0, 0, 0), page.dimensions)
       baseRasterCache.request(generation, page.id, page.dimensions, request) { result ->
         if (activeBasePending == identity) {
           activeBasePending = null
@@ -1395,10 +1274,10 @@ internal class SurfaceView(
     onPageChange = null
     removeCallbacks(reportSettledZoom)
     onZoomChange = null
-    resetDocumentHistories()
     pageSwitchRequestId += 1L
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()
+    committedTextLayer = TextRenderLayer.empty()
     clearActivePresentation()
     onStateChange = null
     onTextContentChanged = null

@@ -120,6 +120,7 @@ func appendTextAnnotationForTest(
   case .center: alignment = .center
   }
   let options = TextAnnotationOptions(
+    untracked: nil, font: nil,
     fontSize: Double(annotation.fontSize),
     color: annotation.textColor,
     direction: annotation.isRTL ? .rtl : .ltr,

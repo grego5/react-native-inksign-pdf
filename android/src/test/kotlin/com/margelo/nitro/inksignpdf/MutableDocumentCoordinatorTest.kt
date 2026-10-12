@@ -12,41 +12,39 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
 class MutableDocumentCoordinatorTest {
   @Test
-  fun activePageHasInkTracksCommittedHistoryAndPageSelection() {
+  fun pageInfoTracksCommittedInkOnTheExplicitPage() {
     val empty = MutableDocumentCoordinator(
       sessionWorker = PdfSessionWorker(),
       artifactPolicy = TestDocumentArtifactPolicy(),
     )
-    assertFalse(empty.activePageHasInk())
+    assertFalse(empty.hasDocument)
 
     val coordinator = coordinator()
-    assertFalse(coordinator.activePageHasInk())
+    assertFalse(coordinator.pageInfo(1).hasInk)
     val ink = StrokeOutline.fromCommands(listOf(
       InkPathCommand(InkPathCommand.MOVE, 0f, 0f),
       InkPathCommand(InkPathCommand.CUBIC, 10f, 0f, 3f, 4f, 7f, -4f),
       InkPathCommand(InkPathCommand.CLOSE),
     ))
-    coordinator.appendActiveInk(ink)
-    assertTrue(coordinator.activePageHasInk())
+    val page = coordinator.page(1)
+    page.history.append(ink)
+    assertTrue(coordinator.pageInfo(1).hasInk)
 
-    coordinator.setActivePage(0)
-    assertFalse(coordinator.activePageHasInk())
-    coordinator.setActivePage(1)
-    assertTrue(coordinator.activePageHasInk())
+    assertFalse(coordinator.pageInfo(0).hasInk)
+    assertTrue(coordinator.pageInfo(1).hasInk)
 
-    coordinator.undoActiveHistory()
-    assertFalse(coordinator.activePageHasInk())
-    coordinator.redoActiveHistory()
-    assertTrue(coordinator.activePageHasInk())
-    coordinator.clearActiveHistory()
-    assertFalse(coordinator.activePageHasInk())
+    coordinator.undoHistory(page)
+    assertFalse(coordinator.pageInfo(1).hasInk)
+    coordinator.redoHistory(page)
+    assertTrue(coordinator.pageInfo(1).hasInk)
+    coordinator.clearHistory(page)
+    assertFalse(coordinator.pageInfo(1).hasInk)
   }
 
   @Test
@@ -54,48 +52,55 @@ class MutableDocumentCoordinatorTest {
     val coordinator = coordinator()
     val original = coordinator.pages.map { it.id }
 
-    val moved = coordinator.movePageCandidate(coordinator.activePageIndex, 0)
+    val viewer = ViewerDocumentState(coordinator)
+    viewer.activatePage(1)
+    val moved = coordinator.movePageCandidate(viewer.activePageIndex, 0)
     assertEquals(original[1], moved.pages[0].id)
     assertEquals(original[0], moved.pages[1].id)
-    assertEquals(original[1], moved.activePageId)
+    coordinator.installCandidate("moved.pdf", moved.pages)
+    viewer.pagesPublished()
+    assertEquals(original[1], viewer.activePageId())
 
-    coordinator.setActivePage(1)
-    val removed = coordinator.removePageCandidate(coordinator.activePageIndex)
+    val removed = coordinator.removePageCandidate(viewer.activePageIndex)
     assertEquals(listOf(original[0], original[2]), removed.pages.map { it.id })
-    assertEquals(original[2], removed.activePageId)
+    coordinator.installCandidate("removed.pdf", removed.pages)
+    viewer.pagesPublished()
+    assertEquals(original[0], viewer.activePageId())
   }
 
   @Test
-  fun appendCandidateSelectsStableCurrentAndAddedPageIdentitiesWithoutPublishing() {
+  fun viewerSelectsCurrentAndAddedPageIdentitiesAfterPublication() {
     val coordinator = coordinator()
     val existingPages = coordinator.pages.toList()
     val dimensions = listOf(
       PdfPageDimensions(400.0, 500.0),
       PdfPageDimensions(600.0, 700.0),
     )
-    val current = coordinator.appendCandidate(dimensions, AddPagesActivePage.CURRENT)
-    val first = coordinator.appendCandidate(dimensions, AddPagesActivePage.FIRSTADDED)
-    val last = coordinator.appendCandidate(dimensions, AddPagesActivePage.LASTADDED)
+    val viewers = AddPagesActivePage.entries.associateWith {
+      ViewerDocumentState(coordinator).apply { activatePage(1) }
+    }
+    val current = coordinator.appendCandidate(dimensions)
 
     assertEquals(existingPages.map { it.id }, coordinator.pages.map { it.id })
     assertEquals(5, current.pages.size)
     assertTrue(existingPages.indices.all { current.pages[it] === existingPages[it] })
-    assertEquals(existingPages[1].id, current.activePageId)
-    assertEquals(first.pages[3].id, first.activePageId)
-    assertEquals(last.pages[4].id, last.activePageId)
-    assertNotEquals(existingPages.last().id, first.activePageId)
     assertTrue(!coordinator.structuralDirty)
+    coordinator.installCandidate("appended.pdf", current.pages)
+    viewers.forEach { (selection, viewer) -> viewer.pagesPublished(selection) }
+    assertEquals(existingPages[1].id, viewers.getValue(AddPagesActivePage.CURRENT).activePageId())
+    assertEquals(current.pages[3].id, viewers.getValue(AddPagesActivePage.FIRSTADDED).activePageId())
+    assertEquals(current.pages[4].id, viewers.getValue(AddPagesActivePage.LASTADDED).activePageId())
   }
 
   @Test
   fun publicationMarksStructuralDirtyWithoutChangingPageHistory() {
     val coordinator = coordinator()
     val histories = coordinator.pages.associate { it.id to it.history }
-    val candidate = coordinator.movePageCandidate(coordinator.activePageIndex, 0)
-    coordinator.installCandidate("working.pdf", candidate.pages, candidate.activePageId)
+    val candidate = coordinator.movePageCandidate(1, 0)
+    coordinator.installCandidate("working.pdf", candidate.pages)
 
     assertTrue(coordinator.structuralDirty)
-    assertEquals(candidate.activePageId, coordinator.pages[coordinator.activePageIndex].id)
+    assertEquals(candidate.pages.map { it.id }, coordinator.pages.map { it.id })
     coordinator.pages.forEach { page -> assertTrue(histories[page.id] === page.history) }
   }
 
@@ -105,8 +110,8 @@ class MutableDocumentCoordinatorTest {
     val retained = coordinator.pages[0]
     val trailing = coordinator.pages[2]
 
-    val candidate = coordinator.removePageCandidate(coordinator.activePageIndex)
-    coordinator.installCandidate("candidate.pdf", candidate.pages, candidate.activePageId)
+    val candidate = coordinator.removePageCandidate(1)
+    coordinator.installCandidate("candidate.pdf", candidate.pages)
 
     assertTrue(coordinator.pages[0] === retained)
     assertTrue(coordinator.pages[1] === trailing)
@@ -137,7 +142,7 @@ class MutableDocumentCoordinatorTest {
     assertTrue(candidate.pages[1].history === target.history)
     assertEquals(expectedHistoryState, candidate.pages[1].history.state())
 
-    coordinator.installCandidate("rotated.pdf", candidate.pages, candidate.activePageId)
+    coordinator.installCandidate("rotated.pdf", candidate.pages)
 
     assertEquals(1L, coordinator.pageForId(target.id)?.geometryRevision)
     assertEquals(0L, coordinator.pageForId(neighboringPage.id)?.geometryRevision)
@@ -154,7 +159,7 @@ class MutableDocumentCoordinatorTest {
       artifactPolicy = TestDocumentArtifactPolicy(),
     )
     try {
-      coordinator.removePageCandidate(coordinator.activePageIndex)
+      coordinator.removePageCandidate(0)
       fail("Expected the last page to be required")
     } catch (error: IllegalStateException) {
       assertTrue(error.message.orEmpty().contains("retain one page"))
@@ -215,7 +220,6 @@ class MutableDocumentCoordinatorTest {
     val coordinator = coordinator()
     val snapshot = coordinator.snapshot()
     assertEquals(coordinator.pageCount, snapshot.pages.size)
-    assertEquals(coordinator.activePageIndex, snapshot.activePageIndex)
     assertEquals(coordinator.pages.map { it.id }, snapshot.pages.map { it.id })
     assertEquals(coordinator.sourcePath, snapshot.sourcePath)
   }
@@ -223,7 +227,7 @@ class MutableDocumentCoordinatorTest {
   @Test
   fun aggregateValidationRejectsPageOrderThatDoesNotMatchPdfiumMetadata() {
     val coordinator = coordinator()
-    val candidate = coordinator.movePageCandidate(coordinator.activePageIndex, 0)
+    val candidate = coordinator.movePageCandidate(1, 0)
     val unchangedInfo = coordinator.sessionInfo()
 
     try {
@@ -470,7 +474,7 @@ class MutableDocumentCoordinatorTest {
             pageIndex = 0,
             destinationIndex = 0,
           ),
-          candidateBuilder = { coordinator.movePageCandidate(coordinator.activePageIndex, 0) },
+          candidateBuilder = { coordinator.movePageCandidate(1, 0) },
           notifyPublished = { error("unexpected publication") },
         )
       }
@@ -743,5 +747,5 @@ class MutableDocumentCoordinatorTest {
     ),
     sessionWorker = PdfSessionWorker(),
     artifactPolicy = TestDocumentArtifactPolicy(),
-  ).also { it.setActivePage(1) }
+  )
 }

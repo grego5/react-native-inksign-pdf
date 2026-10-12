@@ -16,6 +16,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `AndroidFallbackFont` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
+// Forward declaration of `DocumentState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
@@ -36,6 +38,8 @@ namespace margelo::nitro::inksignpdf { enum class InputMode; }
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
+// Forward declaration of `PageChangeEvent` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageChangeEvent; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `PageInfo` to properly resolve imports.
@@ -80,6 +84,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "AddPagesOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AndroidFallbackFont.hpp"
+#include "DocumentState.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
@@ -90,6 +95,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "InputMode.hpp"
 #include "InteractionMode.hpp"
 #include "NamedFontSource.hpp"
+#include "PageChangeEvent.hpp"
 #include "PageCoords.hpp"
 #include "PageInfo.hpp"
 #include "PageType.hpp"

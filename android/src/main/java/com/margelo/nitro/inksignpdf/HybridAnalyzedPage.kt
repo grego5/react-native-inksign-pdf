@@ -15,6 +15,8 @@ internal class HybridAnalyzedPage(
   private val context: PreparedPageContext get() = prepared.get()
     ?: throw PdfSessionException("operation_cancelled", "The prepared page was released")
 
+  override fun getState(): PageInfo = withOwner { it.core.pageInfo(context) }
+
   override fun resolveText(options: ResolveTextOptions): Double =
     withOwner { it.resolvePreparedText(context, options) }
 

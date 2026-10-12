@@ -54,7 +54,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
-    PageInfo getInfo() override;
+    PageInfo getState() override;
     double resolveText(const ResolveTextOptions& options) override;
     std::string getTextValue(double id) override;
     void setTextValue(double id, const std::string& text, const std::optional<TextAnnotationOptions>& options) override;

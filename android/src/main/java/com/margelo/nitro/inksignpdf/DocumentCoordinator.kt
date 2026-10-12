@@ -1,5 +1,6 @@
 package com.margelo.nitro.inksignpdf
 
+import com.margelo.nitro.core.NullType
 import java.io.File
 import java.util.LinkedHashSet
 import kotlinx.coroutines.CompletableDeferred
@@ -36,11 +37,10 @@ internal class MutableDocumentCoordinator(
   internal val sessionWorker: PdfSessionWorker,
   private val artifactPolicy: DocumentArtifactPolicy,
   private val recordHistory: Boolean = true,
-) {
+) : DocumentReadState {
   private var mutablePages: MutableList<InkPageState> = pages.map { dimensions ->
     InkPageState(PageRecord.newId(), dimensions, history = InkHistory(recordHistory))
   }.toMutableList()
-  private var activePageId: String? = mutablePages.firstOrNull()?.id
   private var generationValue = generation
   private var activeOpenRequest: OpenRequest? = null
   private val openStateLock = Any()
@@ -60,31 +60,25 @@ internal class MutableDocumentCoordinator(
   init {
     if (mutablePages.isNotEmpty()) {
       require(sourcePath.isNotEmpty())
-      require(activePageId != null)
     } else {
       require(sourcePath.isEmpty())
     }
   }
 
-  var sourcePath: String = sourcePath
+  override var sourcePath: String = sourcePath
     private set
 
-  val generation: Long
+  override val generation: Long
     get() = generationValue
 
   /** Immutable view of the published page records. Page histories remain owned by this coordinator. */
   val pages: List<InkPageState>
     get() = mutablePages.toList()
 
-  val hasDocument: Boolean
+  override val hasDocument: Boolean
     get() = mutablePages.isNotEmpty()
 
-  val activePageIndex: Int
-    get() = mutablePages.indexOfFirst { it.id == activePageId }.also { index ->
-      check(index >= 0) { "Active page is not present in the document" }
-    }
-
-  val pageCount: Int
+  override val pageCount: Int
     get() = mutablePages.size
 
   fun page(index: Int): InkPageState {
@@ -92,65 +86,76 @@ internal class MutableDocumentCoordinator(
     return mutablePages[index]
   }
 
-  fun setActivePage(index: Int) {
-    require(index in mutablePages.indices)
-    activePageId = mutablePages[index].id
+  override fun pageMetadata(index: Int): DocumentPageMetadata = page(index).metadata()
+
+  private val ownerIdentity = java.util.UUID.randomUUID().toString()
+
+  override fun documentInfo(): DocumentState = DocumentState(
+    if (hasDocument) Variant_NullType_String.create("$ownerIdentity:$generation")
+      else Variant_NullType_String.create(NullType.NULL),
+    pageCount.toDouble(), isDirty(),
+  )
+
+  override fun pageInfo(index: Int): PageInfo {
+    val event = pageChangeEvent(index)
+    val history = page(index).history
+    return PageInfo(pageId = event.pageId, pageIndex = index.toDouble(), pageCount = pageCount.toDouble(),
+      width = event.width, height = event.height, rotation = event.rotation,
+      hasInk = history.hasInk(), hasText = history.hasText(), isDirty = history.state().isDirty,
+      canUndo = event.canUndo, canRedo = event.canRedo)
+  }
+
+  override fun pageChangeEvent(index: Int): PageChangeEvent {
+    val page = page(index)
+    val history = page.history
+    return PageChangeEvent(pageId = page.id,
+      width = page.dimensions.width, height = page.dimensions.height,
+      rotation = (page.dimensions.rotation * 90).toDouble(),
+      canUndo = history.canUndo, canRedo = history.canRedo)
   }
 
   fun installCandidate(
     candidatePath: String,
     candidatePages: List<InkPageState>,
-    candidateActivePageId: String,
   ) {
     require(candidatePath.isNotEmpty())
     require(candidatePages.isNotEmpty())
-    require(candidatePages.any { it.id == candidateActivePageId })
     sourcePath = candidatePath
     mutablePages.clear()
     mutablePages.addAll(candidatePages)
     val retainedPageIds = candidatePages.mapTo(HashSet()) { it.id }
     textTargets.entries.removeAll { it.value.pageId !in retainedPageIds }
     textSourceGlyphs.keys.removeAll { it !in retainedPageIds }
-    activePageId = candidateActivePageId
     structuralDirty = true
   }
 
   data class StructuralCandidate(
     val pages: List<InkPageState>,
-    val activePageId: String,
   )
 
   fun appendCandidate(
     dimensions: List<PdfPageDimensions>,
-    selection: AddPagesActivePage,
   ): StructuralCandidate {
     require(dimensions.isNotEmpty())
     val appended = dimensions.map { InkPageState(PageRecord.newId(), it, history = InkHistory(recordHistory)) }
     val candidatePages = mutablePages.toList() + appended
-    val candidateActivePageId = when (selection) {
-      AddPagesActivePage.CURRENT -> activePageId ?: appended.first().id
-      AddPagesActivePage.FIRSTADDED -> appended.first().id
-      AddPagesActivePage.LASTADDED -> appended.last().id
-    }
-    return StructuralCandidate(candidatePages, candidateActivePageId)
+    return StructuralCandidate(candidatePages)
   }
 
   fun removePageCandidate(source: Int): StructuralCandidate {
     check(pageCount > 1) { "The document must retain one page" }
     val next = mutablePages.toMutableList().also { it.removeAt(source) }
-    val selected = if (source == activePageIndex) next[source.coerceAtMost(next.lastIndex)].id
-      else checkNotNull(activePageId)
-    return StructuralCandidate(next, selected)
+    return StructuralCandidate(next)
   }
 
   fun movePageCandidate(source: Int, destination: Int): StructuralCandidate {
     check(destination in mutablePages.indices) { "Admitted move destination is outside the document" }
-    if (source == destination) return StructuralCandidate(mutablePages.toList(), checkNotNull(activePageId))
+    if (source == destination) return StructuralCandidate(mutablePages.toList())
     val next = mutablePages.toMutableList().also {
       val moved = it.removeAt(source)
       it.add(destination, moved)
     }
-    return StructuralCandidate(next, checkNotNull(activePageId))
+    return StructuralCandidate(next)
   }
 
   fun rotatePageCandidate(pageId: String, dimensions: PdfPageDimensions): StructuralCandidate {
@@ -165,7 +170,7 @@ internal class MutableDocumentCoordinator(
       current.geometryRevision + 1L,
       current.sourceDimensions,
     )
-    return StructuralCandidate(next, pageId)
+    return StructuralCandidate(next)
   }
 
   fun markStructuralDirty() { structuralDirty = true }
@@ -174,9 +179,7 @@ internal class MutableDocumentCoordinator(
 
   fun pageRecords(): List<PageRecord> = pages.map { page -> PageRecord(page.id, page.dimensions) }
 
-  fun activePageId(): String = checkNotNull(activePageId)
-
-  fun sessionInfo(): PdfSessionInfo = PdfSessionInfo(
+  override fun sessionInfo(): PdfSessionInfo = PdfSessionInfo(
     sourcePath = sourcePath,
     pages = pages.map { it.dimensions },
     generation = generation,
@@ -186,8 +189,6 @@ internal class MutableDocumentCoordinator(
     val sourcePath: String,
     val generation: Long,
     val pages: List<PageSnapshot>,
-    val activePageIndex: Int,
-    val activePageId: String,
     val structuralDirty: Boolean,
   )
 
@@ -197,12 +198,12 @@ internal class MutableDocumentCoordinator(
     val content: List<PageContent>,
   )
 
-  fun pageSnapshot(index: Int): PageSnapshot {
+  override fun pageSnapshot(index: Int): PageSnapshot {
     val page = page(index)
     return PageSnapshot(page.id, page.dimensions, page.history.contentSnapshot())
   }
 
-  fun pageIndexForId(pageId: String): Int? =
+  override fun pageIndexForId(pageId: String): Int? =
     mutablePages.indexOfFirst { it.id == pageId }.takeIf { it >= 0 }
 
   fun pageForId(pageId: String): InkPageState? = mutablePages.firstOrNull { it.id == pageId }
@@ -217,19 +218,35 @@ internal class MutableDocumentCoordinator(
     canonicalWritingRule: CanonicalWritingRule? = null,
     canonicalDetectionBounds: PageRect = canonicalBounds,
     excludedSourceRanges: List<IntRange> = emptyList(),
+  ): TextTargetSlot = findTextTarget(pageId, sourceIdentity, canonicalBounds) ?:
+    prepareTextTarget(pageId, sourceIdentity, fieldName, canonicalBounds, options,
+      embeddedValue, canonicalWritingRule, canonicalDetectionBounds, excludedSourceRanges).also(::publishTextTarget)
+
+  /** Allocates identity without publishing a target until candidate construction succeeds. */
+  fun prepareTextTarget(
+    pageId: String,
+    sourceIdentity: String?,
+    fieldName: String?,
+    canonicalBounds: PageRect,
+    options: TextAnnotationOptions?,
+    embeddedValue: String = "",
+    canonicalWritingRule: CanonicalWritingRule? = null,
+    canonicalDetectionBounds: PageRect = canonicalBounds,
+    excludedSourceRanges: List<IntRange> = emptyList(),
   ): TextTargetSlot {
     if (pageForId(pageId) == null) throw PdfSessionException(
       "operation_cancelled", "The target page no longer exists",
     )
-    val existing = findTextTarget(pageId, sourceIdentity, canonicalBounds)
-    if (existing != null) return existing
     if (nextTextId > MAX_SAFE_TEXT_ID) throw PdfSessionException(
       "text_id_exhausted", "The view has exhausted its numeric text IDs",
     )
     val slot = TextTargetSlot(nextTextId++, pageId, sourceIdentity, fieldName, canonicalBounds, options,
       embeddedValue, canonicalWritingRule, canonicalDetectionBounds, excludedSourceRanges)
-    textTargets[slot.id] = slot
     return slot
+  }
+
+  fun publishTextTarget(slot: TextTargetSlot) {
+    textTargets[slot.id] = slot
   }
 
   fun textTarget(id: Long): TextTargetSlot = textTargets[id]
@@ -324,46 +341,27 @@ internal class MutableDocumentCoordinator(
     textSourceGlyphs.clear()
   }
 
-  fun pageHistoryRevision(index: Int): Long = page(index).history.revision
-  fun activeHistoryRevision(): Long = activeHistory().revision
-  fun activeHistoryState(): InkState = activeHistory().state()
-  fun activePageHasInk(): Boolean =
-    hasDocument && activeHistory().hasInk()
-  fun isDirty(): Boolean = structuralDirty || mutablePages.any { it.history.state().isDirty }
-  fun resetDirty() {
-    mutablePages.forEach { it.history.resetDirty() }
-    structuralDirty = false
-  }
-
-  fun activatePage(index: Int): PageSnapshot {
-    setActivePage(index)
-    return pageSnapshot(index)
-  }
-
-  fun appendActiveInk(outline: StrokeOutline) = activeHistory().append(outline)
-  fun appendActiveText(annotation: TextAnnotation) = appendText(page(activePageIndex), annotation)
-  fun appendText(page: InkPageState, annotation: TextAnnotation) {
-    page.history.appendText(annotation)
+  override fun pageHistoryRevision(index: Int): Long = page(index).history.revision
+  override fun pageHistoryState(index: Int): InkState = page(index).history.state()
+  override fun isDirty(): Boolean = structuralDirty || mutablePages.any { it.history.state().isDirty }
+  fun appendText(page: InkPageState, annotation: TextAnnotation, untracked: Boolean = false) {
+    page.history.appendText(annotation, untracked)
     updateTextTargetBounds(annotation.id, page.id, annotation.canonicalPlacementBounds)
   }
-  fun replaceActiveText(before: TextAnnotation, after: TextAnnotation) =
-    replaceText(page(activePageIndex), before, after)
-  fun replaceText(page: InkPageState, before: TextAnnotation, after: TextAnnotation) {
-    page.history.replaceText(before, after)
+  fun replaceText(page: InkPageState, before: TextAnnotation, after: TextAnnotation, untracked: Boolean = false) {
+    page.history.replaceText(before, after, untracked)
     updateTextTargetBounds(after.id, page.id, after.canonicalPlacementBounds)
   }
-  fun removeActiveText(annotation: TextAnnotation) = activeHistory().removeTextAnnotation(annotation)
-  fun undoActiveHistory(): InkHistoryMutation = activeHistory().undoMutation().also {
-    synchronizeTextPlacement(page(activePageIndex))
+  fun undoHistory(page: InkPageState): InkHistoryMutation = page.history.undoMutation().also {
+    synchronizeTextPlacement(page)
   }
-  fun redoActiveHistory(): InkHistoryMutation = activeHistory().redoMutation().also {
-    synchronizeTextPlacement(page(activePageIndex))
+  fun redoHistory(page: InkPageState): InkHistoryMutation = page.history.redoMutation().also {
+    synchronizeTextPlacement(page)
   }
-  fun clearActiveHistory(): InkHistoryMutation = activeHistory().clearMutation()
-  fun clearActiveInk(): InkHistoryMutation = activeHistory().clearInkMutation()
-  fun resetHistories() = mutablePages.forEach { it.history.reset() }
+  fun clearHistory(page: InkPageState): InkHistoryMutation = page.history.clearMutation()
+  fun clearInk(page: InkPageState): InkHistoryMutation = page.history.clearInkMutation()
 
-  fun completedPagesSnapshot(): List<PdfPageContentSnapshot> =
+  override fun completedPagesSnapshot(): List<PdfPageContentSnapshot> =
     mutablePages.mapIndexed { pageIndex, page ->
       PdfPageContentSnapshot(pageIndex, page.dimensions, page.history.contentSnapshot())
     }
@@ -392,13 +390,11 @@ internal class MutableDocumentCoordinator(
       sourcePath = sourcePath,
       generation = generation,
       pages = pages.map { page -> PageSnapshot(page.id, page.dimensions, page.history.contentSnapshot()) },
-      activePageIndex = activePageIndex,
-      activePageId = activePageId(),
       structuralDirty = structuralDirty,
     )
   }
 
-  fun presentationSnapshot(): Snapshot = snapshot()
+  override fun presentationSnapshot(): Snapshot = snapshot()
 
   internal data class OpenRequest(
     val attemptId: Long,
@@ -411,7 +407,6 @@ internal class MutableDocumentCoordinator(
 
   internal data class PreparedOpenCandidate(
     val pages: MutableList<InkPageState>,
-    val activePageId: String,
     val sourcePath: String,
     val generation: Long,
     val fallbackFont: PdfFallbackFont?,
@@ -559,7 +554,6 @@ internal class MutableDocumentCoordinator(
     }.toMutableList()
     return PreparedOpenCandidate(
       pages = pages,
-      activePageId = pages.first().id,
       sourcePath = request.workingFile.path,
       generation = request.attemptId,
       fallbackFont = resolvedFallbackFont,
@@ -570,7 +564,6 @@ internal class MutableDocumentCoordinator(
 
   private fun publishOpenCandidate(candidate: PreparedOpenCandidate) {
     mutablePages = candidate.pages
-    activePageId = candidate.activePageId
     sourcePath = candidate.sourcePath
     generationValue = candidate.generation
     markStructuralClean()
@@ -747,14 +740,13 @@ internal class MutableDocumentCoordinator(
     require(info.generation == generation)
     require(info.pageCount == candidate.pages.size)
     val previous = currentWorkingFile()
-    installCandidate(info.sourcePath, candidate.pages, candidate.activePageId)
+    installCandidate(info.sourcePath, candidate.pages)
     untrackWorkingFile(java.io.File(info.sourcePath))
     return previous
   }
 
   fun clearPublishedDocument() {
     mutablePages.clear()
-    activePageId = null
     sourcePath = ""
     fallbackFont = null
     clearTextTargets()
@@ -792,7 +784,6 @@ internal class MutableDocumentCoordinator(
   }
 
   private fun ensureNotDisposed() { if (disposed) throw cancelled() }
-  private fun activeHistory(): InkHistory = page(activePageIndex).history
 
   internal fun validateCandidateAggregate(info: PdfSessionInfo, candidate: StructuralCandidate) {
     if (info.pages.size != candidate.pages.size ||

@@ -7,6 +7,8 @@
 
 #include "JHybridAnalyzedPageSpec.hpp"
 
+// Forward declaration of `PageInfo` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct PageInfo; }
 // Forward declaration of `TextEntry` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextEntry; }
 // Forward declaration of `TextAnnotationBounds` to properly resolve imports.
@@ -30,10 +32,12 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 
+#include "PageInfo.hpp"
+#include "JPageInfo.hpp"
+#include <string>
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
 #include <NitroModules/JUnit.hpp>
-#include <string>
 #include "TextEntry.hpp"
 #include "JTextEntry.hpp"
 #include <optional>
@@ -96,6 +100,11 @@ namespace margelo::nitro::inksignpdf {
   
 
   // Methods
+  PageInfo JHybridAnalyzedPageSpec::getState() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPageInfo>()>("getState");
+    auto __result = method(_javaPart);
+    return __result->toCpp();
+  }
   std::shared_ptr<Promise<void>> JHybridAnalyzedPageSpec::focusText(double id, const std::optional<TextFocusOptions>& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(double /* id */, jni::alias_ref<JTextFocusOptions> /* options */)>("focusText");
     auto __result = method(_javaPart, id, options.has_value() ? JTextFocusOptions::fromCpp(options.value()) : nullptr);

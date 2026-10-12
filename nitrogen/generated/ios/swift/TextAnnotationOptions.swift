@@ -18,8 +18,14 @@ public extension TextAnnotationOptions {
   /**
    * Create a new instance of `TextAnnotationOptions`.
    */
-  init(font: Variant_NullType_String?, fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?) {
-    self.init({ () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
+  init(untracked: Bool?, font: Variant_NullType_String?, fontSize: Double?, color: String?, direction: TextDirection?, maxLines: Double?, alignment: TextAlignment?, verticalAnchor: TextVerticalAnchor?) {
+    self.init({ () -> bridge.std__optional_bool_ in
+      if let __unwrappedValue = untracked {
+        return bridge.create_std__optional_bool_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
       if let __unwrappedValue = font {
         return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
           switch __unwrappedValue {
@@ -71,6 +77,18 @@ public extension TextAnnotationOptions {
     }())
   }
 
+  @inline(__always)
+  var untracked: Bool? {
+    return { () -> Bool? in
+      if bridge.has_value_std__optional_bool_(self.__untracked) {
+        let __unwrapped = bridge.get_std__optional_bool_(self.__untracked)
+        return __unwrapped
+      } else {
+        return nil
+      }
+    }()
+  }
+  
   @inline(__always)
   var font: Variant_NullType_String? {
     return { () -> Variant_NullType_String? in

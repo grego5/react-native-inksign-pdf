@@ -192,12 +192,18 @@ extension InkSignView {
     }
   }
 
-  func hasInk() throws -> Bool {
+  func getState() throws -> DocumentState {
     try performOnMainSync {
-      guard !self.disposed,
-            let page = self.documentCoordinator.document?.activePage else { return false }
-      return !page.history.content.drawing.strokes.isEmpty
+      guard !self.disposed else { throw ViewportError.cancelled }
+      return self.documentStateSnapshot()
     }
+  }
+
+  func documentStateSnapshot() -> DocumentState {
+    if documentCoordinator.document == nil { documentID = nil }
+    else if documentID == nil { documentID = UUID().uuidString }
+    return DocumentState(documentId: documentID.map { .second($0) } ?? .first(.null),
+      pageCount: Double(documentCoordinator.document?.pages.count ?? 0), isDirty: documentCoordinator.isDirty)
   }
 
   func setMode(mode: InputMode, options: TextModeOptions?) throws -> any HybridModeSessionSpec {
@@ -438,11 +444,38 @@ extension InkSignView {
   }
 
   func toPublicPageInfo(_ info: InkSignPdfNativePageInfo) -> PageInfo {
+    let event = toPageChangeEvent(info)
+    let page = documentCoordinator.document!.pages[info.pageIndex]
+    return PageInfo(hasInk: !page.history.content.drawing.strokes.isEmpty,
+                    hasText: !page.history.content.textAnnotations.isEmpty,
+                    pageIndex: Double(info.pageIndex), pageCount: Double(info.pageCount),
+                    isDirty: page.history.state.isDirty, pageId: event.pageId,
+                    width: event.width, height: event.height, rotation: event.rotation,
+                    canUndo: event.canUndo, canRedo: event.canRedo)
+  }
+
+  func toPageChangeEvent(_ info: InkSignPdfNativePageInfo) -> PageChangeEvent {
     let displaySize = info.geometry.displaySize
-    return PageInfo(pageIndex: Double(info.pageIndex),
-                       pageCount: Double(info.pageCount),
+    let page = documentCoordinator.document!.pages[info.pageIndex]
+    let history = page.history
+    return PageChangeEvent(pageId: page.id.uuidString,
                        width: Double(displaySize.width),
-                       height: Double(displaySize.height))
+                       height: Double(displaySize.height),
+                       rotation: Double(info.geometry.rotation),
+                       canUndo: history.canUndo, canRedo: history.canRedo)
+  }
+
+  func emitPageState() {
+    guard !disposed, !suppressesOpenPresentationCallbacks else { return }
+    guard let document = documentCoordinator.document else { lastPublicPage = nil; return }
+    let value = toPageChangeEvent(InkSignPdfNativePageInfo(pageIndex: document.activePageIndex,
+      pageCount: document.pages.count, geometry: document.activePage.geometry))
+    if let previous = lastPublicPage,
+       previous.pageId == value.pageId, previous.width == value.width,
+       previous.height == value.height, previous.rotation == value.rotation,
+       previous.canUndo == value.canUndo, previous.canRedo == value.canRedo { return }
+    lastPublicPage = value
+    onPageChange?(value)
   }
 
   /// Changes the coordinator-owned active page while keeping one PDF overlay

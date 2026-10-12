@@ -35,15 +35,16 @@ internal class HybridInkSignDocument(context: Context) : HybridInkSignDocumentSp
     try { core.submit(work).asNitroPromise() }
     catch (error: Throwable) { Promise<T>().also { it.reject(error) } }
 
-  override val pageCount: Double get() = core.withDocument { core.coordinator.pageCount.toDouble() }
+  override val pageCount: Double get() = core.withDocument { core.state.pageCount.toDouble() }
+  override fun getState(): DocumentState = core.documentInfo()
   override fun getPage(index: Double): Promise<HybridDocumentPageSpec> = command { HybridDocumentPage(core, core.getPage(index)) }
   override fun loadFonts(fonts: Array<NamedFontSource>): Promise<Unit> = command { core.fonts.load(fonts) }
   override fun addPages(options: DocumentAddPagesOptions): Promise<DocumentAddPagesResult> = command {
     val dimensions = options.imagePageSize?.let { PdfPageDimensions(it.width, it.height) }
-      ?: core.coordinator.pages.firstOrNull()?.dimensions ?: PdfPageDimensions(595.28, 841.89)
+      ?: (if (core.state.hasDocument) core.state.pageMetadata(0).dimensions else null) ?: PdfPageDimensions(595.28, 841.89)
     val added = core.addPages(AddPagesOptions(null, options.sources, options.imagePageSize,
       options.targetDpi, options.jpegQuality, null), dimensions)
-    DocumentAddPagesResult(added.toDouble(), core.coordinator.pageCount.toDouble())
+    DocumentAddPagesResult(added.toDouble(), core.state.pageCount.toDouble())
   }
   override fun removePage(index: Double): Promise<Unit> = command { core.removePage(index) }
   override fun movePage(fromIndex: Double, toIndex: Double): Promise<Unit> = command { core.movePage(fromIndex, toIndex) }
@@ -63,10 +64,7 @@ internal class HybridDocumentPage(core: DocumentCore, context: PreparedPageConte
     ?: throw PdfSessionException("operation_cancelled", "The prepared page was released")
   private fun <T> use(action: (DocumentCore) -> T): T = core.get()?.let(action)
     ?: throw PdfSessionException("operation_cancelled", "The document has been released")
-  override fun getInfo(): PageInfo = use { core -> core.withPage(context) { page ->
-    val index = checkNotNull(core.coordinator.pageIndexForId(page.id))
-    PageInfo(index.toDouble(), core.coordinator.pageCount.toDouble(), page.dimensions.width, page.dimensions.height)
-  } }
+  override fun getState(): PageInfo = use { it.pageInfo(context) }
   override fun resolveText(options: ResolveTextOptions) = use { it.text.resolve(context, options) }
   override fun getTextValue(id: Double) = use { it.text.getValue(context, id) }
   override fun setTextValue(id: Double, text: String, options: TextAnnotationOptions?) = use { it.text.setValue(context, id, text, options) }

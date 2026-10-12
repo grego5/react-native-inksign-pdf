@@ -65,12 +65,6 @@ internal data class TextPresentationSnapshot(
   }
 }
 
-internal data class CapturedTextPage(
-  val generation: Long,
-  val pageId: String,
-  val dimensions: PdfPageDimensions,
-)
-
 internal data class TextTransformSnapshot(
   val generation: Long,
   val pageIndex: Int,
@@ -260,8 +254,20 @@ internal fun localImeOverlapPx(
 internal class TextInteractionOverlay(
   context: Context,
   private val surface: SurfaceView,
-  private val fonts: NamedFontRegistry = NamedFontRegistry(context),
+  private val core: DocumentCore,
 ) : FrameLayout(context) {
+  private val fonts get() = core.fonts
+
+  private fun activeContext(generation: Long, pageIndex: Int): DocumentPageContext {
+    val presentation = surface.textPresentationSnapshot()
+    if (presentation == null || presentation.generation != generation || presentation.pageIndex != pageIndex) {
+      throw PdfSessionException("operation_cancelled", "Text editing was superseded by a document or page change")
+    }
+    return DocumentPageContext(generation, presentation.pageId)
+  }
+
+  private fun commitText(generation: Long, pageIndex: Int, before: TextAnnotation?, after: TextAnnotation?) =
+    core.text.applyEdit(activeContext(generation, pageIndex), before, after)
   private sealed interface InteractionState {
     data object Idle : InteractionState
 
@@ -346,8 +352,8 @@ internal class TextInteractionOverlay(
   internal var onTextSelectionChange: ((TextSelection?) -> Unit)? = null
   private var emittedSelection: TextSelection? = null
   private var editor: TextEntryView? = null
-  private var defaultFontSize = defaultTextFontSize
-  private var defaultTextColor = Color.BLACK
+  private val defaultFontSize get() = core.text.defaultFontSize
+  private val defaultTextColor get() = core.text.defaultTextColor
   private var editorBackgroundColor: Int? = null
   private var selectedBackgroundColor: Int? = null
   private var displayPresentation: TextPresentationSnapshot? = null
@@ -374,7 +380,7 @@ internal class TextInteractionOverlay(
   var onInteractionModeChanged: (() -> Unit)? = null
 
   fun setDefaultTextColor(value: String?) {
-    defaultTextColor = parseTextColor(value, Color.BLACK)
+    core.text.defaultTextColor = parseTextColor(value, Color.BLACK)
   }
 
   fun setOutlineColor(value: String?) {
@@ -441,7 +447,7 @@ internal class TextInteractionOverlay(
   }
 
   fun setDefaultFontSize(value: Double?) {
-    defaultFontSize = normalizeTextFontSize(value)
+    core.text.defaultFontSize = normalizeTextFontSize(value)
   }
 
   fun increaseTextSize(): Double {
@@ -473,7 +479,7 @@ internal class TextInteractionOverlay(
     surface.withStateTransaction {
       try {
         if (annotation != null) {
-          surface.removeTextAnnotation(presentation.generation, presentation.pageIndex, annotation)
+          commitText(presentation.generation, presentation.pageIndex, annotation, null)
         }
       } finally {
         closeEditor()
@@ -513,69 +519,6 @@ internal class TextInteractionOverlay(
     )
     emitInteractionModeChanged()
     invalidate()
-  }
-
-  internal fun addTextAnnotation(
-    bounds: TextAnnotationBounds,
-    text: String,
-    options: TextAnnotationOptions?,
-    requireVisibleLine: Boolean = false,
-    resolvedDirectionRtl: Boolean? = null,
-    capturedPage: CapturedTextPage? = null,
-    targetId: Long? = null,
-  ) {
-    val presentation = if (capturedPage == null) {
-      surface.textPresentationSnapshot() ?: throw PdfSessionException(
-        "view_not_ready",
-        "A PDF page must be open before adding text",
-      )
-    } else {
-      null
-    }
-    val directionRtl = resolvedDirectionRtl ?: when (options?.direction) {
-      TextDirection.LTR -> false
-      TextDirection.RTL -> true
-      TextDirection.AUTO -> appLayoutIsRtl()
-      null -> requestedTextDirectionRtl ?: appLayoutIsRtl()
-    }
-    val page = capturedPage?.dimensions ?: checkNotNull(presentation).page
-    val flowBounds = programmaticTextFlowBounds(bounds, page)
-    val pageId = capturedPage?.pageId ?: checkNotNull(presentation).pageId
-    val slot = targetId?.let(surface.documentCoordinator::textTarget) ?:
-      surface.documentCoordinator.reserveTextTarget(
-        pageId = pageId,
-        sourceIdentity = null,
-        fieldName = null,
-        canonicalBounds = PageCoordinates(page).displayToCanonical(flowBounds),
-        options = options,
-      )
-    val verticalAnchor = options?.verticalAnchor ?: TextVerticalAnchor.TOP
-    val alignment = options?.alignment ?: TextAlignment.START
-    val boundedAnnotation = TextAnnotation(
-      id = slot.id,
-      text = text,
-      bounds = flowBounds,
-      fontSize = options?.fontSize ?: defaultFontSize,
-      textColor = parseTextColor(options?.color, defaultTextColor),
-      directionRtl = directionRtl,
-      flowBounds = flowBounds,
-      maxLines = options?.maxLines?.toInt() ?: 0,
-      verticalAnchor = verticalAnchor,
-      alignment = alignment,
-      layoutPage = page,
-      font = fonts.resolve(options?.font),
-    )
-    val annotation = TextAnnotationLayout.reflow(boundedAnnotation, page)
-    if (requireVisibleLine && (annotation.bounds.right <= annotation.bounds.left ||
-      annotation.bounds.bottom <= annotation.bounds.top)) {
-      throw PdfSessionException("text_rule_not_found", "No complete text line fits beside the selected rule")
-    }
-    if (capturedPage != null) {
-      surface.appendTextAnnotationForPage(capturedPage.generation, capturedPage.pageId, annotation)
-    } else {
-      checkNotNull(presentation)
-      surface.appendTextAnnotation(presentation.generation, presentation.pageIndex, annotation)
-    }
   }
 
   internal fun resolveDirection(direction: TextDirection?): Boolean = when (direction) {
@@ -679,11 +622,11 @@ internal class TextInteractionOverlay(
         return
       }
     }
-    val pageId = surface.documentCoordinator.page(presentation.pageIndex).id
+    val pageId = presentation.pageId
     val initialBounds = flowBounds ?: PageRect(pagePoint.x, pagePoint.y, pagePoint.x, pagePoint.y)
-    val id = surface.documentCoordinator.reserveTextTarget(
-      pageId, null, null, PageCoordinates(presentation.page).displayToCanonical(initialBounds), null,
-    ).id
+    val id = core.text.reserve(DocumentPageContext(presentation.generation, pageId),
+      PageCoordinates(presentation.page).displayToCanonical(initialBounds),
+      options?.let { TextAnnotationOptions(null, it.font, null, null, it.direction, it.maxLines, it.alignment, it.verticalAnchor) })
     val state = InteractionState.Editing(
       id = id,
       generation = presentation.generation,
@@ -1476,7 +1419,7 @@ internal class TextInteractionOverlay(
     val updated = annotationAt(original, position)
     transitionTo(InteractionState.Selected(state.generation, state.pageIndex, updated))
     try {
-      surface.replaceTextAnnotation(state.generation, state.pageIndex, original, updated)
+      commitText(state.generation, state.pageIndex, original, updated)
     } catch (error: RuntimeException) {
       transitionTo(InteractionState.Idle)
       throw error
@@ -1510,13 +1453,13 @@ internal class TextInteractionOverlay(
       when (val mutation = settleTextEditing(original, finished)) {
         TextEditingMutation.NoOp -> Unit
         is TextEditingMutation.Append -> {
-          surface.appendTextAnnotation(state.generation, state.pageIndex, mutation.annotation)
+          commitText(state.generation, state.pageIndex, null, mutation.annotation)
         }
         is TextEditingMutation.Replace -> {
-          surface.replaceTextAnnotation(state.generation, state.pageIndex, mutation.before, mutation.after)
+          commitText(state.generation, state.pageIndex, mutation.before, mutation.after)
         }
         is TextEditingMutation.Remove -> {
-          surface.removeTextAnnotation(state.generation, state.pageIndex, mutation.annotation)
+          commitText(state.generation, state.pageIndex, mutation.annotation, null)
         }
       }
     } finally {
@@ -1611,7 +1554,7 @@ internal class TextInteractionOverlay(
         val updated = TextAnnotationLayout.resize(annotation, fontSize, presentation.forAnnotation(annotation).page)
         transitionTo(InteractionState.Selected(state.generation, state.pageIndex, updated))
         try {
-          surface.replaceTextAnnotation(state.generation, state.pageIndex, annotation, updated)
+          commitText(state.generation, state.pageIndex, annotation, updated)
         } catch (error: RuntimeException) {
           transitionTo(state)
           throw error
@@ -1655,7 +1598,7 @@ internal class TextInteractionOverlay(
     } else {
       checkNotNull(flowBounds)
     }
-    val updated = TextAnnotation(
+    return core.text.buildAnnotation(
       id = state.id,
       text = text,
       bounds = bounds,
@@ -1668,8 +1611,9 @@ internal class TextInteractionOverlay(
       alignment = state.alignment,
       layoutPage = state.original?.layoutPage ?: if (state.original == null) presentation.page else null,
       font = state.font,
+      page = presentation.page,
+      intrinsicSize = unboundedSize,
     )
-    return TextAnnotationLayout.reflow(updated, presentation.page, unboundedSize)
   }
 
   private fun annotationAt(annotation: TextAnnotation, position: PagePoint): TextAnnotation {
@@ -2076,10 +2020,10 @@ internal class TextInteractionOverlay(
   internal fun selectedText(): TextSelection? = when (val state = interactionState) {
     is InteractionState.Editing -> TextSelection(state.id.toDouble(), state.pageId)
     is InteractionState.Selected -> TextSelection(
-      state.annotation.id.toDouble(), surface.documentCoordinator.page(state.pageIndex).id,
+      state.annotation.id.toDouble(), surface.documentState.pageMetadata(state.pageIndex).id,
     )
     is InteractionState.Dragging -> TextSelection(
-      state.original.id.toDouble(), surface.documentCoordinator.page(state.pageIndex).id,
+      state.original.id.toDouble(), surface.documentState.pageMetadata(state.pageIndex).id,
     )
     else -> null
   }

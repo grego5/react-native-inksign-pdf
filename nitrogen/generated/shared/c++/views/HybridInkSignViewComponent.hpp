@@ -24,7 +24,7 @@
 #include "PagerDirection.hpp"
 #include "ViewerState.hpp"
 #include <functional>
-#include "PageInfo.hpp"
+#include "PageChangeEvent.hpp"
 #include <NitroModules/Null.hpp>
 #include "TextSelection.hpp"
 #include <variant>
@@ -66,7 +66,7 @@ namespace margelo::nitro::inksignpdf::views {
     nitro::ReactProp<std::optional<bool>> keyboardAvoidanceEnabled;
     nitro::ReactProp<std::optional<PagerDirection>> pagerDirection;
     nitro::ReactProp<std::optional<std::function<void(const ViewerState& /* event */)>>> onStateChange;
-    nitro::ReactProp<std::optional<std::function<void(const PageInfo& /* event */)>>> onPageChange;
+    nitro::ReactProp<std::optional<std::function<void(const PageChangeEvent& /* event */)>>> onPageChange;
     nitro::ReactProp<std::optional<std::function<void(double /* zoom */)>>> onZoomChange;
     nitro::ReactProp<std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>> onTextSelectionChange;
     nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridInkSignViewSpec>& /* ref */)>>> hybridRef;

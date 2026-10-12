@@ -7,6 +7,8 @@
 
 #include "JHybridInkSignDocumentSpec.hpp"
 
+// Forward declaration of `DocumentState` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
 // Forward declaration of `DocumentAddPagesResult` to properly resolve imports.
@@ -18,6 +20,14 @@ namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 
+#include "DocumentState.hpp"
+#include "JDocumentState.hpp"
+#include <NitroModules/Null.hpp>
+#include <string>
+#include <variant>
+#include <optional>
+#include "JVariant_NullType_String.hpp"
+#include <NitroModules/JNull.hpp>
 #include <memory>
 #include "HybridDocumentPageSpec.hpp"
 #include <NitroModules/Promise.hpp>
@@ -26,14 +36,12 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 #include <NitroModules/JUnit.hpp>
 #include "DocumentAddPagesResult.hpp"
 #include "JDocumentAddPagesResult.hpp"
-#include <string>
 #include "NamedFontSource.hpp"
 #include <vector>
 #include "JNamedFontSource.hpp"
 #include "DocumentAddPagesOptions.hpp"
 #include "JDocumentAddPagesOptions.hpp"
 #include "ImagePageSize.hpp"
-#include <optional>
 #include "JImagePageSize.hpp"
 
 namespace margelo::nitro::inksignpdf {
@@ -73,6 +81,11 @@ namespace margelo::nitro::inksignpdf {
   }
 
   // Methods
+  DocumentState JHybridInkSignDocumentSpec::getState() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JDocumentState>()>("getState");
+    auto __result = method(_javaPart);
+    return __result->toCpp();
+  }
   std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> JHybridInkSignDocumentSpec::getPage(double index) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(double /* index */)>("getPage");
     auto __result = method(_javaPart, index);

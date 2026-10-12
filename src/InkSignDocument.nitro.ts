@@ -1,5 +1,5 @@
 import type { HybridObject } from 'react-native-nitro-modules'
-import type { AndroidFallbackFont, ImagePageSize, PageInfo, PageTextMethods } from './InkSignView.nitro'
+import type { AndroidFallbackFont, DocumentState, ImagePageSize, PageInfo, PageTextMethods } from './InkSignView.nitro'
 
 export interface NamedFontSource {
   name: string
@@ -26,10 +26,11 @@ export interface DocumentAddPagesResult {
 }
 
 export interface DocumentPage extends HybridObject<{ android: 'kotlin' }>, PageTextMethods {
-  getInfo(): PageInfo
+  getState(): PageInfo
 }
 
 export interface InkSignDocument extends HybridObject<{ android: 'kotlin' }> {
+  getState(): DocumentState
   readonly pageCount: number
   getPage(index: number): Promise<DocumentPage>
   loadFonts(fonts: NamedFontSource[]): Promise<void>

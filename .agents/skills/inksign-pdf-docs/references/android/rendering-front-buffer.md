@@ -47,7 +47,12 @@
   terminal input, cancellation, reset, replacement, presenter loss, mode change,
   or disposal.
 - Input requires a presenter. Bound pending work and accept callbacks only for
-  the current generation/sequence. Terminal success commits history and clears
-  transient contours; delayed acknowledgements cannot restore them.
+  the current generation/sequence. A successful terminal frame commits its final
+  outline through the core; synchronous change delivery installs durable rendering
+  before transient cleanup and handoff. Delayed acknowledgements cannot restore
+  retired contours.
+- Core history changes carry page identity and mutation deltas. Active-page ink
+  append/remove updates durable rendering incrementally; replacement/clear rebuilds
+  affected layers. Nonactive changes invalidate presentation without switching pages.
 - Page switches cancel active input/handoff and rebuild from page-local history.
   See [history and disposal](view-lifecycle.md#page-history-and-disposal).

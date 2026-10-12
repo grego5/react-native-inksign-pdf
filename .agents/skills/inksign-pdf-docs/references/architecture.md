@@ -42,14 +42,64 @@ and export.
   uses PencilKit for ink input; export retains source pages and adds committed
   text and filled vector signatures as PDF annotations.
 
+## State inspection and events
+
+- Page `getState()` reports stable identity, current index/count, displayed width/height in
+  1/72-inch points, and clockwise rotation in degrees (0/90/180/270). Text inputs
+  and returned entry bounds use that displayed top-left coordinate space.
+  Stable page inspection does not activate the page.
+- Page state adds committed-content `hasInk`/`hasText`, page-content dirty state,
+  and undo/redo availability. Reads use in-memory state without backend parsing.
+  Content-presence flags inspect committed entries; dirty/history fields read stack
+  metadata. Page dirty state excludes document structural changes.
+- `onPageChange` carries `PageChangeEvent`: page identity, geometry,
+  and undo/redo availability. Content-presence flags and page dirty state belong to
+  imperative `PageInfo` reads. Event snapshots are constructed without content scans.
+- `onStateChange` adds active `pageIndex`, mode, and load error to document state.
+  Navigation updates index and count together; `pageIndex` is null without a
+  document. Headless document state has no active-page index. Page `getState()`
+  retains that page's own current index/count.
+- `hasInk`/`hasText` inspect only committed InkSign content in the current
+  session. Live input, drafts, and imported PDF content, including Ink annotations and
+  exported InkSign paths on reopen, are excluded. Export preserves visible ink
+  without restoring editable session history.
+- Viewer/document `getState()` returns document-wide identity, page count, and
+  dirty state, including structural changes and applied tracked edits on any page.
+- Page dirty state is derived from applied tracked history: it equals `canUndo`.
+  Untracked content and redo-only history are clean. Document dirty state also
+  includes structural changes. State reporting uses history metadata without
+  scanning committed content. Export leaves history and dirty state unchanged.
+- Events deduplicate their reported fields. Edits emit only when
+  those fields change. Page events carry no index/count, dirty, or content flags.
+  Deferred interaction transactions publish their final state.
+
 ## Android document ownership
 
-`DocumentCore` owns the document command queue and resource lifetime for both
-viewer and headless adapters. `MutableDocumentCoordinator` owns page/content state;
+`DocumentCore` owns the asynchronous command queue, synchronous committed-edit
+entry points, history policy, and resource lifetime for viewer and headless
+adapters. Its `MutableDocumentCoordinator` stores page/content state;
 `PdfSessionWorker` serializes backend parsing, analysis, assembly, rendering, and
-export. `DocumentTextCommands` edits committed targets and text, while
-`TextAnnotationLayout` supplies shared sizing and reflow. The viewer layers
-interaction and presentation over this core.
+export. `DocumentTextCommands` owns target operations and annotation construction;
+`TextAnnotationLayout` supplies sizing and reflow.
+
+The viewer reads metadata and immutable content snapshots through
+`DocumentReadState`, submits committed edits through the core, and consumes its
+change subscription. Gestures, drafts, editor measurement, selection, viewport,
+and rendering belong to the viewer. Draft precedence is applied locally before
+submitting a committed edit; core commands do not query presentation.
+Android viewer state owns the active page ID. Core history and clearing commands
+target explicit page IDs; document snapshots and structural candidates contain
+no viewer selection.
+
+```mermaid
+flowchart LR
+  Headless[Headless adapter] --> Core[DocumentCore]
+  Interaction[Viewer interaction] --> Core
+  Core --> Model[Document model]
+  Core --> Worker[PDFium worker]
+  Core --> Changes[Document changes]
+  Changes --> Rendering[Viewer rendering]
+```
 
 Android supports headless `openDoc()` and named-font preloading. Resource,
 prepared page analysis, and publication contracts are in
@@ -58,7 +108,8 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
 
 ## Document model
 
-- Page order and active-page identity are document state. Ink and text are
+- Page order is document state. Android active-page identity belongs to viewer
+  state; iOS retains it in its PDFKit document coordinator. Ink and text are
   committed per-page content; active gestures, predictions, editor drafts, and
   selection are temporary presentation state.
 - Prepared pages bind immutable source analysis to a stable page ID. Async
@@ -74,6 +125,11 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
   Drafts and committed annotations own formatting; target options supply defaults
   for empty targets. Re-resolution preserves formatting. Headless automatic
   direction follows React Native app direction.
+- Android programmatic text mutations accept per-call `untracked?: boolean`,
+  defaulting to false. Untracked edits enter the permanent base without changing
+  dirty state; retained tracked edits on the same identity cause the flag
+  to be ignored. See [page history](android/view-lifecycle.md#page-history-and-disposal).
+  Draft interaction remains tracked. iOS rejects `untracked: true`.
 - `getSelectedText()` reads overlay selection on the UI thread, returning null
   or a document/page/text-bound handle. It needs no source analysis, retains the
   view weakly, and uses the same value/formatting mutations as prepared pages.
@@ -129,15 +185,15 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
 - Headless `close()` is terminal: it immediately rejects new work and synchronous
   reads, drains admitted async commands, invalidates handles, and resolves after
   backend and resource cleanup.
-- Successful `addPages()` publication reports the active page through
-  `onPageChange`, including first-document creation. Empty/cancelled imports emit
-  no page event.
-- `onStateChange` emits complete, deduplicated viewer snapshots including an opaque
-  document ID and nullable load-error message. Starting a load clears the error.
+- Successful `addPages()` publication updates the [state snapshots](#state-inspection-and-events).
+  First-document creation reports its initial page; imports that leave active-page
+  fields unchanged need not emit `onPageChange`. Empty/cancelled imports emit no page event.
+- Viewer state includes an opaque document ID and nullable load-error message.
+  Starting a load clears the error.
   Modes are `view`, `ink`, `textAdd`, `textEdit`, and `pageCoords`; selection IDs are reported
   separately by `onTextSelectionChange`. Successful opening creates identity;
   page mutations retain it.
-  Empty state uses null identity, view mode, and false dirty/undo/redo flags.
+  Empty state uses null identity, zero pages, view mode, and a false dirty flag.
 - `finalize()` returns a `file://` URI. Output ownership and cleanup follow the
   [Android](android/export.md#snapshot-and-output) or
   [iOS](swift-ios/export.md) export contract.

@@ -127,13 +127,13 @@ abstract class HybridInkSignViewSpec: HybridView() {
       onStateChange = value?.let { it }
     }
   
-  abstract var onPageChange: ((event: PageInfo) -> Unit)?
+  abstract var onPageChange: ((event: PageChangeEvent) -> Unit)?
   
-  private var onPageChange_cxx: Func_void_PageInfo?
+  private var onPageChange_cxx: Func_void_PageChangeEvent?
     @Keep
     @DoNotStrip
     get() {
-      return onPageChange?.let { Func_void_PageInfo_java(it) }
+      return onPageChange?.let { Func_void_PageChangeEvent_java(it) }
     }
     @Keep
     @DoNotStrip
@@ -216,7 +216,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun hasInk(): Boolean
+  abstract fun getState(): DocumentState
   
   @DoNotStrip
   @Keep
@@ -245,10 +245,6 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @DoNotStrip
   @Keep
   abstract fun clearInk(): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun resetDirty(): Unit
   
   @DoNotStrip
   @Keep

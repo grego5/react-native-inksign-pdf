@@ -214,15 +214,21 @@ class PageNavigationControllerTest {
   @Test
   fun newDownDuringRestKeepsCurrentPageAndStartsAnotherPull() = harness.onMain {
     harness.scheduler.completeImmediately = true
-    harness.touch(down(150f, 100f))
-    harness.touch(move(80f, 100f))
-    harness.touch(up(80f, 100f))
+    val start = SystemClock.uptimeMillis()
+    // This pull must settle to rest rather than commit through fling velocity.
+    harness.touch(event(MotionEvent.ACTION_DOWN, 150f, 100f, downTime = start))
+    harness.touch(event(MotionEvent.ACTION_MOVE, 80f, 100f,
+      downTime = start, eventTime = start + 1000L))
+    harness.touch(event(MotionEvent.ACTION_UP, 80f, 100f,
+      downTime = start, eventTime = start + 1200L))
     harness.settlement.advanceLatest(0.5f)
-    harness.touch(down(150f, 100f))
+    val nextStart = start + 1300L
+    harness.touch(event(MotionEvent.ACTION_DOWN, 150f, 100f, downTime = nextStart))
     harness.settlement.finishLatest()
     assertTrue(harness.installs.isEmpty())
     assertTrue(harness.controller.state() is NavigationState.Dragging)
-    harness.touch(move(0f, 100f))
+    harness.touch(event(MotionEvent.ACTION_MOVE, 0f, 100f,
+      downTime = nextStart, eventTime = nextStart + 200L))
     assertTrue(harness.controller.presentation().translationX < 0.0)
   }
 
@@ -424,13 +430,13 @@ class PageNavigationControllerTest {
   }
 
   private companion object {
-    fun event(action: Int, x: Float, y: Float, pointers: Int = 1): MotionEvent {
-      val now = SystemClock.uptimeMillis()
-      if (pointers == 1) return MotionEvent.obtain(now, now, action, x, y, 0)
+    fun event(action: Int, x: Float, y: Float, pointers: Int = 1,
+      downTime: Long = SystemClock.uptimeMillis(), eventTime: Long = downTime): MotionEvent {
+      if (pointers == 1) return MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
       val properties = Array(pointers) { MotionEvent.PointerProperties() }
       val coordinates = Array(pointers) { MotionEvent.PointerCoords().apply { this.x = x; this.y = y } }
       properties.forEachIndexed { index, property -> property.id = index }
-      return MotionEvent.obtain(now, now, action, pointers, properties, coordinates, 0, 0, 1f, 1f, 0, 0, 0, 0)
+      return MotionEvent.obtain(downTime, eventTime, action, pointers, properties, coordinates, 0, 0, 1f, 1f, 0, 0, 0, 0)
     }
     fun down(x: Float, y: Float) = event(MotionEvent.ACTION_DOWN, x, y)
     fun move(x: Float, y: Float, pointers: Int = 1) = event(MotionEvent.ACTION_MOVE, x, y, pointers)

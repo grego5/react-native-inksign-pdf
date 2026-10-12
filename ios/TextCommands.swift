@@ -283,6 +283,7 @@ extension InkSignView {
 
   func setPreparedTextOptions(_ handle: any InkSignPdfTextPageContext, id: Double,
                               options: TextAnnotationOptions) throws {
+    if options.untracked == true { throw HeadlessFeatureError.androidOnly }
     if case .second? = options.font { throw HeadlessFeatureError.androidOnly }
     let (page, target) = try preparedTarget(handle, id: id)
     try documentCoordinator.updateTextTarget(target.id, pageID: page.id) {
@@ -332,7 +333,7 @@ extension InkSignView {
       ?? target.options.fontSize ?? textInteractionOverlay.preparedDefaultFontSize
     let adjusted = textInteractionOverlay.adjustedFontSize(size, delta: delta)
     if adjusted != size {
-      let options = TextAnnotationOptions(font: nil, fontSize: adjusted, color: nil, direction: nil,
+      let options = TextAnnotationOptions(untracked: nil, font: nil, fontSize: adjusted, color: nil, direction: nil,
         maxLines: nil, alignment: nil, verticalAnchor: nil)
       try setPreparedTextOptions(handle, id: id, options: options)
     }
@@ -548,7 +549,7 @@ extension InkSignView {
 
 private extension ResolveTextOptions {
   var annotationOptions: TextAnnotationOptions {
-    TextAnnotationOptions(font: nil, fontSize: fontSize, color: color, direction: direction,
+    TextAnnotationOptions(untracked: nil, font: nil, fontSize: fontSize, color: color, direction: direction,
       maxLines: maxLines, alignment: alignment, verticalAnchor: verticalAnchor ?? (fieldName == nil ? .top : .bottom))
   }
 }

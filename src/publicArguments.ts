@@ -71,7 +71,8 @@ export function validateTextAnnotationOptions(value: unknown): void {
     (value.alignment !== undefined && value.alignment !== 'start' &&
       value.alignment !== 'end' && value.alignment !== 'center') ||
     (value.verticalAnchor !== undefined && value.verticalAnchor !== 'top' &&
-      value.verticalAnchor !== 'bottom')) {
+      value.verticalAnchor !== 'bottom') ||
+    (value.untracked !== undefined && typeof value.untracked !== 'boolean')) {
     throw argumentError(
       'invalid_text_options',
       'Text options must contain a valid direction, alignment, line count, and vertical anchor',

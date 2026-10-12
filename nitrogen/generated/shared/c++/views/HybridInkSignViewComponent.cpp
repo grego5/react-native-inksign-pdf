@@ -35,7 +35,7 @@ namespace margelo::nitro::inksignpdf::views {
     keyboardAvoidanceEnabled(nitro::ReactProp<std::optional<bool>>::fromRawValue("InkSignView", "keyboardAvoidanceEnabled", rawProps, sourceProps.keyboardAvoidanceEnabled)),
     pagerDirection(nitro::ReactProp<std::optional<PagerDirection>>::fromRawValue("InkSignView", "pagerDirection", rawProps, sourceProps.pagerDirection)),
     onStateChange(nitro::ReactProp<std::optional<std::function<void(const ViewerState& /* event */)>>>::fromRawValue("InkSignView", "onStateChange", rawProps, sourceProps.onStateChange)),
-    onPageChange(nitro::ReactProp<std::optional<std::function<void(const PageInfo& /* event */)>>>::fromRawValue("InkSignView", "onPageChange", rawProps, sourceProps.onPageChange)),
+    onPageChange(nitro::ReactProp<std::optional<std::function<void(const PageChangeEvent& /* event */)>>>::fromRawValue("InkSignView", "onPageChange", rawProps, sourceProps.onPageChange)),
     onZoomChange(nitro::ReactProp<std::optional<std::function<void(double /* zoom */)>>>::fromRawValue("InkSignView", "onZoomChange", rawProps, sourceProps.onZoomChange)),
     onTextSelectionChange(nitro::ReactProp<std::optional<std::function<void(const std::optional<std::variant<nitro::NullType, TextSelection>>& /* selection */)>>>::fromRawValue("InkSignView", "onTextSelectionChange", rawProps, sourceProps.onTextSelectionChange)),
     hybridRef(nitro::ReactProp<std::optional<std::function<void(const std::shared_ptr<HybridInkSignViewSpec>& /* ref */)>>>::fromRawValue("InkSignView", "hybridRef", rawProps, sourceProps.hybridRef)) { }

@@ -20,44 +20,44 @@ import com.margelo.nitro.core.NullType
 data class ViewerState(
   @DoNotStrip
   @Keep
-  val documentId: Variant_NullType_String?,
-  @DoNotStrip
-  @Keep
-  val canUndo: Boolean,
-  @DoNotStrip
-  @Keep
-  val canRedo: Boolean,
-  @DoNotStrip
-  @Keep
-  val isDirty: Boolean,
-  @DoNotStrip
-  @Keep
   val mode: InteractionMode,
   @DoNotStrip
   @Keep
-  val error: Variant_NullType_String?
+  val error: Variant_NullType_String?,
+  @DoNotStrip
+  @Keep
+  val pageIndex: Variant_NullType_Double?,
+  @DoNotStrip
+  @Keep
+  val documentId: Variant_NullType_String?,
+  @DoNotStrip
+  @Keep
+  val pageCount: Double,
+  @DoNotStrip
+  @Keep
+  val isDirty: Boolean
 ) {
   /* primary constructor */
 
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is ViewerState) return false
-    return Objects.deepEquals(this.documentId, other.documentId)
-      && Objects.deepEquals(this.canUndo, other.canUndo)
-      && Objects.deepEquals(this.canRedo, other.canRedo)
-      && Objects.deepEquals(this.isDirty, other.isDirty)
-      && Objects.deepEquals(this.mode, other.mode)
+    return Objects.deepEquals(this.mode, other.mode)
       && Objects.deepEquals(this.error, other.error)
+      && Objects.deepEquals(this.pageIndex, other.pageIndex)
+      && Objects.deepEquals(this.documentId, other.documentId)
+      && Objects.deepEquals(this.pageCount, other.pageCount)
+      && Objects.deepEquals(this.isDirty, other.isDirty)
   }
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
-      documentId,
-      canUndo,
-      canRedo,
-      isDirty,
       mode,
-      error
+      error,
+      pageIndex,
+      documentId,
+      pageCount,
+      isDirty
     ).contentDeepHashCode()
   }
 
@@ -69,8 +69,8 @@ data class ViewerState(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(documentId: Variant_NullType_String?, canUndo: Boolean, canRedo: Boolean, isDirty: Boolean, mode: InteractionMode, error: Variant_NullType_String?): ViewerState {
-      return ViewerState(documentId, canUndo, canRedo, isDirty, mode, error)
+    private fun fromCpp(mode: InteractionMode, error: Variant_NullType_String?, pageIndex: Variant_NullType_Double?, documentId: Variant_NullType_String?, pageCount: Double, isDirty: Boolean): ViewerState {
+      return ViewerState(mode, error, pageIndex, documentId, pageCount, isDirty)
     }
   }
 }

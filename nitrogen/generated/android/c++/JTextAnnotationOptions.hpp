@@ -42,6 +42,8 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     TextAnnotationOptions toCpp() const {
       static const auto clazz = javaClassStatic();
+      static const auto fieldUntracked = clazz->getField<jni::JBoolean>("untracked");
+      jni::local_ref<jni::JBoolean> untracked = this->getFieldValue(fieldUntracked);
       static const auto fieldFont = clazz->getField<JVariant_NullType_String>("font");
       jni::local_ref<JVariant_NullType_String> font = this->getFieldValue(fieldFont);
       static const auto fieldFontSize = clazz->getField<jni::JDouble>("fontSize");
@@ -57,6 +59,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto fieldVerticalAnchor = clazz->getField<JTextVerticalAnchor>("verticalAnchor");
       jni::local_ref<JTextVerticalAnchor> verticalAnchor = this->getFieldValue(fieldVerticalAnchor);
       return TextAnnotationOptions(
+        untracked != nullptr ? std::make_optional(static_cast<bool>(untracked->value())) : std::nullopt,
         font != nullptr ? std::make_optional(font->toCpp()) : std::nullopt,
         fontSize != nullptr ? std::make_optional(fontSize->value()) : std::nullopt,
         color != nullptr ? std::make_optional(color->toStdString()) : std::nullopt,
@@ -73,11 +76,12 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JTextAnnotationOptions::javaobject> fromCpp(const TextAnnotationOptions& value) {
-      using JSignature = JTextAnnotationOptions(jni::alias_ref<JVariant_NullType_String>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JString>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextAlignment>, jni::alias_ref<JTextVerticalAnchor>);
+      using JSignature = JTextAnnotationOptions(jni::alias_ref<jni::JBoolean>, jni::alias_ref<JVariant_NullType_String>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JString>, jni::alias_ref<JTextDirection>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JTextAlignment>, jni::alias_ref<JTextVerticalAnchor>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
+        value.untracked.has_value() ? jni::JBoolean::valueOf(value.untracked.value()) : nullptr,
         value.font.has_value() ? JVariant_NullType_String::fromCpp(value.font.value()) : nullptr,
         value.fontSize.has_value() ? jni::JDouble::valueOf(value.fontSize.value()) : nullptr,
         value.color.has_value() ? jni::make_jstring(value.color.value()) : nullptr,

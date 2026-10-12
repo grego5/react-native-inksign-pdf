@@ -13,17 +13,45 @@ export type StrokeColor = string
 /** Opaque RGB text/UI color in `#RRGGBB` form. Invalid values use the native default. */
 export type TextColor = string
 
-/** Zero-based current page metadata returned by open and page navigation. */
-export interface PageInfo {
-  /** Zero-based index of the active page; the first page is 0. */
+/** Active-page metadata and history state reported by onPageChange. */
+export interface PageChangeEvent {
+  /** Stable identity for this page within the open document. */
+  pageId: string
+  /** Displayed width in PDF points (1/72 inch), after page rotation. */
+  width: number
+  /** Displayed height in PDF points (1/72 inch), after page rotation. */
+  height: number
+  /** Clockwise page rotation in degrees: 0, 90, 180, or 270. */
+  rotation: number
+  canUndo: boolean
+  canRedo: boolean
+}
+
+/** Current page state in displayed page coordinates, read imperatively. */
+export interface PageInfo extends PageChangeEvent {
+  /** Committed InkSign content in this session; excludes live drafts and imported PDF content. */
+  hasInk: boolean
+  hasText: boolean
+  /** Current zero-based index of this page; the first page is 0. */
   pageIndex: number
   /** Total number of pages in the document. */
   pageCount: number
-  width: number
-  height: number
+  /** Whether this page has applied tracked edits; redo-only history and untracked content are clean. */
+  isDirty: boolean
 }
 
-/** Fixed text-flow rectangle in canonical PDF page points. x/y are physical top-left coordinates. */
+/** Document-wide metadata; empty viewers report null identity, zero pages, and clean state. */
+export interface DocumentState {
+  documentId: string | null
+  pageCount: number
+  /** Includes structural changes and dirty committed content on any page. */
+  isDirty: boolean
+}
+
+/** Text-flow rectangle in displayed PDF page points, matching PageInfo width/height.
+ * Origin is the rotated page's top-left; x increases rightward and y downward.
+ * Existing text keeps its captured layout orientation when the page rotates.
+ */
 export interface TextAnnotationBounds {
   x: number
   y: number
@@ -32,7 +60,7 @@ export interface TextAnnotationBounds {
 }
 
 /** Text presentation options used by direct insertion and dimensioned placement. */
-export interface TextAnnotationOptions {
+export interface TextPresentationOptions {
   /** Preloaded owner-local font name; null restores the system font. Android only. */
   font?: string | null
   /** Canonical page-unit font size for this text target. */
@@ -47,6 +75,11 @@ export interface TextAnnotationOptions {
   alignment?: TextAlignment
   /** Selects which edge fixes the visible block within its flow rectangle. */
   verticalAnchor?: TextVerticalAnchor
+}
+
+export interface TextAnnotationOptions extends TextPresentationOptions {
+  /** Android: applies this programmatic edit to the permanent base. Defaults to false; ignored for items with retained tracked edits. This is per-call, not saved formatting. */
+  untracked?: boolean
 }
 
 /** One-shot text placement; viewport changes apply after the tap. Box dimensions are PDF page points. */
@@ -77,7 +110,7 @@ export interface TextFocusOptions {
 }
 
 /** Options used to resolve a named field or reserve a free text placement. */
-export interface ResolveTextOptions extends TextAnnotationOptions {
+export interface ResolveTextOptions extends TextPresentationOptions {
   /** Complete detected label. Partial labels and substrings do not match. */
   fieldName?: string
   /** Restricts named lookup, or defines placement when fieldName is omitted. */
@@ -95,6 +128,7 @@ export interface TextEntry {
   id: TextId
   value: string
   fieldName?: string
+  /** Axis-aligned bounds in the page's current displayed coordinates. */
   bounds?: TextAnnotationBounds
   valueSource: TextValueSource
 }
@@ -132,6 +166,8 @@ export interface PageTextMethods {
 }
 
 export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }>, PageTextMethods {
+  /** Reads current metadata for this stable page without switching the viewer. */
+  getState(): PageInfo
   /** Focuses the target; omitted options use zoom 2 and center it without changing input mode. */
   focusText(id: TextId, options?: TextFocusOptions): Promise<void>
 }
@@ -193,15 +229,12 @@ export interface AddPagesResult {
   addedPageCount: number
 }
 
-export interface ViewerState {
-  /** Opaque identity of the published document; null while empty. */
-  documentId: string | null
-  canUndo: boolean
-  canRedo: boolean
-  isDirty: boolean
+export interface ViewerState extends DocumentState {
   mode: InteractionMode
   /** Latest document-load failure; cleared when another load starts. */
   error: string | null
+  /** Active zero-based page index; null when no document is open. */
+  pageIndex: number | null
 }
 
 export type InteractionMode =
@@ -264,7 +297,8 @@ export interface InkSignViewProps extends HybridViewProps {
   /** Controls which physical side contains the logical next page. Defaults to app direction. */
   pagerDirection?: PagerDirection
   onStateChange?: (event: ViewerState) => void
-  onPageChange?: (event: PageInfo) => void
+  /** Active-page metadata after navigation or committed edits; deduplicated. */
+  onPageChange?: (event: PageChangeEvent) => void
   /** Settled zoom relative to page fit: 1 is fitted, below 1 is zoomed out. */
   onZoomChange?: (zoom: number) => void
   onTextSelectionChange?: (selection: TextSelection | null) => void
@@ -293,8 +327,8 @@ export interface InkSignViewMethods extends HybridViewMethods {
   getViewport(): Viewport
   /** Enters pageCoords mode on the active page without changing the viewport. One tap resolves and returns to view mode; page/mode changes or teardown cancel it. */
   requestPageCoords(): Promise<PageCoords>
-  /** Returns whether the active page has committed ink; undo, redo, clear, and page changes are reflected. */
-  hasInk(): boolean
+  /** Synchronous document-wide metadata, independent of the active page. */
+  getState(): DocumentState
   /** Reads native selection synchronously; null when no text is selected. Handle operations reject after document/page/target invalidation. */
   getSelectedText(): TextHandle | null
   /** Prepares a document-bound page that survives mode changes; omission selects the active page. */
@@ -309,8 +343,6 @@ export interface InkSignViewMethods extends HybridViewMethods {
   clear(): void
   /** Clears only editable ink on the active page as one undoable change. */
   clearInk(): void
-  /** Marks committed content on all pages and page structure as clean, preserving undo/redo and live input. No-op without a document. Later edits or undo away from this baseline become dirty. */
-  resetDirty(): void
   /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
   setTextDirection(direction: TextDirection): void
   /** Returns a temporary local PDF file URI (file://). */

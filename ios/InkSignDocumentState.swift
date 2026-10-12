@@ -19,7 +19,7 @@ struct InkSignPdfTextTargetOptions {
   }
 
   var publicOptions: TextAnnotationOptions {
-    TextAnnotationOptions(font: nil, fontSize: fontSize, color: color, direction: direction,
+    TextAnnotationOptions(untracked: nil, font: nil, fontSize: fontSize, color: color, direction: direction,
       maxLines: maxLines.map(Double.init), alignment: alignment, verticalAnchor: verticalAnchor)
   }
 }
@@ -244,11 +244,6 @@ final class InkSignPdfDocumentCoordinator {
 
   var isDirty: Bool {
     structuralDirty || document?.pages.contains { $0.history.state.isDirty } == true
-  }
-
-  func resetDirty() {
-    document?.pages.forEach { $0.history.resetDirty() }
-    structuralDirty = false
   }
 
   func selectPage(id: UUID) -> Int? {

@@ -125,6 +125,18 @@ open class HybridAnalyzedPageSpec_cxx {
 
   // Methods
   @inline(__always)
+  public final func getState() -> bridge.Result_PageInfo_ {
+    do {
+      let __result = try self.__implementation.getState()
+      let __resultCpp = __result
+      return bridge.create_Result_PageInfo_(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_PageInfo_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func focusText(id: Double, options: bridge.std__optional_TextFocusOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
     do {
       let __result = try self.__implementation.focusText(id: id, options: options.value)

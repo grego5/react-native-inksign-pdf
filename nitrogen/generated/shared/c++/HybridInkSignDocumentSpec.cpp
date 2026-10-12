@@ -15,6 +15,7 @@ namespace margelo::nitro::inksignpdf {
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridGetter("pageCount", &HybridInkSignDocumentSpec::getPageCount);
+      prototype.registerHybridMethod("getState", &HybridInkSignDocumentSpec::getState);
       prototype.registerHybridMethod("getPage", &HybridInkSignDocumentSpec::getPage);
       prototype.registerHybridMethod("loadFonts", &HybridInkSignDocumentSpec::loadFonts);
       prototype.registerHybridMethod("addPages", &HybridInkSignDocumentSpec::addPages);

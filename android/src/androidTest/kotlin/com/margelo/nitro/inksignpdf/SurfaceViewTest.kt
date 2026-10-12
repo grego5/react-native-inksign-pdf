@@ -19,6 +19,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 
 @RunWith(AndroidJUnit4::class)
 class SurfaceViewTest {
@@ -427,9 +430,9 @@ class SurfaceViewTest {
         harness.surface.draw(Canvas(bitmap))
         val oldFrame = frames.single()
         assertTrue(harness.surface.pageNavigationState().handoffPending)
-        harness.surface.undo()
-        harness.surface.redo()
-        harness.surface.clear()
+        harness.undo()
+        harness.redo()
+        harness.clear()
         assertTrue(harness.surface.pageNavigationState().handoffPending)
         harness.surface.documentController.setZoomForTest(2.0, PagePoint(100.0, 100.0))
         oldFrame.run()
@@ -480,7 +483,7 @@ class SurfaceViewTest {
   fun clearedDocumentInfoUsesViewNotReadyBeforeFinalizeCapture() {
     var error: PdfSessionException? = null
     harness.runOnMain {
-      harness.surface.documentCoordinator.clearPublishedDocument()
+      harness.coordinator.clearPublishedDocument()
       harness.surface.clearDocument()
       error = assertThrows(PdfSessionException::class.java) {
         harness.surface.currentDocumentInfo()
@@ -495,7 +498,7 @@ class SurfaceViewTest {
     val states = ArrayList<InkState>()
     harness.runOnMain {
       // installCandidate models create; opened PDFs start from a clean baseline.
-      harness.surface.documentCoordinator.markStructuralClean()
+      harness.coordinator.markStructuralClean()
       harness.surface.onStateChange = { states += it }
       harness.surface.setEditMode(true)
       dispatch(downEvent(80.0f, 100.0f, 1_000L))
@@ -514,13 +517,13 @@ class SurfaceViewTest {
 
       harness.surface.switchPage(0)
       assertEquals(1L, harness.surface.rendererDiagnostics().retainedSourcePathCount)
-      harness.surface.undo()
+      harness.undo()
       assertEquals(0, harness.surface.completedPagesSnapshot()[0].strokes.size)
       assertEquals(1, harness.surface.completedPagesSnapshot()[1].strokes.size)
       assertEquals(InkState(false, true, true), states.last())
 
       harness.surface.switchPage(1)
-      harness.surface.clear()
+      harness.clear()
       assertEquals(0, harness.surface.completedPagesSnapshot()[1].strokes.size)
       assertEquals(InkState(true, false, false), states.last())
     }
@@ -531,7 +534,7 @@ class SurfaceViewTest {
     harness.runOnMain {
       val states = ArrayList<InkState>()
       // installCandidate models create; opened PDFs start from a clean baseline.
-      harness.surface.documentCoordinator.markStructuralClean()
+      harness.coordinator.markStructuralClean()
       harness.surface.onStateChange = { states += it }
       harness.surface.setEditMode(true)
 
@@ -545,9 +548,9 @@ class SurfaceViewTest {
       assertTrue(finalOutline.cubicSegmentCount > 0)
       assertEquals(listOf(InkState(true, false, true)), states)
 
-      harness.surface.undo()
-      harness.surface.redo()
-      harness.surface.clear()
+      harness.undo()
+      harness.redo()
+      harness.clear()
       assertEquals(
         listOf(
           InkState(true, false, true),
@@ -1027,15 +1030,13 @@ class SurfaceViewTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val committedFrames = ArrayList<Runnable>()
     private val worker = PdfSessionWorker(opener = FakePdfSession)
-    private val generation = worker.reserveOpenAttemptId(0L)
     val engine = InkEngine()
     val predictor = RecordingPredictor()
     val frontBuffer = RecordingFrontBufferHost()
-    val coordinator = MutableDocumentCoordinator(
-      generation = generation,
-      sessionWorker = worker,
-      artifactPolicy = CacheArtifactPolicy.initialize(instrumentation.targetContext),
+    val core = DocumentCore(
+      instrumentation.targetContext, worker, recordHistory = true, exportOwnership = ExportOwnership.DOCUMENT,
     )
+    val coordinator get() = core.coordinator
     val surface: SurfaceView
 
     init {
@@ -1050,32 +1051,39 @@ class SurfaceViewTest {
             pageNavigationPreviewScheduler = previewScheduler,
             pageNavigationSettlementDriver = settlementDriver,
             pageTileFrameCommitRegistrar = frameCommitRegistrar ?: { committedFrames += it },
-            documentCoordinator = coordinator,
+            core = core,
           ),
         )
       }
       surface = createdSurface.get()
 
-      val result = AtomicReference<Result<PdfSessionInfo>>()
-      val completed = CountDownLatch(1)
-      worker.prepareOpen(generation, "test.pdf", null) { prepared ->
-        result.set(prepared)
-        worker.commitPreparedOpen(generation) { committed ->
-          if (committed.isFailure) result.set(Result.failure(checkNotNull(committed.exceptionOrNull())))
-          completed.countDown()
+      val info = runBlocking {
+        withContext(Dispatchers.Main) {
+          val pending = coordinator.prepareOpen(null, { error("Unexpected fallback font") }, { it.writeText("initial") })
+          try { coordinator.commitOpen(pending) }
+          finally { coordinator.finishOpen(pending) }
         }
       }
-      assertTrue(completed.await(5L, TimeUnit.SECONDS))
-      val info = result.get().getOrThrow()
       runOnMain {
         surface.layout(0, 0, 300, 300)
         setDocument(info)
+        core.observe { change ->
+          when (change) {
+            is DocumentChange.Text -> surface.refreshCommittedText(change.pageId)
+            is DocumentChange.Content -> surface.presentContentChange(change)
+            else -> Unit
+          }
+        }
       }
     }
 
     fun runOnMain(action: () -> Unit) {
       instrumentation.runOnMainSync(action)
     }
+
+    fun undo() { surface.prepareContentMutation(); core.undo(surface.documentState.activePageId()) }
+    fun redo() { surface.prepareContentMutation(); core.redo(surface.documentState.activePageId()) }
+    fun clear() { surface.prepareContentMutation(); core.clearContent(surface.documentState.activePageId()) }
 
     fun documentInfo(): PdfSessionInfo = FakePdfSession.open("test.pdf", 1L).info
 
@@ -1086,7 +1094,7 @@ class SurfaceViewTest {
       fitToPage: Boolean = true,
     ) {
       val pages = info.pages.map(::InkPageState)
-      surface.documentCoordinator.installCandidate(info.sourcePath, pages, pages.first().id)
+      coordinator.installCandidate(info.sourcePath, pages)
       surface.installDocumentPresentation(zoom, focus, fitToPage)
     }
 
@@ -1102,7 +1110,7 @@ class SurfaceViewTest {
       var available = false
       while (System.nanoTime() < deadline) {
         runOnMain {
-          val page = coordinator.page(coordinator.activePageIndex)
+          val page = coordinator.page(surface.documentState.activePageIndex)
           // Explicit draw starts the active base for unattached fixture views.
           val bitmap = Bitmap.createBitmap(surface.width, surface.height, Bitmap.Config.ARGB_8888)
           try { surface.draw(Canvas(bitmap)) } finally { bitmap.recycle() }
@@ -1200,7 +1208,7 @@ class SurfaceViewTest {
     fun close() {
       runOnMain { surface.clearDocument() }
       engine.close()
-      worker.close()
+      runBlocking { core.close(cancelPending = true).await() }
     }
   }
 

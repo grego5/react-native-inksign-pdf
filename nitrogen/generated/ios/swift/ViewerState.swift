@@ -18,21 +18,8 @@ public extension ViewerState {
   /**
    * Create a new instance of `ViewerState`.
    */
-  init(documentId: Variant_NullType_String?, canUndo: Bool, canRedo: Bool, isDirty: Bool, mode: InteractionMode, error: Variant_NullType_String?) {
-    self.init({ () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
-      if let __unwrappedValue = documentId {
-        return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
-          switch __unwrappedValue {
-            case .first(let __value):
-              return bridge.create_std__variant_nitro__NullType__std__string_(margelo.nitro.NullType.null)
-            case .second(let __value):
-              return bridge.create_std__variant_nitro__NullType__std__string_(std.string(__value))
-          }
-        }().variant)
-      } else {
-        return .init()
-      }
-    }(), canUndo, canRedo, isDirty, mode, { () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
+  init(mode: InteractionMode, error: Variant_NullType_String?, pageIndex: Variant_NullType_Double?, documentId: Variant_NullType_String?, pageCount: Double, isDirty: Bool) {
+    self.init(mode, { () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
       if let __unwrappedValue = error {
         return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
           switch __unwrappedValue {
@@ -45,48 +32,35 @@ public extension ViewerState {
       } else {
         return .init()
       }
-    }())
+    }(), { () -> bridge.std__optional_std__variant_nitro__NullType__double__ in
+      if let __unwrappedValue = pageIndex {
+        return bridge.create_std__optional_std__variant_nitro__NullType__double__({ () -> bridge.std__variant_nitro__NullType__double_ in
+          switch __unwrappedValue {
+            case .first(let __value):
+              return bridge.create_std__variant_nitro__NullType__double_(margelo.nitro.NullType.null)
+            case .second(let __value):
+              return bridge.create_std__variant_nitro__NullType__double_(__value)
+          }
+        }().variant)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
+      if let __unwrappedValue = documentId {
+        return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
+          switch __unwrappedValue {
+            case .first(let __value):
+              return bridge.create_std__variant_nitro__NullType__std__string_(margelo.nitro.NullType.null)
+            case .second(let __value):
+              return bridge.create_std__variant_nitro__NullType__std__string_(std.string(__value))
+          }
+        }().variant)
+      } else {
+        return .init()
+      }
+    }(), pageCount, isDirty)
   }
 
-  @inline(__always)
-  var documentId: Variant_NullType_String? {
-    return { () -> Variant_NullType_String? in
-      if bridge.has_value_std__optional_std__variant_nitro__NullType__std__string__(self.__documentId) {
-        let __unwrapped = bridge.get_std__optional_std__variant_nitro__NullType__std__string__(self.__documentId)
-        return { () -> Variant_NullType_String in
-          let __variant = bridge.std__variant_nitro__NullType__std__string_(__unwrapped)
-          switch __variant.index() {
-            case 0:
-              let __actual = __variant.get_0()
-              return .first(NullType.null)
-            case 1:
-              let __actual = __variant.get_1()
-              return .second(String(__actual))
-            default:
-              fatalError("Variant can never have index \(__variant.index())!")
-          }
-        }()
-      } else {
-        return nil
-      }
-    }()
-  }
-  
-  @inline(__always)
-  var canUndo: Bool {
-    return self.__canUndo
-  }
-  
-  @inline(__always)
-  var canRedo: Bool {
-    return self.__canRedo
-  }
-  
-  @inline(__always)
-  var isDirty: Bool {
-    return self.__isDirty
-  }
-  
   @inline(__always)
   var mode: InteractionMode {
     return self.__mode
@@ -114,5 +88,63 @@ public extension ViewerState {
         return nil
       }
     }()
+  }
+  
+  @inline(__always)
+  var pageIndex: Variant_NullType_Double? {
+    return { () -> Variant_NullType_Double? in
+      if bridge.has_value_std__optional_std__variant_nitro__NullType__double__(self.__pageIndex) {
+        let __unwrapped = bridge.get_std__optional_std__variant_nitro__NullType__double__(self.__pageIndex)
+        return { () -> Variant_NullType_Double in
+          let __variant = bridge.std__variant_nitro__NullType__double_(__unwrapped)
+          switch __variant.index() {
+            case 0:
+              let __actual = __variant.get_0()
+              return .first(NullType.null)
+            case 1:
+              let __actual = __variant.get_1()
+              return .second(__actual)
+            default:
+              fatalError("Variant can never have index \(__variant.index())!")
+          }
+        }()
+      } else {
+        return nil
+      }
+    }()
+  }
+  
+  @inline(__always)
+  var documentId: Variant_NullType_String? {
+    return { () -> Variant_NullType_String? in
+      if bridge.has_value_std__optional_std__variant_nitro__NullType__std__string__(self.__documentId) {
+        let __unwrapped = bridge.get_std__optional_std__variant_nitro__NullType__std__string__(self.__documentId)
+        return { () -> Variant_NullType_String in
+          let __variant = bridge.std__variant_nitro__NullType__std__string_(__unwrapped)
+          switch __variant.index() {
+            case 0:
+              let __actual = __variant.get_0()
+              return .first(NullType.null)
+            case 1:
+              let __actual = __variant.get_1()
+              return .second(String(__actual))
+            default:
+              fatalError("Variant can never have index \(__variant.index())!")
+          }
+        }()
+      } else {
+        return nil
+      }
+    }()
+  }
+  
+  @inline(__always)
+  var pageCount: Double {
+    return self.__pageCount
+  }
+  
+  @inline(__always)
+  var isDirty: Bool {
+    return self.__isDirty
   }
 }
