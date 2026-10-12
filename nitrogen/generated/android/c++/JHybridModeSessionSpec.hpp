@@ -55,7 +55,7 @@ namespace margelo::nitro::inksignpdf {
   public:
     // Methods
     std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) override;
-    std::shared_ptr<Promise<PageCoords>> requestPageCoords() override;
+    std::shared_ptr<Promise<PageCoords>> requestUserTap() override;
     std::shared_ptr<Promise<void>> setViewport(const std::optional<ViewportOptions>& options) override;
 
   private:

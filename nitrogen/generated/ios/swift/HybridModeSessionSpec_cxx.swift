@@ -166,9 +166,9 @@ open class HybridModeSessionSpec_cxx {
   }
   
   @inline(__always)
-  public final func requestPageCoords() -> bridge.Result_std__shared_ptr_Promise_PageCoords___ {
+  public final func requestUserTap() -> bridge.Result_std__shared_ptr_Promise_PageCoords___ {
     do {
-      let __result = try self.__implementation.requestPageCoords()
+      let __result = try self.__implementation.requestUserTap()
       let __resultCpp = { () -> bridge.std__shared_ptr_Promise_PageCoords__ in
         let __promise = bridge.create_std__shared_ptr_Promise_PageCoords__()
         let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_PageCoords__(__promise)

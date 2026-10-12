@@ -61,7 +61,7 @@ enum InkSignPdfTextViewportGeometry {
 }
 
 extension InkSignView {
-  func requestPageCoords() throws -> Promise<PageCoords> {
+  func requestUserTap() throws -> Promise<PageCoords> {
     try performOnMainSync { try interaction.requestCoordinates(modeSession: nil) }
   }
 

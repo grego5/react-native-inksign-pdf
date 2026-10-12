@@ -127,7 +127,7 @@ Assert-SourceContains $androidHybridPath 'focusPreparedText' 'prepared page focu
 Assert-SourceContains $typescriptContractPath 'getPage\(pageIndex\?: number\): Promise<AnalyzedPage>' 'Nitro prepared page acquisition'
 Assert-SourceContains $typescriptContractPath 'onTextSelectionChange\?: \(selection: TextSelection \| null\)' 'Nitro selection callback'
 Assert-SourceContains $typescriptContractPath 'setMode\(mode: InputMode, options\?: TextModeOptions\): ModeSession' 'Nitro setMode contract'
-Assert-SourceContains $typescriptContractPath 'requestPageCoords\(\): Promise<PageCoords>' 'Nitro requestPageCoords contract'
+Assert-SourceContains $typescriptContractPath 'requestUserTap\(\): Promise<PageCoords>' 'Nitro requestUserTap contract'
 Assert-SourceContains $typescriptContractPath 'export type InteractionMode' 'Nitro interaction mode union'
 Assert-SourceContains $typescriptContractPath 'mode: InteractionMode' 'Nitro mode snapshot field'
 Assert-SourceContains $typescriptContractPath 'keyboardAvoidanceEnabled\?: boolean' 'Nitro keyboard avoidance policy'

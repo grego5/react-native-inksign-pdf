@@ -87,7 +87,7 @@ export default function App() {
       }
       const session = view.setMode('ink');
       if (zoomRef.current > 1) return;
-      const { x, y } = await session.requestPageCoords();
+      const { x, y } = await session.requestUserTap();
       await session.setViewport({ zoom: 3, x, y });
     } catch (error) {
       if (!isOperationCancelled(error)) Alert.alert('Signing focus failed', String(error));

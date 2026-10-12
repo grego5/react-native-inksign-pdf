@@ -105,7 +105,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let view = fixture.view
     try awaitRotationOperation(view.rotatePage(degrees: 90))
     let session = try view.setMode(mode: .ink, options: nil)
-    let request = try session.requestPageCoords()
+    let request = try session.requestUserTap()
     var requestError: Error?
     request.catch { requestError = $0 }
     // A later command completing proves the tap wait released the FIFO queue.
@@ -138,10 +138,10 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     var errors: [Error] = []
-    try view.requestPageCoords().catch { errors.append($0) }
+    try view.requestUserTap().catch { errors.append($0) }
     try view.setMode(mode: .view, options: nil)
     try view.setMode(mode: .view, options: nil)
-    try view.requestPageCoords().catch { errors.append($0) }
+    try view.requestUserTap().catch { errors.append($0) }
     try awaitRotationOperation(view.close(cancelPending: false))
     XCTAssertEqual(errors.count, 2)
     XCTAssertFalse(view.isPickingPageCoords)
@@ -149,7 +149,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     // Queue admission is deliberately held so disposal also covers a not-yet-armed request.
     let held = Promise<Void>()
     view.enqueueViewerCommand { held }
-    try view.requestPageCoords().catch { errors.append($0) }
+    try view.requestUserTap().catch { errors.append($0) }
     view.dispose()
     XCTAssertEqual(errors.count, 3)
     XCTAssertTrue(errors.allSatisfy { $0.localizedDescription.hasPrefix("operation_cancelled:") })
@@ -163,7 +163,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let session = try view.setMode(mode: .ink, options: nil)
     var errors: [Error] = []
     var coordinates: [PageCoords] = []
-    try session.requestPageCoords().then { coordinates.append($0) }.catch { errors.append($0) }
+    try session.requestUserTap().then { coordinates.append($0) }.catch { errors.append($0) }
     try awaitModeChange(view.enqueueViewerCommand { Promise<Void>.resolved() })
     XCTAssertTrue(view.interactionMode() == .pagecoords)
     try view.switchPage(to: 1)

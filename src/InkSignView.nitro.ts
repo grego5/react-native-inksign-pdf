@@ -189,7 +189,7 @@ export interface ModeSession extends HybridObject<{ ios: 'swift'; android: 'kotl
   /** Prepares a page bound to this session and its captured document. */
   getPage(pageIndex?: PageQuery): Promise<AnalyzedPage>
   /** Temporarily picks one page tap, then restores this session's input mode. */
-  requestPageCoords(): Promise<PageCoords>
+  requestUserTap(): Promise<PageCoords>
   /** Preserves the viewport when omitted; an empty object fits the current page. */
   setViewport(options?: ViewportOptions): Promise<void>
 }
@@ -343,7 +343,7 @@ export interface InkSignViewMethods extends HybridViewMethods {
   /** Returns the active page's current focus coordinates and zoom. */
   getViewport(): Viewport
   /** Enters pageCoords mode on the active page without changing the viewport. One tap resolves and returns to view mode; page/mode changes or teardown cancel it. */
-  requestPageCoords(): Promise<PageCoords>
+  requestUserTap(): Promise<PageCoords>
   /** Synchronous document-wide metadata, independent of the active page. */
   getState(): DocumentState
   /** Reads native selection synchronously; null when no text is selected. Handle operations reject after document/page/target invalidation. */

@@ -20,7 +20,7 @@ internal class HybridModeSession(owner: HybridInkSignView, private val token: Mo
   override fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridAnalyzedPageSpec> =
     withOwner { it.getSessionPage(token, pageIndex) }
 
-  override fun requestPageCoords(): Promise<PageCoords> =
+  override fun requestUserTap(): Promise<PageCoords> =
     withOwner { it.requestSessionPageCoords(token) }
 
   override fun setViewport(options: ViewportOptions?): Promise<Unit> =

@@ -40,7 +40,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func nextPage() throws -> Void
   func previousPage() throws -> Void
   func getViewport() throws -> Viewport
-  func requestPageCoords() throws -> Promise<PageCoords>
+  func requestUserTap() throws -> Promise<PageCoords>
   func getState() throws -> DocumentState
   func getSelectedText() throws -> Variant__any_HybridTextHandleSpec__NullType
   func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<(any HybridAnalyzedPageSpec)>

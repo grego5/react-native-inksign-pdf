@@ -162,7 +162,7 @@ namespace margelo::nitro::inksignpdf {
       virtual void nextPage() = 0;
       virtual void previousPage() = 0;
       virtual Viewport getViewport() = 0;
-      virtual std::shared_ptr<Promise<PageCoords>> requestPageCoords() = 0;
+      virtual std::shared_ptr<Promise<PageCoords>> requestUserTap() = 0;
       virtual DocumentState getState() = 0;
       virtual std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() = 0;
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) = 0;

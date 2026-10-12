@@ -93,13 +93,13 @@ to persistent storage if you need it after closing the viewer.
 
 The receiver determines which API you use:
 
-| Handle | Obtain it with | Used for |
-| --- | --- | --- |
-| `view` | `ref.current` | Viewer navigation and interaction |
-| `document` | `await openDoc(uri)` | Headless document editing on Android |
-| `page` | `await view.getPage()`, `await document.getPage(0)`, or `await session.getPage()` | Page inspection and text edits |
-| `session` | `view.setMode(...)` | A workflow tied to the current mode |
-| `text` | `view.getSelectedText()` | Editing the selected text item |
+| Handle     | Obtain it with                                                                    | Used for                             |
+| ---------- | --------------------------------------------------------------------------------- | ------------------------------------ |
+| `view`     | `ref.current`                                                                     | Viewer navigation and interaction    |
+| `document` | `await openDoc(uri)`                                                              | Headless document editing on Android |
+| `page`     | `await view.getPage()`, `await document.getPage(0)`, or `await session.getPage()` | Page inspection and text edits       |
+| `session`  | `view.setMode(...)`                                                               | A workflow tied to the current mode  |
+| `text`     | `view.getSelectedText()`                                                          | Editing the selected text item       |
 
 ### Viewer ref
 
@@ -130,7 +130,7 @@ The receiver determines which API you use:
   Options apply only to text mode; viewport changes wait for a placement tap.
   Switching modes finishes an open text entry or cancels untapped placement.
   `'view'` is a no-op when no document is open.
-- `view.requestPageCoords()` — Wait for one page tap and return `{ pageId, pageIndex,
+- `view.requestUserTap()` — Wait for one page tap and return `{ pageId, pageIndex,
 x, y }`, then return to view mode. Page or mode changes and teardown cancel
   the request. Use `setMode('view')` for Back.
 - `view.getState()` — Read document identity, page count, and document-wide dirty state
@@ -172,21 +172,16 @@ Text resolution and value operations are synchronous.
 Dimensions and text bounds use PDF points (1/72 inch) on the displayed, rotated
 page, measured rightward and downward from its top-left corner.
 
-- `page.resolveText(options)` — Resolve a complete printed field name or free
-  `bounds: { x, y, width, height }` to a numeric ID. Scanned labels need a text layer.
+- `page.resolveText(options)` — Resolve a complete printed field name or free `bounds: { x, y, width, height }` to a numeric ID. Scanned labels need a text layer.
 - `page.getTextValue(id)` — Read entered text, falling back to embedded PDF text or `''`.
 - `page.setTextValue(id, text, options?)` — Atomically write module text and optional formatting on Android. Pass `''` to remove it and reveal
-  any embedded value. Viewer commits are tracked by default; headless commits
-  are untracked.
+  any embedded value. Viewer commits are tracked by default; headless commits are untracked.
 - `page.setTextOptions(id, options)` — Update formatting; omitted options retain their values.
-- `page.adjustTextSize(id, delta)` — Increase or decrease font size by page points;
-  return the resulting size.
+- `page.adjustTextSize(id, delta)` — Increase or decrease font size by page points; return the resulting size.
 - `page.getTextEntry(id)` — Read the value, value source, and target metadata.
 - `page.getTextEntries()` — Read all resolved text targets on the page.
-- `page.focusText(id, options?)` — Focus a resolved target without changing mode.
-  Available on viewer/session page handles only; headless pages have no focus.
-  Options are `zoom`, `verticalAnchor` (`'top'`, `'bottom'`, or `'center'`), and
-  `edgeOffset` in page points. Defaults to zoom 2 and center.
+- `page.focusText(id, options?)` — Focus a resolved target without changing mode. Available on viewer/session page handles only; headless pages have no focus.
+  Options are `zoom`, `verticalAnchor` (`'top'`, `'bottom'`, or `'center'`), and `edgeOffset` in page points. Defaults to zoom 2 and center.
 
 On Android, pass `untracked: true` to a programmatic text mutation to update the
 permanent base outside undo/redo history:
@@ -212,7 +207,7 @@ invalid when their document closes.
 
 - `session.getPage(pageIndex?)` — Prepare a page whose operations belong to this
   mode session.
-- `session.requestPageCoords()` — Pick one point and return to the session's
+- `session.requestUserTap()` — Pick one point and return to the session's
   mode. Page changes cancel the picker.
 - `session.setViewport(options?)` — Zoom or focus without changing mode. Pass
   `{}` to fit; omit options to preserve the viewport.
@@ -270,7 +265,7 @@ import { isOperationCancelled } from '@grego5/react-native-inksign-pdf';
 
 try {
   const session = view.setMode('ink');
-  const target = await session.requestPageCoords();
+  const target = await session.requestUserTap();
   await session.setViewport({ zoom: 3, x: target.x, y: target.y });
 } catch (error) {
   if (!isOperationCancelled(error)) throw error;
@@ -361,3 +356,4 @@ On Android, both viewer and headless APIs support `loadFonts([{ name, uri }])`.
 Load a static `.ttf` from a local or bundled asset URI, then pass its name as
 `font` when resolving, inserting, or formatting text. Omit `font` to keep the
 current selection; use `font: null` to restore the system font.
+

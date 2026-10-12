@@ -354,8 +354,8 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<PageCoords>> requestPageCoords() override {
-      auto __result = _swiftPart.requestPageCoords();
+    inline std::shared_ptr<Promise<PageCoords>> requestUserTap() override {
+      auto __result = _swiftPart.requestUserTap();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

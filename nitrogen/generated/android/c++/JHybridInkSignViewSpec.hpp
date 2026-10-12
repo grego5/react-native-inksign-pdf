@@ -99,7 +99,7 @@ namespace margelo::nitro::inksignpdf {
     void nextPage() override;
     void previousPage() override;
     Viewport getViewport() override;
-    std::shared_ptr<Promise<PageCoords>> requestPageCoords() override;
+    std::shared_ptr<Promise<PageCoords>> requestUserTap() override;
     DocumentState getState() override;
     std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() override;
     std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) override;

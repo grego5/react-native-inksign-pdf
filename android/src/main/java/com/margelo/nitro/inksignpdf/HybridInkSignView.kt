@@ -389,7 +389,7 @@ class HybridInkSignView internal constructor(
   override fun setMode(mode: InputMode, options: TextModeOptions?): HybridModeSessionSpec =
     beginModeSession(mode, options)
 
-  override fun requestPageCoords(): Promise<PageCoords> = runOnMainSync {
+  override fun requestUserTap(): Promise<PageCoords> = runOnMainSync {
     invalidateModeSession()
     pickPageCoords(null)
   }

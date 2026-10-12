@@ -29,7 +29,7 @@ final class HybridModeSession: HybridModeSessionSpec {
     try withOwner { try $0.getSessionPage(token, pageIndex: pageIndex) }
   }
 
-  func requestPageCoords() throws -> Promise<PageCoords> {
+  func requestUserTap() throws -> Promise<PageCoords> {
     try withOwner { try $0.interaction.requestCoordinates(modeSession: token) }
   }
 

@@ -13,7 +13,7 @@ const calls = [];
 let selectedText = null;
 const nativeSession = {
   getPage: async () => { calls.push('session-page'); return { getTextEntries: () => [] }; },
-  requestPageCoords: async () => ({ pageId: 'page', pageIndex: 0, x: 10, y: 20 }),
+  requestUserTap: async () => ({ pageId: 'page', pageIndex: 0, x: 10, y: 20 }),
   setViewport: async options => { calls.push(['viewport', options]); },
 };
 const native = {
@@ -347,7 +347,7 @@ test('view mode dispatches while the coordinate request is still waiting', async
   let rejectRequest;
   const sequence = [];
   const originalSetMode = native.setMode;
-  native.requestPageCoords = () => {
+  native.requestUserTap = () => {
     sequence.push('coords');
     return new Promise((resolve, reject) => { rejectRequest = reject; });
   };
@@ -362,7 +362,7 @@ test('view mode dispatches while the coordinate request is still waiting', async
     let cancelled;
     function Screen() {
       React.useEffect(() => {
-        waiting = ref.current.requestPageCoords();
+        waiting = ref.current.requestUserTap();
         cancelled = assert.rejects(waiting, { message: /^operation_cancelled:/ });
         void ref.current.setMode('view');
       }, []);
@@ -373,7 +373,7 @@ test('view mode dispatches while the coordinate request is still waiting', async
     assert.deepEqual(sequence, ['coords', 'view']);
   } finally {
     if (root) await act(async () => { root.unmount(); });
-    delete native.requestPageCoords;
+    delete native.requestUserTap;
     native.setMode = originalSetMode;
   }
 });

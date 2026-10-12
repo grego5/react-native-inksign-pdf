@@ -172,7 +172,7 @@ function createValidatedModeSession(native: ModeSession): ModeSession {
       return callAsync(() => validatePageQuery(pageIndex), async () =>
         createValidatedAnalyzedPage(await native.getPage(pageIndex)));
     },
-    requestPageCoords: () => native.requestPageCoords(),
+    requestUserTap: () => native.requestUserTap(),
     setViewport(options) {
       return callAsync(() => validateViewportOptions(options), () => native.setViewport(options));
     },
@@ -297,7 +297,7 @@ function createValidatedHandle(
     loadFonts(fonts) {
       return callAsync(() => validateNamedFonts(fonts), () => connection.invoke(native => native.loadFonts(fonts)));
     },
-    requestPageCoords: () => connection.invoke(native => native.requestPageCoords()),
+    requestUserTap: () => connection.invoke(native => native.requestUserTap()),
     addPages(options) {
       return callAsync(
         () => validateAddPagesOptions(options),

@@ -82,8 +82,8 @@ namespace margelo::nitro::inksignpdf {
       return __promise;
     }();
   }
-  std::shared_ptr<Promise<PageCoords>> JHybridModeSessionSpec::requestPageCoords() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("requestPageCoords");
+  std::shared_ptr<Promise<PageCoords>> JHybridModeSessionSpec::requestUserTap() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>()>("requestUserTap");
     auto __result = method(_javaPart);
     return [&]() {
       auto __promise = Promise<PageCoords>::create();

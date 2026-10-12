@@ -212,7 +212,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun requestPageCoords(): Promise<PageCoords>
+  abstract fun requestUserTap(): Promise<PageCoords>
   
   @DoNotStrip
   @Keep

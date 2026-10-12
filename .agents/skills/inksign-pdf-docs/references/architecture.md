@@ -181,7 +181,7 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
   scheduled replacement/close, or disposal; ordinary pages are document-bound.
   Navigation/reordering and internal text transitions retain the token. Handles
   retain tokens/weak view references; handle disposal does not end the session.
-- `requestPageCoords()` owns exclusive `pageCoords` input and captures document,
+- `requestUserTap()` owns exclusive `pageCoords` input and captures document,
   active page, and geometry revision. Tap waiting releases the command queue.
   Page/geometry/mode changes or teardown cancel it. Direct calls replace the
   session and finish in view mode; session calls restore their originating mode
