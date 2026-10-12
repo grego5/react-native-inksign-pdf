@@ -39,9 +39,9 @@ namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
 
 #include "PageInfo.hpp"
 #include <string>
+#include <optional>
 #include <NitroModules/Promise.hpp>
 #include "TextFocusOptions.hpp"
-#include <optional>
 #include "FieldFocusVerticalAnchor.hpp"
 #include "ResolveTextOptions.hpp"
 #include "TextAnnotationBounds.hpp"

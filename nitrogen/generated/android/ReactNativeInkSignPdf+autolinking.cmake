@@ -45,10 +45,12 @@ target_sources(
   ../nitrogen/generated/android/c++/JHybridDocumentPageSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_NullType_String.cpp
   ../nitrogen/generated/android/c++/JHybridInkSignDocumentSpec.cpp
+  ../nitrogen/generated/android/c++/JPageQuery.cpp
   ../nitrogen/generated/android/c++/JHybridInkSignDocumentFactorySpec.cpp
   ../nitrogen/generated/android/c++/JHybridAnalyzedPageSpec.cpp
   ../nitrogen/generated/android/c++/JHybridTextHandleSpec.cpp
   ../nitrogen/generated/android/c++/JHybridModeSessionSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_Double_TaggedPageQuery.cpp
   ../nitrogen/generated/android/c++/JHybridInkSignViewSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_NullType_Double.cpp
   ../nitrogen/generated/android/c++/JVariant_NullType_TextSelection.cpp

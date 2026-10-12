@@ -37,13 +37,17 @@ internal class HybridInkSignDocument(context: Context) : HybridInkSignDocumentSp
 
   override val pageCount: Double get() = core.withDocument { core.state.pageCount.toDouble() }
   override fun getState(): DocumentState = core.documentInfo()
-  override fun getPage(index: Double): Promise<HybridDocumentPageSpec> = command { HybridDocumentPage(core, core.getPage(index)) }
+  override fun getPage(index: PageQuery): Promise<HybridDocumentPageSpec> = command {
+    HybridDocumentPage(core, index.match({ core.getPage(it) }, { core.getPage(it) }))
+  }
+  override fun getPageIdsByTag(tag: String): Array<String> = core.getPageIdsByTag(tag)
   override fun loadFonts(fonts: Array<NamedFontSource>): Promise<Unit> = command { core.fonts.load(fonts) }
   override fun addPages(options: DocumentAddPagesOptions): Promise<DocumentAddPagesResult> = command {
     val dimensions = options.imagePageSize?.let { PdfPageDimensions(it.width, it.height) }
       ?: (if (core.state.hasDocument) core.state.pageMetadata(0).dimensions else null) ?: PdfPageDimensions(595.28, 841.89)
-    val added = core.addPages(AddPagesOptions(null, options.sources, options.imagePageSize,
-      options.targetDpi, options.jpegQuality, null), dimensions)
+    val added = core.addPages(AddPagesOptions(tag = options.tag, type = null, sources = options.sources,
+      imagePageSize = options.imagePageSize, targetDpi = options.targetDpi, jpegQuality = options.jpegQuality,
+      activePage = null), dimensions)
     DocumentAddPagesResult(added.toDouble(), core.state.pageCount.toDouble())
   }
   override fun removePage(index: Double): Promise<Unit> = command { core.removePage(index) }

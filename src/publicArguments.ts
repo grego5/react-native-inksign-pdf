@@ -11,6 +11,7 @@ export function validateAddPagesOptions(value: unknown): void {
   if (!isRecord(value)) {
     throw argumentError('invalid_page_options', 'Page options must be an object');
   }
+  if (value.tag !== undefined) validatePageTag(value.tag);
   if (value.type !== undefined && value.type !== 'pdf' && value.type !== 'image') {
     throw argumentError('invalid_page_type', 'Page type must be pdf or image');
   }
@@ -85,6 +86,29 @@ export function validatePageIndex(value: unknown): void {
     (typeof value !== 'number' || !Number.isInteger(value) || value < 0)) {
     throw argumentError('invalid_page_index', 'The page index must be a non-negative integer');
   }
+}
+
+export function validatePageTag(value: unknown): void {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw argumentError('invalid_page_tag', 'Page tags must be nonempty strings');
+  }
+}
+
+export function validatePageQuery(value: unknown, required = false): void {
+  if (value === undefined && required) {
+    throw argumentError('invalid_page_index', 'A page query is required');
+  }
+  if (isRecord(value)) {
+    validatePageTag(value.tag);
+    validatePageIndex(value.index);
+  } else {
+    validatePageIndex(value);
+  }
+}
+
+export function validateViewOpenOptions(value: unknown): void {
+  validateViewportOptions(value);
+  if (isRecord(value) && value.tag !== undefined) validatePageTag(value.tag);
 }
 
 export function validateTextId(value: unknown): void {

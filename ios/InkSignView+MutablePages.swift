@@ -32,6 +32,7 @@ extension InkSignView {
   }
 
   func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult> {
+    if options?.tag != nil { throw HeadlessFeatureError.pageTagsAndroidOnly }
     return enqueueViewerCommand { try self.addPagesNow(options: options) }
   }
 

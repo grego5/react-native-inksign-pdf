@@ -13,7 +13,7 @@ public protocol HybridModeSessionSpec_protocol: HybridObject {
   
 
   // Methods
-  func getPage(pageIndex: Double?) throws -> Promise<(any HybridAnalyzedPageSpec)>
+  func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<(any HybridAnalyzedPageSpec)>
   func requestPageCoords() throws -> Promise<PageCoords>
   func setViewport(options: ViewportOptions?) throws -> Promise<Void>
 }

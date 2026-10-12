@@ -29,6 +29,8 @@ export interface PageChangeEvent {
 
 /** Current page state in displayed page coordinates, read imperatively. */
 export interface PageInfo extends PageChangeEvent {
+  /** Nonunique session tag assigned when opening or importing this page. */
+  tag?: string
   /** Committed InkSign content in this session; excludes live drafts and imported PDF content. */
   hasInk: boolean
   hasText: boolean
@@ -185,7 +187,7 @@ export interface TextHandle extends HybridObject<{ ios: 'swift'; android: 'kotli
 /** Operations scoped to one explicit mode request. Supersession rejects with operation_cancelled. */
 export interface ModeSession extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   /** Prepares a page bound to this session and its captured document. */
-  getPage(pageIndex?: number): Promise<AnalyzedPage>
+  getPage(pageIndex?: PageQuery): Promise<AnalyzedPage>
   /** Temporarily picks one page tap, then restores this session's input mode. */
   requestPageCoords(): Promise<PageCoords>
   /** Preserves the viewport when omitted; an empty object fits the current page. */
@@ -201,6 +203,14 @@ export type FieldFocusVerticalAnchor = 'top' | 'bottom' | 'center'
 export type TextKeyOccurrence = 'first' | 'last'
 export type AddPagesActivePage = 'current' | 'firstAdded' | 'lastAdded'
 
+export interface TaggedPageQuery {
+  tag: string
+  /** Zero-based position among matching pages in current document order. Defaults to 0. */
+  index?: number
+}
+
+export type PageQuery = number | TaggedPageQuery
+
 /** Image page dimensions in PDF points. */
 export interface ImagePageSize {
   width: number
@@ -208,6 +218,8 @@ export interface ImagePageSize {
 }
 
 export interface AddPagesOptions {
+  /** Session-only tag assigned to every page imported by this call. Android-only. */
+  tag?: string
   /** Restricts the native picker. Omission permits both `pdf` and `image`. */
   type?: PageType
   /** Ordered local file paths or file URLs to import without presenting a picker. */
@@ -250,6 +262,11 @@ export interface ViewportOptions {
   y?: number
   /** Absolute positive zoom, clamped to native viewport limits. */
   zoom?: number
+}
+
+export interface ViewOpenOptions extends ViewportOptions {
+  /** Session-only tag assigned to every opened page. Android-only. */
+  tag?: string
 }
 
 export interface AndroidFallbackFont {
@@ -308,7 +325,7 @@ export interface InkSignViewMethods extends HybridViewMethods {
   /** Preload named text fonts once per viewer. Android only until iOS uses PDFium. */
   loadFonts(fonts: NamedFontSource[]): Promise<void>
   /** Opens a local PDF or JPEG path/file:// URI. JPEG becomes one A4 page; omitted options fit. */
-  open(path: string, options?: ViewportOptions): Promise<PageInfo>
+  open(path: string, options?: ViewOpenOptions): Promise<PageInfo>
   /** Closes in FIFO order; omitted `cancelPending` is false. Pass true to cancel pending work. */
   close(cancelPending?: boolean): Promise<void>
   /** Adds pages from `sources`, or opens the native picker when sources are omitted. */
@@ -332,7 +349,9 @@ export interface InkSignViewMethods extends HybridViewMethods {
   /** Reads native selection synchronously; null when no text is selected. Handle operations reject after document/page/target invalidation. */
   getSelectedText(): TextHandle | null
   /** Prepares a document-bound page that survives mode changes; omission selects the active page. */
-  getPage(pageIndex?: number): Promise<AnalyzedPage>
+  getPage(pageIndex?: PageQuery): Promise<AnalyzedPage>
+  /** Reads matching IDs in current document order without preparing analysis. Android-only. */
+  getPageIdsByTag(tag: string): string[]
   /** Synchronously enters a mode, preserves the viewport, and supersedes the previous session. Requires a ready document. Options apply only to text placement; their viewport changes wait for a valid tap. */
   setMode(mode: InputMode, options?: TextModeOptions): ModeSession
   /** Undoes the last history change on the active page; no-op when history is empty. */

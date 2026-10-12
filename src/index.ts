@@ -8,12 +8,15 @@ import {
   validateAddPagesOptions,
   validateTextFocusOptions,
   validatePageIndex,
+  validatePageQuery,
+  validatePageTag,
   validatePagerDirection,
   validateResolveTextOptions,
   validateTextId,
   validateTextAnnotationOptions,
   validateTextModeOptions,
   validateViewportOptions,
+  validateViewOpenOptions,
 } from './publicArguments';
 import type {
   DocumentState,
@@ -31,6 +34,9 @@ import type {
   TextFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
+  PageQuery,
+  TaggedPageQuery,
+  ViewOpenOptions,
   PageChangeEvent,
   PageCoords,
   TextAnnotationBounds,
@@ -70,6 +76,9 @@ export type {
   TextFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
+  PageQuery,
+  TaggedPageQuery,
+  ViewOpenOptions,
   PageChangeEvent,
   PageCoords,
   TextAnnotationBounds,
@@ -160,7 +169,7 @@ function createValidatedModeSession(native: ModeSession): ModeSession {
     equals: other => native.equals(other),
     dispose: () => native.dispose(),
     getPage(pageIndex) {
-      return callAsync(() => validatePageIndex(pageIndex), async () =>
+      return callAsync(() => validatePageQuery(pageIndex), async () =>
         createValidatedAnalyzedPage(await native.getPage(pageIndex)));
     },
     requestPageCoords: () => native.requestPageCoords(),
@@ -273,7 +282,7 @@ function createValidatedHandle(
       return callAsync(
         () => {
           validateDocumentPath(path);
-          validateViewportOptions(viewport);
+          validateViewOpenOptions(viewport);
         },
         () => connection.invoke(native => native.open(path, viewport)),
       );
@@ -330,13 +339,17 @@ function createValidatedHandle(
     previousPage: () => getNative().previousPage(),
     getViewport: () => getNative().getViewport(),
     getState: () => getNative().getState(),
+    getPageIdsByTag(tag) {
+      validatePageTag(tag);
+      return getNative().getPageIdsByTag(tag);
+    },
     getSelectedText() {
       const text = getNative().getSelectedText();
       return text === null ? null : createValidatedTextHandle(text);
     },
     getPage(pageIndex) {
       return callAsync(
-        () => validatePageIndex(pageIndex),
+        () => validatePageQuery(pageIndex),
         async () => createValidatedAnalyzedPage(await connection.invoke(native => native.getPage(pageIndex))),
       );
     },
@@ -457,7 +470,11 @@ function createValidatedDocument(native: InkSignDocument): InkSignDocument {
     get pageCount() { return native.pageCount; },
     getState: () => native.getState(),
     getPage(index) {
-      return callAsync(() => requiredPageIndex(index), async () => createValidatedDocumentPage(await native.getPage(index)));
+      return callAsync(() => validatePageQuery(index, true), async () => createValidatedDocumentPage(await native.getPage(index)));
+    },
+    getPageIdsByTag(tag) {
+      validatePageTag(tag);
+      return native.getPageIdsByTag(tag);
     },
     loadFonts(fonts) { return callAsync(() => validateNamedFonts(fonts), () => native.loadFonts(fonts)); },
     addPages(options) {

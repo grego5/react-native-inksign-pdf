@@ -18,10 +18,28 @@ public extension PageInfo {
   /**
    * Create a new instance of `PageInfo`.
    */
-  init(hasInk: Bool, hasText: Bool, pageIndex: Double, pageCount: Double, isDirty: Bool, pageId: String, width: Double, height: Double, rotation: Double, canUndo: Bool, canRedo: Bool) {
-    self.init(hasInk, hasText, pageIndex, pageCount, isDirty, std.string(pageId), width, height, rotation, canUndo, canRedo)
+  init(tag: String?, hasInk: Bool, hasText: Bool, pageIndex: Double, pageCount: Double, isDirty: Bool, pageId: String, width: Double, height: Double, rotation: Double, canUndo: Bool, canRedo: Bool) {
+    self.init({ () -> bridge.std__optional_std__string_ in
+      if let __unwrappedValue = tag {
+        return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
+      } else {
+        return .init()
+      }
+    }(), hasInk, hasText, pageIndex, pageCount, isDirty, std.string(pageId), width, height, rotation, canUndo, canRedo)
   }
 
+  @inline(__always)
+  var tag: String? {
+    return { () -> String? in
+      if bridge.has_value_std__optional_std__string_(self.__tag) {
+        let __unwrapped = bridge.get_std__optional_std__string_(self.__tag)
+        return String(__unwrapped)
+      } else {
+        return nil
+      }
+    }()
+  }
+  
   @inline(__always)
   var hasInk: Bool {
     return self.__hasInk

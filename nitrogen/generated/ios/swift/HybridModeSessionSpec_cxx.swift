@@ -125,12 +125,24 @@ open class HybridModeSessionSpec_cxx {
 
   // Methods
   @inline(__always)
-  public final func getPage(pageIndex: bridge.std__optional_double_) -> bridge.Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____ {
+  public final func getPage(pageIndex: bridge.std__optional_std__variant_double__TaggedPageQuery__) -> bridge.Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____ {
     do {
-      let __result = try self.__implementation.getPage(pageIndex: { () -> Double? in
-        if bridge.has_value_std__optional_double_(pageIndex) {
-          let __unwrapped = bridge.get_std__optional_double_(pageIndex)
-          return __unwrapped
+      let __result = try self.__implementation.getPage(pageIndex: { () -> Variant_Double_TaggedPageQuery? in
+        if bridge.has_value_std__optional_std__variant_double__TaggedPageQuery__(pageIndex) {
+          let __unwrapped = bridge.get_std__optional_std__variant_double__TaggedPageQuery__(pageIndex)
+          return { () -> Variant_Double_TaggedPageQuery in
+            let __variant = bridge.std__variant_double__TaggedPageQuery_(__unwrapped)
+            switch __variant.index() {
+              case 0:
+                let __actual = __variant.get_0()
+                return .first(__actual)
+              case 1:
+                let __actual = __variant.get_1()
+                return .second(__actual)
+              default:
+                fatalError("Variant can never have index \(__variant.index())!")
+            }
+          }()
         } else {
           return nil
         }

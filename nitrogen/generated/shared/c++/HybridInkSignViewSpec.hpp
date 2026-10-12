@@ -29,8 +29,8 @@ namespace margelo::nitro::inksignpdf { struct TextSelection; }
 namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
-// Forward declaration of `ViewportOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
+// Forward declaration of `ViewOpenOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ViewOpenOptions; }
 // Forward declaration of `AddPagesResult` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `AddPagesOptions` to properly resolve imports.
@@ -45,6 +45,8 @@ namespace margelo::nitro::inksignpdf { struct DocumentState; }
 namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
+// Forward declaration of `TaggedPageQuery` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
 // Forward declaration of `InputMode` to properly resolve imports.
@@ -69,7 +71,7 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 #include "NamedFontSource.hpp"
 #include <vector>
 #include "PageInfo.hpp"
-#include "ViewportOptions.hpp"
+#include "ViewOpenOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AddPagesOptions.hpp"
 #include "Viewport.hpp"
@@ -78,6 +80,7 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 #include <memory>
 #include "HybridTextHandleSpec.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
+#include "TaggedPageQuery.hpp"
 #include "HybridModeSessionSpec.hpp"
 #include "InputMode.hpp"
 #include "TextModeOptions.hpp"
@@ -150,7 +153,7 @@ namespace margelo::nitro::inksignpdf {
     public:
       // Methods
       virtual std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) = 0;
-      virtual std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) = 0;
+      virtual std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewOpenOptions>& options) = 0;
       virtual std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) = 0;
       virtual std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) = 0;
       virtual std::shared_ptr<Promise<PageInfo>> removePage() = 0;
@@ -162,7 +165,8 @@ namespace margelo::nitro::inksignpdf {
       virtual std::shared_ptr<Promise<PageCoords>> requestPageCoords() = 0;
       virtual DocumentState getState() = 0;
       virtual std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() = 0;
-      virtual std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) = 0;
+      virtual std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) = 0;
+      virtual std::vector<std::string> getPageIdsByTag(const std::string& tag) = 0;
       virtual std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) = 0;
       virtual void undo() = 0;
       virtual void redo() = 0;

@@ -31,7 +31,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
 
   // Methods
   func loadFonts(fonts: [NamedFontSource]) throws -> Promise<Void>
-  func open(path: String, options: ViewportOptions?) throws -> Promise<PageInfo>
+  func open(path: String, options: ViewOpenOptions?) throws -> Promise<PageInfo>
   func close(cancelPending: Bool?) throws -> Promise<Void>
   func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult>
   func removePage() throws -> Promise<PageInfo>
@@ -43,7 +43,8 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   func requestPageCoords() throws -> Promise<PageCoords>
   func getState() throws -> DocumentState
   func getSelectedText() throws -> Variant__any_HybridTextHandleSpec__NullType
-  func getPage(pageIndex: Double?) throws -> Promise<(any HybridAnalyzedPageSpec)>
+  func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<(any HybridAnalyzedPageSpec)>
+  func getPageIdsByTag(tag: String) throws -> [String]
   func setMode(mode: InputMode, options: TextModeOptions?) throws -> (any HybridModeSessionSpec)
   func undo() throws -> Void
   func redo() throws -> Void

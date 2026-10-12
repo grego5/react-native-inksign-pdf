@@ -38,7 +38,11 @@ abstract class HybridInkSignDocumentSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
-  abstract fun getPage(index: Double): Promise<HybridDocumentPageSpec>
+  abstract fun getPage(index: PageQuery): Promise<HybridDocumentPageSpec>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun getPageIdsByTag(tag: String): Array<String>
   
   @DoNotStrip
   @Keep

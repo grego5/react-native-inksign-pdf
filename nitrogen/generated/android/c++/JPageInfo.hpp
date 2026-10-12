@@ -10,6 +10,7 @@
 #include <fbjni/fbjni.h>
 #include "PageInfo.hpp"
 
+#include <optional>
 #include <string>
 
 namespace margelo::nitro::inksignpdf {
@@ -31,6 +32,8 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     PageInfo toCpp() const {
       static const auto clazz = javaClassStatic();
+      static const auto fieldTag = clazz->getField<jni::JString>("tag");
+      jni::local_ref<jni::JString> tag = this->getFieldValue(fieldTag);
       static const auto fieldHasInk = clazz->getField<jboolean>("hasInk");
       jboolean hasInk = this->getFieldValue(fieldHasInk);
       static const auto fieldHasText = clazz->getField<jboolean>("hasText");
@@ -54,6 +57,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto fieldCanRedo = clazz->getField<jboolean>("canRedo");
       jboolean canRedo = this->getFieldValue(fieldCanRedo);
       return PageInfo(
+        tag != nullptr ? std::make_optional(tag->toStdString()) : std::nullopt,
         static_cast<bool>(hasInk),
         static_cast<bool>(hasText),
         pageIndex,
@@ -74,11 +78,12 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JPageInfo::javaobject> fromCpp(const PageInfo& value) {
-      using JSignature = JPageInfo(jboolean, jboolean, double, double, jboolean, jni::alias_ref<jni::JString>, double, double, double, jboolean, jboolean);
+      using JSignature = JPageInfo(jni::alias_ref<jni::JString>, jboolean, jboolean, double, double, jboolean, jni::alias_ref<jni::JString>, double, double, double, jboolean, jboolean);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
+        value.tag.has_value() ? jni::make_jstring(value.tag.value()) : nullptr,
         value.hasInk,
         value.hasText,
         value.pageIndex,

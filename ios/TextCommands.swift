@@ -104,7 +104,13 @@ enum InkSignPdfKeyRuleSelector {
 extension InkSignView {
   enum HeadlessFeatureError: LocalizedError {
     case androidOnly
-    var errorDescription: String? { "unsupported_platform: Headless documents and named text fonts currently require Android" }
+    case pageTagsAndroidOnly
+    var errorDescription: String? {
+      switch self {
+      case .androidOnly: return "unsupported_platform: Headless documents and named text fonts currently require Android"
+      case .pageTagsAndroidOnly: return "unsupported_platform: Session page tags currently require Android"
+      }
+    }
   }
 
   func loadFonts(fonts: [NamedFontSource]) throws -> Promise<Void> {
@@ -118,14 +124,27 @@ extension InkSignView {
     }
   }
 
-  func getPage(pageIndex: Double?) throws -> Promise<any HybridAnalyzedPageSpec> {
-    return enqueueViewerCommand { try self.getPageNow(pageIndex: pageIndex) }
+  func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<any HybridAnalyzedPageSpec> {
+    let index = try numericPageIndex(pageIndex)
+    return enqueueViewerCommand { try self.getPageNow(pageIndex: index) }
   }
 
-  func getSessionPage(_ token: InkSignPdfModeSessionToken, pageIndex: Double?) throws -> Promise<any HybridAnalyzedPageSpec> {
+  func getPageIdsByTag(tag: String) throws -> [String] {
+    throw HeadlessFeatureError.pageTagsAndroidOnly
+  }
+
+  private func numericPageIndex(_ query: Variant_Double_TaggedPageQuery?) throws -> Double? {
+    switch query {
+    case .first(let index)?: return index
+    case .second?: throw HeadlessFeatureError.pageTagsAndroidOnly
+    case nil: return nil
+    }
+  }
+
+  func getSessionPage(_ token: InkSignPdfModeSessionToken, pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<any HybridAnalyzedPageSpec> {
     try interaction.requireSession(token)
     guard let document = documentCoordinator.document else { throw TextError.cancelled }
-    let index = pageIndex ?? Double(document.activePageIndex)
+    let index = try numericPageIndex(pageIndex) ?? Double(document.activePageIndex)
     guard index.isFinite, index >= 0, index.rounded(.towardZero) == index,
           index < Double(document.pages.count) else { throw TextError.pageNotFound }
     let pageID = document.pages[Int(index)].id

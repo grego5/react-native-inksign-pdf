@@ -25,7 +25,7 @@ final class HybridModeSession: HybridModeSessionSpec {
     super.init()
   }
 
-  func getPage(pageIndex: Double?) throws -> Promise<any HybridAnalyzedPageSpec> {
+  func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<any HybridAnalyzedPageSpec> {
     try withOwner { try $0.getSessionPage(token, pageIndex: pageIndex) }
   }
 

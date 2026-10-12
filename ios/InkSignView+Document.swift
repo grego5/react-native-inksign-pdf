@@ -125,9 +125,11 @@ extension InkSignView {
     return try result!.get()
   }
 
-  func open(path: String, options: ViewportOptions?) throws -> Promise<PageInfo> {
+  func open(path: String, options: ViewOpenOptions?) throws -> Promise<PageInfo> {
+    if options?.tag != nil { throw HeadlessFeatureError.pageTagsAndroidOnly }
+    let viewport = options.map { ViewportOptions(x: $0.x, y: $0.y, zoom: $0.zoom) }
     cancelPresentationCommands()
-    return enqueueViewerCommand { try self.openNow(path: path, options: options) }
+    return enqueueViewerCommand { try self.openNow(path: path, options: viewport) }
   }
 
   private func openNow(path: String, options: ViewportOptions?) throws -> Promise<PageInfo> {
@@ -446,7 +448,7 @@ extension InkSignView {
   func toPublicPageInfo(_ info: InkSignPdfNativePageInfo) -> PageInfo {
     let event = toPageChangeEvent(info)
     let page = documentCoordinator.document!.pages[info.pageIndex]
-    return PageInfo(hasInk: !page.history.content.drawing.strokes.isEmpty,
+    return PageInfo(tag: nil, hasInk: !page.history.content.drawing.strokes.isEmpty,
                     hasText: !page.history.content.textAnnotations.isEmpty,
                     pageIndex: Double(info.pageIndex), pageCount: Double(info.pageCount),
                     isDirty: page.history.state.isDirty, pageId: event.pageId,

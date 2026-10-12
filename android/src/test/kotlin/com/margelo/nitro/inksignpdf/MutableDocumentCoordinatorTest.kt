@@ -18,6 +18,37 @@ import org.junit.Test
 
 class MutableDocumentCoordinatorTest {
   @Test
+  fun tagsFollowPageIdentityAcrossRepeatedImportsReorderRotationAndDeletion() {
+    val coordinator = coordinator()
+    val dimensions = listOf(PdfPageDimensions(400.0, 500.0), PdfPageDimensions(600.0, 700.0))
+    val first = coordinator.appendCandidate(dimensions, "report")
+    val firstIds = first.pages.takeLast(2).map { it.id }
+    assertTrue(coordinator.pageIdsByTag("report").isEmpty())
+    coordinator.installCandidate("first.pdf", first.pages)
+    val second = coordinator.appendCandidate(dimensions.take(1), "report")
+    val lastId = second.pages.last().id
+    coordinator.installCandidate("second.pdf", second.pages)
+    assertEquals(firstIds + lastId, coordinator.pageIdsByTag("report").toList())
+    assertEquals(3, coordinator.pageIndexByTag("report", 0))
+    assertEquals(5, coordinator.pageIndexByTag("report", 2))
+    assertEquals(null, coordinator.pageIndexByTag("report", 3))
+    assertTrue(coordinator.pageIdsByTag("Report").isEmpty())
+    assertTrue(coordinator.pageIdsByTag("missing").isEmpty())
+
+    val moved = coordinator.movePageCandidate(5, 0)
+    coordinator.installCandidate("moved.pdf", moved.pages)
+    assertEquals(listOf(lastId) + firstIds, coordinator.pageIdsByTag("report").toList())
+    val rotated = coordinator.rotatePageCandidate(lastId, PdfPageDimensions(500.0, 400.0, rotation = 1))
+    coordinator.installCandidate("rotated.pdf", rotated.pages)
+    assertEquals("report", coordinator.pageInfo(0).tag)
+    assertEquals("report", coordinator.pageMetadata(0).tag)
+    assertEquals("report", coordinator.pageRecords()[0].tag)
+    val removed = coordinator.removePageCandidate(0)
+    coordinator.installCandidate("removed.pdf", removed.pages)
+    assertEquals(firstIds, coordinator.pageIdsByTag("report").toList())
+  }
+
+  @Test
   fun pageInfoTracksCommittedInkOnTheExplicitPage() {
     val empty = MutableDocumentCoordinator(
       sessionWorker = PdfSessionWorker(),

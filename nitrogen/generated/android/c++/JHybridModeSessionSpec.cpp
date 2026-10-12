@@ -11,6 +11,8 @@
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
+// Forward declaration of `TaggedPageQuery` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 
@@ -23,7 +25,11 @@ namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 #include "JPageCoords.hpp"
 #include <string>
 #include <NitroModules/JUnit.hpp>
+#include "TaggedPageQuery.hpp"
+#include <variant>
 #include <optional>
+#include "JVariant_Double_TaggedPageQuery.hpp"
+#include "JTaggedPageQuery.hpp"
 #include "ViewportOptions.hpp"
 #include "JViewportOptions.hpp"
 
@@ -60,9 +66,9 @@ namespace margelo::nitro::inksignpdf {
   
 
   // Methods
-  std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> JHybridModeSessionSpec::getPage(std::optional<double> pageIndex) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JDouble> /* pageIndex */)>("getPage");
-    auto __result = method(_javaPart, pageIndex.has_value() ? jni::JDouble::valueOf(pageIndex.value()) : nullptr);
+  std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> JHybridModeSessionSpec::getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JVariant_Double_TaggedPageQuery> /* pageIndex */)>("getPage");
+    auto __result = method(_javaPart, pageIndex.has_value() ? JVariant_Double_TaggedPageQuery::fromCpp(pageIndex.value()) : nullptr);
     return [&]() {
       auto __promise = Promise<std::shared_ptr<HybridAnalyzedPageSpec>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {

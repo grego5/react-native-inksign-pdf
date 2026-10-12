@@ -46,6 +46,8 @@ namespace margelo::nitro::inksignpdf { struct PageInfo; }
 namespace margelo::nitro::inksignpdf { enum class PageType; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
+// Forward declaration of `TaggedPageQuery` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `TextAlignment` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextAnnotationBounds` to properly resolve imports.
@@ -68,6 +70,8 @@ namespace margelo::nitro::inksignpdf { struct TextSelection; }
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
+// Forward declaration of `ViewOpenOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ViewOpenOptions; }
 // Forward declaration of `ViewerState` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
@@ -105,6 +109,7 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "PageInfo.hpp"
 #include "PageType.hpp"
 #include "PagerDirection.hpp"
+#include "TaggedPageQuery.hpp"
 #include "TextAlignment.hpp"
 #include "TextAnnotationBounds.hpp"
 #include "TextAnnotationOptions.hpp"
@@ -116,6 +121,7 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "TextSelection.hpp"
 #include "TextValueSource.hpp"
 #include "TextVerticalAnchor.hpp"
+#include "ViewOpenOptions.hpp"
 #include "ViewerState.hpp"
 #include "Viewport.hpp"
 #include "ViewportOptions.hpp"
@@ -137,6 +143,21 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
  */
 namespace margelo::nitro::inksignpdf::bridge::swift {
 
+  // pragma MARK: std::optional<std::string>
+  /**
+   * Specialized version of `std::optional<std::string>`.
+   */
+  using std__optional_std__string_ = std::optional<std::string>;
+  inline std::optional<std::string> create_std__optional_std__string_(const std::string& value) noexcept {
+    return std::optional<std::string>(value);
+  }
+  inline bool has_value_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::string get_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::shared_ptr<Promise<void>>
   /**
    * Specialized version of `std::shared_ptr<Promise<void>>`.
@@ -235,21 +256,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline TextFocusOptions get_std__optional_TextFocusOptions_(const std::optional<TextFocusOptions>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<std::string>
-  /**
-   * Specialized version of `std::optional<std::string>`.
-   */
-  using std__optional_std__string_ = std::optional<std::string>;
-  inline std::optional<std::string> create_std__optional_std__string_(const std::string& value) noexcept {
-    return std::optional<std::string>(value);
-  }
-  inline bool has_value_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline std::string get_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
     return optional.value();
   }
   
@@ -532,6 +538,50 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   Func_void_std__shared_ptr_HybridAnalyzedPageSpec_ create_Func_void_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftClosureWrapper) noexcept;
   inline Func_void_std__shared_ptr_HybridAnalyzedPageSpec__Wrapper wrap_Func_void_std__shared_ptr_HybridAnalyzedPageSpec_(Func_void_std__shared_ptr_HybridAnalyzedPageSpec_ value) noexcept {
     return Func_void_std__shared_ptr_HybridAnalyzedPageSpec__Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::variant<double, TaggedPageQuery>
+  /**
+   * Wrapper struct for `std::variant<double, TaggedPageQuery>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
+   */
+  struct std__variant_double__TaggedPageQuery_ final {
+    std::variant<double, TaggedPageQuery> variant;
+    std__variant_double__TaggedPageQuery_(std::variant<double, TaggedPageQuery> variant): variant(variant) { }
+    operator std::variant<double, TaggedPageQuery>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline double get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline TaggedPageQuery get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_double__TaggedPageQuery_ create_std__variant_double__TaggedPageQuery_(double value) noexcept {
+    return std__variant_double__TaggedPageQuery_(value);
+  }
+  inline std__variant_double__TaggedPageQuery_ create_std__variant_double__TaggedPageQuery_(const TaggedPageQuery& value) noexcept {
+    return std__variant_double__TaggedPageQuery_(value);
+  }
+  
+  // pragma MARK: std::optional<std::variant<double, TaggedPageQuery>>
+  /**
+   * Specialized version of `std::optional<std::variant<double, TaggedPageQuery>>`.
+   */
+  using std__optional_std__variant_double__TaggedPageQuery__ = std::optional<std::variant<double, TaggedPageQuery>>;
+  inline std::optional<std::variant<double, TaggedPageQuery>> create_std__optional_std__variant_double__TaggedPageQuery__(const std::variant<double, TaggedPageQuery>& value) noexcept {
+    return std::optional<std::variant<double, TaggedPageQuery>>(value);
+  }
+  inline bool has_value_std__optional_std__variant_double__TaggedPageQuery__(const std::optional<std::variant<double, TaggedPageQuery>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::variant<double, TaggedPageQuery> get_std__optional_std__variant_double__TaggedPageQuery__(const std::optional<std::variant<double, TaggedPageQuery>>& optional) noexcept {
+    return optional.value();
   }
   
   // pragma MARK: std::shared_ptr<Promise<PageCoords>>
@@ -939,6 +989,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Func_void_PageInfo_Wrapper(std::move(value));
   }
   
+  // pragma MARK: std::optional<ViewOpenOptions>
+  /**
+   * Specialized version of `std::optional<ViewOpenOptions>`.
+   */
+  using std__optional_ViewOpenOptions_ = std::optional<ViewOpenOptions>;
+  inline std::optional<ViewOpenOptions> create_std__optional_ViewOpenOptions_(const ViewOpenOptions& value) noexcept {
+    return std::optional<ViewOpenOptions>(value);
+  }
+  inline bool has_value_std__optional_ViewOpenOptions_(const std::optional<ViewOpenOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline ViewOpenOptions get_std__optional_ViewOpenOptions_(const std::optional<ViewOpenOptions>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::optional<PageInfo>
   /**
    * Specialized version of `std::optional<PageInfo>`.
@@ -1207,6 +1272,15 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__ create_Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__(const std::exception_ptr& error) noexcept {
     return Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::vector<std::string>>
+  using Result_std__vector_std__string__ = Result<std::vector<std::string>>;
+  inline Result_std__vector_std__string__ create_Result_std__vector_std__string__(const std::vector<std::string>& value) noexcept {
+    return Result<std::vector<std::string>>::withValue(value);
+  }
+  inline Result_std__vector_std__string__ create_Result_std__vector_std__string__(const std::exception_ptr& error) noexcept {
+    return Result<std::vector<std::string>>::withError(error);
   }
   
   // pragma MARK: Result<std::shared_ptr<HybridModeSessionSpec>>

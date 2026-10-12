@@ -39,8 +39,8 @@ namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
 namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
-// Forward declaration of `ViewportOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
+// Forward declaration of `ViewOpenOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ViewOpenOptions; }
 // Forward declaration of `AddPagesOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 // Forward declaration of `PageType` to properly resolve imports.
@@ -49,6 +49,8 @@ namespace margelo::nitro::inksignpdf { enum class PageType; }
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `AddPagesActivePage` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
+// Forward declaration of `TaggedPageQuery` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `InputMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InputMode; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
@@ -107,13 +109,13 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "JHybridTextHandleSpec.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
 #include "JHybridAnalyzedPageSpec.hpp"
+#include <vector>
 #include "HybridModeSessionSpec.hpp"
 #include "JHybridModeSessionSpec.hpp"
 #include "NamedFontSource.hpp"
-#include <vector>
 #include "JNamedFontSource.hpp"
-#include "ViewportOptions.hpp"
-#include "JViewportOptions.hpp"
+#include "ViewOpenOptions.hpp"
+#include "JViewOpenOptions.hpp"
 #include "AddPagesOptions.hpp"
 #include "JAddPagesOptions.hpp"
 #include "PageType.hpp"
@@ -122,6 +124,9 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "JImagePageSize.hpp"
 #include "AddPagesActivePage.hpp"
 #include "JAddPagesActivePage.hpp"
+#include "TaggedPageQuery.hpp"
+#include "JVariant_Double_TaggedPageQuery.hpp"
+#include "JTaggedPageQuery.hpp"
 #include "InputMode.hpp"
 #include "JInputMode.hpp"
 #include "TextModeOptions.hpp"
@@ -383,9 +388,9 @@ namespace margelo::nitro::inksignpdf {
       return __promise;
     }();
   }
-  std::shared_ptr<Promise<PageInfo>> JHybridInkSignViewSpec::open(const std::string& path, const std::optional<ViewportOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* path */, jni::alias_ref<JViewportOptions> /* options */)>("open");
-    auto __result = method(_javaPart, jni::make_jstring(path), options.has_value() ? JViewportOptions::fromCpp(options.value()) : nullptr);
+  std::shared_ptr<Promise<PageInfo>> JHybridInkSignViewSpec::open(const std::string& path, const std::optional<ViewOpenOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* path */, jni::alias_ref<JViewOpenOptions> /* options */)>("open");
+    auto __result = method(_javaPart, jni::make_jstring(path), options.has_value() ? JViewOpenOptions::fromCpp(options.value()) : nullptr);
     return [&]() {
       auto __promise = Promise<PageInfo>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
@@ -517,9 +522,9 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart);
     return __result->toCpp();
   }
-  std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> JHybridInkSignViewSpec::getPage(std::optional<double> pageIndex) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JDouble> /* pageIndex */)>("getPage");
-    auto __result = method(_javaPart, pageIndex.has_value() ? jni::JDouble::valueOf(pageIndex.value()) : nullptr);
+  std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> JHybridInkSignViewSpec::getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JVariant_Double_TaggedPageQuery> /* pageIndex */)>("getPage");
+    auto __result = method(_javaPart, pageIndex.has_value() ? JVariant_Double_TaggedPageQuery::fromCpp(pageIndex.value()) : nullptr);
     return [&]() {
       auto __promise = Promise<std::shared_ptr<HybridAnalyzedPageSpec>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
@@ -532,6 +537,20 @@ namespace margelo::nitro::inksignpdf {
       });
       return __promise;
     }();
+  }
+  std::vector<std::string> JHybridInkSignViewSpec::getPageIdsByTag(const std::string& tag) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<jni::JString>>(jni::alias_ref<jni::JString> /* tag */)>("getPageIdsByTag");
+    auto __result = method(_javaPart, jni::make_jstring(tag));
+    return [&](auto&& __input) {
+      size_t __size = __input->size();
+      std::vector<std::string> __vector;
+      __vector.reserve(__size);
+      for (size_t __i = 0; __i < __size; __i++) {
+        auto __element = __input->getElement(__i);
+        __vector.push_back(__element->toStdString());
+      }
+      return __vector;
+    }(__result);
   }
   std::shared_ptr<HybridModeSessionSpec> JHybridInkSignViewSpec::setMode(InputMode mode, const std::optional<TextModeOptions>& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JHybridModeSessionSpec::JavaPart>(jni::alias_ref<JInputMode> /* mode */, jni::alias_ref<JTextModeOptions> /* options */)>("setMode");

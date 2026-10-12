@@ -17,6 +17,8 @@
 namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
+// Forward declaration of `TaggedPageQuery` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 // Forward declaration of `DocumentAddPagesResult` to properly resolve imports.
@@ -28,11 +30,13 @@ namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
 #include <memory>
 #include "HybridDocumentPageSpec.hpp"
 #include <NitroModules/Promise.hpp>
-#include "NamedFontSource.hpp"
+#include "TaggedPageQuery.hpp"
+#include <variant>
+#include <string>
 #include <vector>
+#include "NamedFontSource.hpp"
 #include "DocumentAddPagesResult.hpp"
 #include "DocumentAddPagesOptions.hpp"
-#include <string>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -66,7 +70,8 @@ namespace margelo::nitro::inksignpdf {
     public:
       // Methods
       virtual DocumentState getState() = 0;
-      virtual std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> getPage(double index) = 0;
+      virtual std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> getPage(const std::variant<double, TaggedPageQuery>& index) = 0;
+      virtual std::vector<std::string> getPageIdsByTag(const std::string& tag) = 0;
       virtual std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) = 0;
       virtual std::shared_ptr<Promise<DocumentAddPagesResult>> addPages(const DocumentAddPagesOptions& options) = 0;
       virtual std::shared_ptr<Promise<void>> removePage(double index) = 0;

@@ -39,6 +39,8 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     AddPagesOptions toCpp() const {
       static const auto clazz = javaClassStatic();
+      static const auto fieldTag = clazz->getField<jni::JString>("tag");
+      jni::local_ref<jni::JString> tag = this->getFieldValue(fieldTag);
       static const auto fieldType = clazz->getField<JPageType>("type");
       jni::local_ref<JPageType> type = this->getFieldValue(fieldType);
       static const auto fieldSources = clazz->getField<jni::JArrayClass<jni::JString>>("sources");
@@ -52,6 +54,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto fieldActivePage = clazz->getField<JAddPagesActivePage>("activePage");
       jni::local_ref<JAddPagesActivePage> activePage = this->getFieldValue(fieldActivePage);
       return AddPagesOptions(
+        tag != nullptr ? std::make_optional(tag->toStdString()) : std::nullopt,
         type != nullptr ? std::make_optional(type->toCpp()) : std::nullopt,
         sources != nullptr ? std::make_optional([&](auto&& __input) {
           size_t __size = __input->size();
@@ -76,11 +79,12 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JAddPagesOptions::javaobject> fromCpp(const AddPagesOptions& value) {
-      using JSignature = JAddPagesOptions(jni::alias_ref<JPageType>, jni::alias_ref<jni::JArrayClass<jni::JString>>, jni::alias_ref<JImagePageSize>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JAddPagesActivePage>);
+      using JSignature = JAddPagesOptions(jni::alias_ref<jni::JString>, jni::alias_ref<JPageType>, jni::alias_ref<jni::JArrayClass<jni::JString>>, jni::alias_ref<JImagePageSize>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JAddPagesActivePage>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
+        value.tag.has_value() ? jni::make_jstring(value.tag.value()) : nullptr,
         value.type.has_value() ? JPageType::fromCpp(value.type.value()) : nullptr,
         value.sources.has_value() ? [&](auto&& __input) {
           size_t __size = __input.size();

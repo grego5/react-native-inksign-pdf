@@ -252,16 +252,17 @@ class HybridInkSignView internal constructor(
   private var loadError: String? = null
   private var importSelection = AddPagesActivePage.CURRENT
 
-  override fun open(path: String, options: ViewportOptions?): Promise<PageInfo> {
+  override fun open(path: String, options: ViewOpenOptions?): Promise<PageInfo> {
     cancelPresentationRequests()
     return launchPromise {
       var pendingOpen: MutableDocumentCoordinator.PendingOpen? = null
       loadError = null
       emitState()
       try {
-        val viewport = ViewportRequestParser.parseOpen(options)
+        val viewport = ViewportRequestParser.parseOpen(options?.let { ViewportOptions(it.x, it.y, it.zoom) })
         logFallbackFontSnapshot(androidFallbackFont)
-        val pending = core.prepareOpen(path, DocumentOpenOptions(null, null, null, androidFallbackFont))
+        val pending = core.prepareOpen(path, DocumentOpenOptions(tag = options?.tag, imagePageSize = null,
+          targetDpi = null, jpegQuality = null, androidFallbackFont = androidFallbackFont))
         pendingOpen = pending
         try {
           openPresentation = core.awaitOpen(pending) {
@@ -335,8 +336,9 @@ class HybridInkSignView internal constructor(
 
   override fun addPages(options: AddPagesOptions?): Promise<AddPagesResult> = launchPromise {
     val sources = options?.sources ?: pageInputCoordinator.pickSources(options?.type)
-    val explicit = AddPagesOptions(options?.type, sources, options?.imagePageSize,
-      options?.targetDpi, options?.jpegQuality, options?.activePage)
+    val explicit = AddPagesOptions(tag = options?.tag, type = options?.type, sources = sources,
+      imagePageSize = options?.imagePageSize, targetDpi = options?.targetDpi,
+      jpegQuality = options?.jpegQuality, activePage = options?.activePage)
     val dimensions = options?.imagePageSize?.let { PdfPageDimensions(it.width, it.height) }
       ?: (if (documentState.hasDocument) documentState.pageMetadata(documentState.activePageIndex).dimensions else PdfPageDimensions(595.28, 841.89))
     val added = try {
@@ -484,18 +486,20 @@ class HybridInkSignView internal constructor(
     }
   }
   override fun loadFonts(fonts: Array<NamedFontSource>): Promise<Unit> = launchPromise { core.fonts.load(fonts) }
-  override fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec> = preparePage(pageIndex)
+  override fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridAnalyzedPageSpec> = preparePage(pageIndex)
+  override fun getPageIdsByTag(tag: String): Array<String> = core.getPageIdsByTag(tag)
 
-  internal fun getSessionPage(session: ModeSessionToken, pageIndex: Double?): Promise<HybridAnalyzedPageSpec> = runOnMainSync {
+  internal fun getSessionPage(session: ModeSessionToken, pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridAnalyzedPageSpec> = runOnMainSync {
     requireModeSession(session)
-    val index = pageIndex ?: documentState.activePageIndex.toDouble()
+    if (pageIndex is Variant_Double_TaggedPageQuery.Second) return@runOnMainSync preparePage(pageIndex, session)
+    val index = pageIndex?.asFirstOrNull() ?: documentState.activePageIndex.toDouble()
     if (!index.isFinite() || index < 0 || index % 1.0 != 0.0 || index >= documentState.pageCount) {
       throw PdfSessionException("page_not_found", "The requested page index is outside the document")
     }
     preparePage(null, session, documentState.pageMetadata(index.toInt()).id)
   }
 
-  private fun preparePage(pageIndex: Double?, session: ModeSessionToken? = null,
+  private fun preparePage(pageIndex: Variant_Double_TaggedPageQuery?, session: ModeSessionToken? = null,
                           capturedPageId: String? = null): Promise<HybridAnalyzedPageSpec> =
     launchPromise(presentation = true, modeSession = session) {
     checkMainThread()
@@ -503,21 +507,11 @@ class HybridInkSignView internal constructor(
     if (!documentState.hasDocument) throw PdfSessionException(
       "document_not_open", "A document must be open before acquiring a prepared page",
     )
-    val index = if (capturedPageId != null) {
-      documentState.pageIndexForId(capturedPageId) ?: throw operationCancelled()
-    } else if (pageIndex == null) documentState.activePageIndex else {
-      if (!pageIndex.isFinite() || pageIndex < 0.0 || pageIndex % 1.0 != 0.0) {
-        throw PdfSessionException("invalid_page_index", "The page index must be a non-negative integer")
-      }
-      if (pageIndex > Int.MAX_VALUE.toDouble()) throw PdfSessionException(
-        "page_not_found", "The requested page index is outside the document",
-      )
-      pageIndex.toInt()
+    val context = when {
+      capturedPageId != null -> core.getPage((documentState.pageIndexForId(capturedPageId) ?: throw operationCancelled()).toDouble())
+      pageIndex == null -> core.getPage(documentState.activePageIndex.toDouble())
+      else -> pageIndex.match({ core.getPage(it) }, { core.getPage(it) })
     }
-    if (index !in 0 until documentState.pageCount) throw PdfSessionException(
-      "page_not_found", "The requested page index is outside the document",
-    )
-    val context = core.getPage(index.toDouble())
     if (session != null) requireModeSession(session)
     return@launchPromise HybridAnalyzedPage(this@HybridInkSignView, context, session)
   }

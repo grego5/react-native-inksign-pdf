@@ -35,6 +35,8 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     DocumentAddPagesOptions toCpp() const {
       static const auto clazz = javaClassStatic();
+      static const auto fieldTag = clazz->getField<jni::JString>("tag");
+      jni::local_ref<jni::JString> tag = this->getFieldValue(fieldTag);
       static const auto fieldSources = clazz->getField<jni::JArrayClass<jni::JString>>("sources");
       jni::local_ref<jni::JArrayClass<jni::JString>> sources = this->getFieldValue(fieldSources);
       static const auto fieldImagePageSize = clazz->getField<JImagePageSize>("imagePageSize");
@@ -44,6 +46,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto fieldJpegQuality = clazz->getField<jni::JDouble>("jpegQuality");
       jni::local_ref<jni::JDouble> jpegQuality = this->getFieldValue(fieldJpegQuality);
       return DocumentAddPagesOptions(
+        tag != nullptr ? std::make_optional(tag->toStdString()) : std::nullopt,
         [&](auto&& __input) {
           size_t __size = __input->size();
           std::vector<std::string> __vector;
@@ -66,11 +69,12 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JDocumentAddPagesOptions::javaobject> fromCpp(const DocumentAddPagesOptions& value) {
-      using JSignature = JDocumentAddPagesOptions(jni::alias_ref<jni::JArrayClass<jni::JString>>, jni::alias_ref<JImagePageSize>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>);
+      using JSignature = JDocumentAddPagesOptions(jni::alias_ref<jni::JString>, jni::alias_ref<jni::JArrayClass<jni::JString>>, jni::alias_ref<JImagePageSize>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
+        value.tag.has_value() ? jni::make_jstring(value.tag.value()) : nullptr,
         [&](auto&& __input) {
           size_t __size = __input.size();
           jni::local_ref<jni::JArrayClass<jni::JString>> __array = jni::JArrayClass<jni::JString>::newArray(__size);

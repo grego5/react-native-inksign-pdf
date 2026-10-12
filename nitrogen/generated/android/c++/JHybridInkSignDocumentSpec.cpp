@@ -13,6 +13,8 @@ namespace margelo::nitro::inksignpdf { struct DocumentState; }
 namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
 // Forward declaration of `DocumentAddPagesResult` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentAddPagesResult; }
+// Forward declaration of `TaggedPageQuery` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 // Forward declaration of `DocumentAddPagesOptions` to properly resolve imports.
@@ -33,11 +35,14 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
 #include "JHybridDocumentPageSpec.hpp"
+#include <vector>
 #include <NitroModules/JUnit.hpp>
 #include "DocumentAddPagesResult.hpp"
 #include "JDocumentAddPagesResult.hpp"
+#include "TaggedPageQuery.hpp"
+#include "JPageQuery.hpp"
+#include "JTaggedPageQuery.hpp"
 #include "NamedFontSource.hpp"
-#include <vector>
 #include "JNamedFontSource.hpp"
 #include "DocumentAddPagesOptions.hpp"
 #include "JDocumentAddPagesOptions.hpp"
@@ -86,9 +91,9 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart);
     return __result->toCpp();
   }
-  std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> JHybridInkSignDocumentSpec::getPage(double index) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(double /* index */)>("getPage");
-    auto __result = method(_javaPart, index);
+  std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> JHybridInkSignDocumentSpec::getPage(const std::variant<double, TaggedPageQuery>& index) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JPageQuery> /* index */)>("getPage");
+    auto __result = method(_javaPart, JPageQuery::fromCpp(index));
     return [&]() {
       auto __promise = Promise<std::shared_ptr<HybridDocumentPageSpec>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
@@ -101,6 +106,20 @@ namespace margelo::nitro::inksignpdf {
       });
       return __promise;
     }();
+  }
+  std::vector<std::string> JHybridInkSignDocumentSpec::getPageIdsByTag(const std::string& tag) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<jni::JString>>(jni::alias_ref<jni::JString> /* tag */)>("getPageIdsByTag");
+    auto __result = method(_javaPart, jni::make_jstring(tag));
+    return [&](auto&& __input) {
+      size_t __size = __input->size();
+      std::vector<std::string> __vector;
+      __vector.reserve(__size);
+      for (size_t __i = 0; __i < __size; __i++) {
+        auto __element = __input->getElement(__i);
+        __vector.push_back(__element->toStdString());
+      }
+      return __vector;
+    }(__result);
   }
   std::shared_ptr<Promise<void>> JHybridInkSignDocumentSpec::loadFonts(const std::vector<NamedFontSource>& fonts) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JArrayClass<JNamedFontSource>> /* fonts */)>("loadFonts");

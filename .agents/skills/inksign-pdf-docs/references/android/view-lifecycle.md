@@ -27,6 +27,10 @@
   Page deletion releases affected contexts, targets, and source glyphs;
   replacement/teardown releases all of them.
 
+- Session page tags belong to core page records and survive structural publication.
+  Assignment, lookup, and export lifetime follow the shared
+  [page-tag contract](../architecture.md#page-tags-android).
+
 ## Fonts
 
 - `loadFonts()` atomically publishes named local sources after validating static,

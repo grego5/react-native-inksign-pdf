@@ -174,7 +174,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(errors[0].localizedDescription.hasPrefix("operation_cancelled:"))
     XCTAssertNil(view.interaction.coordinateRequest)
     XCTAssertTrue(view.interactionMode() == .ink)
-    let nextPage = try awaitRotationOperation(session.getPage(pageIndex: 1))
+    let nextPage = try awaitRotationOperation(session.getPage(pageIndex: .first(1)))
     XCTAssertNoThrow(try nextPage.getTextEntries())
   }
 
@@ -473,7 +473,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let completed = expectation(description: "empty staging resolves")
     var result: AddPagesResult?
     var failure: Error?
-    let promise = try view.addPages(options: AddPagesOptions(
+    let promise = try view.addPages(options: AddPagesOptions(tag: nil,
       type: nil,
       sources: [],
       imagePageSize: nil,
@@ -513,7 +513,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
         return try copy()
       })
 
-    let addPages = try view.addPages(options: AddPagesOptions(
+    let addPages = try view.addPages(options: AddPagesOptions(tag: nil,
       type: .pdf,
       sources: [sourceURL.path],
       imagePageSize: nil,
@@ -579,7 +579,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     try XCTUnwrap(image.jpegData(compressionQuality: 1)).write(to: imageURL)
 
-    let options = AddPagesOptions(
+    let options = AddPagesOptions(tag: nil,
       type: nil,
       sources: [pdfURL.path, imageURL.path],
       imagePageSize: ImagePageSize(width: 144, height: 72),
@@ -629,7 +629,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       let completed = expectation(description: "append pages selecting \(selection)")
       var result: AddPagesResult?
       var failure: Error?
-      let promise = try fixture.view.addPages(options: AddPagesOptions(
+      let promise = try fixture.view.addPages(options: AddPagesOptions(tag: nil,
         type: .pdf,
         sources: [sourceURL.path],
         imagePageSize: nil,
@@ -684,7 +684,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let created = expectation(description: "create document with current selection")
     var createdResult: AddPagesResult?
     var creationFailure: Error?
-    let createPromise = try creationView.addPages(options: AddPagesOptions(
+    let createPromise = try creationView.addPages(options: AddPagesOptions(tag: nil,
       type: .pdf,
       sources: [sourceURL.path],
       imagePageSize: nil,
@@ -712,7 +712,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let lastCreated = expectation(description: "create document selecting last added page")
     var lastCreatedResult: AddPagesResult?
     var lastCreationFailure: Error?
-    let lastCreatePromise = try lastCreationView.addPages(options: AddPagesOptions(
+    let lastCreatePromise = try lastCreationView.addPages(options: AddPagesOptions(tag: nil,
       type: .pdf,
       sources: [sourceURL.path],
       imagePageSize: nil,
@@ -869,7 +869,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(afterRotation.activePage.history.content.equals(contentBefore))
 
     // Assembly reads the unchanged source, then rebinds pending orientation.
-    _ = try awaitRotationOperation(view.addPages(options: AddPagesOptions(
+    _ = try awaitRotationOperation(view.addPages(options: AddPagesOptions(tag: nil,
       type: .pdf, sources: [workingURLBefore.path], imagePageSize: nil,
       targetDpi: nil, jpegQuality: nil, activePage: nil)))
     XCTAssertEqual(view.documentCoordinator.document?.activePageID, pageID)
@@ -1249,7 +1249,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       pageSize: keyPage.geometry.displaySize),
       "Fixture must contain a usable same-row rule; matches=\(displayed.matches), rules=\(displayed.rules)")
 
-    let page = try awaitRotationOperation(view.getPage(pageIndex: 0))
+    let page = try awaitRotationOperation(view.getPage(pageIndex: .first(0)))
     XCTAssertEqual(try view.switchPage(to: 1).pageIndex, 1)
     XCTAssertEqual(coordinator.document?.activePageIndex, 1)
     let textID = try page.resolveText(options: ResolveTextOptions(

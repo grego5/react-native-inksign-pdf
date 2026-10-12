@@ -25,6 +25,7 @@ internal data class DocumentPageMetadata(
   val dimensions: PdfPageDimensions,
   val geometryRevision: Long,
   val sourceDimensions: PdfPageDimensions,
+  val tag: String?,
 )
 
-internal fun InkPageState.metadata() = DocumentPageMetadata(id, dimensions, geometryRevision, sourceDimensions)
+internal fun InkPageState.metadata() = DocumentPageMetadata(id, dimensions, geometryRevision, sourceDimensions, tag)

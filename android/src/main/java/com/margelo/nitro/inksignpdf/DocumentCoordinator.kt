@@ -99,7 +99,7 @@ internal class MutableDocumentCoordinator(
   override fun pageInfo(index: Int): PageInfo {
     val event = pageChangeEvent(index)
     val history = page(index).history
-    return PageInfo(pageId = event.pageId, pageIndex = index.toDouble(), pageCount = pageCount.toDouble(),
+    return PageInfo(tag = page(index).tag, pageId = event.pageId, pageIndex = index.toDouble(), pageCount = pageCount.toDouble(),
       width = event.width, height = event.height, rotation = event.rotation,
       hasInk = history.hasInk(), hasText = history.hasText(), isDirty = history.state().isDirty,
       canUndo = event.canUndo, canRedo = event.canRedo)
@@ -135,9 +135,10 @@ internal class MutableDocumentCoordinator(
 
   fun appendCandidate(
     dimensions: List<PdfPageDimensions>,
+    tag: String? = null,
   ): StructuralCandidate {
     require(dimensions.isNotEmpty())
-    val appended = dimensions.map { InkPageState(PageRecord.newId(), it, history = InkHistory(recordHistory)) }
+    val appended = dimensions.map { InkPageState(PageRecord.newId(), it, history = InkHistory(recordHistory), tag = tag) }
     val candidatePages = mutablePages.toList() + appended
     return StructuralCandidate(candidatePages)
   }
@@ -169,6 +170,7 @@ internal class MutableDocumentCoordinator(
       current.history,
       current.geometryRevision + 1L,
       current.sourceDimensions,
+      current.tag,
     )
     return StructuralCandidate(next)
   }
@@ -177,7 +179,17 @@ internal class MutableDocumentCoordinator(
 
   fun markStructuralClean() { structuralDirty = false }
 
-  fun pageRecords(): List<PageRecord> = pages.map { page -> PageRecord(page.id, page.dimensions) }
+  fun pageRecords(): List<PageRecord> = pages.map { page -> PageRecord(page.id, page.dimensions, page.tag) }
+
+  fun pageIdsByTag(tag: String): Array<String> = mutablePages.filter { it.tag == tag }.map { it.id }.toTypedArray()
+
+  fun pageIndexByTag(tag: String, occurrence: Int): Int? {
+    var matched = 0
+    mutablePages.forEachIndexed { index, page ->
+      if (page.tag == tag && matched++ == occurrence) return index
+    }
+    return null
+  }
 
   override fun sessionInfo(): PdfSessionInfo = PdfSessionInfo(
     sourcePath = sourcePath,
@@ -429,6 +441,7 @@ internal class MutableDocumentCoordinator(
     resolveFallbackFont: suspend (AndroidFallbackFont) -> PdfFallbackFont,
     prepareSource: suspend (java.io.File) -> Unit,
     invalidatePrevious: () -> Unit = {},
+    tag: String? = null,
   ): PendingOpen {
     val request = beginOpen(fallbackFont)
     try {
@@ -441,7 +454,7 @@ internal class MutableDocumentCoordinator(
         check(info.generation == request.attemptId)
         info to font
       }
-      return PendingOpen(request, prepareOpenCandidate(request, info, font), info)
+      return PendingOpen(request, prepareOpenCandidate(request, info, font, tag), info)
     } catch (error: Throwable) {
       try { discardDetachedOpen(request) } finally { endOperation(request.operationID) }
       throw error
@@ -548,9 +561,10 @@ internal class MutableDocumentCoordinator(
     request: OpenRequest,
     info: PdfSessionInfo,
     resolvedFallbackFont: PdfFallbackFont?,
+    tag: String?,
   ): PreparedOpenCandidate {
     val pages = info.pages.map { dimensions ->
-      InkPageState(PageRecord.newId(), dimensions, history = InkHistory(recordHistory))
+      InkPageState(PageRecord.newId(), dimensions, history = InkHistory(recordHistory), tag = tag)
     }.toMutableList()
     return PreparedOpenCandidate(
       pages = pages,

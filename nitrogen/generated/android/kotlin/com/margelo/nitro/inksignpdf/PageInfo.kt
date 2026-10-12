@@ -20,6 +20,9 @@ import java.util.Objects
 data class PageInfo(
   @DoNotStrip
   @Keep
+  val tag: String?,
+  @DoNotStrip
+  @Keep
   val hasInk: Boolean,
   @DoNotStrip
   @Keep
@@ -57,7 +60,8 @@ data class PageInfo(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is PageInfo) return false
-    return Objects.deepEquals(this.hasInk, other.hasInk)
+    return Objects.deepEquals(this.tag, other.tag)
+      && Objects.deepEquals(this.hasInk, other.hasInk)
       && Objects.deepEquals(this.hasText, other.hasText)
       && Objects.deepEquals(this.pageIndex, other.pageIndex)
       && Objects.deepEquals(this.pageCount, other.pageCount)
@@ -72,6 +76,7 @@ data class PageInfo(
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
+      tag,
       hasInk,
       hasText,
       pageIndex,
@@ -94,8 +99,8 @@ data class PageInfo(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(hasInk: Boolean, hasText: Boolean, pageIndex: Double, pageCount: Double, isDirty: Boolean, pageId: String, width: Double, height: Double, rotation: Double, canUndo: Boolean, canRedo: Boolean): PageInfo {
-      return PageInfo(hasInk, hasText, pageIndex, pageCount, isDirty, pageId, width, height, rotation, canUndo, canRedo)
+    private fun fromCpp(tag: String?, hasInk: Boolean, hasText: Boolean, pageIndex: Double, pageCount: Double, isDirty: Boolean, pageId: String, width: Double, height: Double, rotation: Double, canUndo: Boolean, canRedo: Boolean): PageInfo {
+      return PageInfo(tag, hasInk, hasText, pageIndex, pageCount, isDirty, pageId, width, height, rotation, canUndo, canRedo)
     }
   }
 }

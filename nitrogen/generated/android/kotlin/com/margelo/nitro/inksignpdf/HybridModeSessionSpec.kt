@@ -32,7 +32,7 @@ abstract class HybridModeSessionSpec: HybridObject() {
   // Methods
   @DoNotStrip
   @Keep
-  abstract fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec>
+  abstract fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridAnalyzedPageSpec>
   
   @DoNotStrip
   @Keep

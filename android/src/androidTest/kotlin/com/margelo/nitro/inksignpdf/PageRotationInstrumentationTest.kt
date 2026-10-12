@@ -311,7 +311,8 @@ class PageRotationInstrumentationTest {
           it.view.layout(0, 0, 480, 480)
         })
       }
-      await(instrumentation, view.get().open(source.absolutePath, null))
+      await(instrumentation, view.get().open(source.absolutePath,
+        ViewOpenOptions(tag = "report", x = null, y = null, zoom = null)))
       val page = awaitPreparedPage(instrumentation, view.get())
       instrumentation.runOnMainSync {
         assertTrue("Imported PDF Ink annotations are not session ink", !page.getState().hasInk)
@@ -337,9 +338,9 @@ class PageRotationInstrumentationTest {
         view.get().redo()
         assertTrue(page.getState().hasInk)
       }
-      await(instrumentation, view.get().addPages(AddPagesOptions(null,
+      await(instrumentation, view.get().addPages(AddPagesOptions("report", null,
         arrayOf(source.absolutePath), null, null, null, null)))
-      val otherPage = await(instrumentation, view.get().getPage(1.0))
+      val otherPage = await(instrumentation, view.get().getPage(Variant_Double_TaggedPageQuery.create(1.0)))
       instrumentation.runOnMainSync {
         val surface = (view.get().view as FrameLayout).getChildAt(0) as SurfaceView
         surface.switchPage(1)
@@ -347,6 +348,9 @@ class PageRotationInstrumentationTest {
         assertTrue("Inspection must remain bound to the nonactive page", page.getState().hasInk)
         assertEquals(0.0, page.getState().pageIndex, 0.0)
         assertEquals(2.0, page.getState().pageCount, 0.0)
+        assertEquals("report", page.getState().tag)
+        assertEquals("report", otherPage.getState().tag)
+        assertEquals(listOf(page.getState().pageId, otherPage.getState().pageId), view.get().getPageIdsByTag("report").toList())
         assertEquals(1, view.get().documentState.activePageIndex)
         surface.switchPage(0)
         assertTrue(view.get().getState().isDirty)
@@ -357,6 +361,7 @@ class PageRotationInstrumentationTest {
       }
       val rotated = await(instrumentation, view.get().rotatePage(90.0))
       assertEquals(90.0, rotated.rotation, 0.0)
+      assertEquals("report", rotated.tag)
       instrumentation.runOnMainSync {
         assertEquals(240.0, page.getState().width, 0.0)
         assertEquals(320.0, page.getState().height, 0.0)
@@ -365,12 +370,17 @@ class PageRotationInstrumentationTest {
       }
       val uri = await(instrumentation, view.get().finalize())
       outputs += File(java.net.URI(uri))
-      val reopenedDocument = await(instrumentation, HybridInkSignDocument(context).open(uri, null))
+      val reopenedDocument = await(instrumentation, HybridInkSignDocument(context).open(uri,
+        DocumentOpenOptions(tag = "reopened", imagePageSize = null, targetDpi = null, jpegQuality = null,
+          androidFallbackFont = null)))
       reopened = reopenedDocument
-      val reopenedPage = await(instrumentation, reopenedDocument.getPage(0.0))
+      val reopenedPage = await(instrumentation, reopenedDocument.getPage(PageQuery.create(TaggedPageQuery("reopened", null))))
       val stampBounds = TextAnnotationBounds(30.0, 60.0, 160.0, 30.0)
       instrumentation.runOnMainSync {
         assertTrue("Exported ink is imported content on reopen", !reopenedPage.getState().hasInk)
+        assertTrue("Tags are not restored from exported PDF bytes", reopenedDocument.getPageIdsByTag("report").isEmpty())
+        assertEquals(2, reopenedDocument.getPageIdsByTag("reopened").size)
+        assertEquals("reopened", reopenedPage.getState().tag)
         assertEquals(2.0, reopenedDocument.getState().pageCount, 0.0)
         assertTrue(!reopenedDocument.getState().isDirty)
         val info = reopenedPage.getState()
@@ -469,7 +479,7 @@ class PageRotationInstrumentationTest {
       assertEquals(320.0, rotated.height, 0.0)
 
       // Reopening working bytes during assembly must retain pending orientation.
-      await(instrumentation, viewRef.get().addPages(AddPagesOptions(
+      await(instrumentation, viewRef.get().addPages(AddPagesOptions(null,
         type = null, sources = arrayOf(source.absolutePath), imagePageSize = null,
         targetDpi = null, jpegQuality = null, activePage = null,
       )))

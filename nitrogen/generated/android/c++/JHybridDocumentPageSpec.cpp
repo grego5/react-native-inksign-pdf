@@ -31,9 +31,9 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 #include "PageInfo.hpp"
 #include "JPageInfo.hpp"
 #include <string>
+#include <optional>
 #include "TextEntry.hpp"
 #include "JTextEntry.hpp"
-#include <optional>
 #include "TextAnnotationBounds.hpp"
 #include "JTextAnnotationBounds.hpp"
 #include "TextValueSource.hpp"

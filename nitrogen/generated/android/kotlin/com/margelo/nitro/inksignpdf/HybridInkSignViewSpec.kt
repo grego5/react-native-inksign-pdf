@@ -176,7 +176,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun open(path: String, options: ViewportOptions?): Promise<PageInfo>
+  abstract fun open(path: String, options: ViewOpenOptions?): Promise<PageInfo>
   
   @DoNotStrip
   @Keep
@@ -224,7 +224,11 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun getPage(pageIndex: Double?): Promise<HybridAnalyzedPageSpec>
+  abstract fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridAnalyzedPageSpec>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun getPageIdsByTag(tag: String): Array<String>
   
   @DoNotStrip
   @Keep

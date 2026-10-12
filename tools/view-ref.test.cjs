@@ -17,6 +17,7 @@ const nativeSession = {
   setViewport: async options => { calls.push(['viewport', options]); },
 };
 const native = {
+  getPageIdsByTag: tag => { calls.push(['tag-ids', tag]); return ['report-0', 'report-1']; },
   getSelectedText: () => selectedText,
   open: async path => { calls.push(path); return { pageIndex: 0 }; },
   setMode: mode => { calls.push(mode); return nativeSession; },
@@ -197,6 +198,8 @@ test('mode entry is synchronous and page acquisition can use either path', async
   }
   let root;
   const originalSetMode = native.setMode;
+  const originalGetPage = native.getPage;
+  const originalSessionGetPage = nativeSession.getPage;
   try {
     await act(async () => { root = create(React.createElement(Screen)); });
     const session = ref.current.setMode('ink');
@@ -205,6 +208,16 @@ test('mode entry is synchronous and page acquisition can use either path', async
     assert.deepEqual((await ref.current.getPage()).getTextEntries(), []);
     await session.setViewport({ zoom: 3 });
     assert.deepEqual(calls, ['ink', 'session-page', 'page', ['viewport', { zoom: 3 }]]);
+    assert.deepEqual(ref.current.getPageIdsByTag('report'), ['report-0', 'report-1']);
+    assert.deepEqual(calls.at(-1), ['tag-ids', 'report']);
+    let receivedQuery;
+    native.getPage = async query => { receivedQuery = query; return originalGetPage(query); };
+    const taggedQuery = { tag: 'report', index: 1 };
+    await ref.current.getPage(taggedQuery);
+    assert.deepEqual(receivedQuery, taggedQuery);
+    nativeSession.getPage = async query => { receivedQuery = query; return originalSessionGetPage(query); };
+    await session.getPage({ tag: 'report' });
+    assert.deepEqual(receivedQuery, { tag: 'report' });
     const textOptions = { maxLines: 2 };
     let modeRequest;
     native.setMode = (mode, options) => { modeRequest = { mode, options }; return nativeSession; };
@@ -215,6 +228,8 @@ test('mode entry is synchronous and page acquisition can use either path', async
     assert.throws(() => ref.current.setMode('view'), error => error === failure);
   } finally {
     native.setMode = originalSetMode;
+    native.getPage = originalGetPage;
+    nativeSession.getPage = originalSessionGetPage;
     if (root) await act(async () => { root.unmount(); });
   }
 });

@@ -92,7 +92,7 @@ class AndroidPageInputCoordinatorTest {
       instrumentation.runOnMainSync {
         staged = runBlocking {
           coordinator.stage(
-            AddPagesOptions(null, arrayOf(pdf.absolutePath, image.absolutePath), null, null, null, null),
+            AddPagesOptions(null, null, arrayOf(pdf.absolutePath, image.absolutePath), null, null, null, null),
           )
         }
       }
@@ -301,7 +301,7 @@ class AndroidPageInputCoordinatorTest {
         runBlocking {
           result = runCatching {
             coordinator.stage(
-              AddPagesOptions(null, arrayOf(
+              AddPagesOptions(null, null, arrayOf(
                 File(context.cacheDir, "does-not-exist-${UUID.randomUUID()}.pdf").absolutePath,
               ), null, null, null, null),
             )
@@ -339,7 +339,7 @@ class AndroidPageInputCoordinatorTest {
       instrumentation.runOnMainSync {
         runBlocking {
           result = runCatching {
-            coordinator.stage(AddPagesOptions(null, arrayOf(valid.absolutePath, invalid.absolutePath), null, null, null, null))
+            coordinator.stage(AddPagesOptions(null, null, arrayOf(valid.absolutePath, invalid.absolutePath), null, null, null, null))
           }
         }
       }

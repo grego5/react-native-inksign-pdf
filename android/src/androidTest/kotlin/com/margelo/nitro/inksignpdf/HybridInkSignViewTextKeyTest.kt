@@ -57,7 +57,29 @@ internal class HybridInkSignViewTextKeyTest {
         host.layout(0, 0, 300, 300)
         surfaceRef.set((host as FrameLayout).getChildAt(0) as SurfaceView)
       }
-      awaitOpen(instrumentation, viewRef.get(), source.absolutePath, expectedPageCount = 3.0)
+      awaitOpen(instrumentation, viewRef.get(), source.absolutePath, expectedPageCount = 3.0, tag = "report")
+      instrumentation.runOnMainSync {
+        val view = viewRef.get()
+        val ids = view.getPageIdsByTag("report").toList()
+        assertEquals((0 until 3).map { view.documentState.pageMetadata(it).id }, ids)
+        assertTrue(view.getPageIdsByTag("Report").isEmpty())
+        assertEquals(0, view.documentState.activePageIndex)
+        assertTrue(!view.getState().isDirty)
+      }
+      assertTrue("ID lookup must not prepare analysis", resourceRef.get().analysisRequests.isEmpty())
+      val missesSettled = CountDownLatch(2)
+      val missErrors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
+      instrumentation.runOnMainSync {
+        listOf(TaggedPageQuery("missing", null), TaggedPageQuery("report", 3.0)).forEach { query ->
+          viewRef.get().getPage(Variant_Double_TaggedPageQuery.create(query))
+            .then { missErrors.add(AssertionError("Missing tagged page returned a handle")); missesSettled.countDown() }
+            .catch { missErrors.add(it); missesSettled.countDown() }
+        }
+      }
+      assertTrue("missing tagged lookups did not settle", missesSettled.await(10L, TimeUnit.SECONDS))
+      assertEquals(2, missErrors.size)
+      assertTrue(missErrors.all { it is PdfSessionException && it.code == "page_not_found" })
+      assertTrue(resourceRef.get().analysisRequests.isEmpty())
 
       val textContentChanges = AtomicInteger()
       instrumentation.runOnMainSync {
@@ -69,8 +91,11 @@ internal class HybridInkSignViewTextKeyTest {
         }
       }
 
-      val pageZero = awaitPreparedPage(instrumentation, viewRef.get(), 0.0)
+      val pageZero = awaitPreparedPage(instrumentation, viewRef.get(), tag = "report")
+      assertEquals("Only the selected match should be prepared", listOf(0), resourceRef.get().analysisRequests.toList())
       instrumentation.runOnMainSync {
+        assertEquals("report", pageZero.getState().tag)
+        assertEquals(0.0, pageZero.getState().pageIndex, 0.0)
         setPreparedText(pageZero, TextAnnotationBounds(20.0, 20.0, 120.0, 30.0), "page zero")
         surfaceRef.get().switchPage(1)
       }
@@ -90,7 +115,7 @@ internal class HybridInkSignViewTextKeyTest {
       val prepared = AtomicReference<Promise<HybridAnalyzedPageSpec>>()
       blockAnalysis.set(true)
       instrumentation.runOnMainSync {
-        prepared.set(viewRef.get().getPage(2.0))
+        prepared.set(viewRef.get().getPage(Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", 2.0))))
       }
       prepared.get().then { page ->
         setPreparedText(page, TextAnnotationBounds(20.0, 60.0, 120.0, 30.0), "new value")
@@ -164,7 +189,7 @@ internal class HybridInkSignViewTextKeyTest {
       }
       val view = viewRef.get()
       awaitOpen(instrumentation, view, sourceA.absolutePath)
-      val page = awaitPreparedPage(view.getPage(0.0))
+      val page = awaitPreparedPage(view.getPage(Variant_Double_TaggedPageQuery.create(0.0)))
       val bounds = TextAnnotationBounds(40.0, 60.0, 160.0, 40.0)
       val textId = setPreparedText(page, bounds, "note")
       val host = view.view as FrameLayout
@@ -224,7 +249,7 @@ internal class HybridInkSignViewTextKeyTest {
       }
       assertTrue("replacement must clear selection", view.getSelectedText().isSecond)
       assertTrue("replacement must not inherit old text targets",
-        awaitPreparedPage(view.getPage(0.0)).getTextEntries().isEmpty())
+        awaitPreparedPage(view.getPage(Variant_Double_TaggedPageQuery.create(0.0))).getTextEntries().isEmpty())
     } finally {
       releaseAnalysis.countDown()
       instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
@@ -275,7 +300,7 @@ internal class HybridInkSignViewTextKeyTest {
       val lookup = AtomicReference<Promise<HybridAnalyzedPageSpec>>()
       blockAnalysis.set(true)
       instrumentation.runOnMainSync {
-        lookup.set(viewRef.get().getPage(0.0))
+        lookup.set(viewRef.get().getPage(Variant_Double_TaggedPageQuery.create(0.0)))
       }
       lookup.get().then { lookupSettled.countDown() }
         .catch { error -> lookupError.set(error); rejectionCount.incrementAndGet(); lookupSettled.countDown() }
@@ -339,10 +364,10 @@ internal class HybridInkSignViewTextKeyTest {
         view.view.layout(0, 0, 300, 300)
       }
       val view = viewRef.get()
-      awaitOpen(instrumentation, view, source.absolutePath)
+      awaitOpen(instrumentation, view, source.absolutePath, tag = "report")
       val ordinary = awaitPreparedPage(view.getPage(null))
       val session = view.setMode(InputMode.INK, null)
-      val scoped = awaitPreparedPage(session.getPage(null))
+      val scoped = awaitPreparedPage(session.getPage(Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", null))))
       val id = scoped.resolveText(ResolveTextOptions(font = null,
         fieldName = null, bounds = TextAnnotationBounds(50.0, 60.0, 100.0, 30.0),
         occurrence = null, fontSize = null, color = null, direction = null,
@@ -351,7 +376,7 @@ internal class HybridInkSignViewTextKeyTest {
       scoped.setTextValue(id, "Ada", null)
       val before = view.getViewport()
       blockAnalysis.set(true)
-      val pending = session.getPage(1.0)
+      val pending = session.getPage(Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", 1.0)))
       assertTrue("analysis did not reach worker", analysisStarted.await(10, TimeUnit.SECONDS))
       val cancelled = CountDownLatch(2)
       val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
@@ -405,12 +430,14 @@ internal class HybridInkSignViewTextKeyTest {
     view: HybridInkSignView,
     sourcePath: String,
     expectedPageCount: Double = 2.0,
+    tag: String? = null,
   ) {
     val settled = CountDownLatch(1)
     val result = AtomicReference<PageInfo>()
     val failure = AtomicReference<Throwable>()
     val open = AtomicReference<Promise<PageInfo>>()
-    instrumentation.runOnMainSync { open.set(view.open(sourcePath, null)) }
+    instrumentation.runOnMainSync { open.set(view.open(sourcePath,
+      tag?.let { ViewOpenOptions(tag = it, x = null, y = null, zoom = null) })) }
     open.get().then { pageInfo -> result.set(pageInfo); settled.countDown() }
       .catch { error -> failure.set(error); settled.countDown() }
     assertTrue("open did not settle", settled.await(10L, TimeUnit.SECONDS))
@@ -437,7 +464,9 @@ internal class HybridInkSignViewTextKeyTest {
     private val releaseAnalysis: CountDownLatch,
     private val blockAnalysis: AtomicBoolean,
   ) : PdfSessionResource {
+    val analysisRequests = java.util.concurrent.CopyOnWriteArrayList<Int>()
     override fun preparePageAnalysis(pageIndex: Int): PdfiumPreparedPageAnalysis {
+      analysisRequests += pageIndex
       if (blockAnalysis.get()) {
         analysisStarted.countDown()
         check(releaseAnalysis.await(10L, TimeUnit.SECONDS)) { "test did not release prepared analysis" }

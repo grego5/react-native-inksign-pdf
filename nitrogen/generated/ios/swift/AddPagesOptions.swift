@@ -18,8 +18,14 @@ public extension AddPagesOptions {
   /**
    * Create a new instance of `AddPagesOptions`.
    */
-  init(type: PageType?, sources: [String]?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?, activePage: AddPagesActivePage?) {
-    self.init({ () -> bridge.std__optional_PageType_ in
+  init(tag: String?, type: PageType?, sources: [String]?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?, activePage: AddPagesActivePage?) {
+    self.init({ () -> bridge.std__optional_std__string_ in
+      if let __unwrappedValue = tag {
+        return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_PageType_ in
       if let __unwrappedValue = type {
         return bridge.create_std__optional_PageType_(__unwrappedValue)
       } else {
@@ -64,6 +70,18 @@ public extension AddPagesOptions {
     }())
   }
 
+  @inline(__always)
+  var tag: String? {
+    return { () -> String? in
+      if bridge.has_value_std__optional_std__string_(self.__tag) {
+        let __unwrapped = bridge.get_std__optional_std__string_(self.__tag)
+        return String(__unwrapped)
+      } else {
+        return nil
+      }
+    }()
+  }
+  
   @inline(__always)
   var type: PageType? {
     return self.__type.value

@@ -4,6 +4,7 @@ package com.margelo.nitro.inksignpdf
 internal data class PageRecord(
   val id: String,
   val dimensions: PdfPageDimensions,
+  val tag: String? = null,
 ) {
   companion object {
     fun newId(): String = java.util.UUID.randomUUID().toString()
@@ -18,6 +19,7 @@ internal class InkPageState(
   val geometryRevision: Long = 0L,
   /** Geometry of the working PDF bytes; presentation rotation is kept separately. */
   val sourceDimensions: PdfPageDimensions = dimensions,
+  val tag: String? = null,
 ) {
   constructor(dimensions: PdfPageDimensions) : this(PageRecord.newId(), dimensions)
 }

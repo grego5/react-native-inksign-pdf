@@ -31,6 +31,7 @@
 
 
 #include <string>
+#include <optional>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -39,6 +40,7 @@ namespace margelo::nitro::inksignpdf {
    */
   struct PageInfo final {
   public:
+    std::optional<std::string> tag     SWIFT_PRIVATE;
     bool hasInk     SWIFT_PRIVATE;
     bool hasText     SWIFT_PRIVATE;
     double pageIndex     SWIFT_PRIVATE;
@@ -53,7 +55,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     PageInfo() = default;
-    explicit PageInfo(bool hasInk, bool hasText, double pageIndex, double pageCount, bool isDirty, std::string pageId, double width, double height, double rotation, bool canUndo, bool canRedo): hasInk(hasInk), hasText(hasText), pageIndex(pageIndex), pageCount(pageCount), isDirty(isDirty), pageId(pageId), width(width), height(height), rotation(rotation), canUndo(canUndo), canRedo(canRedo) {}
+    explicit PageInfo(std::optional<std::string> tag, bool hasInk, bool hasText, double pageIndex, double pageCount, bool isDirty, std::string pageId, double width, double height, double rotation, bool canUndo, bool canRedo): tag(tag), hasInk(hasInk), hasText(hasText), pageIndex(pageIndex), pageCount(pageCount), isDirty(isDirty), pageId(pageId), width(width), height(height), rotation(rotation), canUndo(canUndo), canRedo(canRedo) {}
 
   public:
     friend bool operator==(const PageInfo& lhs, const PageInfo& rhs) = default;
@@ -69,6 +71,7 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::PageInfo fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::PageInfo(
+        JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "tag"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasInk"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasText"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageIndex"))),
@@ -84,6 +87,7 @@ namespace margelo::nitro {
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::PageInfo& arg) {
       jsi::Object obj(runtime);
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "tag"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.tag));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "hasInk"), JSIConverter<bool>::toJSI(runtime, arg.hasInk));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "hasText"), JSIConverter<bool>::toJSI(runtime, arg.hasText));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageIndex"), JSIConverter<double>::toJSI(runtime, arg.pageIndex));
@@ -105,6 +109,7 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
+      if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "tag")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasInk")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "hasText")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageIndex")))) return false;

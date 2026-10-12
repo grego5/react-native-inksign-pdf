@@ -111,6 +111,23 @@ internal class DocumentCore(
 
   fun documentInfo(): DocumentState = withActiveCore { state.documentInfo() }
 
+  fun getPageIdsByTag(tag: String): Array<String> = withDocument {
+    validatePageTag(tag)
+    coordinator.pageIdsByTag(tag)
+  }
+
+  private fun validatePageTag(tag: String) {
+    if (tag.isEmpty()) throw PdfSessionException("invalid_page_tag", "Page tags must be nonempty strings")
+  }
+
+  suspend fun getPage(query: TaggedPageQuery): PreparedPageContext {
+    validatePageTag(query.tag)
+    val occurrence = query.index ?: 0.0
+    validatePageIndex(occurrence)
+    val index = if (occurrence <= Int.MAX_VALUE.toDouble()) coordinator.pageIndexByTag(query.tag, occurrence.toInt()) else null
+    return getPage((index ?: throw PdfSessionException("page_not_found", "No page matches the requested tag and index")).toDouble())
+  }
+
   fun commitInk(context: TextPageContext, outline: StrokeOutline) = withMutablePage(context) { page ->
     page.history.append(outline)
     changed(DocumentChange.Content(coordinator.generation, page.id, InkHistoryMutation.Appended(outline)))
@@ -139,11 +156,13 @@ internal class DocumentCore(
   }
 
   suspend fun prepareOpen(uri: String, options: DocumentOpenOptions? = null): MutableDocumentCoordinator.PendingOpen {
+    options?.tag?.let(::validatePageTag)
     prepared.clear()
     return coordinator.prepareOpen(
       fallbackFont = options?.androidFallbackFont,
       resolveFallbackFont = fallback::resolve,
       invalidatePrevious = { changed(DocumentChange.Opening) },
+      tag = options?.tag,
       prepareSource = { destination ->
         val type = inputs.copyInto(uri, destination)
         if (type == PageType.IMAGE) {
@@ -186,6 +205,7 @@ internal class DocumentCore(
 
   suspend fun addPages(options: AddPagesOptions, imageDimensions: PdfPageDimensions,
                        initialFallback: AndroidFallbackFont? = null): Int {
+    options.tag?.let(::validatePageTag)
     checkNotNull(options.sources) { "Document imports require explicit sources" }
     val operation = coordinator.beginOperation(requireDocument = false)
     var staged = emptyList<StagedPageInput>()
@@ -208,7 +228,7 @@ internal class DocumentCore(
         coordinator.executeStructuralMutation(generation,
           PdfiumAssemblyRequest(if (count == 0) PdfiumAssemblyOperation.CREATE else PdfiumAssemblyOperation.APPEND,
             appendInputs = requests),
-          candidateBuilder = { info -> coordinator.appendCandidate(info.pages.drop(count)) },
+          candidateBuilder = { info -> coordinator.appendCandidate(info.pages.drop(count), options.tag) },
           notifyPublished = ::pagesChanged, fontFallback = font)
       }
       return coordinator.pageCount - count
@@ -334,9 +354,15 @@ internal class DocumentCore(
 
   private fun pageIndex(index: Double): Int {
     if (!coordinator.hasDocument) throw cancelled()
-    if (!index.isFinite() || index < 0 || index % 1.0 != 0.0 || index >= coordinator.pageCount)
+    validatePageIndex(index)
+    if (index >= coordinator.pageCount)
       throw PdfSessionException("page_not_found", "The page index is outside the document")
     return index.toInt()
+  }
+
+  private fun validatePageIndex(index: Double) {
+    if (!index.isFinite() || index < 0 || index % 1.0 != 0.0)
+      throw PdfSessionException("invalid_page_index", "The page index must be a non-negative integer")
   }
 
   private suspend fun <T> awaitWorker(start: ((Result<T>) -> Unit) -> Unit): T =

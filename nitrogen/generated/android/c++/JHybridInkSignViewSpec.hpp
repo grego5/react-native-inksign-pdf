@@ -90,7 +90,7 @@ namespace margelo::nitro::inksignpdf {
   public:
     // Methods
     std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) override;
-    std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewportOptions>& options) override;
+    std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewOpenOptions>& options) override;
     std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) override;
     std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) override;
     std::shared_ptr<Promise<PageInfo>> removePage() override;
@@ -102,7 +102,8 @@ namespace margelo::nitro::inksignpdf {
     std::shared_ptr<Promise<PageCoords>> requestPageCoords() override;
     DocumentState getState() override;
     std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() override;
-    std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(std::optional<double> pageIndex) override;
+    std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) override;
+    std::vector<std::string> getPageIdsByTag(const std::string& tag) override;
     std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) override;
     void undo() override;
     void redo() override;

@@ -43,7 +43,7 @@ class HybridInkSignViewCreatePagesTest {
       viewRef.set(HybridInkSignView(context))
       promiseRef.set(
         viewRef.get().addPages(
-          AddPagesOptions(
+          AddPagesOptions(null,
             type = null,
             sources = arrayOf(pdf.absolutePath, image.absolutePath),
             imagePageSize = ImagePageSize(width = 144.0, height = 72.0),
@@ -90,7 +90,7 @@ class HybridInkSignViewCreatePagesTest {
       viewRef.set(HybridInkSignView(context))
       promiseRef.set(
         viewRef.get().addPages(
-          AddPagesOptions(
+          AddPagesOptions(null,
             PageType.IMAGE,
             arrayOf(image.absolutePath, secondImage.absolutePath),
             ImagePageSize(width = 595.28, height = 841.89),

@@ -55,7 +55,8 @@ namespace margelo::nitro::inksignpdf {
   public:
     // Methods
     DocumentState getState() override;
-    std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> getPage(double index) override;
+    std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> getPage(const std::variant<double, TaggedPageQuery>& index) override;
+    std::vector<std::string> getPageIdsByTag(const std::string& tag) override;
     std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) override;
     std::shared_ptr<Promise<DocumentAddPagesResult>> addPages(const DocumentAddPagesOptions& options) override;
     std::shared_ptr<Promise<void>> removePage(double index) override;

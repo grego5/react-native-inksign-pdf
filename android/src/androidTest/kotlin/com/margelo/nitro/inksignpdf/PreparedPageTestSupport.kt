@@ -10,12 +10,15 @@ internal fun awaitPreparedPage(
   instrumentation: Instrumentation,
   view: HybridInkSignView,
   pageIndex: Double? = null,
+  tag: String? = null,
 ): HybridAnalyzedPageSpec {
   val settled = CountDownLatch(1)
   val page = AtomicReference<HybridAnalyzedPageSpec>()
   val failure = AtomicReference<Throwable>()
   instrumentation.runOnMainSync {
-    view.getPage(pageIndex).then { page.set(it); settled.countDown() }
+    val query = if (tag != null) Variant_Double_TaggedPageQuery.create(TaggedPageQuery(tag, pageIndex))
+      else pageIndex?.let(Variant_Double_TaggedPageQuery::create)
+    view.getPage(query).then { page.set(it); settled.countDown() }
       .catch { error -> failure.set(error); settled.countDown() }
   }
   assertTrue("getPage did not settle", settled.await(15L, TimeUnit.SECONDS))

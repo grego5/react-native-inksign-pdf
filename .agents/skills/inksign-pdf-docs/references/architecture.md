@@ -156,6 +156,16 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
   working document to a separate output. It does not consume or replace the
   working document.
 
+## Page tags (Android)
+
+- The core assigns one optional, immutable tag to every page loaded by an
+  open/import call. Tags are nonempty, nonunique strings matched exactly.
+- `getPageIdsByTag(tag)` reads ordered IDs synchronously without analysis.
+  `getPage({ tag, index? })` prepares one current match in FIFO order; index defaults
+  to zero and missing matches reject with `page_not_found`. Neither changes selection.
+- Tags follow page identity through structural edits, appear in page state only,
+  and end with the session. Export does not persist them. iOS rejects tag operations.
+
 ## Document operations
 
 - The document owner controls operation identity and cancellation. Native async
