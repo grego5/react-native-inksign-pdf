@@ -6,13 +6,12 @@ import java.lang.ref.WeakReference
 /** Binds one text target without retaining page analysis or the owning view. */
 @DoNotStrip
 internal class HybridTextHandle(
-  owner: InkSignDocumentOwner,
+  owner: HybridInkSignView,
   override val generation: Long,
   override val pageId: String,
   private val textId: Double,
 ) : HybridTextHandleSpec(), TextPageContext {
   private val owner = WeakReference(owner)
-  override val modeSession: ModeSessionToken? get() = null
 
   override fun getValue(): String = withOwner { it.readPreparedTextValue(this, textId) }
 
@@ -27,8 +26,8 @@ internal class HybridTextHandle(
   override fun adjustSize(delta: Double): Double =
     withOwner { it.adjustPreparedTextSize(this, textId, delta) }
 
-  private inline fun <T> withOwner(action: (InkSignDocumentOwner) -> T): T =
-    owner.get()?.let(action) ?: throw PdfSessionException(
+  private fun <T> withOwner(action: (HybridInkSignView) -> T): T =
+    owner.get()?.let { view -> view.withModeSession(null) { action(view) } } ?: throw PdfSessionException(
       "operation_cancelled", "The text handle view has been disposed",
     )
 }

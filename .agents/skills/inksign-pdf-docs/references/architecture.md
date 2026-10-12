@@ -1,7 +1,8 @@
 # Architecture overview
 
-React Native InkSign PDF is a Fabric/Nitro view for signing ordered local PDF
-documents. JavaScript composes the screen and sends commands; native code owns
+React Native InkSign PDF is a Fabric/Nitro module for signing ordered PDF
+documents through a viewer or Android headless API. JavaScript composes the
+screen and sends commands; native code owns
 document bytes, page presentation, input conversion, committed content, history,
 and export.
 
@@ -33,53 +34,46 @@ and export.
 - Image imports use configurable DPI and JPEG quality, with defaults of 200 DPI
   and 0.72. Rasterization preserves page aspect ratio; explicit DPI is capped
   by source resolution. PDF inputs retain their original pages.
-- Each view owns an independent coordinator: published document, stable ordered
-  pages, active page, committed history, and operation session. The UI thread
-  owns presentation/callbacks; backend publication uses validated detached candidates.
+- Each document owner has independent published state: stable ordered pages,
+  active page, committed content, and operation identity. The UI thread owns
+  presentation/callbacks; backend publication uses validated detached candidates.
 - Android renders PDFium tiles beneath native annotation presentation and uses
   the shared C++ stroke engine. iOS renders PDFKit pages through Quartz and
   uses PencilKit for ink input; export retains source pages and adds committed
   text and filled vector signatures as PDF annotations.
 
-## Android headless ownership
+## Android document ownership
 
-`InkSignDocumentOwner` shares programmatic text commands, prepared handles,
-font resources, and page import with the viewer. `MutableDocumentCoordinator`
-remains the page/document state owner and `PdfSessionWorker` serializes backend
-analysis, assembly, and export. The viewer provides draft/focus/presentation
-callbacks through a weak presentation adapter; a headless document creates no view.
-Headless async commands enter a FIFO queue. Terminal `close()` immediately rejects
-new work and synchronous reads, including `pageCount` and `getInfo()`, through
-the same admission policy as text edits. It drains admitted async commands,
-invalidates handles, closes the backend, and releases
-working artifacts and fonts. Successful headless exports transfer to caller ownership
-and survive close. UI undo remains viewer-only.
+`DocumentCore` owns the document command queue and resource lifetime for both
+viewer and headless adapters. `MutableDocumentCoordinator` owns page/content state;
+`PdfSessionWorker` serializes backend parsing, analysis, assembly, rendering, and
+export. `DocumentTextCommands` edits committed targets and text, while
+`TextAnnotationLayout` supplies shared sizing and reflow. The viewer layers
+interaction and presentation over this core.
 
-`loadFonts` atomically publishes named local sources, deduplicated per owner.
-Static single-face TrueType validation happens during preload. Missing glyphs
-do not reject text: Android selects system fallback for preview and API 31+
-export; older custom-font export uses the selected font's missing-glyph appearance.
-Named-font loading/shaping failures remain explicit. Current drafts and annotations
-own formatting; target options provide defaults for empty targets. Headless automatic
-direction follows React Native app direction. iOS keeps its existing PDFKit
-ownership and system font behavior; headless and named-font operations are Android-only.
+Android supports headless `openDoc()` and named-font preloading. Resource,
+prepared page analysis, and publication contracts are in
+[Android lifecycle](android/view-lifecycle.md); output ownership and font rendering
+are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle.
 
 ## Document model
 
 - Page order and active-page identity are document state. Ink and text are
   committed per-page content; active gestures, predictions, editor drafts, and
   selection are temporary presentation state.
-- Prepared page handles retain immutable source analysis and a stable page ID.
-  The coordinator owns numeric text IDs, target metadata, and committed history;
-  the overlay owns drafts/selection. IDs are monotonic per view. Async preparation
-  enables synchronous resolution/value operations on the captured page. The owner
-  releases session-bound prepared contexts when the mode session is cancelled.
+- Prepared pages bind immutable source analysis to a stable page ID. Async
+  preparation enables synchronous resolution/value operations on that captured
+  page. The coordinator owns numeric text IDs, target metadata, and committed
+  content; the overlay owns drafts/selection. IDs are monotonic per document owner.
+  Analysis lifetime follows the platform lifecycle references.
 - Field lookup compares complete joined labels first, then token frequencies
   when no joined match exists. Repeated words matter; fallback allows extracted
   word-order differences. Partial labels/substrings do not match.
 - Value precedence: draft → committed module text → embedded text → empty.
   `setTextValue(id, '')` removes module text and reveals preserved source text.
-  Re-resolution preserves formatting.
+  Drafts and committed annotations own formatting; target options supply defaults
+  for empty targets. Re-resolution preserves formatting. Headless automatic
+  direction follows React Native app direction.
 - `getSelectedText()` reads overlay selection on the UI thread, returning null
   or a document/page/text-bound handle. It needs no source analysis, retains the
   view weakly, and uses the same value/formatting mutations as prepared pages.
@@ -99,22 +93,21 @@ ownership and system font behavior; headless and named-font operations are Andro
 - Named targets keep their source association and detection region when module
   text moves. Free targets track accepted placement, including undo and redo,
   and refresh their embedded fallback from retained immutable source geometry.
-- Opens and page mutations prepare detached candidates. Failed or cancelled
-  page mutations leave the current document intact. Caller source files are
-  never overwritten.
+- Opens and page mutations prepare detached candidates. Rejected page-mutation
+  candidates leave the current document intact. Caller source files are never
+  overwritten.
 - Finalize exports an immutable snapshot of committed content from the current
   working document to a separate output. It does not consume or replace the
   working document.
 
 ## Document operations
 
-- The coordinator owns document-session identity, pending document operations, and
-  cancellation for its view. Each operation captures its session and request
-  identity when admitted.
-- Native asynchronous document, preparation, and viewport commands execute FIFO.
-  Their document and implicit active page bind when execution begins. Earlier mutations finish before ordinary
-  open/close. Presentation requests for a retiring document are cancelled when
-  replacement/close is scheduled. Other synchronous commands and user gestures act immediately.
+- The document owner controls operation identity and cancellation. Native async
+  document, preparation, and viewport commands execute FIFO. Ordinary commands
+  resolve implicit targets against published state during execution; bound handles
+  retain captured identities. Earlier mutations finish before ordinary open/close.
+  Replacement/close scheduling cancels presentation requests for the retiring
+  document. Synchronous commands and gestures act against current published state.
 - `setMode()` requires ready presentation and replaces the mode-session token,
   including same-mode requests. With no document, `setMode('view')` is a no-op
   returning an inactive session; ink/text still require a document.
@@ -129,10 +122,13 @@ ownership and system font behavior; headless and named-font operations are Andro
   after selection/navigation cancellation. Pan/pinch are not selection taps.
 - `close()` waits its turn; `close(true)` cancels queued/running callers, invalidates
   late publication, and clears the viewer. Disposal always cancels immediately.
-- Opening waits for loading and usable presentation geometry, then resolves after
-  installation and reports the initial page through `onPageChange`. Failed opening
-  leaves the viewer empty. Prepared handles remain
-  bound to their original document/page and reject after invalidation.
+- Viewer opening resolves after loading and presentation installation, reporting
+  the initial page through `onPageChange`. Replacement loading clears the previous
+  document; a loading failure before commit leaves the viewer empty. Prepared
+  handles remain bound to their original document/page and reject after invalidation.
+- Headless `close()` is terminal: it immediately rejects new work and synchronous
+  reads, drains admitted async commands, invalidates handles, and resolves after
+  backend and resource cleanup.
 - Successful `addPages()` publication reports the active page through
   `onPageChange`, including first-document creation. Empty/cancelled imports emit
   no page event.
@@ -142,17 +138,24 @@ ownership and system font behavior; headless and named-font operations are Andro
   separately by `onTextSelectionChange`. Successful opening creates identity;
   page mutations retain it.
   Empty state uses null identity, view mode, and false dirty/undo/redo flags.
-- `finalize()` returns a temporary `file://` URI; artifact ownership uses paths.
+- `finalize()` returns a `file://` URI. Output ownership and cleanup follow the
+  [Android](android/export.md#snapshot-and-output) or
+  [iOS](swift-ios/export.md) export contract.
+- Android viewer promises settle within their queued command, before the core
+  releases its queue slot. Cancellation before execution settles through command
+  completion.
 - Check operation identity on the owning thread before publishing mutations,
   emitting asynchronous callbacks, and settling promises. Superseded successes
   and failures reject with `operation_cancelled`; each promise settles once.
   A result already settled before replacement cannot be withdrawn.
-- Cancellation prevents publication, without reverting committed edits or releasing
-  a running worker's queue slot/resources prematurely. Retire unpublished outputs;
-  published exports remain view-owned until disposal. See platform export references.
+- Cancellation does not roll back completed edits. Backend resources stay owned
+  until their users finish; export cleanup follows the platform export contract.
+  On Android, caller cancellation alone does not interrupt a begun non-cancellable
+  commit: matching reader/model publication completes while document identity
+  remains current. Replacement/disposal invalidate stale publication.
 - Disposal invalidates the session, cancels pending operations, clears callbacks
   and presentation, and releases resources through the same cleanup rules.
-- Font-file ownership: [Android lifecycle](android/view-lifecycle.md#ownership).
+- Font-file ownership: [Android lifecycle](android/view-lifecycle.md#fonts).
   iOS uses system font fallback.
 - Required validation covers replacement during each asynchronous operation,
   stale success and failure, empty imports, repeated opens, disposal, exactly-once

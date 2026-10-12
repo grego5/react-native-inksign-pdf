@@ -20,6 +20,7 @@ import kotlin.coroutines.cancellation.CancellationException
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -42,7 +43,7 @@ internal fun interface PagePickerRegistrar {
 }
 
 /**
- * Owns Android picker presentation and source staging for one native view.
+ * Owns Android picker presentation and source staging for one client.
  *
  * The coordinator is main-thread-owned for request state and picker callbacks.
  * File copying and image validation run on I/O, and all completed files are
@@ -58,7 +59,26 @@ internal class PageInputCoordinator(
   private var disposed = false
   private var activeRequest: Request? = null
 
-  suspend fun stage(options: AddPagesOptions?): List<StagedPageInput> {
+  /** Presentation-only selection; DocumentCore stages the returned explicit sources. */
+  suspend fun pickSources(type: PageType?): Array<String> = withRequest { request ->
+    awaitPicker(request, type).map { it.toString() }.toTypedArray()
+  }
+
+  /** Writes a borrowed destination; its caller owns retention and retirement. */
+  suspend fun copyInto(source: String, destination: File): PageType = withRequest { request ->
+    withContext(Dispatchers.IO) { copySource(request, source, destination) }
+  }
+
+  suspend fun stage(options: AddPagesOptions?): List<StagedPageInput> = withRequest { request ->
+    if (options?.sources != null) {
+      stageSources(request, options.sources.toList(), options.type)
+    } else {
+      val uris = awaitPicker(request, options?.type)
+      stageSources(request, uris.map { it.toString() }, options?.type)
+    }
+  }
+
+  private suspend fun <T> withRequest(action: suspend (Request) -> T): T {
     checkMainThread()
     if (disposed) throw cancelled()
     if (activeRequest != null) throw inProgress()
@@ -67,17 +87,10 @@ internal class PageInputCoordinator(
     activeRequest = request
     var completed = false
     try {
-      val staged = if (options?.sources != null) {
-        stageSources(request, options.sources.toList(), options.type)
-      } else {
-        val uris = awaitPicker(request, options?.type)
-        stageUris(request, uris, options?.type)
-      }
-      completed = true
-      return staged.toList()
+      return action(request).also { completed = true }
     } finally {
-      if (!completed) cleanup(request)
-      if (activeRequest === request) activeRequest = null
+      try { if (!completed) cleanup(request) }
+      finally { if (activeRequest === request) activeRequest = null }
     }
   }
 
@@ -116,26 +129,7 @@ internal class PageInputCoordinator(
     buildList {
       sources.forEach { source ->
         coroutineContext.ensureActive()
-        add(stageOne(request, requestedType, source) { openLocalSource(source) })
-      }
-    }
-  }
-
-  private suspend fun stageUris(
-    request: Request,
-    uris: List<Uri>,
-    requestedType: PageType?,
-  ): List<StagedPageInput> = withContext(Dispatchers.IO) {
-    buildList {
-      uris.forEach { uri ->
-        coroutineContext.ensureActive()
-        add(stageOne(request, requestedType, uri.toString()) {
-          sourceOpener?.invoke(uri) ?: try {
-            resolver.openInputStream(uri)
-          } catch (error: SecurityException) {
-            throw unreadableSource(uri.toString(), error)
-          }
-        })
+        add(stageOne(request, requestedType, source))
       }
     }
   }
@@ -144,27 +138,12 @@ internal class PageInputCoordinator(
     request: Request,
     requestedType: PageType?,
     sourceDescription: String,
-    open: () -> InputStream?,
   ): StagedPageInput {
     ensureActive(request)
     val staged = artifactPolicy.allocateStagedInput()
+    var retained = false
     try {
-      val input = try {
-        open() ?: throw unreadableSource(sourceDescription)
-      } catch (error: PdfSessionException) {
-        throw error
-      } catch (error: SecurityException) {
-        throw unreadableSource(sourceDescription, error)
-      } catch (error: Exception) {
-        throw unreadableSource(sourceDescription, error)
-      }
-      input.use { source ->
-        staged.outputStream().buffered().use { destination ->
-          copyWithCancellation(request, source, destination)
-        }
-      }
-
-      val detectedType = detectType(staged, sourceDescription)
+      val detectedType = copySource(request, sourceDescription, staged)
       if (requestedType != null && requestedType != detectedType) {
         throw PdfSessionException(
           "unsupported_content",
@@ -174,16 +153,30 @@ internal class PageInputCoordinator(
       synchronized(request) {
         ensureActiveLocked(request)
         request.staged += staged
+        retained = true
       }
       return StagedPageInput(staged, detectedType)
+    } finally {
+      if (!retained) artifactPolicy.deleteExact(staged)
+    }
+  }
+
+  private suspend fun copySource(request: Request, sourceDescription: String, destination: File): PageType {
+    try {
+      ensureActive(request)
+      openSource(sourceDescription).use { source ->
+        destination.outputStream().buffered().use { output ->
+          copyWithCancellation(request, source, output)
+        }
+      }
+      val type = detectType(destination, sourceDescription)
+      ensureActive(request)
+      return type
     } catch (error: PdfSessionException) {
-      artifactPolicy.deleteExact(staged)
       throw error
     } catch (error: CancellationException) {
-      artifactPolicy.deleteExact(staged)
       throw error
     } catch (error: Exception) {
-      artifactPolicy.deleteExact(staged)
       throw unreadableSource(sourceDescription, error)
     }
   }
@@ -206,7 +199,7 @@ internal class PageInputCoordinator(
     }
   }
 
-  private fun openLocalSource(raw: String): InputStream {
+  private fun openSource(raw: String): InputStream {
     if (raw.isBlank()) throw PdfSessionException("unsupported_source", "Source path is blank")
     val uri = try {
       Uri.parse(raw)
@@ -217,9 +210,11 @@ internal class PageInputCoordinator(
       null, "" -> File(raw)
       "file" -> uri.path?.let(::File)
         ?: throw unreadableSource(raw)
+      "content", "android.resource" -> return sourceOpener?.invoke(uri)
+        ?: resolver.openInputStream(uri) ?: throw unreadableSource(raw)
       else -> throw PdfSessionException(
         "unsupported_source",
-        "Only local paths and file URLs are supported as direct sources",
+        "Only local paths, file URLs, and Android content/resource URIs are supported",
       )
     }
     if (!file.isFile || !file.canRead()) throw unreadableSource(raw)
@@ -338,7 +333,7 @@ internal class PageInputCoordinator(
     }
   }
 
-  private suspend fun cleanup(request: Request) = withContext(Dispatchers.IO) {
+  private suspend fun cleanup(request: Request) = withContext(NonCancellable + Dispatchers.IO) {
     val files = synchronized(request) {
       request.staged.toList().also { request.staged.clear() }
     }

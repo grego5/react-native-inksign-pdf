@@ -100,6 +100,8 @@ to persistent storage if you need it after closing the viewer.
 - `addPages(options?)` — Import local PDFs or images; omit `sources` to open the
   native picker. Keeps the current page selected unless `activePage` is
   `'firstAdded'` or `'lastAdded'`.
+  Android document loading and imports also accept `content://` and
+  `android.resource://` URIs.
 - `removePage()` — Remove the current page, keeping at least one page.
 - `movePage(pageIndex)` — Reorder the current page to a zero-based index.
 - `rotatePage(degrees)` — Rotate the current page clockwise by 90, 180, or 270

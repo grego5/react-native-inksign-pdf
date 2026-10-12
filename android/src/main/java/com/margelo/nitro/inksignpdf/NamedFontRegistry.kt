@@ -79,11 +79,11 @@ internal class NamedFontRegistry(private val context: Context) {
     }
   }
 
-  fun close() {
+  suspend fun close() {
     names.clear()
     val resources = sources.values.toList()
     sources.clear()
-    resources.forEach { it.close() }
+    withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) { resources.forEach { it.close() } }
   }
 
   private fun normalize(source: String): String {

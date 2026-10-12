@@ -442,25 +442,6 @@ internal class SurfaceView(
     onTextContentChanged?.invoke()
   }
 
-  /** Publishes one fully validated structural candidate as a single UI transaction. */
-  fun validateStructuralCandidate(
-    info: PdfSessionInfo,
-    candidatePages: List<InkPageState>,
-    activePageId: String,
-  ) {
-    requireOnUiThread()
-    if (disposed) throw PdfSessionException("operation_cancelled", "PDF view was disposed")
-    if (documentCoordinator.generation != info.generation || info.pageCount != candidatePages.size ||
-      candidatePages.none { it.id == activePageId } ||
-      candidatePages.any { it.dimensions.width <= 0.0 || it.dimensions.height <= 0.0 }
-    ) {
-      throw PdfSessionException(
-        "operation_cancelled",
-        "The structural candidate belongs to a superseded document",
-      )
-    }
-  }
-
   /** Installs a coordinator-published candidate through a non-failing presentation path. */
   fun installStructuralPresentation(): PdfPageInfo {
     requireOnUiThread()

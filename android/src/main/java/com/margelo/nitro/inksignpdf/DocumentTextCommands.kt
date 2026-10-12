@@ -1,101 +1,20 @@
 package com.margelo.nitro.inksignpdf
 
-import android.os.Handler
-import android.os.Looper
-import java.lang.ref.WeakReference
-import java.util.concurrent.CountDownLatch
-
-/** Only the viewer implements presentation; document commands never require a surface. */
-internal interface DocumentTextPresentation {
-  fun draftText(id: Long): String?
-  fun draftFontSize(id: Long): Double?
-  fun setDraft(id: Long, text: String, options: TextAnnotationOptions?): Boolean
-  fun setDraftOptions(id: Long, options: TextAnnotationOptions): Boolean
-  fun cancelDraft(id: Long)
-  fun resolveDirection(direction: TextDirection?): Boolean
-  fun requireModeSession(token: ModeSessionToken)
-  fun focusPreparedText(context: TextPageContext, id: Double, options: TextFocusOptions?): com.margelo.nitro.core.Promise<Unit>
-  fun contentChanged(generation: Long, pageId: String, before: TextAnnotation?, after: TextAnnotation?)
-}
-
-/** Central owner of document state and programmatic text edits, with optional presentation. */
-internal class InkSignDocumentOwner(
-  val coordinator: MutableDocumentCoordinator,
-  val fonts: NamedFontRegistry,
-  val recordHistory: Boolean,
+/** Committed text and target operations; drafts and mode sessions belong to clients. */
+internal class DocumentTextCommands(
+  private val core: DocumentCore,
   private val appDirectionIsRtl: () -> Boolean,
 ) {
-  var presentation: WeakReference<DocumentTextPresentation>? = null
-  var closed = false
-    private set
-  private var acceptingCommands = true
-  var defaultFontSize = 16.0
+  private val coordinator get() = core.coordinator
+  private val fonts get() = core.fonts
+  var defaultFontSize = defaultTextFontSize
   var defaultTextColor = android.graphics.Color.BLACK
-  val commandMutex = kotlinx.coroutines.sync.Mutex()
-  private val prepared = LinkedHashMap<Pair<String, ModeSessionToken?>, PreparedPageContext>()
 
-  fun retainPrepared(context: PreparedPageContext): PreparedPageContext {
-    prepared.entries.removeAll { it.value.generation != coordinator.generation || coordinator.pageForId(it.value.pageId) == null }
-    return prepared.getOrPut(context.pageId to context.modeSession) { context }
+  internal fun resolveDirection(direction: TextDirection?): Boolean = when (direction) {
+    TextDirection.RTL -> true
+    TextDirection.LTR -> false
+    else -> appDirectionIsRtl()
   }
-  fun clearPrepared() { prepared.clear() }
-  fun releasePrepared(session: ModeSessionToken) {
-    prepared.keys.removeAll { it.second === session }
-  }
-
-  /** Shared import transaction; the viewer supplies only readiness/presentation hooks. */
-  suspend fun <T> appendPages(
-    input: PageInputCoordinator,
-    options: AddPagesOptions?,
-    imageDimensions: PdfPageDimensions,
-    resolveFallback: suspend () -> PdfFallbackFont?,
-    beforeMutation: () -> Unit = {},
-    validate: (PdfSessionInfo, MutableDocumentCoordinator.StructuralCandidate) -> Unit = { _, _ -> },
-    present: (Int) -> T,
-  ): T {
-    val operation = coordinator.beginOperation(requireDocument = false)
-    var staged = emptyList<StagedPageInput>()
-    try {
-      val generation = coordinator.generation
-      staged = input.stage(options)
-      coordinator.ensureCurrent(generation)
-      if (staged.isEmpty()) return present(0)
-      val fallback = resolveFallback()
-      coordinator.ensureCurrent(generation)
-      beforeMutation()
-      val requests = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        staged.map { source ->
-          when (source.type) {
-            PageType.PDF -> PdfiumAppendRequest(PageType.PDF, sourcePath = source.file.path)
-            PageType.IMAGE -> ImagePageEncoder.encode(source.file, imageDimensions, options?.targetDpi, options?.jpegQuality)
-          }
-        }
-      }
-      coordinator.ensureCurrent(generation)
-      val count = coordinator.pageCount
-      return coordinator.executeStructuralMutation(
-        generation, PdfiumAssemblyRequest(if (count == 0) PdfiumAssemblyOperation.CREATE else PdfiumAssemblyOperation.APPEND,
-          appendInputs = requests),
-        candidateBuilder = { info ->
-          val added = info.pages.drop(count)
-          if (added.isEmpty()) throw PdfSessionException("pdf_mutation_failed", "The append candidate contains no added pages")
-          coordinator.appendCandidate(added, options?.activePage ?: AddPagesActivePage.CURRENT)
-        },
-        validate = validate,
-        present = { present(coordinator.pageCount - count) },
-        fontFallback = fallback,
-      )
-    } finally { input.release(staged); coordinator.endOperation(operation) }
-  }
-
-  fun stopAdmissions() { acceptingCommands = false }
-  fun invalidate() { closed = true; acceptingCommands = false; presentation = null; clearPrepared() }
-  private fun resolveDirection(direction: TextDirection?): Boolean =
-    presentation?.get()?.resolveDirection(direction) ?: when (direction) {
-      TextDirection.RTL -> true
-      TextDirection.LTR -> false
-      else -> appDirectionIsRtl()
-    }
 
   private fun commit(page: InkPageState, before: TextAnnotation?, after: TextAnnotation?) {
     when {
@@ -103,8 +22,7 @@ internal class InkSignDocumentOwner(
       after == null -> page.history.removeTextAnnotation(before)
       before != after -> coordinator.replaceText(page, before, after)
     }
-    if (!recordHistory) page.history.discardUndo()
-    presentation?.get()?.contentChanged(coordinator.generation, page.id, before, after)
+    core.changed(DocumentChange.Text(page.id))
   }
 
   private fun merged(previous: TextAnnotationOptions?, options: TextAnnotationOptions?) = TextAnnotationOptions(
@@ -122,9 +40,9 @@ internal class InkSignDocumentOwner(
     annotation.maxLines.toDouble(), annotation.alignment, annotation.verticalAnchor,
   )
 
-  internal fun readPreparedTextValue(context: TextPageContext, rawId: Double): String = withTextPage(context) { page ->
-    val slot = requireTextTarget(context, rawId)
-    presentation?.get()?.draftText(slot.id) ?: moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.text ?: slot.embeddedValue
+  internal fun getValue(context: TextPageContext, rawId: Double): String = core.withPage(context) { page ->
+    val slot = target(context, rawId)
+    moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.text ?: slot.embeddedValue
   }
 
   private fun annotation(page: InkPageState, slot: TextTargetSlot, current: TextAnnotation?, text: String,
@@ -143,34 +61,25 @@ internal class InkSignDocumentOwner(
       verticalAnchor = options.verticalAnchor ?: current?.verticalAnchor ?: TextVerticalAnchor.TOP,
       layoutPage = current?.layoutPage ?: page.dimensions, font = font,
     )
-    if (flow != null) return candidate.copy(bounds = TextLayoutSpec.visibleBounds(candidate, flow))
-    val measured = TextLayoutSpec.measure(text, candidate.fontSize, font?.typeface ?: TextLayoutSpec.typeface)
-    val size = measured.copy(width = maxOf(measured.width, textEditorMinimumContentWidth(candidate.fontSize)))
-    val position = clampTextAnnotationPosition(candidate.position, size, candidate.layoutPage ?: page.dimensions)
-    return candidate.copy(bounds = PageRect(position.x, position.y, position.x + size.width, position.y + size.height))
+    return TextAnnotationLayout.reflow(candidate, checkNotNull(candidate.layoutPage))
   }
 
-  internal fun setPreparedTextValue(context: TextPageContext, rawId: Double, text: String,
-                                    options: TextAnnotationOptions? = null) = withTextPage(context) { page ->
-    val slot = requireTextTarget(context, rawId)
-    if (text.isNotEmpty() && presentation?.get()?.setDraft(slot.id, text, options) == true) {
-      return@withTextPage
-    }
+  internal fun setValue(context: TextPageContext, rawId: Double, text: String,
+                        options: TextAnnotationOptions? = null) = core.withPage(context) { page ->
+    val slot = target(context, rawId)
     val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
     val proposed = merged(if (current == null) slot.options else null, options)
-    // Resolve font and compute layout before publishing any target, draft, or content changes.
+    // Resolve font and compute layout before publishing target or content changes.
     fonts.resolve(proposed.font, current?.font)
     val updated = if (text.isEmpty()) null else annotation(page, slot, current, text, proposed)
-    if (text.isEmpty()) presentation?.get()?.cancelDraft(slot.id)
     slot.options = if (text.isEmpty() && current != null) merged(emptyTargetOptions(current), options)
       else merged(slot.options, options)
     if (current != updated) commit(page, current, updated)
   }
 
-  internal fun setPreparedTextOptions(context: TextPageContext, rawId: Double,
-                                      options: TextAnnotationOptions) = withTextPage(context) { page ->
-    val slot = requireTextTarget(context, rawId)
-    if (presentation?.get()?.setDraftOptions(slot.id, options) == true) return@withTextPage
+  internal fun setOptions(context: TextPageContext, rawId: Double,
+                          options: TextAnnotationOptions) = core.withPage(context) { page ->
+    val slot = target(context, rawId)
     val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
     val proposed = merged(if (current == null) slot.options else null, options)
     fonts.resolve(proposed.font, current?.font)
@@ -179,20 +88,18 @@ internal class InkSignDocumentOwner(
     if (current != updated) commit(page, current, updated)
   }
 
-  internal fun adjustPreparedTextSize(context: TextPageContext, rawId: Double, delta: Double): Double = withTextPage(context) { page ->
-    val slot = requireTextTarget(context, rawId)
-    val size = presentation?.get()?.draftFontSize(slot.id)
-      ?: moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.fontSize ?: slot.options?.fontSize ?: defaultFontSize
+  internal fun adjustSize(context: TextPageContext, rawId: Double, delta: Double): Double = core.withPage(context) { page ->
+    val slot = target(context, rawId)
+    val size = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.fontSize ?: slot.options?.fontSize ?: defaultFontSize
     val adjusted = (size + delta).coerceIn(minimumTextFontSize, maximumTextFontSize)
-    if (adjusted != size) setPreparedTextOptions(context, rawId,
+    if (adjusted != size) setOptions(context, rawId,
       TextAnnotationOptions(null, adjusted, null, null, null, null, null))
     adjusted
   }
 
-  internal fun resolvePreparedText(context: PreparedPageContext, options: ResolveTextOptions): Double =
-    withTextPage(context) { page ->
+  internal fun resolve(context: PreparedPageContext, options: ResolveTextOptions): Double =
+    core.withPage(context) { page ->
       fonts.resolve(options.font)
-      coordinator.retainTextSourceGlyphs(page.id, context.analysis.glyphs)
       val coordinates = PageCoordinates(page.dimensions)
       val transform = coordinates.canonicalToDisplayTransform()
       val selected = if (options.fieldName == null) {
@@ -279,28 +186,27 @@ internal class InkSignDocumentOwner(
       selected.id.toDouble()
     }
 
-  internal fun preparedTextEntry(context: TextPageContext, rawId: Double): TextEntry =
-    withTextPage(context) { page ->
-      val slot = requireTextTarget(context, rawId)
+  internal fun getEntry(context: TextPageContext, rawId: Double): TextEntry =
+    core.withPage(context) { page ->
+      val slot = target(context, rawId)
       val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
-      val draft = presentation?.get()?.draftText(slot.id)
-      val value = draft ?: annotation?.text ?: slot.embeddedValue
+      val value = annotation?.text ?: slot.embeddedValue
       val source = when {
-        draft != null || annotation != null -> TextValueSource.ANNOTATION
+        annotation != null -> TextValueSource.ANNOTATION
         slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
         else -> TextValueSource.EMPTY
       }
       TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
     }
 
-  internal fun preparedTextEntries(context: TextPageContext): Array<TextEntry> =
-    withTextPage(context) { page ->
+  internal fun getEntries(context: TextPageContext): Array<TextEntry> =
+    core.withPage(context) { page ->
+      val annotations = moduleAnnotations(page.id).associateBy { it.id }
       coordinator.textTargetsForPage(page.id).map { slot ->
-        val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
-        val draft = presentation?.get()?.draftText(slot.id)
-        val value = draft ?: annotation?.text ?: slot.embeddedValue
+        val annotation = annotations[slot.id]
+        val value = annotation?.text ?: slot.embeddedValue
         val source = when {
-          draft != null || annotation != null -> TextValueSource.ANNOTATION
+          annotation != null -> TextValueSource.ANNOTATION
           slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
           else -> TextValueSource.EMPTY
         }
@@ -308,23 +214,7 @@ internal class InkSignDocumentOwner(
       }.toTypedArray()
     }
 
-  /** Admission for synchronous reads and edits; queued async work drains independently. */
-  internal fun <T> withDocument(action: () -> T): T =
-    runOnMainSync {
-      checkMainThread()
-      if (!acceptingCommands || closed || !coordinator.hasDocument) throw operationCancelled()
-      action()
-    }
-
-  internal fun <T> withTextPage(context: TextPageContext, action: (InkPageState) -> T): T =
-    withDocument {
-      context.modeSession?.let { checkNotNull(presentation?.get()).requireModeSession(it) }
-      if (coordinator.generation != context.generation) throw operationCancelled()
-      val page = coordinator.pageForId(context.pageId) ?: throw operationCancelled()
-      action(page)
-    }
-
-  internal fun requireTextTarget(context: TextPageContext, rawId: Double): TextTargetSlot {
+  internal fun target(context: TextPageContext, rawId: Double): TextTargetSlot {
     if (!rawId.isFinite() || rawId <= 0.0 || rawId % 1.0 != 0.0 ||
       rawId > 9_007_199_254_740_991.0) {
       throw PdfSessionException("invalid_text_id", "Text IDs must be positive safe integers")
@@ -385,17 +275,4 @@ internal class InkSignDocumentOwner(
       if (anchor == TextVerticalAnchor.BOTTOM) placement.rule.y - placement.match.lineHeight else placement.rule.y,
       placement.rule.right,
       if (anchor == TextVerticalAnchor.BOTTOM) placement.rule.y else placement.rule.y + placement.match.lineHeight)
-
-
-
-  private fun checkMainThread() { check(Looper.myLooper() == Looper.getMainLooper()) }
-  private fun operationCancelled() = PdfSessionException("operation_cancelled", "The document or page is no longer available")
-  internal fun <T> runOnMainSync(action: () -> T): T {
-    if (Looper.myLooper() == Looper.getMainLooper()) return action()
-    val latch = CountDownLatch(1)
-    var outcome: Result<T>? = null
-    Handler(Looper.getMainLooper()).post { try { outcome = runCatching(action) } finally { latch.countDown() } }
-    latch.await()
-    return checkNotNull(outcome).getOrThrow()
-  }
 }

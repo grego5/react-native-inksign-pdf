@@ -120,7 +120,7 @@ internal sealed interface InkHistoryMutation {
 }
 
 /** UI-thread-owned ordered page content and undo/redo state. */
-internal class InkHistory {
+internal class InkHistory(private val recordHistory: Boolean = true) {
   private sealed class HistoryAction(val stateRevision: Long) {
     class Added(
       val index: Int, val content: PageContent, stateRevision: Long,
@@ -148,13 +148,14 @@ internal class InkHistory {
 
   fun state() = InkState(
     undoStack.isNotEmpty(), redoStack.isNotEmpty(),
-    cleanStateRevision?.let { it != (undoStack.lastOrNull()?.stateRevision ?: 0L) }
+    cleanStateRevision?.let { it != currentStateRevision() }
       ?: completed.isNotEmpty(),
   )
-  fun discardUndo() { undoStack.clear(); redoStack.clear() }
+  private fun currentStateRevision(): Long =
+    if (recordHistory) undoStack.lastOrNull()?.stateRevision ?: 0L else revision
 
   fun resetDirty() {
-    cleanStateRevision = undoStack.lastOrNull()?.stateRevision ?: 0L
+    cleanStateRevision = currentStateRevision()
   }
   fun hasInk(): Boolean = completed.any { it is PageContent.Ink }
   /** Ink-only projection retained for the existing ink renderer and exporter. */
@@ -170,7 +171,7 @@ internal class InkHistory {
   fun append(content: PageContent) {
     val index = completed.size
     completed += content
-    undoStack += HistoryAction.Added(index, content, revision + 1L)
+    if (recordHistory) undoStack += HistoryAction.Added(index, content, revision + 1L)
     redoStack.clear()
     revision += 1L
   }
@@ -184,7 +185,7 @@ internal class InkHistory {
     val index = completed.indexOfFirst { it === before || it == before }
     check(index >= 0) { "Page content replacement target is not in history" }
     completed[index] = after
-    undoStack += HistoryAction.Replaced(index, before, after, revision + 1L)
+    if (recordHistory) undoStack += HistoryAction.Replaced(index, before, after, revision + 1L)
     redoStack.clear()
     revision += 1L
   }
@@ -197,7 +198,7 @@ internal class InkHistory {
     val index = completed.indexOfFirst { it === content || it == content }
     check(index >= 0) { "Page content removal target is not in history" }
     completed.removeAt(index)
-    undoStack += HistoryAction.Removed(index, content, revision + 1L)
+    if (recordHistory) undoStack += HistoryAction.Removed(index, content, revision + 1L)
     redoStack.clear()
     revision += 1L
   }
@@ -277,7 +278,7 @@ internal class InkHistory {
   fun clearMutation(): InkHistoryMutation {
     if (completed.isEmpty()) return InkHistoryMutation.NoOp
     val content = contentSnapshot()
-    undoStack += HistoryAction.Clear(content, emptyList(), revision + 1L)
+    if (recordHistory) undoStack += HistoryAction.Clear(content, emptyList(), revision + 1L)
     completed.clear()
     redoStack.clear()
     revision += 1L
@@ -288,7 +289,7 @@ internal class InkHistory {
     if (!hasInk()) return InkHistoryMutation.NoOp
     val before = contentSnapshot()
     val after = completed.filterNot { it is PageContent.Ink }
-    undoStack += HistoryAction.Clear(before, after, revision + 1L)
+    if (recordHistory) undoStack += HistoryAction.Clear(before, after, revision + 1L)
     completed.clear()
     completed.addAll(after)
     redoStack.clear()

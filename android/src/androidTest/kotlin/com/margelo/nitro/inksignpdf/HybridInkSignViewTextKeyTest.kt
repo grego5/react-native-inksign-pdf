@@ -25,8 +25,7 @@ internal class HybridInkSignViewTextKeyTest {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    val source = File.createTempFile("captured-prepared-page-", ".pdf", context.cacheDir)
-      .apply { writeText("controlled test source") }
+    val source = copyFixturePdf(context, "captured-prepared-page-")
     val analysisStarted = CountDownLatch(1)
     val releaseAnalysis = CountDownLatch(1)
     val blockAnalysis = AtomicBoolean(false)
@@ -36,7 +35,7 @@ internal class HybridInkSignViewTextKeyTest {
         BlockingAnalysisResource(
           PdfSessionInfo(
             sourcePath = path,
-            pages = listOf(PdfPageDimensions(300.0, 300.0), PdfPageDimensions(300.0, 300.0)),
+            pages = List(3) { PdfPageDimensions(300.0, 300.0) },
             generation = generation,
           ),
           analysisStarted,
@@ -58,7 +57,7 @@ internal class HybridInkSignViewTextKeyTest {
         host.layout(0, 0, 300, 300)
         surfaceRef.set((host as FrameLayout).getChildAt(0) as SurfaceView)
       }
-      awaitOpen(instrumentation, viewRef.get(), source.absolutePath)
+      awaitOpen(instrumentation, viewRef.get(), source.absolutePath, expectedPageCount = 3.0)
 
       val textContentChanges = AtomicInteger()
       instrumentation.runOnMainSync {
@@ -91,7 +90,7 @@ internal class HybridInkSignViewTextKeyTest {
       val prepared = AtomicReference<Promise<HybridAnalyzedPageSpec>>()
       blockAnalysis.set(true)
       instrumentation.runOnMainSync {
-        prepared.set(viewRef.get().getPage(0.0))
+        prepared.set(viewRef.get().getPage(2.0))
       }
       prepared.get().then { page ->
         setPreparedText(page, TextAnnotationBounds(20.0, 60.0, 120.0, 30.0), "new value")
@@ -112,15 +111,16 @@ internal class HybridInkSignViewTextKeyTest {
       instrumentation.runOnMainSync {
         after.set(pageHistoryStates(viewRef.get()))
       }
-      assertEquals(before.get()[0].content.size + 1, after.get()[0].content.size)
+      assertEquals(before.get()[2].content.size + 1, after.get()[2].content.size)
       assertEquals(
-        listOf("page zero", "new value"),
+        listOf("page zero"),
         after.get()[0].content.mapNotNull { it.textAnnotationOrNull()?.text },
       )
       assertEquals(
         listOf("page one"),
         after.get()[1].content.mapNotNull { it.textAnnotationOrNull()?.text },
       )
+      assertEquals(listOf("new value"), after.get()[2].content.mapNotNull { it.textAnnotationOrNull()?.text })
       assertTrue("the controlled PDF session was not opened", resourceRef.get() != null)
     } finally {
       releaseAnalysis.countDown()
@@ -134,10 +134,8 @@ internal class HybridInkSignViewTextKeyTest {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    val sourceA = File.createTempFile("selected-text-handle-a-", ".pdf", context.cacheDir)
-      .apply { writeText("controlled source A") }
-    val sourceB = File.createTempFile("selected-text-handle-b-", ".pdf", context.cacheDir)
-      .apply { writeText("controlled source B") }
+    val sourceA = copyFixturePdf(context, "selected-text-handle-a-")
+    val sourceB = copyFixturePdf(context, "selected-text-handle-b-")
     val analysisStarted = CountDownLatch(1)
     val releaseAnalysis = CountDownLatch(1)
     val blockAnalysis = AtomicBoolean(false)
@@ -240,10 +238,8 @@ internal class HybridInkSignViewTextKeyTest {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    val sourceA = File.createTempFile("replace-prepared-page-a-", ".pdf", context.cacheDir)
-      .apply { writeText("controlled source A") }
-    val sourceB = File.createTempFile("replace-prepared-page-b-", ".pdf", context.cacheDir)
-      .apply { writeText("controlled source B") }
+    val sourceA = copyFixturePdf(context, "replace-prepared-page-a-")
+    val sourceB = copyFixturePdf(context, "replace-prepared-page-b-")
     val analysisStarted = CountDownLatch(1)
     val releaseAnalysis = CountDownLatch(1)
     val blockAnalysis = AtomicBoolean(false)
@@ -284,14 +280,17 @@ internal class HybridInkSignViewTextKeyTest {
       lookup.get().then { lookupSettled.countDown() }
         .catch { error -> lookupError.set(error); rejectionCount.incrementAndGet(); lookupSettled.countDown() }
       assertTrue("prepared page analysis did not reach the worker", analysisStarted.await(10L, TimeUnit.SECONDS))
-
       val openSettled = CountDownLatch(1)
+      val documentCleared = CountDownLatch(1)
       val replacementInfo = AtomicReference<PageInfo>()
       val replacementError = AtomicReference<Throwable>()
       val replacement = AtomicReference<Promise<PageInfo>>()
       instrumentation.runOnMainSync {
-        replacement.set(viewRef.get().open(sourceB.absolutePath, null))
-        assertTrue("replacement did not clear the active document", !viewRef.get().coordinator.hasDocument)
+        val view = viewRef.get()
+        view.onStateChange = { state ->
+          if (state.documentId?.asSecondOrNull() == null) documentCleared.countDown()
+        }
+        replacement.set(view.open(sourceB.absolutePath, null))
       }
       replacement.get().then { info -> replacementInfo.set(info); openSettled.countDown() }
         .catch { error -> replacementError.set(error); openSettled.countDown() }
@@ -299,6 +298,8 @@ internal class HybridInkSignViewTextKeyTest {
       assertTrue("stale key lookup did not cancel promptly", lookupSettled.await(5L, TimeUnit.SECONDS))
       assertEquals("operation_cancelled", (lookupError.get() as? PdfSessionException)?.code)
       assertEquals(1, rejectionCount.get())
+      assertTrue("replacement did not clear the active document", documentCleared.await(5L, TimeUnit.SECONDS))
+      instrumentation.runOnMainSync { assertTrue(!viewRef.get().coordinator.hasDocument) }
       releaseAnalysis.countDown()
       assertTrue("replacement open did not settle", openSettled.await(10L, TimeUnit.SECONDS))
       replacementError.get()?.let { throw AssertionError("replacement open failed", it) }
@@ -320,13 +321,12 @@ internal class HybridInkSignViewTextKeyTest {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
-    val source = File.createTempFile("mode-session-", ".pdf", context.cacheDir)
-      .apply { writeText("controlled source") }
+    val source = copyFixturePdf(context, "mode-session-")
     val analysisStarted = CountDownLatch(1)
     val releaseAnalysis = CountDownLatch(1)
     val blockAnalysis = AtomicBoolean(false)
     val worker = PdfSessionWorker(opener = PdfSessionOpener { path, generation ->
-      BlockingAnalysisResource(PdfSessionInfo(path, listOf(PdfPageDimensions(300.0, 300.0)), generation),
+      BlockingAnalysisResource(PdfSessionInfo(path, List(2) { PdfPageDimensions(300.0, 300.0) }, generation),
         analysisStarted, releaseAnalysis, blockAnalysis)
     })
     val viewRef = AtomicReference<HybridInkSignView>()
@@ -339,7 +339,7 @@ internal class HybridInkSignViewTextKeyTest {
         view.view.layout(0, 0, 300, 300)
       }
       val view = viewRef.get()
-      awaitOpen(instrumentation, view, source.absolutePath, expectedPageCount = 1.0)
+      awaitOpen(instrumentation, view, source.absolutePath)
       val ordinary = awaitPreparedPage(view.getPage(null))
       val session = view.setMode(InputMode.INK, null)
       val scoped = awaitPreparedPage(session.getPage(null))
@@ -351,7 +351,7 @@ internal class HybridInkSignViewTextKeyTest {
       scoped.setTextValue(id, "Ada", null)
       val before = view.getViewport()
       blockAnalysis.set(true)
-      val pending = session.getPage(null)
+      val pending = session.getPage(1.0)
       assertTrue("analysis did not reach worker", analysisStarted.await(10, TimeUnit.SECONDS))
       val cancelled = CountDownLatch(2)
       val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
@@ -393,7 +393,7 @@ internal class HybridInkSignViewTextKeyTest {
   }
 
   private fun pageHistoryStates(view: HybridInkSignView): List<PageHistoryState> =
-    (0..1).map { pageIndex ->
+    (0 until view.coordinator.pageCount).map { pageIndex ->
       PageHistoryState(
         content = view.coordinator.pageSnapshot(pageIndex).content,
         revision = view.coordinator.pageHistoryRevision(pageIndex),
@@ -416,6 +416,14 @@ internal class HybridInkSignViewTextKeyTest {
     assertTrue("open did not settle", settled.await(10L, TimeUnit.SECONDS))
     failure.get()?.let { throw AssertionError("controlled document open failed", it) }
     assertEquals(expectedPageCount, result.get().pageCount, 0.0)
+  }
+
+  private fun copyFixturePdf(context: android.content.Context, prefix: String): File {
+    val source = File.createTempFile(prefix, ".pdf", context.cacheDir)
+    context.assets.open("horizontal-rule-lines.pdf").use { fixture ->
+      source.outputStream().use { output -> fixture.copyTo(output) }
+    }
+    return source
   }
 
   private data class PageHistoryState(

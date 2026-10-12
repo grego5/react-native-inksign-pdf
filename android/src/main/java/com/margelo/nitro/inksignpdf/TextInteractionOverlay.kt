@@ -33,24 +33,11 @@ import kotlin.math.ceil
 import kotlin.math.hypot
 import kotlin.math.max
 
-internal const val defaultTextFontSize = 16.0
-internal const val minimumTextFontSize = 8.0
-internal const val maximumTextFontSize = 72.0
-internal const val minimumTextEditorWidthEm = 1.0
 internal const val textEditorHorizontalPaddingRatio = 0.375
 internal const val textEditorVerticalPaddingRatio = 0.25
 
 internal fun textEditorPaddingPx(fontSizePx: Double, ratio: Double): Int =
   max(1, ceil(fontSizePx * ratio).toInt())
-
-internal fun textEditorMinimumContentWidth(fontSize: Double): Double =
-  fontSize * minimumTextEditorWidthEm
-
-internal fun normalizeTextFontSize(value: Double?): Double =
-  value
-    ?.takeIf { it.isFinite() && it > 0.0 }
-    ?.coerceIn(minimumTextFontSize, maximumTextFontSize)
-    ?: defaultTextFontSize
 
 internal data class TextPresentationSnapshot(
   val generation: Long,
@@ -132,55 +119,6 @@ internal fun activeSelectionOffsetAfterChange(
   }
 }
 
-internal fun clampTextAnnotationPosition(
-  position: PagePoint,
-  size: TextIntrinsicSize,
-  page: PdfPageDimensions,
-): PagePoint {
-  val x = if (size.width > page.width) {
-    (page.width - size.width) / 2.0
-  } else {
-    position.x.coerceIn(0.0, page.width - size.width)
-  }
-  val y = if (size.height > page.height) {
-    (page.height - size.height) / 2.0
-  } else {
-    position.y.coerceIn(0.0, page.height - size.height)
-  }
-  return PagePoint(x, y)
-}
-
-internal fun programmaticTextFlowBounds(
-  bounds: TextAnnotationBounds,
-  page: PdfPageDimensions,
-): PageRect {
-  val right = bounds.x + bounds.width
-  val bottom = bounds.y + bounds.height
-  val valid = bounds.x.isFinite() && bounds.y.isFinite() &&
-    bounds.width.isFinite() && bounds.height.isFinite() &&
-    bounds.width > 0.0 && bounds.height > 0.0 &&
-    right.isFinite() && bottom.isFinite() &&
-    bounds.x >= 0.0 && bounds.y >= 0.0 &&
-    right <= page.width && bottom <= page.height
-  if (!valid) {
-    throw PdfSessionException(
-      "invalid_text_bounds",
-      "Text bounds must define an ordered rectangle inside the active page",
-    )
-  }
-  return PageRect(
-    left = bounds.x,
-    top = bounds.y,
-    right = right,
-    bottom = bottom,
-  )
-}
-
-internal fun textEditorIntrinsicSize(text: String, fontSize: Double, typeface: android.graphics.Typeface = TextLayoutSpec.typeface): TextIntrinsicSize {
-  val measured = TextLayoutSpec.measure(text, fontSize, typeface)
-  return measured.copy(width = max(measured.width, textEditorMinimumContentWidth(fontSize)))
-}
-
 internal fun chooseTextPlacementPosition(
   pagePoint: PagePoint,
   size: TextIntrinsicSize,
@@ -227,26 +165,6 @@ internal fun nearestTextSnapCandidate(
     .filter { (_, distanceAndBand) -> distanceAndBand.first <= distanceAndBand.second }
     .minByOrNull { it.second.first }
     ?.first
-}
-
-internal fun textAnnotationOuterBounds(
-  bounds: PageRect,
-  transform: PageTransform,
-  horizontalPaddingPx: Double,
-  verticalPaddingPx: Double,
-): PageRect {
-  val corners = listOf(
-    transform.map(PagePoint(bounds.left, bounds.top)),
-    transform.map(PagePoint(bounds.right, bounds.top)),
-    transform.map(PagePoint(bounds.left, bounds.bottom)),
-    transform.map(PagePoint(bounds.right, bounds.bottom)),
-  )
-  return PageRect(
-    corners.minOf { it.x } - horizontalPaddingPx,
-    corners.minOf { it.y } - verticalPaddingPx,
-    corners.maxOf { it.x } + horizontalPaddingPx,
-    corners.maxOf { it.y } + verticalPaddingPx,
-  )
 }
 
 internal fun textAnnotationOuterRect(
@@ -647,7 +565,7 @@ internal class TextInteractionOverlay(
       layoutPage = page,
       font = fonts.resolve(options?.font),
     )
-    val annotation = boundedAnnotation.copy(bounds = TextLayoutSpec.visibleBounds(boundedAnnotation, flowBounds))
+    val annotation = TextAnnotationLayout.reflow(boundedAnnotation, page)
     if (requireVisibleLine && (annotation.bounds.right <= annotation.bounds.left ||
       annotation.bounds.bottom <= annotation.bounds.top)) {
       throw PdfSessionException("text_rule_not_found", "No complete text line fits beside the selected rule")
@@ -1690,7 +1608,7 @@ internal class TextInteractionOverlay(
         val fontSize = (annotation.fontSize + delta)
           .coerceIn(minimumTextFontSize, maximumTextFontSize)
         if (fontSize == annotation.fontSize) return fontSize
-        val updated = resizedAnnotation(annotation, fontSize, presentation.forAnnotation(annotation).page)
+        val updated = TextAnnotationLayout.resize(annotation, fontSize, presentation.forAnnotation(annotation).page)
         transitionTo(InteractionState.Selected(state.generation, state.pageIndex, updated))
         try {
           surface.replaceTextAnnotation(state.generation, state.pageIndex, annotation, updated)
@@ -1751,9 +1669,7 @@ internal class TextInteractionOverlay(
       layoutPage = state.original?.layoutPage ?: if (state.original == null) presentation.page else null,
       font = state.font,
     )
-    return if (flowBounds == null) updated else updated.copy(
-      bounds = TextLayoutSpec.visibleBounds(updated, flowBounds),
-    )
+    return TextAnnotationLayout.reflow(updated, presentation.page, unboundedSize)
   }
 
   private fun annotationAt(annotation: TextAnnotation, position: PagePoint): TextAnnotation {
@@ -1770,33 +1686,6 @@ internal class TextInteractionOverlay(
       PageRect(it.left + dx, it.top + dy, it.right + dx, it.bottom + dy)
     }
     return annotation.copy(bounds = bounds, flowBounds = flowBounds)
-  }
-
-  private fun resizedAnnotation(
-    annotation: TextAnnotation,
-    fontSize: Double,
-    page: PdfPageDimensions,
-  ): TextAnnotation {
-    val size = textEditorIntrinsicSize(annotation.text, fontSize, annotation.font?.typeface ?: TextLayoutSpec.typeface)
-    val position = clampPosition(annotation.position, size, page)
-    val flowBounds = annotation.flowBounds
-    val updated = TextAnnotation(
-      id = annotation.id,
-      text = annotation.text,
-      bounds = flowBounds ?: PageRect(position.x, position.y, position.x + size.width, position.y + size.height),
-      fontSize = fontSize,
-      layoutPage = annotation.layoutPage,
-      font = annotation.font,
-      textColor = annotation.textColor,
-      directionRtl = annotation.directionRtl,
-      flowBounds = flowBounds,
-      maxLines = annotation.maxLines,
-      verticalAnchor = annotation.verticalAnchor,
-      alignment = annotation.alignment,
-    )
-    return if (flowBounds == null) updated else updated.copy(
-      bounds = TextLayoutSpec.visibleBounds(updated, flowBounds),
-    )
   }
 
   private fun currentAnnotations(): List<TextAnnotation> =

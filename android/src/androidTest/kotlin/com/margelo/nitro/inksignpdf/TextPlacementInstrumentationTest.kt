@@ -983,34 +983,30 @@ internal class TextPlacementInstrumentationTest {
       }
 
       replacement = async(Dispatchers.Main) {
-        harness.coordinator.executeOpen(
-          sourcePath = source.absolutePath,
+        val pending = harness.coordinator.prepareOpen(
           fallbackFont = null,
+          resolveFallbackFont = { error("No fallback font in this fixture") },
+          prepareSource = { destination -> withContext(Dispatchers.IO) { source.copyTo(destination, overwrite = true) } },
           invalidatePrevious = {
             checkNotNull(overlay).cancelForDocumentReplacement()
             harness.surface.clearDocument()
           },
-          awaitContainerSize = {
-            waiting.complete(Unit)
-            harness.surface.awaitUsableViewportSize()
-          },
-          preparePresentation = { info, size ->
-            harness.surface.prepareDocumentPresentation(
-              info,
-              OpenViewport(focus = null, zoom = null, fitToPage = true),
-              size,
-            )
-          },
-          beginHandoff = {
-            checkNotNull(overlay).finishForLifecycle()
-            harness.surface.beginOpenHandoff()
-          },
-          publishPresentation = { prepared ->
-            val page = harness.surface.publishOpenDocumentPresentation(prepared)
-            page
-          },
-          notifyPublished = { harness.surface.notifyPublishedOpenDocumentPresentation() },
         )
+        try {
+          val presentation = harness.coordinator.awaitOpen(pending) {
+            waiting.complete(Unit)
+            val size = harness.surface.awaitUsableViewportSize()
+            harness.surface.prepareDocumentPresentation(pending.info,
+              OpenViewport(focus = null, zoom = null, fitToPage = true), size)
+          }
+          checkNotNull(overlay).finishForLifecycle()
+          harness.surface.beginOpenHandoff()
+          harness.coordinator.commitOpen(pending) {
+            harness.surface.publishOpenDocumentPresentation(presentation)
+            harness.surface.notifyPublishedOpenDocumentPresentation()
+          }
+          harness.surface.currentPageInfo()
+        } finally { harness.coordinator.finishOpen(pending) }
       }
       waiting.await()
 
@@ -2402,31 +2398,35 @@ internal class TextPlacementInstrumentationTest {
     preparePresentation: ((PdfSessionInfo, ViewportSize) -> PreparedDocumentPresentation)? = null,
     afterHandoff: () -> Unit = {},
   ): PdfPageInfo = withContext(Dispatchers.Main.immediate) {
-    harness.coordinator.executeOpen(
-      sourcePath = source.absolutePath,
+    val pending = harness.coordinator.prepareOpen(
       fallbackFont = null,
+      resolveFallbackFont = { error("No fallback font in this fixture") },
+      prepareSource = { destination -> withContext(Dispatchers.IO) { source.copyTo(destination, overwrite = true) } },
       invalidatePrevious = {
         harness.overlay?.cancelForDocumentReplacement()
         harness.surface.clearDocument()
         harness.surface.onStateChange?.invoke(harness.surface.lastReportedState)
       },
-      awaitContainerSize = { harness.surface.awaitUsableViewportSize() },
-      preparePresentation = { info, size ->
-        preparePresentation?.invoke(info, size) ?: harness.surface.prepareDocumentPresentation(
-          info,
-          OpenViewport(focus = null, zoom = null, fitToPage = true),
-          size,
-        )
-      },
-      beginHandoff = {
-        harness.surface.beginOpenHandoff()
-        harness.overlay?.finishForLifecycle()
-        afterHandoff()
-      },
-      publishPresentation = harness.surface::publishOpenDocumentPresentation,
-      notifyPublished = { harness.surface.notifyPublishedOpenDocumentPresentation() },
-      abortHandoff = { harness.surface.abortOpenHandoff() },
     )
+    try {
+      val presentation = harness.coordinator.awaitOpen(pending) {
+        val size = harness.surface.awaitUsableViewportSize()
+        preparePresentation?.invoke(pending.info, size)
+          ?: harness.surface.prepareDocumentPresentation(pending.info,
+            OpenViewport(focus = null, zoom = null, fitToPage = true), size)
+      }
+      harness.surface.beginOpenHandoff()
+      harness.overlay?.finishForLifecycle()
+      afterHandoff()
+      harness.coordinator.commitOpen(pending) {
+        harness.surface.publishOpenDocumentPresentation(presentation)
+        harness.surface.notifyPublishedOpenDocumentPresentation()
+      }
+      harness.surface.currentPageInfo()
+    } catch (error: Throwable) {
+      if (!pending.published) harness.surface.abortOpenHandoff()
+      throw error
+    } finally { harness.coordinator.finishOpen(pending) }
   }
 
   private fun assertReaderRenders(generation: Long) {
@@ -2439,7 +2439,7 @@ internal class TextPlacementInstrumentationTest {
       completed.countDown()
     }
     assertTrue("PDF reader did not answer the render request", completed.await(5L, TimeUnit.SECONDS))
-    assertTrue(result.get().isSuccess)
+    assertTrue("PDF reader returned a render failure: ${result.get().exceptionOrNull()}", result.get().isSuccess)
   }
 
   private fun assertReaderCancelled(generation: Long) {

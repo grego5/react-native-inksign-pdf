@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -53,13 +54,13 @@ class MutableDocumentCoordinatorTest {
     val coordinator = coordinator()
     val original = coordinator.pages.map { it.id }
 
-    val moved = coordinator.moveActiveCandidate(0)
+    val moved = coordinator.movePageCandidate(coordinator.activePageIndex, 0)
     assertEquals(original[1], moved.pages[0].id)
     assertEquals(original[0], moved.pages[1].id)
     assertEquals(original[1], moved.activePageId)
 
     coordinator.setActivePage(1)
-    val removed = coordinator.removeActiveCandidate()
+    val removed = coordinator.removePageCandidate(coordinator.activePageIndex)
     assertEquals(listOf(original[0], original[2]), removed.pages.map { it.id })
     assertEquals(original[2], removed.activePageId)
   }
@@ -90,7 +91,7 @@ class MutableDocumentCoordinatorTest {
   fun publicationMarksStructuralDirtyWithoutChangingPageHistory() {
     val coordinator = coordinator()
     val histories = coordinator.pages.associate { it.id to it.history }
-    val candidate = coordinator.moveActiveCandidate(0)
+    val candidate = coordinator.movePageCandidate(coordinator.activePageIndex, 0)
     coordinator.installCandidate("working.pdf", candidate.pages, candidate.activePageId)
 
     assertTrue(coordinator.structuralDirty)
@@ -104,7 +105,7 @@ class MutableDocumentCoordinatorTest {
     val retained = coordinator.pages[0]
     val trailing = coordinator.pages[2]
 
-    val candidate = coordinator.removeActiveCandidate()
+    val candidate = coordinator.removePageCandidate(coordinator.activePageIndex)
     coordinator.installCandidate("candidate.pdf", candidate.pages, candidate.activePageId)
 
     assertTrue(coordinator.pages[0] === retained)
@@ -153,7 +154,7 @@ class MutableDocumentCoordinatorTest {
       artifactPolicy = TestDocumentArtifactPolicy(),
     )
     try {
-      coordinator.removeActiveCandidate()
+      coordinator.removePageCandidate(coordinator.activePageIndex)
       fail("Expected the last page to be required")
     } catch (error: IllegalStateException) {
       assertTrue(error.message.orEmpty().contains("retain one page"))
@@ -222,7 +223,7 @@ class MutableDocumentCoordinatorTest {
   @Test
   fun aggregateValidationRejectsPageOrderThatDoesNotMatchPdfiumMetadata() {
     val coordinator = coordinator()
-    val candidate = coordinator.moveActiveCandidate(0)
+    val candidate = coordinator.movePageCandidate(coordinator.activePageIndex, 0)
     val unchangedInfo = coordinator.sessionInfo()
 
     try {
@@ -252,24 +253,22 @@ class MutableDocumentCoordinatorTest {
       artifactPolicy = artifactPolicy,
     )
     try {
-      coordinator.executeOpen(
+      openCandidate(
+        coordinator,
         sourcePath = sourceA.absolutePath,
         fallbackFont = null,
-        awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
-        preparePresentation = { info, _ -> info },
-        publishPresentation = { it },
       )
       val committedPath = coordinator.sourcePath
       val committedGeneration = coordinator.generation
       var replacementNotified = false
       val preparationFailure = runCatching {
-        coordinator.executeOpen(
+        openCandidate(
+          coordinator,
           sourcePath = sourceB.absolutePath,
           fallbackFont = null,
-          awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
-          preparePresentation = { info, _ -> info },
-          publishPresentation = { it },
-          notifyPublished = { replacementNotified = true },
+          notifyPublished = {
+            replacementNotified = true
+          },
         )
       }
       assertTrue(preparationFailure.isFailure)
@@ -280,24 +279,20 @@ class MutableDocumentCoordinatorTest {
       assertTrue(opened[0].closed)
       assertFalse(File(committedPath).exists())
 
-      var handoffAborted = false
       val commitFailure = runCatching {
-        coordinator.executeOpen(
+        openCandidate(
+          coordinator,
           sourcePath = sourceC.absolutePath,
           fallbackFont = null,
-          awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
-          preparePresentation = { info, _ ->
+          awaitPrepared = { info ->
             worker.reserveOpenAttemptId(info.generation)
-            info
           },
-          beginHandoff = {},
-          publishPresentation = { it },
-          notifyPublished = { replacementNotified = true },
-          abortHandoff = { handoffAborted = true },
+          notifyPublished = {
+            replacementNotified = true
+          },
         )
       }
       assertTrue(commitFailure.isFailure)
-      assertTrue(handoffAborted)
       assertFalse(replacementNotified)
       assertFalse(coordinator.hasDocument)
       assertEquals("", coordinator.sourcePath)
@@ -344,12 +339,10 @@ class MutableDocumentCoordinatorTest {
     )
     try {
       val failure = runCatching {
-        coordinator.executeOpen(
+        openCandidate(
+          coordinator,
           sourcePath = invalidSource.absolutePath,
           fallbackFont = null,
-          awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
-          preparePresentation = { info, _ -> info },
-          publishPresentation = { it },
         )
       }
 
@@ -384,32 +377,26 @@ class MutableDocumentCoordinatorTest {
     var replacementNotified = false
     val publicationEvents = mutableListOf<String>()
     try {
-      coordinator.executeOpen(
+      openCandidate(
+        coordinator,
         sourcePath = sourceA.absolutePath,
         fallbackFont = null,
-        awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
-        preparePresentation = { info, _ -> info },
-        publishPresentation = { it },
       )
       val oldPath = coordinator.sourcePath
       val oldGeneration = coordinator.generation
       val replacement = async(Dispatchers.IO) {
-        coordinator.executeOpen(
+        openCandidate(
+          coordinator,
           sourcePath = sourceB.absolutePath,
           fallbackFont = null,
-          awaitContainerSize = {
+          awaitPrepared = { _ ->
             readinessEntered.complete(Unit)
             releaseReadiness.await()
-            ViewportSize(300.0, 200.0, 1.0)
-          },
-          preparePresentation = { info, size ->
-            assertEquals(300.0, size.widthPx, 0.0)
             publicationEvents += "prepare"
-            info
+            publicationEvents += "handoff"
           },
-          beginHandoff = { publicationEvents += "handoff" },
-          publishPresentation = { publicationEvents += "install"; it },
           notifyPublished = {
+            publicationEvents += "install"
             replacementNotified = true
             publicationEvents += "notify"
           },
@@ -468,12 +455,10 @@ class MutableDocumentCoordinatorTest {
     )
 
     try {
-      coordinator.executeOpen(
+      openCandidate(
+        coordinator,
         sourcePath = source.absolutePath,
         fallbackFont = null,
-        awaitContainerSize = { ViewportSize(300.0, 200.0, 1.0) },
-        preparePresentation = { info, _ -> info },
-        publishPresentation = { it },
       )
       val generation = coordinator.generation
       val operationID = coordinator.beginOperation()
@@ -485,9 +470,8 @@ class MutableDocumentCoordinatorTest {
             pageIndex = 0,
             destinationIndex = 0,
           ),
-          candidateBuilder = { coordinator.moveActiveCandidate(0) },
-          validate = { _, _ -> },
-          present = { "unexpected publication" },
+          candidateBuilder = { coordinator.movePageCandidate(coordinator.activePageIndex, 0) },
+          notifyPublished = { error("unexpected publication") },
         )
       }
       assertTrue(assemblyEntered.await(5, TimeUnit.SECONDS))
@@ -533,20 +517,17 @@ class MutableDocumentCoordinatorTest {
     )
     val handoffEntered = CountDownLatch(1)
     val releaseHandoff = CountDownLatch(1)
-    val viewportSize = { ViewportSize(300.0, 200.0, 1.0) }
     try {
       val openA = async(Dispatchers.IO) {
         runCatching {
-          coordinator.executeOpen(
+          openCandidate(
+            coordinator,
             sourcePath = sourceA.absolutePath,
             fallbackFont = null,
-            awaitContainerSize = viewportSize,
-            preparePresentation = { info, _ -> info },
-            beginHandoff = {
+            awaitPrepared = { _ ->
               handoffEntered.countDown()
               check(releaseHandoff.await(5L, TimeUnit.SECONDS))
             },
-            publishPresentation = { it },
           )
         }
       }
@@ -554,22 +535,18 @@ class MutableDocumentCoordinatorTest {
 
       val openB = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
         runCatching {
-          coordinator.executeOpen(
+          openCandidate(
+            coordinator,
             sourcePath = sourceB.absolutePath,
             fallbackFont = null,
-            awaitContainerSize = viewportSize,
-            preparePresentation = { info, _ -> info },
-            publishPresentation = { it },
           )
         }
       }
       val openC = async(Dispatchers.IO, start = CoroutineStart.UNDISPATCHED) {
-        coordinator.executeOpen(
+        openCandidate(
+          coordinator,
           sourcePath = sourceC.absolutePath,
           fallbackFont = null,
-          awaitContainerSize = viewportSize,
-          preparePresentation = { info, _ -> info },
-          publishPresentation = { it },
         )
       }
       assertEquals(3, artifactPolicy.allocatedWorkingFiles.size)
@@ -629,15 +606,14 @@ class MutableDocumentCoordinatorTest {
       awaitReady: suspend () -> Unit = {},
       sourcePath: String = path.absolutePath,
     ) =
-      coordinator.executeOpen(
+      openCandidate(
+        coordinator,
         sourcePath = sourcePath,
         fallbackFont = AndroidFallbackFont(font.source, font.collectionIndex),
         resolveFallbackFont = { font },
-        preparePresentation = { info, _ -> prepare(info); info },
-        publishPresentation = { it },
-        awaitContainerSize = {
+        awaitPrepared = { info ->
           awaitReady()
-          ViewportSize(300.0, 200.0, 1.0)
+          prepare(info)
         },
       )
 
@@ -713,6 +689,28 @@ class MutableDocumentCoordinatorTest {
     sourceC.delete()
     sourceD.delete()
     Unit
+  }
+
+  /** Test client of the document-only prepare/commit boundary. */
+  private suspend fun openCandidate(
+    coordinator: MutableDocumentCoordinator,
+    sourcePath: String,
+    fallbackFont: AndroidFallbackFont?,
+    resolveFallbackFont: suspend (AndroidFallbackFont) -> PdfFallbackFont = { error("No test font resolver") },
+    awaitPrepared: suspend (PdfSessionInfo) -> Unit = {},
+    notifyPublished: (PdfSessionInfo) -> Unit = {},
+  ): PdfSessionInfo {
+    val pending = coordinator.prepareOpen(fallbackFont, resolveFallbackFont,
+      prepareSource = { destination ->
+        withContext(Dispatchers.IO) {
+          val source = if (sourcePath.startsWith("file:")) File(java.net.URI(sourcePath)) else File(sourcePath)
+          source.copyTo(destination, overwrite = true)
+        }
+      })
+    try {
+      coordinator.awaitOpen(pending) { awaitPrepared(pending.info) }
+      return coordinator.commitOpen(pending, notifyPublished)
+    } finally { coordinator.finishOpen(pending) }
   }
 
   private class OpenTestSession(
