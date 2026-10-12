@@ -111,13 +111,13 @@ export function validateViewOpenOptions(value: unknown): void {
   if (isRecord(value) && value.tag !== undefined) validatePageTag(value.tag);
 }
 
-export function validateTextId(value: unknown): void {
+export function validateInputTargetId(value: unknown): void {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
     throw argumentError('invalid_text_id', 'Text IDs must be positive safe integers');
   }
 }
 
-export function validateTextFocusOptions(value: unknown): void {
+export function validateInputTargetFocusOptions(value: unknown): void {
   if (value === undefined) return;
   if (!isRecord(value) ||
     (value.zoom !== undefined &&
@@ -130,21 +130,24 @@ export function validateTextFocusOptions(value: unknown): void {
   }
 }
 
-export function validateResolveTextOptions(value: unknown): void {
+export function validateResolveInputUnderlineOptions(value: unknown): void {
   if (!isRecord(value)) {
     throw argumentError('invalid_text_resolution', 'Text resolution options must be an object');
   }
   const fieldName = value.fieldName;
-  if (fieldName !== undefined && (typeof fieldName !== 'string' || fieldName.trim() === '')) {
+  if (typeof fieldName !== 'string' || fieldName.trim() === '') {
     throw argumentError('invalid_text_field_name', 'Field names must be non-empty strings');
-  }
-  if (fieldName === undefined && value.bounds === undefined) {
-    throw argumentError('invalid_text_bounds', 'Free text resolution requires bounds');
   }
   if (value.bounds !== undefined) validateTextAnnotationBounds(value.bounds);
   if (value.occurrence !== undefined && value.occurrence !== 'first' && value.occurrence !== 'last') {
     throw argumentError('invalid_text_key_options', 'Occurrence must be first or last');
   }
+  validateTextAnnotationOptions(value);
+}
+
+export function validateCreateInputAreaOptions(value: unknown): void {
+  if (!isRecord(value)) throw argumentError('invalid_text_resolution', 'Input area options must be an object');
+  validateTextAnnotationBounds(value.bounds);
   validateTextAnnotationOptions(value);
 }
 

@@ -172,15 +172,16 @@ Text resolution and value operations are synchronous.
 Dimensions and text bounds use PDF points (1/72 inch) on the displayed, rotated
 page, measured rightward and downward from its top-left corner.
 
-- `page.resolveText(options)` — Resolve a complete printed field name or free `bounds: { x, y, width, height }` to a numeric ID. Scanned labels need a text layer.
+- `page.resolveInputUnderline({ fieldName, ...options })` — Detect a searchable label and adjacent underline, returning an input target ID.
+- `page.createInputArea({ bounds, ...options })` — Define an input target directly by its rectangle.
 - `page.getTextValue(id)` — Read entered text, falling back to embedded PDF text or `''`.
 - `page.setTextValue(id, text, options?)` — Atomically write module text and optional formatting on Android. Pass `''` to remove it and reveal
   any embedded value. Viewer commits are tracked by default; headless commits are untracked.
 - `page.setTextOptions(id, options)` — Update formatting; omitted options retain their values.
 - `page.adjustTextSize(id, delta)` — Increase or decrease font size by page points; return the resulting size.
-- `page.getTextEntry(id)` — Read the value, value source, and target metadata.
-- `page.getTextEntries()` — Read all resolved text targets on the page.
-- `page.focusText(id, options?)` — Focus a resolved target without changing mode. Available on viewer/session page handles only; headless pages have no focus.
+- `page.getInputTarget(id)` — Read a target's value and placement metadata.
+- `page.getInputTargets()` — Read resolved and created input targets on the page.
+- `page.focusInputTarget(id, options?)` — Focus a resolved target without changing mode. Available on viewer/session page handles only; headless pages have no focus.
   Options are `zoom`, `verticalAnchor` (`'top'`, `'bottom'`, or `'center'`), and `edgeOffset` in page points. Defaults to zoom 2 and center.
 
 On Android, pass `untracked: true` to a programmatic text mutation to update the
@@ -287,7 +288,7 @@ await pdf.current?.addPages({
 ```ts
 const page = await pdf.current?.getPage();
 if (page) {
-  const id = page.resolveText({ fieldName: 'Name' });
+  const id = page.resolveInputUnderline({ fieldName: 'Name' });
   if (!page.getTextValue(id)) page.setTextValue(id, 'Ada Lovelace');
 }
 ```
@@ -340,7 +341,7 @@ const document = await openDoc(file.uri);
 try {
   await document.loadFonts([{ name: 'template', uri: bundledFontUri }]);
   const page = await document.getPage(0);
-  const id = page.resolveText({ bounds: template.reportNumberBounds });
+  const id = page.createInputArea({ bounds: template.reportNumberBounds });
   page.setTextValue(id, report.number, {
     font: 'template',
     alignment: 'center',
@@ -356,4 +357,3 @@ On Android, both viewer and headless APIs support `loadFonts([{ name, uri }])`.
 Load a static `.ttf` from a local or bundled asset URI, then pass its name as
 `font` when resolving, inserting, or formatting text. Omit `font` to keep the
 current selection; use `font: null` to restore the system font.
-

@@ -21,6 +21,8 @@
   and [handoff](viewport-input.md#ink-and-navigation).
 - The worker's text-geometry LRU holds at most eight pages and 8 MiB estimated
   storage. Navigation retains entries; session replacement/closure releases them.
+- Prepared analysis stores labels and writing guides without page rotation.
+  Lookup and snapping use the current rotation; prepared lookup needs no PDF rescan.
 - The core retains one prepared context per stable page; Android page handles
   reference it weakly. Mode tokens govern viewer-handle validity independently
   of analysis lifetime. Mode cancellation retains analysis for later handles.

@@ -53,8 +53,10 @@ internal data class PdfiumPreparedPageAnalysis(
   val width: Double,
   val height: Double,
   val glyphs: List<PdfiumPreparedGlyph>,
-  val rules: List<PdfiumHorizontalSnapCandidate>,
+  val rules: List<PdfiumPreparedRule>,
 )
+
+internal data class PdfiumPreparedRule(val start: PagePoint, val end: PagePoint, val labelLineHeight: Double? = null)
 
 /** Worker-owned bridge to one detached PDFium document session. */
 internal class PdfiumRenderSession private constructor(
@@ -84,7 +86,7 @@ internal class PdfiumRenderSession private constructor(
     check(values.size >= 4) { "PDFium returned incomplete prepared page analysis" }
     val glyphCount = values[2].toInt()
     val ruleCount = values[3].toInt()
-    check(glyphCount >= 0 && ruleCount >= 0 && values.size == 4 + glyphCount * 10 + ruleCount * 3) {
+    check(glyphCount >= 0 && ruleCount >= 0 && values.size == 4 + glyphCount * 10 + ruleCount * 4) {
       "PDFium returned inconsistent prepared page analysis"
     }
     val glyphs = List(glyphCount) { index ->
@@ -97,8 +99,8 @@ internal class PdfiumRenderSession private constructor(
     }
     val rulesStart = 4 + glyphCount * 10
     val rules = List(ruleCount) { index ->
-      val offset = rulesStart + index * 3
-      PdfiumHorizontalSnapCandidate(values[offset], values[offset + 1], values[offset + 2])
+      val offset = rulesStart + index * 4
+      PdfiumPreparedRule(PagePoint(values[offset], values[offset + 1]), PagePoint(values[offset + 2], values[offset + 3]))
     }
     return PdfiumPreparedPageAnalysis(values[0], values[1], glyphs, rules)
   }

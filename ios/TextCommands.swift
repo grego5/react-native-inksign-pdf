@@ -178,7 +178,7 @@ extension InkSignView {
     return .resolved(withResult: handle)
   }
 
-  func resolvePreparedText(_ handle: HybridAnalyzedPage, options: ResolveTextOptions) throws -> Double {
+  func resolvePreparedText(_ handle: HybridAnalyzedPage, options: InputTargetResolutionOptions) throws -> Double {
     if case .second? = options.font { throw HeadlessFeatureError.androidOnly }
     try validateTextPageContext(handle)
     guard let document = documentCoordinator.document,
@@ -331,7 +331,7 @@ extension InkSignView {
     }
   }
 
-  func preparedTextEntry(_ handle: any InkSignPdfTextPageContext, id: Double) throws -> TextEntry {
+  func preparedInputTarget(_ handle: any InkSignPdfTextPageContext, id: Double) throws -> InputTarget {
     let (page, target) = try preparedTarget(handle, id: id)
     let draft = textInteractionOverlay.preparedDraftText(id: target.id, pageID: page.id)
     let annotation = page.history.content.textAnnotations.first(where: { $0.id == target.id })
@@ -339,7 +339,7 @@ extension InkSignView {
     let source: TextValueSource = draft != nil || annotation != nil ? .annotation
       : (!target.embeddedValue.isEmpty ? .embedded : .empty)
     let bounds = displayedTargetBounds(target, page: page)
-    return TextEntry(id: Double(target.id), value: value, fieldName: target.fieldName,
+    return InputTarget(id: Double(target.id), value: value, fieldName: target.fieldName,
       bounds: TextAnnotationBounds(x: Double(bounds.minX), y: Double(bounds.minY),
         width: Double(bounds.width), height: Double(bounds.height)),
       valueSource: source)
@@ -359,22 +359,22 @@ extension InkSignView {
     return adjusted
   }
 
-  func preparedTextEntries(_ handle: any InkSignPdfTextPageContext) throws -> [TextEntry] {
+  func preparedTextEntries(_ handle: any InkSignPdfTextPageContext) throws -> [InputTarget] {
     try validateTextPageContext(handle)
     return try documentCoordinator.textTargets(for: handle.pageID).map {
-      try preparedTextEntry(handle, id: Double($0.id))
+      try preparedInputTarget(handle, id: Double($0.id))
     }
   }
 
   func focusPreparedText(_ handle: any InkSignPdfTextPageContext, id: Double,
-                         options: TextFocusOptions?) throws -> Promise<Void> {
+                         options: InputTargetFocusOptions?) throws -> Promise<Void> {
     return enqueueViewerCommand(presentation: true, modeSession: handle.modeSession) {
       try self.focusPreparedTextNow(handle, id: id, options: options)
     }
   }
 
   private func focusPreparedTextNow(_ handle: any InkSignPdfTextPageContext, id: Double,
-                         options: TextFocusOptions?) throws -> Promise<Void> {
+                         options: InputTargetFocusOptions?) throws -> Promise<Void> {
     let (page, target) = try preparedTarget(handle, id: id)
     let rule = try displayedWritingRule(target, page: page)
     let bounds = displayedTargetBounds(target, page: page)
@@ -566,7 +566,7 @@ extension InkSignView {
   }
 }
 
-private extension ResolveTextOptions {
+private extension InputTargetResolutionOptions {
   var annotationOptions: TextAnnotationOptions {
     TextAnnotationOptions(untracked: nil, font: nil, fontSize: fontSize, color: color, direction: direction,
       maxLines: maxLines, alignment: alignment, verticalAnchor: verticalAnchor ?? (fieldName == nil ? .top : .bottom))

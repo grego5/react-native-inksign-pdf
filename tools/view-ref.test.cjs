@@ -12,7 +12,7 @@ let attachments = 0;
 const calls = [];
 let selectedText = null;
 const nativeSession = {
-  getPage: async () => { calls.push('session-page'); return { getTextEntries: () => [] }; },
+  getPage: async () => { calls.push('session-page'); return { getInputTargets: () => [] }; },
   requestUserTap: async () => ({ pageId: 'page', pageIndex: 0, x: 10, y: 20 }),
   setViewport: async options => { calls.push(['viewport', options]); },
 };
@@ -21,7 +21,7 @@ const native = {
   getSelectedText: () => selectedText,
   open: async path => { calls.push(path); return { pageIndex: 0 }; },
   setMode: mode => { calls.push(mode); return nativeSession; },
-  getPage: async () => { calls.push('page'); return { getTextEntries: () => [] }; },
+  getPage: async () => { calls.push('page'); return { getInputTargets: () => [] }; },
 };
 
 function NativeView({ hybridRef }) {
@@ -204,8 +204,8 @@ test('mode entry is synchronous and page acquisition can use either path', async
     await act(async () => { root = create(React.createElement(Screen)); });
     const session = ref.current.setMode('ink');
     assert.deepEqual(calls, ['ink']);
-    assert.deepEqual((await session.getPage()).getTextEntries(), []);
-    assert.deepEqual((await ref.current.getPage()).getTextEntries(), []);
+    assert.deepEqual((await session.getPage()).getInputTargets(), []);
+    assert.deepEqual((await ref.current.getPage()).getInputTargets(), []);
     await session.setViewport({ zoom: 3 });
     assert.deepEqual(calls, ['ink', 'session-page', 'page', ['viewport', { zoom: 3 }]]);
     assert.deepEqual(ref.current.getPageIdsByTag('report'), ['report-0', 'report-1']);
@@ -249,7 +249,7 @@ test('initialDocument opens before ref commands, ignores prop changes, and reloa
   let root;
   try {
     await act(async () => { root = create(render('first', '/session.pdf')); });
-    for (const page of await Promise.all(pages)) assert.deepEqual(page.getTextEntries(), []);
+    for (const page of await Promise.all(pages)) assert.deepEqual(page.getInputTargets(), []);
     assert.equal(calls[0], '/session.pdf');
     assert.equal(calls.filter(value => value === '/session.pdf').length, 1);
     const firstHandle = ref.current;

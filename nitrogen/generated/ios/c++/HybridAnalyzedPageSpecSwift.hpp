@@ -14,12 +14,12 @@ namespace ReactNativeInkSignPdf { class HybridAnalyzedPageSpec_cxx; }
 
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
-// Forward declaration of `TextFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
+// Forward declaration of `InputTargetFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTargetFocusOptions; }
 // Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
-// Forward declaration of `ResolveTextOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ResolveTextOptions; }
+// Forward declaration of `ResolveInputUnderlineOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ResolveInputUnderlineOptions; }
 // Forward declaration of `TextAnnotationBounds` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
@@ -30,10 +30,12 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
+// Forward declaration of `CreateInputAreaOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct CreateInputAreaOptions; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
-// Forward declaration of `TextEntry` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextEntry; }
+// Forward declaration of `InputTarget` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTarget; }
 // Forward declaration of `TextValueSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
 
@@ -41,9 +43,9 @@ namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
 #include <string>
 #include <optional>
 #include <NitroModules/Promise.hpp>
-#include "TextFocusOptions.hpp"
+#include "InputTargetFocusOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
-#include "ResolveTextOptions.hpp"
+#include "ResolveInputUnderlineOptions.hpp"
 #include "TextAnnotationBounds.hpp"
 #include "TextKeyOccurrence.hpp"
 #include <NitroModules/Null.hpp>
@@ -51,8 +53,9 @@ namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
 #include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
+#include "CreateInputAreaOptions.hpp"
 #include "TextAnnotationOptions.hpp"
-#include "TextEntry.hpp"
+#include "InputTarget.hpp"
 #include "TextValueSource.hpp"
 #include <vector>
 
@@ -114,16 +117,24 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) override {
-      auto __result = _swiftPart.focusText(std::forward<decltype(id)>(id), options);
+    inline std::shared_ptr<Promise<void>> focusInputTarget(double id, const std::optional<InputTargetFocusOptions>& options) override {
+      auto __result = _swiftPart.focusInputTarget(std::forward<decltype(id)>(id), options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline double resolveText(const ResolveTextOptions& options) override {
-      auto __result = _swiftPart.resolveText(std::forward<decltype(options)>(options));
+    inline double resolveInputUnderline(const ResolveInputUnderlineOptions& options) override {
+      auto __result = _swiftPart.resolveInputUnderline(std::forward<decltype(options)>(options));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline double createInputArea(const CreateInputAreaOptions& options) override {
+      auto __result = _swiftPart.createInputArea(std::forward<decltype(options)>(options));
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
@@ -158,16 +169,16 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline TextEntry getTextEntry(double id) override {
-      auto __result = _swiftPart.getTextEntry(std::forward<decltype(id)>(id));
+    inline InputTarget getInputTarget(double id) override {
+      auto __result = _swiftPart.getInputTarget(std::forward<decltype(id)>(id));
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::vector<TextEntry> getTextEntries() override {
-      auto __result = _swiftPart.getTextEntries();
+    inline std::vector<InputTarget> getInputTargets() override {
+      auto __result = _swiftPart.getInputTargets();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

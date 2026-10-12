@@ -15,19 +15,22 @@
 
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
-// Forward declaration of `ResolveTextOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ResolveTextOptions; }
+// Forward declaration of `ResolveInputUnderlineOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ResolveInputUnderlineOptions; }
+// Forward declaration of `CreateInputAreaOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct CreateInputAreaOptions; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
-// Forward declaration of `TextEntry` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextEntry; }
+// Forward declaration of `InputTarget` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTarget; }
 
 #include "PageInfo.hpp"
-#include "ResolveTextOptions.hpp"
+#include "ResolveInputUnderlineOptions.hpp"
+#include "CreateInputAreaOptions.hpp"
 #include <string>
 #include "TextAnnotationOptions.hpp"
 #include <optional>
-#include "TextEntry.hpp"
+#include "InputTarget.hpp"
 #include <vector>
 
 namespace margelo::nitro::inksignpdf {
@@ -62,13 +65,14 @@ namespace margelo::nitro::inksignpdf {
     public:
       // Methods
       virtual PageInfo getState() = 0;
-      virtual double resolveText(const ResolveTextOptions& options) = 0;
+      virtual double resolveInputUnderline(const ResolveInputUnderlineOptions& options) = 0;
+      virtual double createInputArea(const CreateInputAreaOptions& options) = 0;
       virtual std::string getTextValue(double id) = 0;
       virtual void setTextValue(double id, const std::string& text, const std::optional<TextAnnotationOptions>& options) = 0;
       virtual void setTextOptions(double id, const TextAnnotationOptions& options) = 0;
       virtual double adjustTextSize(double id, double delta) = 0;
-      virtual TextEntry getTextEntry(double id) = 0;
-      virtual std::vector<TextEntry> getTextEntries() = 0;
+      virtual InputTarget getInputTarget(double id) = 0;
+      virtual std::vector<InputTarget> getInputTargets() = 0;
 
     protected:
       // Hybrid Setup

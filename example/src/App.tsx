@@ -102,8 +102,8 @@ export default function App() {
     try {
       const session = view.setMode('view');
       const page = await session.getPage();
-      const id = page.resolveText({ fieldName, direction: fieldRtl ? 'rtl' : 'auto' });
-      await page.focusText(id, { zoom: 3, verticalAnchor: 'bottom', edgeOffset: 8 });
+      const id = page.resolveInputUnderline({ fieldName, direction: fieldRtl ? 'rtl' : 'auto' });
+      await page.focusInputTarget(id, { zoom: 3, verticalAnchor: 'bottom', edgeOffset: 8 });
       view.setMode('ink');
     } catch (error) {
       if (!isOperationCancelled(error)) Alert.alert('Field focus failed', String(error));

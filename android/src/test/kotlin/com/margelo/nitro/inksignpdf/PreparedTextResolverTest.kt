@@ -6,6 +6,32 @@ import org.junit.Test
 
 class PreparedTextResolverTest {
   @Test
+  fun canonicalLabelsAndOrthogonalRulesProjectOncePerQuarterTurn() {
+    val source = PdfiumPreparedPageAnalysis(200.0, 100.0,
+      "Name".mapIndexed { index, char -> glyph(char, 20.0 + index * 6.0, 10.0, 0) },
+      listOf(PdfiumPreparedRule(PagePoint(80.0, 20.0), PagePoint(150.0, 20.0)),
+        PdfiumPreparedRule(PagePoint(160.0, 20.0), PagePoint(160.0, 80.0))))
+    val context = PreparedPageContext(1L, "page", source)
+    val identity = context.labels.single().identity
+    for (rotation in 0..3) {
+      val dimensions = PageCoordinates(PdfPageDimensions(200.0, 100.0)).withRotation(rotation)
+      val projected = context.projected(dimensions)
+      assertTrue("Projection should be cached", projected === context.projected(dimensions))
+      val label = completeLabelMatches(projected.labels, "Name").single()
+      assertEquals(identity, label.identity)
+      assertTrue(label.match.lineHeight > 0.0)
+      assertEquals(1, projected.rules.size)
+      assertEquals(if (rotation % 2 == 0) 0 else 1, projected.rules.single().first.sourceIndex)
+      assertEquals(context.analysis.rules[projected.rules.single().first.sourceIndex], projected.rules.single().first)
+      if (rotation % 2 == 0) {
+        val pair = projected.selectPair(listOf(label), TextKeyOccurrence.FIRST, rotation == 2)
+        assertTrue(pair != null)
+        assertTrue("Pairing should be cached", pair === projected.selectPair(listOf(label), TextKeyOccurrence.FIRST, rotation == 2))
+      }
+    }
+  }
+
+  @Test
   fun joinedWholeLabelMatchPrecedesReorderedWordsAndExcludesPartialLabels() {
     val text = "חתימתהלקוח"
     val joined = preparedTextLabels(PdfiumPreparedPageAnalysis(200.0, 100.0,

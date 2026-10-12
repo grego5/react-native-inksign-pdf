@@ -165,7 +165,7 @@ internal class DocumentTextCommands(
     adjusted
   }
 
-  internal fun resolve(context: PreparedPageContext, options: ResolveTextOptions): Double =
+  internal fun resolve(context: PreparedPageContext, options: InputTargetResolutionOptions): Double =
     core.withMutablePage(context) { page ->
       fonts.resolve(options.font)
       val coordinates = PageCoordinates(page.dimensions)
@@ -188,9 +188,10 @@ internal class DocumentTextCommands(
         )
       } else {
         val directionRtl = resolveDirection(options.direction)
-        val candidates = completeLabelMatches(context.labels, options.fieldName)
+        val projected = context.projected(page.dimensions)
+        val candidates = completeLabelMatches(projected.labels, options.fieldName)
           .filter { label ->
-            val matchBounds = projectMatchBounds(label.match, transform)
+            val matchBounds = PageRect(label.match.left, label.match.top, label.match.right, label.match.bottom)
             options.bounds?.let { region ->
               val left = region.x
               val top = region.y
@@ -203,21 +204,13 @@ internal class DocumentTextCommands(
         if (candidates.isEmpty()) throw PdfSessionException(
           "text_key_not_found", "The complete field label was not found on the captured page",
         )
-        val projectedRules = context.analysis.rules.mapNotNull { rule ->
-          val start = transform.map(rule.start)
-          val end = transform.map(rule.end)
-          if (kotlin.math.abs(start.y - end.y) > 0.001) null else
-            rule to PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y)
-        }
-        val projectedMatches = candidates.map { projectMatch(label = it, transform = transform) }
-        val placement = selectPdfiumTextKeyPlacement(
-          projectedMatches, projectedRules.map { it.second },
-          options.occurrence ?: TextKeyOccurrence.FIRST, directionRtl, page.dimensions,
-        ) ?: throw PdfSessionException(
+        val projectedRules = projected.rules
+        val placement = projected.selectPair(candidates,
+          options.occurrence ?: TextKeyOccurrence.FIRST, directionRtl) ?: throw PdfSessionException(
           "text_rule_not_found", "The complete field label has no usable adjacent rule",
         )
         val label = candidates.firstOrNull {
-          projectMatch(it, transform).sourceIndex == placement.match.sourceIndex
+          it.match.sourceIndex == placement.match.sourceIndex
         } ?: throw IllegalStateException("Resolved prepared label is missing")
         val anchor = options.verticalAnchor ?: TextVerticalAnchor.BOTTOM
         if (placement.rule.y <= 0.0 || placement.rule.y >= page.dimensions.height) {
@@ -254,7 +247,7 @@ internal class DocumentTextCommands(
       selected.id.toDouble()
     }
 
-  internal fun getEntry(context: TextPageContext, rawId: Double): TextEntry =
+  internal fun getEntry(context: TextPageContext, rawId: Double): InputTarget =
     core.withMutablePage(context) { page ->
       val slot = target(context, rawId)
       val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
@@ -264,10 +257,10 @@ internal class DocumentTextCommands(
         slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
         else -> TextValueSource.EMPTY
       }
-      TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
+      InputTarget(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
     }
 
-  internal fun getEntries(context: TextPageContext): Array<TextEntry> =
+  internal fun getEntries(context: TextPageContext): Array<InputTarget> =
     core.withMutablePage(context) { page ->
       val annotations = moduleAnnotations(page.id).associateBy { it.id }
       coordinator.textTargetsForPage(page.id).map { slot ->
@@ -278,7 +271,7 @@ internal class DocumentTextCommands(
           slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
           else -> TextValueSource.EMPTY
         }
-        TextEntry(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
+        InputTarget(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
       }.toTypedArray()
     }
 
@@ -296,18 +289,6 @@ internal class DocumentTextCommands(
 
   private fun moduleAnnotations(pageId: String): List<TextAnnotation> =
     coordinator.pageForId(pageId)?.history?.contentSnapshot()?.mapNotNull { it.textAnnotationOrNull() }.orEmpty()
-
-  private fun projectMatchBounds(match: PdfiumTextKeyMatch, transform: PageTransform): PageRect =
-    textAnnotationOuterBounds(PageRect(match.left, match.top, match.right, match.bottom), transform, 0.0, 0.0)
-
-  private fun projectMatch(label: PreparedTextLabel, transform: PageTransform): PdfiumTextKeyMatch {
-    val bounds = projectMatchBounds(label.match, transform)
-    val rowStart = transform.map(label.match.rowStart).let { PagePoint(it.x, it.y) }
-    val rowEnd = transform.map(label.match.rowEnd).let { PagePoint(it.x, it.y) }
-    return label.match.copy(left = bounds.left, top = bounds.top, right = bounds.right,
-      bottom = bounds.bottom, lineCenter = (rowStart.y + rowEnd.y) / 2.0,
-      lineHeight = kotlin.math.abs(rowEnd.y - rowStart.y), rowStart = rowStart, rowEnd = rowEnd)
-  }
 
   private fun PageRect.intersectsTarget(other: PageRect) = left < other.right && right > other.left && top < other.bottom && bottom > other.top
 

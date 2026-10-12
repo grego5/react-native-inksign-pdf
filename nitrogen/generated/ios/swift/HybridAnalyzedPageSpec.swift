@@ -14,14 +14,15 @@ public protocol HybridAnalyzedPageSpec_protocol: HybridObject {
 
   // Methods
   func getState() throws -> PageInfo
-  func focusText(id: Double, options: TextFocusOptions?) throws -> Promise<Void>
-  func resolveText(options: ResolveTextOptions) throws -> Double
+  func focusInputTarget(id: Double, options: InputTargetFocusOptions?) throws -> Promise<Void>
+  func resolveInputUnderline(options: ResolveInputUnderlineOptions) throws -> Double
+  func createInputArea(options: CreateInputAreaOptions) throws -> Double
   func getTextValue(id: Double) throws -> String
   func setTextValue(id: Double, text: String, options: TextAnnotationOptions?) throws -> Void
   func setTextOptions(id: Double, options: TextAnnotationOptions) throws -> Void
   func adjustTextSize(id: Double, delta: Double) throws -> Double
-  func getTextEntry(id: Double) throws -> TextEntry
-  func getTextEntries() throws -> [TextEntry]
+  func getInputTarget(id: Double) throws -> InputTarget
+  func getInputTargets() throws -> [InputTarget]
 }
 
 public extension HybridAnalyzedPageSpec_protocol {

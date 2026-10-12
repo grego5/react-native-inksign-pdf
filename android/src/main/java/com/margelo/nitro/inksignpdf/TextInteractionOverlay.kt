@@ -351,7 +351,7 @@ internal class TextInteractionOverlay(
   private var interactionState: InteractionState = InteractionState.Idle
   internal var onTextSelectionChange: ((TextSelection?) -> Unit)? = null
   private var emittedSelection: TextSelection? = null
-  private var editor: TextEntryView? = null
+  private var editor: InputTargetView? = null
   private val defaultFontSize get() = core.text.defaultFontSize
   private val defaultTextColor get() = core.text.defaultTextColor
   private var editorBackgroundColor: Int? = null
@@ -1194,11 +1194,11 @@ internal class TextInteractionOverlay(
     finishPendingTouch(touch)
   }
 
-  private fun showEditor(value: String): TextEntryView {
+  private fun showEditor(value: String): InputTargetView {
     caretFollowPaused = false
     editor?.let { removeView(it) }
     val state = checkNotNull(interactionState as? InteractionState.Editing)
-    val entry = TextEntryView(context).apply {
+    val entry = InputTargetView(context).apply {
       keepPrefixAtTop = state.flowBounds != null
       preserveComposingRangeForFilter = state.flowBounds != null || state.maxLines > 0
       inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
@@ -1570,7 +1570,7 @@ internal class TextInteractionOverlay(
   private fun annotationAt(
     state: InteractionState.Editing,
     text: String,
-    entry: TextEntryView,
+    entry: InputTargetView,
   ): TextAnnotation {
     val presentation = checkNotNull(lastPresentation)
     val flowBounds = state.flowBounds
@@ -1708,7 +1708,7 @@ internal class TextInteractionOverlay(
   }
 
   private fun reconcileEditorPresentation(
-    entry: TextEntryView,
+    entry: InputTargetView,
     currentPresentation: TextPresentationSnapshot,
   ) {
     val state = interactionState as? InteractionState.Editing ?: return
@@ -1729,7 +1729,7 @@ internal class TextInteractionOverlay(
 
   /** Returns the active line's caret with visibility room on either side. */
   private fun activeEditorLineBounds(
-    entry: TextEntryView,
+    entry: InputTargetView,
     state: InteractionState.Editing,
     presentation: TextPresentationSnapshot,
     frame: PageRect = editorBounds(entry, state, presentation),
@@ -1773,7 +1773,7 @@ internal class TextInteractionOverlay(
   }
 
   private fun editorBounds(
-    entry: TextEntryView,
+    entry: InputTargetView,
     state: InteractionState.Editing,
     presentation: TextPresentationSnapshot,
   ): PageRect {
@@ -1785,7 +1785,7 @@ internal class TextInteractionOverlay(
     )
   }
 
-  private fun editorFramePageBounds(entry: TextEntryView, transform: PageTransform): PageRect {
+  private fun editorFramePageBounds(entry: InputTargetView, transform: PageTransform): PageRect {
     val inverse = transform.inverse()
     val points = floatArrayOf(0f, 0f, entry.width.toFloat(), 0f,
       0f, entry.height.toFloat(), entry.width.toFloat(), entry.height.toFloat())
@@ -1803,7 +1803,7 @@ internal class TextInteractionOverlay(
   }
 
   private fun editorFocusBounds(
-    entry: TextEntryView,
+    entry: InputTargetView,
     state: InteractionState.Editing,
     presentation: TextPresentationSnapshot,
   ): PageRect {
@@ -1818,14 +1818,14 @@ internal class TextInteractionOverlay(
     )
   }
 
-  private fun editorBounds(entry: TextEntryView, state: InteractionState.Editing): PageRect {
+  private fun editorBounds(entry: InputTargetView, state: InteractionState.Editing): PageRect {
     return editorBounds(entry, state, checkNotNull(lastPresentation))
   }
 
   private fun editorBoundsFor(
     state: InteractionState.Editing,
     text: String,
-    entry: TextEntryView? = null,
+    entry: InputTargetView? = null,
     presentation: TextPresentationSnapshot? = lastPresentation,
   ): PageRect {
     state.directionSwitchFrame?.let { return it }
@@ -1864,7 +1864,7 @@ internal class TextInteractionOverlay(
 
   /** Measures the current post-edit text with EditText's native layout. */
   private fun editorSize(
-    entry: TextEntryView,
+    entry: InputTargetView,
     state: InteractionState.Editing,
     presentation: TextPresentationSnapshot,
   ): TextIntrinsicSize {
@@ -1932,7 +1932,7 @@ internal class TextInteractionOverlay(
   }
 
   private fun configureEditorPreservingSelection(
-    entry: TextEntryView,
+    entry: InputTargetView,
     fontSize: Double,
     directionRtl: Boolean,
     textColor: Int = defaultTextColor,
@@ -1958,7 +1958,7 @@ internal class TextInteractionOverlay(
     }
   }
 
-  private fun materializedEditorText(entry: TextEntryView): String {
+  private fun materializedEditorText(entry: InputTargetView): String {
     val text = entry.text?.toString().orEmpty()
     val layout = entry.layout ?: return text
     return materializeSoftWraps(
@@ -1998,7 +1998,7 @@ internal class TextInteractionOverlay(
       setStroke(dp(1), stroke)
     }
 
-  private fun updateEditorPadding(entry: TextEntryView, fontSizePx: Double, constrainedFlow: Boolean) {
+  private fun updateEditorPadding(entry: InputTargetView, fontSizePx: Double, constrainedFlow: Boolean) {
     val horizontal = if (constrainedFlow) 0 else textEditorPaddingPx(fontSizePx, textEditorHorizontalPaddingRatio)
     val vertical = if (constrainedFlow) 0 else textEditorPaddingPx(fontSizePx, textEditorVerticalPaddingRatio)
     if (entry.paddingLeft != horizontal || entry.paddingTop != vertical) {
@@ -2028,7 +2028,7 @@ internal class TextInteractionOverlay(
     else -> null
   }
 
-  private class TextEntryView(context: Context) : EditText(context) {
+  private class InputTargetView(context: Context) : EditText(context) {
     data class PendingComposingReplacement(
       val start: Int,
       val end: Int,

@@ -16,6 +16,8 @@ namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `AndroidFallbackFont` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
+// Forward declaration of `CreateInputAreaOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct CreateInputAreaOptions; }
 // Forward declaration of `DocumentState` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
@@ -34,6 +36,10 @@ namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `InputMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InputMode; }
+// Forward declaration of `InputTargetFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTargetFocusOptions; }
+// Forward declaration of `InputTarget` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTarget; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
@@ -48,8 +54,8 @@ namespace margelo::nitro::inksignpdf { struct PageInfo; }
 namespace margelo::nitro::inksignpdf { enum class PageType; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
-// Forward declaration of `ResolveTextOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ResolveTextOptions; }
+// Forward declaration of `ResolveInputUnderlineOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ResolveInputUnderlineOptions; }
 // Forward declaration of `TaggedPageQuery` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `TextAlignment` to properly resolve imports.
@@ -60,10 +66,6 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
-// Forward declaration of `TextEntry` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextEntry; }
-// Forward declaration of `TextFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
@@ -88,6 +90,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "AddPagesOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AndroidFallbackFont.hpp"
+#include "CreateInputAreaOptions.hpp"
 #include "DocumentState.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
@@ -97,6 +100,8 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "HybridTextHandleSpec.hpp"
 #include "ImagePageSize.hpp"
 #include "InputMode.hpp"
+#include "InputTarget.hpp"
+#include "InputTargetFocusOptions.hpp"
 #include "InteractionMode.hpp"
 #include "NamedFontSource.hpp"
 #include "PageChangeEvent.hpp"
@@ -104,14 +109,12 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "PageInfo.hpp"
 #include "PageType.hpp"
 #include "PagerDirection.hpp"
-#include "ResolveTextOptions.hpp"
+#include "ResolveInputUnderlineOptions.hpp"
 #include "TaggedPageQuery.hpp"
 #include "TextAlignment.hpp"
 #include "TextAnnotationBounds.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
-#include "TextEntry.hpp"
-#include "TextFocusOptions.hpp"
 #include "TextKeyOccurrence.hpp"
 #include "TextModeOptions.hpp"
 #include "TextSelection.hpp"

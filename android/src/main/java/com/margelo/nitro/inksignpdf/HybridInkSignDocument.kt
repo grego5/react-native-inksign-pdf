@@ -69,11 +69,12 @@ internal class HybridDocumentPage(core: DocumentCore, context: PreparedPageConte
   private fun <T> use(action: (DocumentCore) -> T): T = core.get()?.let(action)
     ?: throw PdfSessionException("operation_cancelled", "The document has been released")
   override fun getState(): PageInfo = use { it.pageInfo(context) }
-  override fun resolveText(options: ResolveTextOptions) = use { it.text.resolve(context, options) }
+  override fun resolveInputUnderline(options: ResolveInputUnderlineOptions) = use { it.text.resolve(context, options.resolutionOptions()) }
+  override fun createInputArea(options: CreateInputAreaOptions) = use { it.text.resolve(context, options.resolutionOptions()) }
   override fun getTextValue(id: Double) = use { it.text.getValue(context, id) }
   override fun setTextValue(id: Double, text: String, options: TextAnnotationOptions?) = use { it.text.setValue(context, id, text, options) }
   override fun setTextOptions(id: Double, options: TextAnnotationOptions) = use { it.text.setOptions(context, id, options) }
   override fun adjustTextSize(id: Double, delta: Double) = use { it.text.adjustSize(context, id, delta) }
-  override fun getTextEntry(id: Double) = use { it.text.getEntry(context, id) }
-  override fun getTextEntries() = use { it.text.getEntries(context) }
+  override fun getInputTarget(id: Double) = use { it.text.getEntry(context, id) }
+  override fun getInputTargets() = use { it.text.getEntries(context) }
 }

@@ -55,14 +55,15 @@ namespace margelo::nitro::inksignpdf {
   public:
     // Methods
     PageInfo getState() override;
-    std::shared_ptr<Promise<void>> focusText(double id, const std::optional<TextFocusOptions>& options) override;
-    double resolveText(const ResolveTextOptions& options) override;
+    std::shared_ptr<Promise<void>> focusInputTarget(double id, const std::optional<InputTargetFocusOptions>& options) override;
+    double resolveInputUnderline(const ResolveInputUnderlineOptions& options) override;
+    double createInputArea(const CreateInputAreaOptions& options) override;
     std::string getTextValue(double id) override;
     void setTextValue(double id, const std::string& text, const std::optional<TextAnnotationOptions>& options) override;
     void setTextOptions(double id, const TextAnnotationOptions& options) override;
     double adjustTextSize(double id, double delta) override;
-    TextEntry getTextEntry(double id) override;
-    std::vector<TextEntry> getTextEntries() override;
+    InputTarget getInputTarget(double id) override;
+    std::vector<InputTarget> getInputTargets() override;
 
   private:
     jni::global_ref<JHybridAnalyzedPageSpec::JavaPart> _javaPart;

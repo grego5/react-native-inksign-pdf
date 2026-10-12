@@ -32,6 +32,10 @@ namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
 namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
+// Forward declaration of `InputTargetFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTargetFocusOptions; }
+// Forward declaration of `InputTarget` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTarget; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 // Forward declaration of `NamedFontSource` to properly resolve imports.
@@ -56,10 +60,6 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 // Forward declaration of `TextDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextDirection; }
-// Forward declaration of `TextEntry` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextEntry; }
-// Forward declaration of `TextFocusOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextFocusOptions; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
@@ -102,6 +102,8 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "HybridModeSessionSpec.hpp"
 #include "HybridTextHandleSpec.hpp"
 #include "ImagePageSize.hpp"
+#include "InputTarget.hpp"
+#include "InputTargetFocusOptions.hpp"
 #include "InteractionMode.hpp"
 #include "NamedFontSource.hpp"
 #include "PageChangeEvent.hpp"
@@ -114,8 +116,6 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "TextAnnotationBounds.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "TextDirection.hpp"
-#include "TextEntry.hpp"
-#include "TextFocusOptions.hpp"
 #include "TextKeyOccurrence.hpp"
 #include "TextModeOptions.hpp"
 #include "TextSelection.hpp"
@@ -244,18 +244,18 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::optional<TextFocusOptions>
+  // pragma MARK: std::optional<InputTargetFocusOptions>
   /**
-   * Specialized version of `std::optional<TextFocusOptions>`.
+   * Specialized version of `std::optional<InputTargetFocusOptions>`.
    */
-  using std__optional_TextFocusOptions_ = std::optional<TextFocusOptions>;
-  inline std::optional<TextFocusOptions> create_std__optional_TextFocusOptions_(const TextFocusOptions& value) noexcept {
-    return std::optional<TextFocusOptions>(value);
+  using std__optional_InputTargetFocusOptions_ = std::optional<InputTargetFocusOptions>;
+  inline std::optional<InputTargetFocusOptions> create_std__optional_InputTargetFocusOptions_(const InputTargetFocusOptions& value) noexcept {
+    return std::optional<InputTargetFocusOptions>(value);
   }
-  inline bool has_value_std__optional_TextFocusOptions_(const std::optional<TextFocusOptions>& optional) noexcept {
+  inline bool has_value_std__optional_InputTargetFocusOptions_(const std::optional<InputTargetFocusOptions>& optional) noexcept {
     return optional.has_value();
   }
-  inline TextFocusOptions get_std__optional_TextFocusOptions_(const std::optional<TextFocusOptions>& optional) noexcept {
+  inline InputTargetFocusOptions get_std__optional_InputTargetFocusOptions_(const std::optional<InputTargetFocusOptions>& optional) noexcept {
     return optional.value();
   }
   
@@ -408,13 +408,13 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::vector<TextEntry>
+  // pragma MARK: std::vector<InputTarget>
   /**
-   * Specialized version of `std::vector<TextEntry>`.
+   * Specialized version of `std::vector<InputTarget>`.
    */
-  using std__vector_TextEntry_ = std::vector<TextEntry>;
-  inline std::vector<TextEntry> create_std__vector_TextEntry_(size_t size) noexcept {
-    std::vector<TextEntry> vector;
+  using std__vector_InputTarget_ = std::vector<InputTarget>;
+  inline std::vector<InputTarget> create_std__vector_InputTarget_(size_t size) noexcept {
+    std::vector<InputTarget> vector;
     vector.reserve(size);
     return vector;
   }
@@ -476,22 +476,22 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Result<void>::withError(error);
   }
   
-  // pragma MARK: Result<TextEntry>
-  using Result_TextEntry_ = Result<TextEntry>;
-  inline Result_TextEntry_ create_Result_TextEntry_(const TextEntry& value) noexcept {
-    return Result<TextEntry>::withValue(value);
+  // pragma MARK: Result<InputTarget>
+  using Result_InputTarget_ = Result<InputTarget>;
+  inline Result_InputTarget_ create_Result_InputTarget_(const InputTarget& value) noexcept {
+    return Result<InputTarget>::withValue(value);
   }
-  inline Result_TextEntry_ create_Result_TextEntry_(const std::exception_ptr& error) noexcept {
-    return Result<TextEntry>::withError(error);
+  inline Result_InputTarget_ create_Result_InputTarget_(const std::exception_ptr& error) noexcept {
+    return Result<InputTarget>::withError(error);
   }
   
-  // pragma MARK: Result<std::vector<TextEntry>>
-  using Result_std__vector_TextEntry__ = Result<std::vector<TextEntry>>;
-  inline Result_std__vector_TextEntry__ create_Result_std__vector_TextEntry__(const std::vector<TextEntry>& value) noexcept {
-    return Result<std::vector<TextEntry>>::withValue(value);
+  // pragma MARK: Result<std::vector<InputTarget>>
+  using Result_std__vector_InputTarget__ = Result<std::vector<InputTarget>>;
+  inline Result_std__vector_InputTarget__ create_Result_std__vector_InputTarget__(const std::vector<InputTarget>& value) noexcept {
+    return Result<std::vector<InputTarget>>::withValue(value);
   }
-  inline Result_std__vector_TextEntry__ create_Result_std__vector_TextEntry__(const std::exception_ptr& error) noexcept {
-    return Result<std::vector<TextEntry>>::withError(error);
+  inline Result_std__vector_InputTarget__ create_Result_std__vector_InputTarget__(const std::exception_ptr& error) noexcept {
+    return Result<std::vector<InputTarget>>::withError(error);
   }
   
   // pragma MARK: std::shared_ptr<HybridTextHandleSpec>

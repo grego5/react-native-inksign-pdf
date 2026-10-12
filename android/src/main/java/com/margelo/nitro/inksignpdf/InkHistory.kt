@@ -135,7 +135,7 @@ internal class InkHistory(private val recordHistory: Boolean = true) {
   private val base = ArrayList<Entry>()
   private val tracked = ArrayList<Entry>()
   /** Text targets keep their identity after deletion or undo, until document retirement. */
-  private val insertedTextIds = HashSet<Long>()
+  private val insertedInputTargetIds = HashSet<Long>()
   private val undoStack = ArrayList<HistoryAction>()
   private val redoStack = ArrayList<HistoryAction>()
   var revision: Long = 0L
@@ -221,7 +221,7 @@ internal class InkHistory(private val recordHistory: Boolean = true) {
     is PageContent.Text -> appendText(content.annotation)
   }
   fun appendText(annotation: TextAnnotation, untracked: Boolean = false) {
-    if (insertedTextIds.add(annotation.id)) {
+    if (insertedInputTargetIds.add(annotation.id)) {
       appendFresh(PageContent.Text(annotation), untracked)
       return
     }
@@ -322,7 +322,7 @@ internal class InkHistory(private val recordHistory: Boolean = true) {
   fun reset() {
     base.clear()
     tracked.clear()
-    insertedTextIds.clear()
+    insertedInputTargetIds.clear()
     undoStack.clear()
     redoStack.clear()
     revision += 1L

@@ -224,6 +224,28 @@ class PdfiumSmokeInstrumentationTest {
   }
 
   @Test
+  fun oversizedPreparedPageIsCopiedBeforeCacheEviction() {
+    // 160,000 positioned glyphs exceed the worker's 8 MiB geometry budget.
+    val row = "A".repeat(800)
+    val content = buildString {
+      append("BT /F1 12 Tf 1 0 0 1 10 630 Tm (AB) Tj ET\n")
+      append("BT /F1 1 Tf\n")
+      repeat(200) { index -> append("1 0 0 1 10 ${10 + index * 3} Tm ($row) Tj\n") }
+      append("ET\n")
+    }
+    PdfiumRenderSession.open(textPagePdf(content, pageWidth = 600, pageHeight = 650)).use { session ->
+      val first = session.preparePageAnalysis(0)
+      assertTrue(first.glyphs.count { it.bounds != null } >= 160_000)
+      val second = session.preparePageAnalysis(0)
+      assertEquals(first.glyphs.size, second.glyphs.size)
+      assertEquals(1, completeLabelMatches(preparedTextLabels(first), "AB").size)
+      assertEquals(1, completeLabelMatches(preparedTextLabels(second), "AB").size)
+      val scans = session.pageAnalysisScanCountsForTesting()
+      assertEquals("Oversized entries must be evicted after snapshot delivery", 2, scans[2])
+    }
+  }
+
+  @Test
   fun suppliedDiagnosticPdfsExposeBothHorizontalRuleStyles() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val testAssets = instrumentation.context.assets
@@ -516,11 +538,11 @@ class PdfiumSmokeInstrumentationTest {
     return textPagePdf(content, pageWidth = 120)
   }
 
-  private fun textPagePdf(content: String, pageWidth: Int = 100): ByteArray {
+  private fun textPagePdf(content: String, pageWidth: Int = 100, pageHeight: Int = 100): ByteArray {
     val objects = listOf(
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
       "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-      "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $pageWidth 100] " +
+      "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $pageWidth $pageHeight] " +
         "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
       "4 0 obj\n<< /Length ${content.toByteArray(Charsets.ISO_8859_1).size} >>\n" +
         "stream\n$content\nendstream\nendobj\n",

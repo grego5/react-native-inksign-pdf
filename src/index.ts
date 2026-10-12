@@ -6,13 +6,14 @@ import { createViewConnection } from './viewConnection';
 import {
   argumentError,
   validateAddPagesOptions,
-  validateTextFocusOptions,
+  validateInputTargetFocusOptions,
   validatePageIndex,
   validatePageQuery,
   validatePageTag,
   validatePagerDirection,
-  validateResolveTextOptions,
-  validateTextId,
+  validateResolveInputUnderlineOptions,
+  validateCreateInputAreaOptions,
+  validateInputTargetId,
   validateTextAnnotationOptions,
   validateTextModeOptions,
   validateViewportOptions,
@@ -24,14 +25,15 @@ import type {
   PageTextMethods,
   ModeSession,
   InputMode,
-  ResolveTextOptions,
-  TextEntry,
-  TextId,
+  ResolveInputUnderlineOptions,
+  CreateInputAreaOptions,
+  InputTarget,
+  InputTargetId,
   TextSelection,
   TextHandle,
   TextValueSource,
   PagerDirection,
-  TextFocusOptions,
+  InputTargetFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
   PageQuery,
@@ -73,7 +75,7 @@ export type {
   AnalyzedPage,
   ModeSession,
   InputMode,
-  TextFocusOptions,
+  InputTargetFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
   PageQuery,
@@ -102,9 +104,10 @@ export type {
   AndroidFallbackFont,
   ViewerState,
   InteractionMode,
-  ResolveTextOptions,
-  TextEntry,
-  TextId,
+  ResolveInputUnderlineOptions,
+  CreateInputAreaOptions,
+  InputTarget,
+  InputTargetId,
   TextSelection,
   TextHandle,
   TextValueSource,
@@ -208,38 +211,42 @@ function createValidatedTextHandle(native: TextHandle): TextHandle {
 
 function createValidatedPageText(native: PageTextMethods): PageTextMethods {
   return {
-    resolveText(options) {
-      validateResolveTextOptions(options);
-      return native.resolveText(options);
+    resolveInputUnderline(options) {
+      validateResolveInputUnderlineOptions(options);
+      return native.resolveInputUnderline(options);
+    },
+    createInputArea(options) {
+      validateCreateInputAreaOptions(options);
+      return native.createInputArea(options);
     },
     getTextValue(id) {
-      validateTextId(id);
+      validateInputTargetId(id);
       return native.getTextValue(id);
     },
     setTextValue(id, text, options) {
-      validateTextId(id);
+      validateInputTargetId(id);
       if (typeof text !== 'string') throw argumentError('invalid_text', 'Text must be a string');
       validateTextAnnotationOptions(options);
       native.setTextValue(id, text, options);
     },
     setTextOptions(id, options) {
-      validateTextId(id);
+      validateInputTargetId(id);
       if (options === undefined)
         throw argumentError('invalid_text_options', 'Text options are required');
       validateTextAnnotationOptions(options);
       native.setTextOptions(id, options);
     },
-    getTextEntry(id) {
-      validateTextId(id);
-      return native.getTextEntry(id);
+    getInputTarget(id) {
+      validateInputTargetId(id);
+      return native.getInputTarget(id);
     },
     adjustTextSize(id, delta) {
-      validateTextId(id);
+      validateInputTargetId(id);
       if (!Number.isFinite(delta))
         throw argumentError('invalid_text_size_delta', 'Text size delta must be finite');
       return native.adjustTextSize(id, delta);
     },
-    getTextEntries: () => native.getTextEntries(),
+    getInputTargets: () => native.getInputTargets(),
   };
 }
 
@@ -252,11 +259,11 @@ function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): Analyzed
     dispose: () => native.dispose(),
     getState: () => native.getState(),
     ...createValidatedPageText(native),
-    focusText(id, options) {
-      validateTextId(id);
+    focusInputTarget(id, options) {
+      validateInputTargetId(id);
       return callAsync(
-        () => validateTextFocusOptions(options),
-        () => native.focusText(id, options),
+        () => validateInputTargetFocusOptions(options),
+        () => native.focusInputTarget(id, options),
       );
     },
   };

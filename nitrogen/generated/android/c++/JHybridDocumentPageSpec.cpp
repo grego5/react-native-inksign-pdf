@@ -9,14 +9,14 @@
 
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
-// Forward declaration of `TextEntry` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TextEntry; }
+// Forward declaration of `InputTarget` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTarget; }
 // Forward declaration of `TextAnnotationBounds` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationBounds; }
 // Forward declaration of `TextValueSource` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextValueSource; }
-// Forward declaration of `ResolveTextOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ResolveTextOptions; }
+// Forward declaration of `ResolveInputUnderlineOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ResolveInputUnderlineOptions; }
 // Forward declaration of `TextKeyOccurrence` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextKeyOccurrence; }
 // Forward declaration of `TextDirection` to properly resolve imports.
@@ -25,6 +25,8 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
+// Forward declaration of `CreateInputAreaOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct CreateInputAreaOptions; }
 // Forward declaration of `TextAnnotationOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 
@@ -32,15 +34,15 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 #include "JPageInfo.hpp"
 #include <string>
 #include <optional>
-#include "TextEntry.hpp"
-#include "JTextEntry.hpp"
+#include "InputTarget.hpp"
+#include "JInputTarget.hpp"
 #include "TextAnnotationBounds.hpp"
 #include "JTextAnnotationBounds.hpp"
 #include "TextValueSource.hpp"
 #include "JTextValueSource.hpp"
 #include <vector>
-#include "ResolveTextOptions.hpp"
-#include "JResolveTextOptions.hpp"
+#include "ResolveInputUnderlineOptions.hpp"
+#include "JResolveInputUnderlineOptions.hpp"
 #include "TextKeyOccurrence.hpp"
 #include "JTextKeyOccurrence.hpp"
 #include <NitroModules/Null.hpp>
@@ -53,6 +55,8 @@ namespace margelo::nitro::inksignpdf { struct TextAnnotationOptions; }
 #include "JTextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
 #include "JTextVerticalAnchor.hpp"
+#include "CreateInputAreaOptions.hpp"
+#include "JCreateInputAreaOptions.hpp"
 #include "TextAnnotationOptions.hpp"
 #include "JTextAnnotationOptions.hpp"
 
@@ -94,9 +98,14 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart);
     return __result->toCpp();
   }
-  double JHybridDocumentPageSpec::resolveText(const ResolveTextOptions& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<double(jni::alias_ref<JResolveTextOptions> /* options */)>("resolveText");
-    auto __result = method(_javaPart, JResolveTextOptions::fromCpp(options));
+  double JHybridDocumentPageSpec::resolveInputUnderline(const ResolveInputUnderlineOptions& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<double(jni::alias_ref<JResolveInputUnderlineOptions> /* options */)>("resolveInputUnderline");
+    auto __result = method(_javaPart, JResolveInputUnderlineOptions::fromCpp(options));
+    return __result;
+  }
+  double JHybridDocumentPageSpec::createInputArea(const CreateInputAreaOptions& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<double(jni::alias_ref<JCreateInputAreaOptions> /* options */)>("createInputArea");
+    auto __result = method(_javaPart, JCreateInputAreaOptions::fromCpp(options));
     return __result;
   }
   std::string JHybridDocumentPageSpec::getTextValue(double id) {
@@ -117,17 +126,17 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart, id, delta);
     return __result;
   }
-  TextEntry JHybridDocumentPageSpec::getTextEntry(double id) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JTextEntry>(double /* id */)>("getTextEntry");
+  InputTarget JHybridDocumentPageSpec::getInputTarget(double id) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JInputTarget>(double /* id */)>("getInputTarget");
     auto __result = method(_javaPart, id);
     return __result->toCpp();
   }
-  std::vector<TextEntry> JHybridDocumentPageSpec::getTextEntries() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<JTextEntry>>()>("getTextEntries");
+  std::vector<InputTarget> JHybridDocumentPageSpec::getInputTargets() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JArrayClass<JInputTarget>>()>("getInputTargets");
     auto __result = method(_javaPart);
     return [&](auto&& __input) {
       size_t __size = __input->size();
-      std::vector<TextEntry> __vector;
+      std::vector<InputTarget> __vector;
       __vector.reserve(__size);
       for (size_t __i = 0; __i < __size; __i++) {
         auto __element = __input->getElement(__i);

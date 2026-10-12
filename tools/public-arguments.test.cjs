@@ -5,9 +5,10 @@ const {
   validateTextAnnotationBounds,
   validateTextAnnotationOptions,
   validateTextModeOptions,
-  validateResolveTextOptions,
-  validateTextId,
-  validateTextFocusOptions,
+  validateResolveInputUnderlineOptions,
+  validateCreateInputAreaOptions,
+  validateInputTargetId,
+  validateInputTargetFocusOptions,
   validatePagerDirection,
 } = require('../lib/commonjs/publicArguments.js');
 
@@ -65,22 +66,22 @@ test('text options validate alignment and physical placement dimensions', () => 
 });
 
 test('prepared text options require a named label or bounded free target and safe numeric IDs', () => {
-  assert.doesNotThrow(() => validateResolveTextOptions({ fieldName: 'Signer' }));
-  assert.doesNotThrow(() => validateResolveTextOptions({
+  assert.doesNotThrow(() => validateResolveInputUnderlineOptions({ fieldName: 'Signer' }));
+  assert.doesNotThrow(() => validateCreateInputAreaOptions({
     bounds: { x: 10, y: 20, width: 100, height: 40 }, fontSize: 18,
   }));
   for (const options of [{}, { fieldName: '' }, { fieldName: 'Signer', occurrence: 'nearest' }]) {
-    assert.throws(() => validateResolveTextOptions(options));
+    assert.throws(() => validateResolveInputUnderlineOptions(options));
   }
   for (const id of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
-    assert.throws(() => validateTextId(id), { message: /^invalid_text_id:/ });
+    assert.throws(() => validateInputTargetId(id), { message: /^invalid_text_id:/ });
   }
-  assert.doesNotThrow(() => validateTextId(Number.MAX_SAFE_INTEGER));
+  assert.doesNotThrow(() => validateInputTargetId(Number.MAX_SAFE_INTEGER));
 });
 
 test('focus and pager direction validate their supported values', () => {
-  assert.doesNotThrow(() => validateTextFocusOptions({ zoom: 3 }));
-  assert.throws(() => validateTextFocusOptions({ verticalAnchor: 'middle' }), {
+  assert.doesNotThrow(() => validateInputTargetFocusOptions({ zoom: 3 }));
+  assert.throws(() => validateInputTargetFocusOptions({ verticalAnchor: 'middle' }), {
     message: /^invalid_text_focus_options:/,
   });
   for (const direction of [undefined, 'auto', 'ltr', 'rtl']) {

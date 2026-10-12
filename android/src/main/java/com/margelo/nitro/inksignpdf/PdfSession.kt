@@ -56,7 +56,7 @@ internal class PdfSessionException(
 internal interface PdfSessionResource : AutoCloseable {
   val info: PdfSessionInfo
 
-  fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> = emptyList()
+  fun canonicalWritingRules(pageIndex: Int): List<PdfiumPreparedRule> = emptyList()
   fun preparePageAnalysis(pageIndex: Int): PdfiumPreparedPageAnalysis =
     throw UnsupportedOperationException("Prepared page analysis is unavailable for this PDF session")
 
@@ -119,15 +119,18 @@ internal class PdfSession private constructor(
     pdfiumSession.close()
   }
 
-  override fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> =
+  override fun canonicalWritingRules(pageIndex: Int): List<PdfiumPreparedRule> =
     pdfiumSession.preparePageAnalysis(pageIndex).let { analysis ->
       val labels = preparedTextLabels(analysis)
       analysis.rules.map { rule ->
+        val left = minOf(rule.start.x, rule.end.x)
+        val right = maxOf(rule.start.x, rule.end.x)
+        val y = (rule.start.y + rule.end.y) / 2.0
         val labelHeight = labels.mapNotNull { label ->
           val match = label.match
-          val adjacent = rule.left >= match.right || rule.right <= match.left
+          val adjacent = left >= match.right || right <= match.left
           match.lineHeight.takeIf {
-            adjacent && rule.y >= match.top && kotlin.math.abs(rule.y - match.lineCenter) <= match.lineHeight
+            kotlin.math.abs(rule.start.y - rule.end.y) <= 0.001 && adjacent && y >= match.top && kotlin.math.abs(y - match.lineCenter) <= match.lineHeight
           }
         }.maxOrNull()
         rule.copy(labelLineHeight = labelHeight)
@@ -586,10 +589,10 @@ internal class PdfSessionWorker(
     completion(result)
   }
 
-  fun horizontalSnapCandidates(
+  fun canonicalWritingRules(
     generation: Long,
     pageIndex: Int,
-    completion: (Result<List<PdfiumHorizontalSnapCandidate>>) -> Unit,
+    completion: (Result<List<PdfiumPreparedRule>>) -> Unit,
   ) {
     if (closed) {
       completion(Result.failure(cancelled(generation)))
@@ -600,7 +603,7 @@ internal class PdfSessionWorker(
         val result = runCatching {
           val session = current ?: throw cancelled(generation)
           if (session.info.generation != generation) throw cancelled(generation)
-          session.horizontalSnapCandidates(pageIndex)
+          session.canonicalWritingRules(pageIndex)
         }
         completion(result)
       }

@@ -17,8 +17,11 @@ internal class HybridAnalyzedPage(
 
   override fun getState(): PageInfo = withOwner { it.core.pageInfo(context) }
 
-  override fun resolveText(options: ResolveTextOptions): Double =
-    withOwner { it.resolvePreparedText(context, options) }
+  override fun resolveInputUnderline(options: ResolveInputUnderlineOptions): Double =
+    withOwner { it.resolvePreparedText(context, options.resolutionOptions()) }
+
+  override fun createInputArea(options: CreateInputAreaOptions): Double =
+    withOwner { it.resolvePreparedText(context, options.resolutionOptions()) }
 
   override fun getTextValue(id: Double): String =
     withOwner { it.readPreparedTextValue(context, id) }
@@ -34,13 +37,13 @@ internal class HybridAnalyzedPage(
     withOwner { it.setPreparedTextOptions(context, id, options) }
   }
 
-  override fun getTextEntry(id: Double): TextEntry =
-    withOwner { it.preparedTextEntry(context, id) }
+  override fun getInputTarget(id: Double): InputTarget =
+    withOwner { it.preparedInputTarget(context, id) }
 
-  override fun getTextEntries(): Array<TextEntry> =
+  override fun getInputTargets(): Array<InputTarget> =
     withOwner { it.preparedTextEntries(context) }
 
-  override fun focusText(id: Double, options: TextFocusOptions?): com.margelo.nitro.core.Promise<Unit> =
+  override fun focusInputTarget(id: Double, options: InputTargetFocusOptions?): com.margelo.nitro.core.Promise<Unit> =
     withOwner { it.focusPreparedText(context, id, options, modeSession) }
 
   private fun <T> withOwner(action: (HybridInkSignView) -> T): T =

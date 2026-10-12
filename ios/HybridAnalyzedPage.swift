@@ -50,8 +50,12 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContex
     }
   }
 
-  func resolveText(options: ResolveTextOptions) throws -> Double {
-    try withOwner { try $0.resolvePreparedText(self, options: options) }
+  func resolveInputUnderline(options: ResolveInputUnderlineOptions) throws -> Double {
+    try withOwner { try $0.resolvePreparedText(self, options: InputTargetResolutionOptions(options)) }
+  }
+
+  func createInputArea(options: CreateInputAreaOptions) throws -> Double {
+    try withOwner { try $0.resolvePreparedText(self, options: InputTargetResolutionOptions(options)) }
   }
 
   func getTextValue(id: Double) throws -> String {
@@ -71,15 +75,15 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContex
     try withOwner { try $0.adjustPreparedTextSize(self, id: id, delta: delta) }
   }
 
-  func getTextEntry(id: Double) throws -> TextEntry {
-    try withOwner { try $0.preparedTextEntry(self, id: id) }
+  func getInputTarget(id: Double) throws -> InputTarget {
+    try withOwner { try $0.preparedInputTarget(self, id: id) }
   }
 
-  func getTextEntries() throws -> [TextEntry] {
+  func getInputTargets() throws -> [InputTarget] {
     try withOwner { try $0.preparedTextEntries(self) }
   }
 
-  func focusText(id: Double, options: TextFocusOptions?) throws -> Promise<Void> {
+  func focusInputTarget(id: Double, options: InputTargetFocusOptions?) throws -> Promise<Void> {
     try withOwner { try $0.focusPreparedText(self, id: id, options: options) }
   }
 

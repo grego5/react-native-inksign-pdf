@@ -111,7 +111,7 @@ internal class DocumentCore(
 
   fun documentInfo(): DocumentState = withActiveCore { state.documentInfo() }
 
-  fun getPageIdsByTag(tag: String): Array<String> = withDocument {
+  fun getPageIdsByTag(tag: String): Array<String> = withActiveCore {
     validatePageTag(tag)
     coordinator.pageIdsByTag(tag)
   }
@@ -197,7 +197,7 @@ internal class DocumentCore(
       coordinator.preparePageAnalysis(generation, position, it)
     }
     coordinator.ensureCurrent(generation)
-    val context = PreparedPageContext(generation, page.id, analysis, page.sourceDimensions)
+    val context = PreparedPageContext(generation, page.id, analysis)
     coordinator.retainTextSourceGlyphs(page.id, context.analysis.glyphs)
     prepared[page.id] = context
     return context

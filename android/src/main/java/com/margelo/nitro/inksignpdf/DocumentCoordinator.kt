@@ -50,7 +50,7 @@ internal class MutableDocumentCoordinator(
   private var activeOperation: Long? = null
   private val workingFiles = LinkedHashSet<java.io.File>()
   private var disposed = false
-  private var nextTextId = 1L
+  private var nextInputTargetId = 1L
   private val textTargets = LinkedHashMap<Long, TextTargetSlot>()
   private val textSourceGlyphs = HashMap<String, List<PdfiumPreparedGlyph>>()
   var fallbackFont: PdfFallbackFont? = null
@@ -249,10 +249,10 @@ internal class MutableDocumentCoordinator(
     if (pageForId(pageId) == null) throw PdfSessionException(
       "operation_cancelled", "The target page no longer exists",
     )
-    if (nextTextId > MAX_SAFE_TEXT_ID) throw PdfSessionException(
+    if (nextInputTargetId > MAX_SAFE_TEXT_ID) throw PdfSessionException(
       "text_id_exhausted", "The view has exhausted its numeric text IDs",
     )
-    val slot = TextTargetSlot(nextTextId++, pageId, sourceIdentity, fieldName, canonicalBounds, options,
+    val slot = TextTargetSlot(nextInputTargetId++, pageId, sourceIdentity, fieldName, canonicalBounds, options,
       embeddedValue, canonicalWritingRule, canonicalDetectionBounds, excludedSourceRanges)
     return slot
   }
@@ -671,8 +671,8 @@ internal class MutableDocumentCoordinator(
     completion: (Result<List<PdfiumHorizontalSnapCandidate>>) -> Unit,
   ) {
     val page = page(pageIndex)
-    val transform = PageCoordinates(page.dimensions).layoutToDisplay(page.sourceDimensions)
-    sessionWorker.horizontalSnapCandidates(generation, pageIndex) { result ->
+    val transform = PageCoordinates(page.dimensions).canonicalToDisplayTransform()
+    sessionWorker.canonicalWritingRules(generation, pageIndex) { result ->
       completion(result.map { transformRules(it, transform) })
     }
   }
@@ -692,17 +692,14 @@ internal class MutableDocumentCoordinator(
   }
 
   private fun transformRules(
-    rules: List<PdfiumHorizontalSnapCandidate>,
+    rules: List<PdfiumPreparedRule>,
     transform: PageTransform,
   ): List<PdfiumHorizontalSnapCandidate> = rules.mapNotNull { rule ->
-    val start = transform.map(PagePoint(rule.left, rule.y))
-    val end = transform.map(PagePoint(rule.right, rule.y))
+    val start = transform.map(rule.start)
+    val end = transform.map(rule.end)
     if (kotlin.math.abs(start.y - end.y) > 0.001) null else {
-      val verticalScale = kotlin.math.abs(
-        transform.map(PagePoint(rule.left, rule.y + 1.0)).y - transform.map(PagePoint(rule.left, rule.y)).y,
-      )
       PdfiumHorizontalSnapCandidate(minOf(start.x, end.x), maxOf(start.x, end.x), start.y,
-        rule.labelLineHeight?.times(verticalScale))
+        rule.labelLineHeight)
     }
   }
 

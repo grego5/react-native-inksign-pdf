@@ -137,9 +137,9 @@ open class HybridAnalyzedPageSpec_cxx {
   }
   
   @inline(__always)
-  public final func focusText(id: Double, options: bridge.std__optional_TextFocusOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
+  public final func focusInputTarget(id: Double, options: bridge.std__optional_InputTargetFocusOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
     do {
-      let __result = try self.__implementation.focusText(id: id, options: options.value)
+      let __result = try self.__implementation.focusInputTarget(id: id, options: options.value)
       let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
         let __promise = bridge.create_std__shared_ptr_Promise_void__()
         let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
@@ -156,9 +156,21 @@ open class HybridAnalyzedPageSpec_cxx {
   }
   
   @inline(__always)
-  public final func resolveText(options: ResolveTextOptions) -> bridge.Result_double_ {
+  public final func resolveInputUnderline(options: ResolveInputUnderlineOptions) -> bridge.Result_double_ {
     do {
-      let __result = try self.__implementation.resolveText(options: options)
+      let __result = try self.__implementation.resolveInputUnderline(options: options)
+      let __resultCpp = __result
+      return bridge.create_Result_double_(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_double_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func createInputArea(options: CreateInputAreaOptions) -> bridge.Result_double_ {
+    do {
+      let __result = try self.__implementation.createInputArea(options: options)
       let __resultCpp = __result
       return bridge.create_Result_double_(__resultCpp)
     } catch (let __error) {
@@ -214,32 +226,32 @@ open class HybridAnalyzedPageSpec_cxx {
   }
   
   @inline(__always)
-  public final func getTextEntry(id: Double) -> bridge.Result_TextEntry_ {
+  public final func getInputTarget(id: Double) -> bridge.Result_InputTarget_ {
     do {
-      let __result = try self.__implementation.getTextEntry(id: id)
+      let __result = try self.__implementation.getInputTarget(id: id)
       let __resultCpp = __result
-      return bridge.create_Result_TextEntry_(__resultCpp)
+      return bridge.create_Result_InputTarget_(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_TextEntry_(__exceptionPtr)
+      return bridge.create_Result_InputTarget_(__exceptionPtr)
     }
   }
   
   @inline(__always)
-  public final func getTextEntries() -> bridge.Result_std__vector_TextEntry__ {
+  public final func getInputTargets() -> bridge.Result_std__vector_InputTarget__ {
     do {
-      let __result = try self.__implementation.getTextEntries()
-      let __resultCpp = { () -> bridge.std__vector_TextEntry_ in
-        var __vector = bridge.create_std__vector_TextEntry_(__result.count)
+      let __result = try self.__implementation.getInputTargets()
+      let __resultCpp = { () -> bridge.std__vector_InputTarget_ in
+        var __vector = bridge.create_std__vector_InputTarget_(__result.count)
         for __item in __result {
           __vector.push_back(__item)
         }
         return __vector
       }()
-      return bridge.create_Result_std__vector_TextEntry__(__resultCpp)
+      return bridge.create_Result_std__vector_InputTarget__(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__vector_TextEntry__(__exceptionPtr)
+      return bridge.create_Result_std__vector_InputTarget__(__exceptionPtr)
     }
   }
 }

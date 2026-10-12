@@ -175,7 +175,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertNil(view.interaction.coordinateRequest)
     XCTAssertTrue(view.interactionMode() == .ink)
     let nextPage = try awaitRotationOperation(session.getPage(pageIndex: .first(1)))
-    XCTAssertNoThrow(try nextPage.getTextEntries())
+    XCTAssertNoThrow(try nextPage.getInputTargets())
   }
 
   func testImmediateCloseRejectsRunningAndQueuedViewerCommands() throws {
@@ -227,7 +227,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try awaitRotationOperation(closing)
     _ = try awaitRotationOperation(opening)
     _ = try awaitRotationOperation(replacementAnalysis)
-    XCTAssertThrowsError(try prepared.getTextEntries())
+    XCTAssertThrowsError(try prepared.getInputTargets())
     XCTAssertEqual(Set(identities.compactMap { $0 }).count, 2)
     XCTAssertTrue(identities.contains(where: { $0 == nil }))
     let output = try awaitRotationOperation(fixture.view.finalize())
@@ -973,19 +973,19 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       let historyBefore = state.activePage.history.content
       let modeBefore = view.interaction.isInk
       let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
-      let textOptions = ResolveTextOptions(fieldName: "Name", bounds: nil, occurrence: nil,
+      let textOptions = InputTargetResolutionOptions(fieldName: "Name", bounds: nil, occurrence: nil,
         font: nil, fontSize: nil, color: nil, direction: .ltr, maxLines: 2,
         alignment: nil, verticalAnchor: .bottom)
       if angle == 90 || angle == 270 {
         do {
-          _ = try page.resolveText(options: textOptions)
+          _ = try page.resolveInputTarget(options: textOptions)
           XCTFail("A vertical rule must not accept field insertion")
         } catch { XCTAssertTrue(error.localizedDescription.hasPrefix("text_rule_not_found")) }
         XCTAssertTrue(state.activePage.history.content.equals(historyBefore))
         XCTAssertEqual(view.interaction.isInk, modeBefore)
         continue
       }
-      let textID = try page.resolveText(options: textOptions)
+      let textID = try page.resolveInputTarget(options: textOptions)
       try page.setTextValue(id: textID, text: "OK", options: nil)
       let annotation = try XCTUnwrap(state.activePage.history.content.textAnnotations.last)
       let ruleY: CGFloat = angle == 0 ? 132 : 268
@@ -995,8 +995,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       XCTAssertEqual(annotation.layoutRotation, angle)
       XCTAssertLessThanOrEqual(annotation.bounds.maxY, ruleY)
       for anchor in [FieldFocusVerticalAnchor.top, .bottom] {
-        _ = try awaitRotationOperation(page.focusText(id: textID,
-          options: TextFocusOptions(zoom: 5,
+        _ = try awaitRotationOperation(page.focusInputTarget(id: textID,
+          options: InputTargetFocusOptions(zoom: 5,
                                      verticalAnchor: anchor, edgeOffset: 8)))
         view.documentView.layoutIfNeeded()
         let viewport = view.documentView.bounds
@@ -1252,7 +1252,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let page = try awaitRotationOperation(view.getPage(pageIndex: .first(0)))
     XCTAssertEqual(try view.switchPage(to: 1).pageIndex, 1)
     XCTAssertEqual(coordinator.document?.activePageIndex, 1)
-    let textID = try page.resolveText(options: ResolveTextOptions(
+    let textID = try page.resolveInputTarget(options: InputTargetResolutionOptions(
       fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil, color: nil,
       direction: nil, maxLines: nil, alignment: nil, verticalAnchor: nil))
     try page.setTextValue(id: textID, text: "filled", options: nil)
@@ -1295,7 +1295,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let document = try XCTUnwrap(view.documentCoordinator.document)
     XCTAssertEqual(document.activePage.geometryRevision, 1)
     XCTAssertTrue(document.activePage.history.content.textAnnotations.isEmpty)
-    XCTAssertThrowsError(try page.resolveText(options: ResolveTextOptions(
+    XCTAssertThrowsError(try page.resolveInputTarget(options: InputTargetResolutionOptions(
       fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil, color: nil,
       direction: .ltr, maxLines: nil, alignment: nil, verticalAnchor: .bottom))) {
       XCTAssertTrue($0.localizedDescription.hasPrefix("text_rule_not_found"))
@@ -1335,7 +1335,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     _ = try awaitRotationOperation(view.rotatePage(degrees: 90))
     XCTAssertEqual(view.documentCoordinator.document?.activePage.geometryRevision, 1)
     XCTAssertTrue(view.documentCoordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
-    XCTAssertThrowsError(try page.resolveText(options: ResolveTextOptions(
+    XCTAssertThrowsError(try page.resolveInputTarget(options: InputTargetResolutionOptions(
       fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil, color: nil,
       direction: .ltr, maxLines: nil, alignment: nil, verticalAnchor: nil))) {
       XCTAssertTrue($0.localizedDescription.hasPrefix("text_rule_not_found"))
@@ -1349,7 +1349,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let ordinaryPage = try awaitRotationOperation(view.getPage(pageIndex: nil))
     let session = try view.setMode(mode: .ink, options: nil)
     let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
-    let textID = try page.resolveText(options: ResolveTextOptions(
+    let textID = try page.resolveInputTarget(options: InputTargetResolutionOptions(
       fieldName: nil, bounds: TextAnnotationBounds(x: 50, y: 60, width: 100, height: 30),
       occurrence: nil, font: nil, fontSize: nil, color: nil, direction: nil, maxLines: nil,
       alignment: nil, verticalAnchor: nil))
@@ -1359,8 +1359,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let beforeFocus = try view.interaction.viewport.currentViewportSnapshot().zoom
     let gate = Promise<Void>()
     let blocked = view.enqueueViewerCommand { gate }
-    let focus = try page.focusText(id: textID,
-      options: TextFocusOptions(zoom: 3,
+    let focus = try page.focusInputTarget(id: textID,
+      options: InputTargetFocusOptions(zoom: 3,
         verticalAnchor: nil, edgeOffset: nil))
     let cancelled = expectation(description: "queued session focus cancels promptly")
     focus.catch { error in
@@ -1408,7 +1408,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try awaitModeChange(blocked)
     let page = try awaitRotationOperation(independent)
     XCTAssertEqual(rejectionCount, 1)
-    XCTAssertNoThrow(try page.getTextEntries())
+    XCTAssertNoThrow(try page.getInputTargets())
     XCTAssertThrowsError(try session.getPage(pageIndex: nil))
   }
 
@@ -1438,7 +1438,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(view.documentView.isUserInteractionEnabled)
     XCTAssertTrue(view.canvasView.drawingGestureRecognizer.isEnabled)
     let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
-    XCTAssertNoThrow(try page.getTextEntries())
+    XCTAssertNoThrow(try page.getInputTargets())
     let canvas = view.canvasView
     let canvasPoint = CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY)
     let pointInPDF = canvas.convert(canvasPoint, to: view.documentView)
@@ -1502,13 +1502,13 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
                    promise: replacement)
 
     XCTAssertNil(coordinator.document)
-    XCTAssertThrowsError(try page.getTextEntries()) {
+    XCTAssertThrowsError(try page.getInputTargets()) {
       XCTAssertTrue($0.localizedDescription.hasPrefix("operation_cancelled"))
     }
 
     releaseWorker.signal()
     wait(for: [replacementInstalled], timeout: 5)
-    XCTAssertThrowsError(try page.getTextEntries())
+    XCTAssertThrowsError(try page.getInputTargets())
     XCTAssertTrue(coordinator.document?.activePage.history.content.textAnnotations.isEmpty == true)
   }
 

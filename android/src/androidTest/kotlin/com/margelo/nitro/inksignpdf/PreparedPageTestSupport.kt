@@ -6,6 +6,20 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertTrue
 
+private fun InputTargetResolutionOptions.underlineOptions() = ResolveInputUnderlineOptions(
+  checkNotNull(fieldName), bounds, occurrence, font, fontSize, color, direction, maxLines, alignment, verticalAnchor,
+)
+
+private fun InputTargetResolutionOptions.areaOptions() = CreateInputAreaOptions(
+  checkNotNull(bounds), font, fontSize, color, direction, maxLines, alignment, verticalAnchor,
+)
+
+internal fun HybridAnalyzedPageSpec.resolveInputTarget(options: InputTargetResolutionOptions): Double =
+  if (options.fieldName != null) resolveInputUnderline(options.underlineOptions()) else createInputArea(options.areaOptions())
+
+internal fun HybridDocumentPageSpec.resolveInputTarget(options: InputTargetResolutionOptions): Double =
+  if (options.fieldName != null) resolveInputUnderline(options.underlineOptions()) else createInputArea(options.areaOptions())
+
 internal fun awaitPreparedPage(
   instrumentation: Instrumentation,
   view: HybridInkSignView,
@@ -27,8 +41,8 @@ internal fun awaitPreparedPage(
 }
 
 internal fun resolveFreeTextTarget(page: HybridAnalyzedPageSpec, bounds: TextAnnotationBounds): Double =
-  page.resolveText(
-    ResolveTextOptions(font = null,
+  page.resolveInputTarget(
+    InputTargetResolutionOptions(font = null,
       fieldName = null,
       bounds = bounds,
       occurrence = null,

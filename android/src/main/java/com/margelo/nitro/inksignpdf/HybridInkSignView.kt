@@ -516,7 +516,7 @@ class HybridInkSignView internal constructor(
     return@launchPromise HybridAnalyzedPage(this@HybridInkSignView, context, session)
   }
 
-  internal fun resolvePreparedText(context: PreparedPageContext, options: ResolveTextOptions) =
+  internal fun resolvePreparedText(context: PreparedPageContext, options: InputTargetResolutionOptions) =
     core.text.resolve(context, options.copy(direction = resolvedTextDirection(options.direction)))
 
   override fun getSelectedText(): Variant_HybridTextHandleSpec_NullType = runOnMainSync {
@@ -574,12 +574,12 @@ class HybridInkSignView internal constructor(
     size
   }
 
-  internal fun preparedTextEntry(context: TextPageContext, id: Double): TextEntry = core.withPage(context) {
+  internal fun preparedInputTarget(context: TextPageContext, id: Double): InputTarget = core.withPage(context) {
     val entry = core.text.getEntry(context, id)
     textOverlay.draftText(id.toLong())?.let { entry.copy(value = it, valueSource = TextValueSource.ANNOTATION) } ?: entry
   }
 
-  internal fun preparedTextEntries(context: TextPageContext): Array<TextEntry> = core.withPage(context) {
+  internal fun preparedTextEntries(context: TextPageContext): Array<InputTarget> = core.withPage(context) {
     core.text.getEntries(context).map { entry ->
       textOverlay.draftText(entry.id.toLong())?.let { entry.copy(value = it, valueSource = TextValueSource.ANNOTATION) } ?: entry
     }.toTypedArray()
@@ -588,7 +588,7 @@ class HybridInkSignView internal constructor(
   internal fun focusPreparedText(
     context: TextPageContext,
     rawId: Double,
-    options: TextFocusOptions?,
+    options: InputTargetFocusOptions?,
     session: ModeSessionToken? = null,
   ): Promise<Unit> = launchPromise(presentation = true, modeSession = session) {
     val target = core.text.focusTarget(context, rawId)

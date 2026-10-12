@@ -26,6 +26,43 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class PageRotationInstrumentationTest {
   @Test
+  fun savedRotationRetainsOneCanonicalUnderlineAndTargetIdentity() {
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val context = instrumentation.targetContext
+    for (saved in listOf(0, 90, 180, 270)) {
+      val source = File.createTempFile("canonical-rotation-", ".pdf", context.cacheDir).apply {
+        writeBytes(sourcePdf(320, 400, fieldRules = true, savedRotation = saved, oneRule = true))
+      }
+      val document = await(instrumentation, HybridInkSignDocument(context).open(source.absolutePath, null))
+      try {
+        val page = await(instrumentation, document.getPage(PageQuery.create(0.0)))
+        var originalId: Double? = null
+        if (saved == 90 || saved == 270) {
+          try {
+            page.resolveInputTarget(fieldResolutionOptions())
+            throw AssertionError("Sideways underline unexpectedly resolved")
+          } catch (error: PdfSessionException) {
+            assertEquals("Label must survive saved rotation", "text_rule_not_found", error.code)
+          }
+        } else {
+          originalId = page.resolveInputTarget(fieldResolutionOptions().copy(
+            direction = if (saved == 180) TextDirection.RTL else TextDirection.LTR))
+        }
+        if (saved != 0) await(instrumentation, document.rotatePage(0.0, (360 - saved).toDouble()))
+        val uprightId = page.resolveInputTarget(fieldResolutionOptions())
+        if (originalId != null) assertEquals("Returning upright must retain the target ID", originalId, uprightId, 0.0)
+        await(instrumentation, document.rotatePage(0.0, 90.0))
+        await(instrumentation, document.rotatePage(0.0, 270.0))
+        assertEquals(uprightId, page.resolveInputTarget(fieldResolutionOptions()), 0.0)
+        assertEquals("Name", page.getInputTarget(uprightId).fieldName)
+      } finally {
+        await(instrumentation, document.close())
+        source.delete()
+      }
+    }
+  }
+
+  @Test
   fun deferredRotationPreservesTextLayoutAndCommitsNewTextUpright() {
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
@@ -150,11 +187,11 @@ class PageRotationInstrumentationTest {
       await(instrumentation, viewRef.get().rotatePage(90.0))
       await(instrumentation, viewRef.get().rotatePage(90.0))
 
-      val id = capturedPage.resolveText(fieldResolutionOptions())
+      val id = capturedPage.resolveInputTarget(fieldResolutionOptions())
       capturedPage.setTextValue(id, "OK", null)
       val currentPage = awaitPreparedPage(instrumentation, viewRef.get())
-      assertEquals(id, currentPage.resolveText(fieldResolutionOptions()), 0.0)
-      await(instrumentation, currentPage.focusText(id, TextFocusOptions(
+      assertEquals(id, currentPage.resolveInputTarget(fieldResolutionOptions()), 0.0)
+      await(instrumentation, currentPage.focusInputTarget(id, InputTargetFocusOptions(
         zoom = 5.0,
         verticalAnchor = FieldFocusVerticalAnchor.BOTTOM,
         edgeOffset = 8.0,
@@ -197,13 +234,13 @@ class PageRotationInstrumentationTest {
         val page = awaitPreparedPage(instrumentation, view)
         if (angle == 90 || angle == 270) {
           try {
-            page.resolveText(fieldResolutionOptions())
+            page.resolveInputTarget(fieldResolutionOptions())
             throw AssertionError("A vertical rule must not resolve as a field")
           } catch (error: PdfSessionException) {
             assertEquals("text_rule_not_found", error.code)
           }
           try {
-            await(instrumentation, page.focusText(checkNotNull(stableId), TextFocusOptions(
+            await(instrumentation, page.focusInputTarget(checkNotNull(stableId), InputTargetFocusOptions(
               zoom = 5.0,
               verticalAnchor = FieldFocusVerticalAnchor.BOTTOM,
               edgeOffset = 8.0,
@@ -219,7 +256,7 @@ class PageRotationInstrumentationTest {
           }
           continue
         }
-        val id = page.resolveText(fieldResolutionOptions())
+        val id = page.resolveInputTarget(fieldResolutionOptions())
         if (angle == 180) {
           assertTrue("The opposite source rule must have a distinct target", id != checkNotNull(stableId))
         } else {
@@ -235,7 +272,7 @@ class PageRotationInstrumentationTest {
           assertEquals(angle / 90, annotation.layoutPage?.rotation)
         }
         for (anchor in listOf(FieldFocusVerticalAnchor.TOP, FieldFocusVerticalAnchor.BOTTOM)) {
-          await(instrumentation, page.focusText(id, TextFocusOptions(
+          await(instrumentation, page.focusInputTarget(id, InputTargetFocusOptions(
             zoom = 5.0,
             verticalAnchor = anchor,
             edgeOffset = 8.0,
@@ -387,7 +424,7 @@ class PageRotationInstrumentationTest {
         assertEquals(240.0, info.width, 0.0)
         assertEquals(320.0, info.height, 0.0)
         assertEquals(90.0, info.rotation, 0.0)
-        val id = reopenedPage.resolveText(fieldResolutionOptions().copy(
+        val id = reopenedPage.resolveInputTarget(fieldResolutionOptions().copy(
           fieldName = null, bounds = stampBounds, fontSize = 16.0,
           color = "#D00000", verticalAnchor = TextVerticalAnchor.TOP))
         reopenedPage.setTextValue(id, "STAMP", null)
@@ -571,7 +608,7 @@ class PageRotationInstrumentationTest {
     return checkNotNull(result.get())
   }
 
-  private fun fieldResolutionOptions() = ResolveTextOptions(font = null,
+  private fun fieldResolutionOptions() = InputTargetResolutionOptions(font = null,
     fieldName = "Name",
     bounds = null,
     occurrence = TextKeyOccurrence.FIRST,
@@ -583,10 +620,12 @@ class PageRotationInstrumentationTest {
     verticalAnchor = TextVerticalAnchor.BOTTOM,
   )
 
-  private fun sourcePdf(width: Int, height: Int, fieldRules: Boolean = false, importedInk: Boolean = false): ByteArray {
+  private fun sourcePdf(width: Int, height: Int, fieldRules: Boolean = false, importedInk: Boolean = false,
+                        savedRotation: Int = 0, oneRule: Boolean = false): ByteArray {
     val content = if (fieldRules) {
       "BT /F1 16 Tf 1 0 0 1 140 ${height - 132} Tm (Name) Tj ET\n" +
-        "0 0 0 RG 1 w 20 ${height - 132} m 110 ${height - 132} l S\n" +
+        "0 0 0 RG 1 w\n" +
+        (if (oneRule) "" else "20 ${height - 132} m 110 ${height - 132} l S\n") +
         "210 ${height - 132} m 280 ${height - 132} l S\n"
     } else "BT /F1 16 Tf 1 0 0 1 24 48 Tm (MARK) Tj ET\n" +
       "0 0 0 RG 2 w 20 30 m 100 30 l S\n"
@@ -594,7 +633,7 @@ class PageRotationInstrumentationTest {
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
       "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
       "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $width $height] " +
-        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R " +
+        "/Rotate $savedRotation /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R " +
         (if (importedInk) "/Annots [6 0 R] " else "") + ">>\nendobj\n",
       "4 0 obj\n<< /Length ${content.toByteArray(Charsets.ISO_8859_1).size} >>\nstream\n$content" +
         "endstream\nendobj\n",

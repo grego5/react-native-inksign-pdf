@@ -51,6 +51,7 @@ internal class HybridInkSignViewTextKeyTest {
       instrumentation.runOnMainSync {
         val view = HybridInkSignView(context, worker)
         viewRef.set(view)
+        assertTrue("An empty viewer has no matching page IDs", view.getPageIdsByTag("report").isEmpty())
         val host = view.view
         val exactSize = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         host.measure(exactSize, exactSize)
@@ -249,7 +250,7 @@ internal class HybridInkSignViewTextKeyTest {
       }
       assertTrue("replacement must clear selection", view.getSelectedText().isSecond)
       assertTrue("replacement must not inherit old text targets",
-        awaitPreparedPage(view.getPage(Variant_Double_TaggedPageQuery.create(0.0))).getTextEntries().isEmpty())
+        awaitPreparedPage(view.getPage(Variant_Double_TaggedPageQuery.create(0.0))).getInputTargets().isEmpty())
     } finally {
       releaseAnalysis.countDown()
       instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
@@ -368,7 +369,7 @@ internal class HybridInkSignViewTextKeyTest {
       val ordinary = awaitPreparedPage(view.getPage(null))
       val session = view.setMode(InputMode.INK, null)
       val scoped = awaitPreparedPage(session.getPage(Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", null))))
-      val id = scoped.resolveText(ResolveTextOptions(font = null,
+      val id = scoped.resolveInputTarget(InputTargetResolutionOptions(font = null,
         fieldName = null, bounds = TextAnnotationBounds(50.0, 60.0, 100.0, 30.0),
         occurrence = null, fontSize = null, color = null, direction = null,
         maxLines = null, alignment = null, verticalAnchor = null,
@@ -382,7 +383,7 @@ internal class HybridInkSignViewTextKeyTest {
       val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
       pending.then { throw AssertionError("Cancelled acquisition returned a page") }
         .catch { errors.add(it); cancelled.countDown() }
-      val focus = scoped.focusText(id, TextFocusOptions(3.0, null, null))
+      val focus = scoped.focusInputTarget(id, InputTargetFocusOptions(3.0, null, null))
       focus.then { throw AssertionError("Cancelled focus completed") }
         .catch { errors.add(it); cancelled.countDown() }
       view.setMode(InputMode.INK, null) // A repeated request still creates a new session.

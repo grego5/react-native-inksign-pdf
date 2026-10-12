@@ -36,11 +36,15 @@ abstract class HybridAnalyzedPageSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
-  abstract fun focusText(id: Double, options: TextFocusOptions?): Promise<Unit>
+  abstract fun focusInputTarget(id: Double, options: InputTargetFocusOptions?): Promise<Unit>
   
   @DoNotStrip
   @Keep
-  abstract fun resolveText(options: ResolveTextOptions): Double
+  abstract fun resolveInputUnderline(options: ResolveInputUnderlineOptions): Double
+  
+  @DoNotStrip
+  @Keep
+  abstract fun createInputArea(options: CreateInputAreaOptions): Double
   
   @DoNotStrip
   @Keep
@@ -60,11 +64,11 @@ abstract class HybridAnalyzedPageSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
-  abstract fun getTextEntry(id: Double): TextEntry
+  abstract fun getInputTarget(id: Double): InputTarget
   
   @DoNotStrip
   @Keep
-  abstract fun getTextEntries(): Array<TextEntry>
+  abstract fun getInputTargets(): Array<InputTarget>
 
   // Default implementation of `HybridObject.toString()`
   override fun toString(): String {

@@ -334,7 +334,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativePreparedPageAnalysis
     return nullptr;
   }
   constexpr std::size_t kGlyphWidth = 10;
-  const auto count = 4 + snapshot.text.size() * kGlyphWidth + snapshot.rules.size() * 3;
+  const auto count = 4 + snapshot.text.size() * kGlyphWidth + snapshot.rules.size() * 4;
   if (count > static_cast<std::size_t>((std::numeric_limits<jsize>::max)())) return nullptr;
   auto values = env->NewDoubleArray(static_cast<jsize>(count));
   if (values == nullptr) return nullptr;
@@ -355,7 +355,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativePreparedPageAnalysis
     flattened.push_back(static_cast<jdouble>(snapshot.visualRows[index]));
   }
   for (const auto& rule : snapshot.rules) {
-    flattened.insert(flattened.end(), {rule.left, rule.right, rule.y});
+    flattened.insert(flattened.end(), {rule.startX, rule.startY, rule.endX, rule.endY});
   }
   env->SetDoubleArrayRegion(values, 0, static_cast<jsize>(flattened.size()), flattened.data());
   return values;

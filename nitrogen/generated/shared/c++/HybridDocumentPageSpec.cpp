@@ -15,13 +15,14 @@ namespace margelo::nitro::inksignpdf {
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridMethod("getState", &HybridDocumentPageSpec::getState);
-      prototype.registerHybridMethod("resolveText", &HybridDocumentPageSpec::resolveText);
+      prototype.registerHybridMethod("resolveInputUnderline", &HybridDocumentPageSpec::resolveInputUnderline);
+      prototype.registerHybridMethod("createInputArea", &HybridDocumentPageSpec::createInputArea);
       prototype.registerHybridMethod("getTextValue", &HybridDocumentPageSpec::getTextValue);
       prototype.registerHybridMethod("setTextValue", &HybridDocumentPageSpec::setTextValue);
       prototype.registerHybridMethod("setTextOptions", &HybridDocumentPageSpec::setTextOptions);
       prototype.registerHybridMethod("adjustTextSize", &HybridDocumentPageSpec::adjustTextSize);
-      prototype.registerHybridMethod("getTextEntry", &HybridDocumentPageSpec::getTextEntry);
-      prototype.registerHybridMethod("getTextEntries", &HybridDocumentPageSpec::getTextEntries);
+      prototype.registerHybridMethod("getInputTarget", &HybridDocumentPageSpec::getInputTarget);
+      prototype.registerHybridMethod("getInputTargets", &HybridDocumentPageSpec::getInputTargets);
     });
   }
 

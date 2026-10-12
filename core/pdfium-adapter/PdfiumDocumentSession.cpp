@@ -161,6 +161,7 @@ struct PdfiumDocumentSession::Impl final {
     std::vector<double> visualRowTops;
     std::vector<double> visualRowBottoms;
     std::vector<PdfiumHorizontalSnapCandidate> rules;
+    std::vector<PdfiumRuleSegment> ruleSegments;
 
     std::size_t estimatedBytes() const {
       return sizeof(PageAnalysis) + text.capacity() * sizeof(unsigned long) +
@@ -168,7 +169,8 @@ struct PdfiumDocumentSession::Impl final {
           visualRows.capacity() * sizeof(int) +
           visualRowTops.capacity() * sizeof(double) +
           visualRowBottoms.capacity() * sizeof(double) +
-          rules.capacity() * sizeof(PdfiumHorizontalSnapCandidate);
+          rules.capacity() * sizeof(PdfiumHorizontalSnapCandidate) +
+          ruleSegments.capacity() * sizeof(PdfiumRuleSegment);
     }
   };
 
@@ -453,8 +455,12 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
   }
   ++impl_->pageAnalysisLoadCount;
 
-  const double pageWidth = FPDF_GetPageWidth(page.get());
-  const double pageHeight = FPDF_GetPageHeight(page.get());
+  const int sourceRotation = FPDFPage_GetRotation(page.get());
+  const double displayWidth = FPDF_GetPageWidth(page.get());
+  const double displayHeight = FPDF_GetPageHeight(page.get());
+  const double pageWidth = sourceRotation % 2 == 0 ? displayWidth : displayHeight;
+  const double pageHeight = sourceRotation % 2 == 0 ? displayHeight : displayWidth;
+  const int analysisRotation = (4 - sourceRotation) % 4;
   if (!std::isfinite(pageWidth) || !std::isfinite(pageHeight) ||
       pageWidth <= 0.0 || pageHeight <= 0.0 ||
       pageWidth > static_cast<double>((std::numeric_limits<int>::max)()) ||
@@ -492,9 +498,9 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
                                        double top, int index)
           -> std::optional<PdfiumTextKeyMatch> {
         int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-        if (!FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight, 0,
+        if (!FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight, analysisRotation,
                                left, bottom, &x0, &y0) ||
-            !FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight, 0,
+            !FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight, analysisRotation,
                                right, top, &x1, &y1)) return std::nullopt;
         const double xMin = std::min(x0, x1) * sx;
         const double xMax = std::max(x0, x1) * sx;
@@ -591,10 +597,9 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
     if (!std::isfinite(x) || !std::isfinite(y)) return std::nullopt;
     int deviceX = 0;
     int deviceY = 0;
-    // The loaded page matrix already applies its intrinsic /Rotate value.
-    // Zero here asks PDFium only for the top-left, upright page coordinates.
+    // Cancel intrinsic /Rotate before retaining geometry or assigning rows.
     if (!FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight,
-                           0, x, y, &deviceX, &deviceY)) {
+                           analysisRotation, x, y, &deviceX, &deviceY)) {
       return std::nullopt;
     }
     return Point{static_cast<double>(deviceX) * pageWidth /
@@ -602,20 +607,33 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
                  static_cast<double>(deviceY) * pageHeight /
                      static_cast<double>(deviceHeight)};
   };
-  const auto appendLine = [&](Point first, Point last) {
-    if (std::abs(first.y - last.y) > 2.0 ||
-        std::abs(first.x - last.x) < 50.0) {
-      return;
+  const auto appendLine = [&](Point first, Point last, double minimumLength = 50.0) {
+    const double dx = std::abs(first.x - last.x);
+    const double dy = std::abs(first.y - last.y);
+    const bool horizontal = dy <= 2.0 && dx >= minimumLength && dx > dy;
+    const bool vertical = dx <= 2.0 && dy >= minimumLength && dy > dx;
+    if (!horizontal && !vertical) return;
+    if (horizontal) {
+      const double y = (first.y + last.y) / 2.0;
+      if (y < 0.0 || y > pageHeight) return;
+      const double left = std::clamp(std::min(first.x, last.x), 0.0, pageWidth);
+      const double right = std::clamp(std::max(first.x, last.x), 0.0, pageWidth);
+      first = {left, y};
+      last = {right, y};
+    } else {
+      const double x = (first.x + last.x) / 2.0;
+      if (x < 0.0 || x > pageWidth) return;
+      const double top = std::clamp(std::min(first.y, last.y), 0.0, pageHeight);
+      const double bottom = std::clamp(std::max(first.y, last.y), 0.0, pageHeight);
+      first = {x, top};
+      last = {x, bottom};
     }
-    const double left = std::max(0.0, std::min(first.x, last.x));
-    const double right = std::min(pageWidth, std::max(first.x, last.x));
-    const double centerY = (first.y + last.y) / 2.0;
-    if (right > left && centerY >= 0.0 && centerY <= pageHeight) {
-      candidates.push_back({left, right, centerY});
-    }
+    if (first.x != last.x || first.y != last.y)
+      analysis.ruleSegments.push_back({first.x, first.y, last.x, last.y});
   };
 
   std::vector<Shape> filledShapes;
+  std::vector<Shape> verticalFilledShapes;
   const int objectCount = FPDFPage_CountObjects(page.get());
   for (int objectIndex = 0; objectIndex < objectCount; ++objectIndex) {
     FPDF_PAGEOBJECT object = FPDFPage_GetObject(page.get(), objectIndex);
@@ -701,51 +719,73 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
         width <= 8.0 && height <= 8.0 && clippedRight > clippedLeft &&
         centerY >= 0.0 && centerY <= pageHeight) {
       filledShapes.push_back({clippedLeft, clippedRight, centerY});
+      verticalFilledShapes.push_back({std::max(0.0, minY), std::min(pageHeight, maxY), (minX + maxX) / 2.0});
     }
   }
 
-  std::sort(filledShapes.begin(), filledShapes.end(),
-            [](const Shape& left, const Shape& right) {
-              return left.centerY < right.centerY;
-            });
-  for (std::size_t rowBegin = 0; rowBegin < filledShapes.size();) {
-    const double rowY = filledShapes[rowBegin].centerY;
-    std::size_t rowEnd = rowBegin + 1;
-    while (rowEnd < filledShapes.size() &&
-           std::abs(filledShapes[rowEnd].centerY - rowY) <= 2.5) {
-      ++rowEnd;
-    }
-    std::sort(filledShapes.begin() + static_cast<std::ptrdiff_t>(rowBegin),
-              filledShapes.begin() + static_cast<std::ptrdiff_t>(rowEnd),
+  const auto appendDotRows = [&](std::vector<Shape>& shapes, bool vertical) {
+    std::sort(shapes.begin(), shapes.end(),
               [](const Shape& left, const Shape& right) {
-                return left.left < right.left;
+                return left.centerY < right.centerY;
               });
-    std::size_t runBegin = rowBegin;
-    while (runBegin < rowEnd) {
-      std::size_t runEnd = runBegin + 1;
-      std::vector<double> gaps;
-      while (runEnd < rowEnd) {
-        const double gap =
-            (filledShapes[runEnd].left + filledShapes[runEnd].right) / 2.0 -
-            (filledShapes[runEnd - 1].left + filledShapes[runEnd - 1].right) / 2.0;
-        // Compare square centers in page units. Small scaled checkbox dots may
-        // be less than one point apart, but they still form a row when their
-        // spacing is positive and consistent.
-        if (gap <= 0.0 || gap > 20.0) break;
-        gaps.push_back(gap);
-        if (gaps.size() >= 2) {
-          const double mean = (gaps.front() + gaps.back()) / 2.0;
-          if (std::abs(gap - mean) > std::max(1.5, mean * 0.4)) break;
+    for (std::size_t rowBegin = 0; rowBegin < shapes.size();) {
+      const double rowY = shapes[rowBegin].centerY;
+      std::size_t rowEnd = rowBegin + 1;
+      while (rowEnd < shapes.size() &&
+             std::abs(shapes[rowEnd].centerY - rowY) <= 2.5) {
+        ++rowEnd;
+      }
+      std::sort(shapes.begin() + static_cast<std::ptrdiff_t>(rowBegin),
+                shapes.begin() + static_cast<std::ptrdiff_t>(rowEnd),
+                [](const Shape& left, const Shape& right) {
+                  return left.left < right.left;
+                });
+      std::size_t runBegin = rowBegin;
+      while (runBegin < rowEnd) {
+        std::size_t runEnd = runBegin + 1;
+        std::vector<double> gaps;
+        while (runEnd < rowEnd) {
+          const double gap =
+              (shapes[runEnd].left + shapes[runEnd].right) / 2.0 -
+              (shapes[runEnd - 1].left + shapes[runEnd - 1].right) / 2.0;
+          // Compare square centers in page units. Small scaled checkbox dots may
+          // be less than one point apart, but they still form a row when their
+          // spacing is positive and consistent.
+          if (gap <= 0.0 || gap > 20.0) break;
+          gaps.push_back(gap);
+          if (gaps.size() >= 2) {
+            const double mean = (gaps.front() + gaps.back()) / 2.0;
+            if (std::abs(gap - mean) > std::max(1.5, mean * 0.4)) break;
+          }
+          ++runEnd;
         }
-        ++runEnd;
+        if (runEnd - runBegin >= 4) {
+          const double first = shapes[runBegin].left;
+          const double last = shapes[runEnd - 1].right;
+          if (vertical) appendLine({rowY, first}, {rowY, last}, 0.0);
+          else appendLine({first, rowY}, {last, rowY}, 0.0);
+        }
+        runBegin = runEnd;
       }
-      if (runEnd - runBegin >= 4) {
-        candidates.push_back({filledShapes[runBegin].left,
-                              filledShapes[runEnd - 1].right, rowY});
-      }
-      runBegin = runEnd;
+      rowBegin = rowEnd;
     }
-    rowBegin = rowEnd;
+  };
+  appendDotRows(filledShapes, false);
+  appendDotRows(verticalFilledShapes, true);
+  const auto toSourceDisplay = [&](double x, double y) -> Point {
+    switch (sourceRotation) {
+      case 0: return {x, y};
+      case 1: return {pageHeight - y, x};
+      case 2: return {pageWidth - x, pageHeight - y};
+      case 3: return {y, pageWidth - x};
+      default: return {x, y};
+    }
+  };
+  for (const auto& rule : analysis.ruleSegments) {
+    const auto first = toSourceDisplay(rule.startX, rule.startY);
+    const auto last = toSourceDisplay(rule.endX, rule.endY);
+    if (std::abs(first.y - last.y) <= 2.0)
+      candidates.push_back({std::min(first.x, last.x), std::max(first.x, last.x), (first.y + last.y) / 2.0});
   }
   analysis.rules = candidates;
   analysis.hasRules = true;
@@ -763,7 +803,7 @@ PdfiumError PdfiumDocumentSession::preparePageAnalysis(
             "PDFium page index is outside the document"};
   }
   std::vector<PdfiumHorizontalSnapCandidate> unusedCandidates;
-  if (const auto error = inspectHorizontalSnapCandidates(pageIndex, unusedCandidates, true);
+  if (const auto error = inspectHorizontalSnapCandidates(pageIndex, unusedCandidates, false);
       !error) {
     return error;
   }
@@ -784,7 +824,8 @@ PdfiumError PdfiumDocumentSession::preparePageAnalysis(
   snapshot.visualRows = found->visualRows;
   snapshot.visualRowTops = found->visualRowTops;
   snapshot.visualRowBottoms = found->visualRowBottoms;
-  snapshot.rules = found->rules;
+  snapshot.rules = found->ruleSegments;
+  impl_->trimPageAnalyses();
   return {};
 }
 

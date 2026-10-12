@@ -102,7 +102,7 @@ export interface TextModeOptions extends ViewportOptions {
 }
 
 /** Focus an already resolved text target without creating an annotation. */
-export interface TextFocusOptions {
+export interface InputTargetFocusOptions {
   /** Positive zoom factor; defaults to 2 and is clamped to the native viewport limits. */
   zoom?: number
   /** Positions the writing rule at the visible top or bottom edge; center ignores edgeOffset. Defaults to center. */
@@ -111,23 +111,28 @@ export interface TextFocusOptions {
   edgeOffset?: number
 }
 
-/** Options used to resolve a named field or reserve a free text placement. */
-export interface ResolveTextOptions extends TextPresentationOptions {
+/** Detect an input underline beside a complete printed label. */
+export interface ResolveInputUnderlineOptions extends TextPresentationOptions {
   /** Complete detected label. Partial labels and substrings do not match. */
-  fieldName?: string
-  /** Restricts named lookup, or defines placement when fieldName is omitted. */
+  fieldName: string
+  /** Restricts label lookup to this displayed region. */
   bounds?: TextAnnotationBounds
   occurrence?: TextKeyOccurrence
 }
 
-export type TextId = number
+/** Define an input area directly in displayed page coordinates. */
+export interface CreateInputAreaOptions extends TextPresentationOptions {
+  bounds: TextAnnotationBounds
+}
+
+export type InputTargetId = number
 export type TextValueSource = 'empty' | 'annotation' | 'embedded'
 /** Physical pager direction; auto follows the app's layout direction. */
 export type PagerDirection = 'auto' | 'ltr' | 'rtl'
 
 /** Current value and target metadata retained by an analyzed page. */
-export interface TextEntry {
-  id: TextId
+export interface InputTarget {
+  id: InputTargetId
   value: string
   fieldName?: string
   /** Axis-aligned bounds in the page's current displayed coordinates. */
@@ -137,7 +142,7 @@ export interface TextEntry {
 
 /** Stable native page identity associated with current text selection. */
 export interface TextSelection {
-  textId: TextId
+  textId: InputTargetId
   pageId: string
 }
 
@@ -151,27 +156,29 @@ export interface PageCoords {
 
 /** Prepared source analysis and synchronous text operations for one stable page. */
 export interface PageTextMethods {
-  /** Creates or resolves a text target from page analysis and returns its ID. */
-  resolveText(options: ResolveTextOptions): TextId
+  /** Detects a label and adjacent underline, returning an input target ID. */
+  resolveInputUnderline(options: ResolveInputUnderlineOptions): InputTargetId
+  /** Creates or reuses an input area with explicit bounds. */
+  createInputArea(options: CreateInputAreaOptions): InputTargetId
   /** Returns the target's effective text value. */
-  getTextValue(id: TextId): string
+  getTextValue(id: InputTargetId): string
   /** Sets the target's entered text; empty text removes module text and preserves source PDF text. */
-  setTextValue(id: TextId, text: string, options?: TextAnnotationOptions): void
+  setTextValue(id: InputTargetId, text: string, options?: TextAnnotationOptions): void
   /** Updates the target's text options; omitted fields retain their current values. */
-  setTextOptions(id: TextId, options: TextAnnotationOptions): void
+  setTextOptions(id: InputTargetId, options: TextAnnotationOptions): void
   /** Adjusts the native font size by page points and returns the resulting size. */
-  adjustTextSize(id: TextId, delta: number): number
+  adjustTextSize(id: InputTargetId, delta: number): number
   /** Returns one target's value, source, and optional field metadata. */
-  getTextEntry(id: TextId): TextEntry
+  getInputTarget(id: InputTargetId): InputTarget
   /** Returns all text targets on this page. */
-  getTextEntries(): TextEntry[]
+  getInputTargets(): InputTarget[]
 }
 
 export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }>, PageTextMethods {
   /** Reads current metadata for this stable page without switching the viewer. */
   getState(): PageInfo
   /** Focuses the target; omitted options use zoom 2 and center it without changing input mode. */
-  focusText(id: TextId, options?: TextFocusOptions): Promise<void>
+  focusInputTarget(id: InputTargetId, options?: InputTargetFocusOptions): Promise<void>
 }
 
 /** Document-bound text target; remains usable after selection or page changes. */

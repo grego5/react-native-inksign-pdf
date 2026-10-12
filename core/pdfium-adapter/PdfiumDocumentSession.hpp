@@ -88,7 +88,7 @@ struct PdfiumRenderMatrix final {
   double f = 0.0;
 };
 
-/** Horizontal writing guide in canonical top-left page coordinates. */
+/** Horizontal writing guide in the source page's displayed top-left coordinates. */
 struct PdfiumHorizontalSnapCandidate final {
   double left = 0.0;
   double right = 0.0;
@@ -106,7 +106,15 @@ struct PdfiumTextKeyMatch final {
   double lineHeight = 0.0;
 };
 
-/** Owned, pointer-free source geometry retained by prepared-page handles. */
+/** Orthogonal writing guide retained before display-orientation filtering. */
+struct PdfiumRuleSegment final {
+  double startX = 0.0;
+  double startY = 0.0;
+  double endX = 0.0;
+  double endY = 0.0;
+};
+
+/** Owned, pointer-free canonical geometry retained by prepared-page handles. */
 struct PdfiumPageAnalysisSnapshot final {
   double pageWidth = 0.0;
   double pageHeight = 0.0;
@@ -115,7 +123,7 @@ struct PdfiumPageAnalysisSnapshot final {
   std::vector<int> visualRows;
   std::vector<double> visualRowTops;
   std::vector<double> visualRowBottoms;
-  std::vector<PdfiumHorizontalSnapCandidate> rules;
+  std::vector<PdfiumRuleSegment> rules;
 };
 
 /** Internal counters exposed to instrumentation tests for cache reuse checks. */

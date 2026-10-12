@@ -114,9 +114,13 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
   selection are temporary presentation state.
 - Prepared pages bind immutable source analysis to a stable page ID. Async
   preparation enables synchronous resolution/value operations on that captured
-  page. The coordinator owns numeric text IDs, target metadata, and committed
+  page. The coordinator owns numeric input target IDs, target metadata, and committed
   content; the overlay owns drafts/selection. IDs are monotonic per document owner.
   Analysis lifetime follows the platform lifecycle references.
+- `resolveInputUnderline()` detects a label and adjacent writing guide;
+  `createInputArea()` defines an explicit rectangle. Both return input target IDs
+  used by text-value/formatting methods and `getInputTarget(s)`. Viewer page handles
+  additionally expose `focusInputTarget()`.
 - Field lookup compares complete joined labels first, then token frequencies
   when no joined match exists. Repeated words matter; fallback allows extracted
   word-order differences. Partial labels/substrings do not match.

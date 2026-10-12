@@ -2680,7 +2680,7 @@ internal class TextPlacementInstrumentationTest {
       private set
     val snapCandidateRequests = java.util.concurrent.CopyOnWriteArrayList<Int>()
 
-    override fun horizontalSnapCandidates(pageIndex: Int): List<PdfiumHorizontalSnapCandidate> {
+    override fun canonicalWritingRules(pageIndex: Int): List<PdfiumPreparedRule> {
       snapCandidateRequests += pageIndex
       return emptyList()
     }
