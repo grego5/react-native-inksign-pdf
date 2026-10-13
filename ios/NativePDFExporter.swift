@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import PDFKit
 import PencilKit
+import UIKit
 
 enum InkSignPdfNativeExporterError: LocalizedError {
   case unreadableSource
@@ -22,208 +23,165 @@ enum InkSignPdfNativeExporterError: LocalizedError {
   }
 }
 
-/// Adds editor content to the source pages as PDF annotations, then verifies
-/// the written document and each module-owned appearance stream.
+/// Writes committed canonical content into a detached PDFium document.
 enum InkSignPdfNativeExporter {
-  static let signatureAppearanceMargin: CGFloat = 0.5
-
-  private struct ModuleAnnotationExpectations {
-    let text: [InkSignPdfTextAnnotation]
-    let signatureBounds: [CGRect]
-  }
-
-  private static let pageBoxes: [PDFDisplayBox] = [
-    .mediaBox, .cropBox, .bleedBox, .trimBox, .artBox,
-  ]
-
-  static func write(sourceURL: URL,
-                    pages: [ExportPageSnapshot],
-                    outputURL: URL) throws {
-    guard let document = PDFDocument(url: sourceURL),
-          document.pageCount == pages.count,
-          !pages.isEmpty else {
-      throw InkSignPdfNativeExporterError.unreadableSource
-    }
-    guard pages.enumerated().allSatisfy({ $0.offset == $0.element.pageIndex }) else {
+  static func write(sourceURL: URL, pages: [ExportPageSnapshot], outputURL: URL) throws {
+    let source = try Data(contentsOf: sourceURL)
+    let metadata = try InkSignPdfPdfiumBackend.inspect(data: source)
+    guard !pages.isEmpty, metadata.count == pages.count,
+          pages.enumerated().allSatisfy({ $0.offset == $0.element.pageIndex }) else {
       throw InkSignPdfNativeExporterError.invalidPageOrder
     }
-
-    var sourceAnnotations: [Int: [PDFAnnotation]] = [:]
-    var moduleAnnotations: [Int: ModuleAnnotationExpectations] = [:]
+    let resources = InkSignPdfCoreTextExportResources()
+    var runs: [InkSignPdfPdfiumExportRun] = []
+    var paths: [InkSignPdfPdfiumExportPath] = []
+    var lineID = 0
     for snapshot in pages {
-      guard let page = document.page(at: snapshot.pageIndex),
-            sameGeometry(snapshot.sourceGeometry ?? snapshot.geometry, page) else {
-        throw InkSignPdfNativeExporterError.invalidOutput(
-          "source page geometry differs from the captured page state")
+      let page = metadata[snapshot.pageIndex]
+      let expected = snapshot.sourceGeometry ?? snapshot.geometry
+      guard sameRect(page.mediaBox, expected.mediaBox), page.rotation == expected.rotation else {
+        throw InkSignPdfNativeExporterError.invalidOutput("source geometry differs from captured state")
       }
-      page.rotation = snapshot.geometry.rotation
-      sourceAnnotations[snapshot.pageIndex] = page.annotations
-      for text in snapshot.textAnnotations {
-        guard let color = InkSignPdfTextRenderer.color(from: text.textColor) else {
-          throw InkSignPdfNativeExporterError.invalidOutput(
-            "text annotation color cannot be represented")
+      for annotation in snapshot.textAnnotations {
+        let layout = try resources.prepare(annotation, pageSize: page.mediaBox.size)
+        let color = try argb(layout.color)
+        for line in layout.lines {
+          for (order, prepared) in line.runs.enumerated() {
+            let run = InkSignPdfPdfiumExportRun()
+            run.pageIndex = snapshot.pageIndex
+            run.lineID = lineID
+            run.lineText = line.text
+            run.sourceRange = prepared.sourceRange
+            run.rightToLeft = prepared.isRTL
+            run.baseRightToLeft = layout.isRTL
+            run.visualOrder = order
+            run.fontIndex = prepared.fontIndex
+            run.fontSize = prepared.fontSize
+            run.color = color
+            run.transform = layout.transform
+            run.hasClip = layout.clip != nil
+            run.clip = layout.clip ?? .zero
+            run.glyphs = prepared.glyphs.map { value in
+              let glyph = InkSignPdfPdfiumExportGlyph()
+              glyph.glyphID = UInt32(value.glyphID)
+              glyph.sourceOffset = value.sourceOffset
+              glyph.unicode = value.unicode
+              glyph.position = value.position
+              return glyph
+            }
+            runs.append(run)
+          }
+          lineID += 1
         }
-        page.addAnnotation(InkSignPdfVectorAnnotation(
-          text: text,
-          mediaBox: snapshot.geometry.mediaBox,
-          pdfBounds: pdfBounds(for: text, in: snapshot.geometry.mediaBox),
-          color: color))
       }
-
       guard let drawing = try? PKDrawing(data: snapshot.drawingData) else {
-        throw InkSignPdfNativeExporterError.unsupportedInk("committed drawing data is unreadable")
+        throw InkSignPdfNativeExporterError.unsupportedInk("committed drawing is unreadable")
       }
-      let strokes: [InkSignPdfFilledStroke]
       do {
-        strokes = try InkSignPdfSignatureVectorPath.filledStrokes(in: drawing)
+        for stroke in try InkSignPdfSignatureVectorPath.filledStrokes(in: drawing) {
+          paths.append(try exportPath(stroke, pageIndex: snapshot.pageIndex))
+        }
       } catch {
         throw InkSignPdfNativeExporterError.unsupportedInk(String(describing: error))
       }
-      var signatureBounds: [CGRect] = []
-      signatureBounds.reserveCapacity(strokes.count)
-      for stroke in strokes {
-        let (bounds, localPath) = try pdfPath(stroke.path,
-                                              mediaBox: snapshot.geometry.mediaBox)
-        page.addAnnotation(InkSignPdfVectorAnnotation(
-          signatureBounds: bounds,
-          localPath: localPath,
-          color: stroke.color,
-          mediaBox: snapshot.geometry.mediaBox))
-        signatureBounds.append(bounds)
-      }
-      moduleAnnotations[snapshot.pageIndex] = ModuleAnnotationExpectations(
-        text: snapshot.textAnnotations,
-        signatureBounds: signatureBounds)
     }
-
-    guard document.write(to: outputURL),
-          let reopened = PDFDocument(url: outputURL),
-          reopened.pageCount == document.pageCount else {
+    let output = try InkSignPdfPdfiumBackend.write(data: source, pages: metadata,
+      rotations: pages.map { NSNumber(value: $0.geometry.rotation) },
+      paths: paths, runs: runs, fonts: resources.fonts)
+    try output.write(to: outputURL, options: .atomic)
+    // PDFKit is the current viewer: verify interoperability before publication.
+    guard let original = PDFDocument(data: source), let reopened = PDFDocument(url: outputURL),
+          reopened.pageCount == pages.count else {
       throw InkSignPdfNativeExporterError.writeFailed
     }
-    try validate(source: document,
-                 output: reopened,
-                 pages: pages,
-                 sourceAnnotations: sourceAnnotations,
-                 moduleAnnotations: moduleAnnotations)
-  }
-
-  private static func validate(source: PDFDocument,
-                               output: PDFDocument,
-                               pages: [ExportPageSnapshot],
-                               sourceAnnotations: [Int: [PDFAnnotation]],
-                               moduleAnnotations: [Int: ModuleAnnotationExpectations]) throws {
     for snapshot in pages {
-      guard let sourcePage = source.page(at: snapshot.pageIndex),
-            let outputPage = output.page(at: snapshot.pageIndex),
-            sameGeometry(snapshot.geometry, outputPage),
-            pageBoxesMatch(sourcePage, outputPage) else {
-        throw InkSignPdfNativeExporterError.invalidOutput(
-          "reopened page geometry or boxes differ from the source")
-      }
-      let expected = moduleAnnotations[snapshot.pageIndex]!
-      let beforeExport = sourceAnnotations[snapshot.pageIndex] ?? []
-      let exportedAnnotations = outputPage.annotations
-
-      for (index, text) in expected.text.enumerated() {
-        let bounds = pdfBounds(for: text, in: snapshot.geometry.mediaBox)
-        let matches: (PDFAnnotation) -> Bool = {
-          $0.type?.caseInsensitiveCompare("FreeText") == .orderedSame &&
-            $0.contents == text.text && sameRect($0.bounds, bounds)
-        }
-        let duplicateCount = expected.text[..<index].filter {
-          $0.text == text.text && sameRect(
-            pdfBounds(for: $0, in: snapshot.geometry.mediaBox), bounds)
-        }.count
-        let sourceCount = beforeExport.filter {
-          matches($0) && hasPersistedAppearance($0, flags: InkSignPdfVectorAnnotation.textFlags)
-        }.count
-        let outputCount = exportedAnnotations.filter {
-          matches($0) && hasPersistedAppearance($0, flags: InkSignPdfVectorAnnotation.textFlags)
-        }.count
-        guard outputCount > sourceCount + duplicateCount else {
-          throw InkSignPdfNativeExporterError.invalidOutput(
-            "text annotation \(text.id) was not persisted with its appearance and locked-content flags")
-        }
-      }
-
-      for (index, bounds) in expected.signatureBounds.enumerated() {
-        let matches: (PDFAnnotation) -> Bool = {
-          $0.type?.caseInsensitiveCompare("Stamp") == .orderedSame &&
-            sameRect($0.bounds, bounds)
-        }
-        let duplicateCount = expected.signatureBounds[..<index].filter {
-          sameRect($0, bounds)
-        }.count
-        let sourceCount = beforeExport.filter {
-          matches($0) && hasPersistedAppearance($0, flags: InkSignPdfVectorAnnotation.signatureFlags)
-        }.count
-        let outputCount = exportedAnnotations.filter {
-          matches($0) && hasPersistedAppearance($0, flags: InkSignPdfVectorAnnotation.signatureFlags)
-        }.count
-        guard outputCount > sourceCount + duplicateCount else {
-          throw InkSignPdfNativeExporterError.invalidOutput(
-            "signature vector annotation was not persisted with its appearance and locked flags")
-        }
+      guard let before = original.page(at: snapshot.pageIndex),
+            let after = reopened.page(at: snapshot.pageIndex),
+            after.rotation == snapshot.geometry.rotation,
+            sameRect(after.bounds(for: .mediaBox), snapshot.geometry.mediaBox),
+            [PDFDisplayBox.mediaBox, .cropBox, .bleedBox, .trimBox, .artBox].allSatisfy({
+              sameRect(before.bounds(for: $0), after.bounds(for: $0))
+            }), sourceAnnotationsMatch(before.annotations, after.annotations) else {
+        throw InkSignPdfNativeExporterError.invalidOutput("PDFKit reopened page geometry differs")
       }
     }
   }
 
-  private static func hasPersistedAppearance(_ annotation: PDFAnnotation,
-                                             flags: Int) -> Bool {
-    annotation.hasAppearanceStream && annotation.shouldDisplay && annotation.shouldPrint &&
-      InkSignPdfVectorAnnotation.flags(of: annotation) & flags == flags
+  private static func argb(_ value: String) throws -> UInt32 {
+    guard value.count == 7, value.first == "#", let rgb = UInt32(value.dropFirst(), radix: 16) else {
+      throw InkSignPdfNativeExporterError.invalidOutput("invalid text color")
+    }
+    return 0xff000000 | rgb
   }
 
-  private static func pdfPath(_ canonicalPath: CGPath,
-                              mediaBox: CGRect) throws -> (CGRect, CGPath) {
-    var toPDF = PageGeometry(mediaBox: mediaBox, rotation: 0).canonicalToPDFTransform
-    guard let pathInPDF = canonicalPath.copy(using: &toPDF) else {
-      throw InkSignPdfNativeExporterError.invalidOutput(
-        "signature path could not be transformed to PDF coordinates")
+  private static func exportPath(_ stroke: InkSignPdfFilledStroke,
+                                 pageIndex: Int) throws -> InkSignPdfPdfiumExportPath {
+    var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+    guard stroke.color.getRed(&red, green: &green, blue: &blue, alpha: &alpha), alpha == 1 else {
+      throw InkSignPdfNativeExporterError.unsupportedInk("unsupported stroke color")
     }
-    let pathBounds = pathInPDF.boundingBoxOfPath
-    guard !pathBounds.isNull, !pathBounds.isEmpty,
-          pathBounds.minX.isFinite, pathBounds.minY.isFinite,
-          pathBounds.width.isFinite, pathBounds.height.isFinite else {
-      throw InkSignPdfNativeExporterError.invalidOutput(
-        "signature path has invalid PDF bounds")
+    let path = InkSignPdfPdfiumExportPath()
+    path.pageIndex = pageIndex
+    path.color = 0xff000000 | (UInt32((red * 255).rounded()) << 16) |
+      (UInt32((green * 255).rounded()) << 8) | UInt32((blue * 255).rounded())
+    var types: [NSNumber] = []
+    var coordinates: [NSNumber] = []
+    var current = CGPoint.zero
+    var start = CGPoint.zero
+    func append(_ type: Int, _ points: [CGPoint]) {
+      types.append(NSNumber(value: type))
+      for index in 0..<3 {
+        let point = index < points.count ? points[index] : .zero
+        coordinates.append(NSNumber(value: Double(point.x)))
+        coordinates.append(NSNumber(value: Double(point.y)))
+      }
     }
-    let bounds = pathBounds.insetBy(dx: -signatureAppearanceMargin,
-                                    dy: -signatureAppearanceMargin)
-    guard bounds.minX.isFinite, bounds.minY.isFinite,
-          bounds.width.isFinite, bounds.height.isFinite else {
-      throw InkSignPdfNativeExporterError.invalidOutput(
-        "signature annotation bounds are invalid")
+    stroke.path.applyWithBlock { pointer in
+      let element = pointer.pointee
+      switch element.type {
+      case .moveToPoint:
+        current = element.points[0]; start = current
+        append(0, [current])
+      case .addLineToPoint:
+        current = element.points[0]
+        append(1, [current])
+      case .addQuadCurveToPoint:
+        let control = element.points[0], end = element.points[1]
+        let first = CGPoint(x: current.x + (control.x - current.x) * 2 / 3,
+                            y: current.y + (control.y - current.y) * 2 / 3)
+        let second = CGPoint(x: end.x + (control.x - end.x) * 2 / 3,
+                             y: end.y + (control.y - end.y) * 2 / 3)
+        append(2, [first, second, end]); current = end
+      case .addCurveToPoint:
+        append(2, [element.points[0], element.points[1], element.points[2]])
+        current = element.points[2]
+      case .closeSubpath:
+        append(3, []); current = start
+      @unknown default:
+        break
+      }
     }
-    var localize = CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY)
-    guard let localPath = pathInPDF.copy(using: &localize) else {
-      throw InkSignPdfNativeExporterError.invalidOutput(
-        "signature path could not be localized to its annotation bounds")
-    }
-    return (bounds, localPath)
-  }
-
-  private static func pdfBounds(for text: InkSignPdfTextAnnotation,
-                                in mediaBox: CGRect) -> CGRect {
-    return text.canonicalPlacementBounds(mediaBox: mediaBox)
-      .applying(PageGeometry(mediaBox: mediaBox, rotation: 0).canonicalToPDFTransform)
-  }
-
-  private static func sameGeometry(_ expected: PageGeometry,
-                                   _ actual: PDFPage) -> Bool {
-    expected.isValid &&
-      PageGeometry.normalizedRotation(expected.rotation) ==
-        PageGeometry.normalizedRotation(actual.rotation) &&
-      sameRect(expected.mediaBox, actual.bounds(for: .mediaBox))
-  }
-
-  private static func pageBoxesMatch(_ lhs: PDFPage, _ rhs: PDFPage) -> Bool {
-    pageBoxes.allSatisfy { sameRect(lhs.bounds(for: $0), rhs.bounds(for: $0)) }
+    path.commandTypes = types
+    path.coordinates = coordinates
+    return path
   }
 
   private static func sameRect(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
     abs(lhs.minX - rhs.minX) <= 0.01 && abs(lhs.minY - rhs.minY) <= 0.01 &&
       abs(lhs.width - rhs.width) <= 0.01 && abs(lhs.height - rhs.height) <= 0.01
+  }
+
+  private static func sourceAnnotationsMatch(_ before: [PDFAnnotation],
+                                             _ after: [PDFAnnotation]) -> Bool {
+    guard before.count == after.count else { return false }
+    var remaining = after
+    for annotation in before {
+      guard let index = remaining.firstIndex(where: {
+        $0.type == annotation.type && sameRect($0.bounds, annotation.bounds) &&
+          $0.contents == annotation.contents
+      }) else { return false }
+      remaining.remove(at: index)
+    }
+    return true
   }
 }

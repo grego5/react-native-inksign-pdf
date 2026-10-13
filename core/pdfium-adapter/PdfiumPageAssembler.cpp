@@ -217,7 +217,7 @@ PdfiumError appendImage(FPDF_DOCUMENT document,
           static_cast<std::size_t>((std::numeric_limits<unsigned long>::max)()) ||
       !(input.pageWidth > 0.0) || !(input.pageHeight > 0.0) ||
       !finite(input.pageWidth) || !finite(input.pageHeight) ||
-      !validPlacement(input.placement)) {
+      !validPlacement(input.placement) || input.rotation < 0 || input.rotation > 3) {
     return invalidInput("image page input is invalid");
   }
 
@@ -264,6 +264,7 @@ PdfiumError appendImage(FPDF_DOCUMENT document,
     return {PdfiumErrorCode::MutationFailed,
             "FPDFPage_GenerateContent failed"};
   }
+  FPDFPage_SetRotation(page.get(), input.rotation);
   return {};
 }
 
@@ -433,7 +434,8 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
             static_cast<double>(static_cast<float>(input.pageWidth));
         imagePage.height =
             static_cast<double>(static_cast<float>(input.pageHeight));
-        imagePage.rotation = 0;
+        imagePage.rotation = input.rotation;
+        if (input.rotation % 2 != 0) std::swap(imagePage.width, imagePage.height);
         imagePage.mediaBoxLeft = 0.0;
         imagePage.mediaBoxBottom = 0.0;
         imagePage.mediaBoxRight =

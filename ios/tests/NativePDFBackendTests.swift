@@ -36,18 +36,27 @@ final class NativePDFBackendTests: XCTestCase {
     let redRotation = redSourcePage.rotation
     let greenMediaBox = greenSourcePage.bounds(for: .mediaBox)
     let greenRotation = greenSourcePage.rotation
-    let destination = PDFDocument()
-    destination.insert(try imagePage(size: CGSize(width: 200, height: 200), color: .blue), at: 0)
-    destination.insert(redSourcePage, at: 1)
-    destination.insert(greenSourcePage, at: 2)
-    let movedPage = try XCTUnwrap(destination.page(at: 2))
-    destination.removePage(at: 2)
-    destination.insert(movedPage, at: 0)
-
+    let blueFixture = PDFDocument()
+    blueFixture.insert(try imagePage(size: CGSize(width: 200, height: 200), color: .blue), at: 0)
+    let blueBytes = try XCTUnwrap(blueFixture.dataRepresentation())
+    let initialURL = temporaryPDFURL("native-create")
+    let appendedURL = temporaryPDFURL("native-append")
+    let outputURL = temporaryPDFURL("native-move")
+    let removedURL = temporaryPDFURL("native-remove")
+    defer {
+      for url in [initialURL, appendedURL, outputURL, removedURL] {
+        try? FileManager.default.removeItem(at: url)
+      }
+    }
+    _ = try InkSignPdfPdfiumBackend.assemble(data: nil, operation: .create,
+      inputs: [InkSignPdfPdfiumInput(pdfData: blueBytes)], pageIndex: 0,
+      destinationIndex: 0, outputURL: initialURL)
+    _ = try InkSignPdfPdfiumBackend.assemble(data: Data(contentsOf: initialURL), operation: .append,
+      inputs: [InkSignPdfPdfiumInput(pdfData: sourceBytes)], pageIndex: 0,
+      destinationIndex: 0, outputURL: appendedURL)
+    _ = try InkSignPdfPdfiumBackend.assemble(data: Data(contentsOf: appendedURL), operation: .move,
+      inputs: [], pageIndex: 2, destinationIndex: 0, outputURL: outputURL)
     XCTAssertEqual(try Data(contentsOf: sourceURL), sourceBytes)
-    let outputURL = temporaryPDFURL("cross-document-import")
-    defer { try? FileManager.default.removeItem(at: outputURL) }
-    XCTAssertTrue(destination.write(to: outputURL))
 
     let reopened = try XCTUnwrap(PDFDocument(url: outputURL))
     XCTAssertEqual(reopened.pageCount, 3)
@@ -65,6 +74,13 @@ final class NativePDFBackendTests: XCTestCase {
     assertDominantColor(try centerPixel(of: greenPage), channel: .green)
     assertDominantColor(try centerPixel(of: bluePage), channel: .blue)
     assertDominantColor(try centerPixel(of: redPage), channel: .red)
+    _ = try InkSignPdfPdfiumBackend.assemble(data: Data(contentsOf: outputURL), operation: .remove,
+      inputs: [], pageIndex: 1, destinationIndex: 0, outputURL: removedURL)
+    let removed = try XCTUnwrap(PDFDocument(url: removedURL))
+    XCTAssertEqual(removed.pageCount, 2)
+    assertDominantColor(try centerPixel(of: XCTUnwrap(removed.page(at: 0))), channel: .green)
+    assertDominantColor(try centerPixel(of: XCTUnwrap(removed.page(at: 1))), channel: .red)
+
   }
 
   func testHebrewFixtureLoadsForVisualReview() throws {

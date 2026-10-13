@@ -119,54 +119,73 @@ enum InkSignPdfTextRenderer {
         context.restoreGState()
         return false
       }
-      let insets = InkSignPdfTextStyle.presentationInsets
-      let contentWidth = annotation.flowBounds.map { $0.width } ??
-        max(1, annotation.bounds.width - insets.left - insets.right)
-      let lines = makeLineFragments(annotation.text,
-                                    fontSize: annotation.fontSize,
-                                    color: color,
-                                    isRTL: annotation.isRTL,
-                                    contentWidth: contentWidth,
-                                    alignment: annotation.alignment)
-      let visibleLines: [LineFragment]
-      if let flowBounds = annotation.flowBounds {
-        visibleLines = selectedLineFragments(lines,
-                                             flowBounds: flowBounds,
-                                             maxLines: annotation.maxLines,
-                                             verticalAnchor: annotation.verticalAnchor)
-      } else {
-        visibleLines = annotation.maxLines > 0
-          ? Array(lines.prefix(annotation.maxLines)) : lines
-      }
-      let attributes = InkSignPdfTextStyle.attributes(fontSize: annotation.fontSize,
-                                                       color: color,
-                                                       isRTL: annotation.isRTL,
-                                                       alignment: annotation.alignment)
+      let layout = positionedLines(annotation, pageSize: pageSize, color: color)
       context.saveGState()
-      context.concatenate(annotation.layoutToCanonical(mediaBox: CGRect(origin: .zero, size: pageSize)))
-      let origin: CGPoint
-      if let flowBounds = annotation.flowBounds {
-        context.clip(to: flowBounds)
-        origin = flowBounds.origin
-      } else {
-        origin = CGPoint(x: annotation.position.x + insets.left,
-                         y: annotation.position.y + insets.top)
-      }
+      context.concatenate(layout.transform)
+      if let clip = layout.clip { context.clip(to: clip) }
       context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
-      for fragment in visibleLines {
-        let value = fragment.text
-        let attributed = NSAttributedString(string: value, attributes: attributes)
-        let line = CTLineCreateWithAttributedString(attributed)
-        var ascent: CGFloat = 0
-        _ = CTLineGetTypographicBounds(line, &ascent, nil, nil)
-        context.textPosition = CGPoint(x: origin.x + fragment.rect.minX,
-                                       y: origin.y + fragment.rect.minY + ascent)
-        CTLineDraw(line, context)
+      for line in layout.lines {
+        context.textPosition = line.baseline
+        CTLineDraw(line.line, context)
       }
       context.restoreGState()
     }
     context.restoreGState()
     return true
+  }
+
+  struct PositionedLine {
+    let text: String
+    let line: CTLine
+    let baseline: CGPoint
+  }
+
+  struct PositionedLayout {
+    let lines: [PositionedLine]
+    let transform: CGAffineTransform
+    let clip: CGRect?
+  }
+
+  /// Positions the exact lines used by committed drawing and vector export.
+  static func positionedLines(_ annotation: InkSignPdfTextAnnotation,
+                              pageSize: CGSize,
+                              color: UIColor) -> PositionedLayout {
+    let insets = InkSignPdfTextStyle.presentationInsets
+    let width = annotation.flowBounds?.width ??
+      max(1, annotation.bounds.width - insets.left - insets.right)
+    let fragments = makeLineFragments(annotation.text,
+                                      fontSize: annotation.fontSize,
+                                      color: color,
+                                      isRTL: annotation.isRTL,
+                                      contentWidth: width,
+                                      alignment: annotation.alignment)
+    let visible: [LineFragment]
+    if let bounds = annotation.flowBounds {
+      visible = selectedLineFragments(fragments, flowBounds: bounds,
+                                      maxLines: annotation.maxLines,
+                                      verticalAnchor: annotation.verticalAnchor)
+    } else {
+      visible = annotation.maxLines > 0 ? Array(fragments.prefix(annotation.maxLines)) : fragments
+    }
+    let origin = annotation.flowBounds?.origin ??
+      CGPoint(x: annotation.position.x + insets.left, y: annotation.position.y + insets.top)
+    let attributes = InkSignPdfTextStyle.attributes(fontSize: annotation.fontSize,
+                                                     color: color,
+                                                     isRTL: annotation.isRTL,
+                                                     alignment: annotation.alignment)
+    let lines = visible.map { fragment -> PositionedLine in
+      let line = CTLineCreateWithAttributedString(
+        NSAttributedString(string: fragment.text, attributes: attributes))
+      var ascent: CGFloat = 0
+      _ = CTLineGetTypographicBounds(line, &ascent, nil, nil)
+      return PositionedLine(text: fragment.text, line: line,
+                            baseline: CGPoint(x: origin.x + fragment.rect.minX,
+                                              y: origin.y + fragment.rect.minY + ascent))
+    }
+    return PositionedLayout(lines: lines,
+                            transform: annotation.layoutToCanonical(
+                              mediaBox: CGRect(origin: .zero, size: pageSize)),
+                            clip: annotation.flowBounds)
   }
 
   static func color(from value: String) -> UIColor? {

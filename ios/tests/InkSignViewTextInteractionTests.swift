@@ -912,16 +912,12 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     }
 
     let page = try XCTUnwrap(PDFDocument(url: output)?.page(at: 0))
+    XCTAssertTrue(page.annotations.isEmpty, "Module text is embedded page content")
+    let extracted = page.string ?? ""
     for expected in [latin, rtl] {
-      let annotation = try XCTUnwrap(page.annotations.first {
-        $0.contents == expected.text &&
-          $0.type?.caseInsensitiveCompare("FreeText") == .orderedSame
-      })
-      XCTAssertTrue(annotation.hasAppearanceStream)
-      let flags = InkSignPdfVectorAnnotation.flags(of: annotation)
-      XCTAssertEqual(flags & InkSignPdfVectorAnnotation.textFlags,
-                     InkSignPdfVectorAnnotation.textFlags)
+      XCTAssertTrue(extracted.contains(expected.text), "Extracted PDF text: \(extracted)")
     }
+
   }
 
   func testPageContentHistoryRestoresTextAndClearAsOneAction() {

@@ -30,7 +30,9 @@ The `core/third_party/pdfium` package contains PDFium `157.0.8086.0` from
 Android links static archives built with NDK `27.1.12297006` and pinned
 `bblanchon/pdfium-binaries` tooling. Release provenance, archive sizes, and
 SHA-256 checksums are recorded in `core/third_party/pdfium/manifest.json`.
-Gradle downloads and verifies these release assets; binaries are not committed.
+Gradle downloads and verifies the Android assets. The iOS pod downloads the
+checksummed Apple static XCFramework and links its target slice. Binaries are
+not committed; both distributions carry the bundled dependency licenses.
 
 PDFium is distributed under its BSD license. The package also includes the
 licenses for its bundled third-party dependencies under

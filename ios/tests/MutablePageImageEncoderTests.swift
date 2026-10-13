@@ -13,15 +13,12 @@ final class MutablePageImageEncoderTests: XCTestCase {
 
     let geometry = PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 72, height: 144),
                                 rotation: 90)
-    let page = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: geometry)
-    assertRect(page.bounds(for: .mediaBox), equals: geometry.mediaBox)
-    XCTAssertEqual(page.rotation, 90)
-
-    let candidate = PDFDocument()
-    candidate.insert(page, at: 0)
+    let encoded = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: geometry)
+    XCTAssertEqual(encoded.pageSize, geometry.mediaBox.size)
+    XCTAssertEqual(encoded.rotation, 90)
     let url = temporaryPDFURL()
     defer { try? FileManager.default.removeItem(at: url) }
-    XCTAssertTrue(candidate.write(to: url))
+    try assemble(encoded, to: url)
 
     let reopened = try XCTUnwrap(PDFDocument(url: url))
     XCTAssertEqual(reopened.pageCount, 1)
@@ -38,12 +35,10 @@ final class MutablePageImageEncoderTests: XCTestCase {
 
     let geometry = PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 72, height: 144),
                                 rotation: 0)
-    let page = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: geometry)
-    let document = PDFDocument()
-    document.insert(page, at: 0)
+    let encoded = try InkSignPdfMutablePageImageEncoder.encode(source, geometry: geometry)
     let url = temporaryPDFURL()
     defer { try? FileManager.default.removeItem(at: url) }
-    XCTAssertTrue(document.write(to: url))
+    try assemble(encoded, to: url)
 
     let reopenedPage = try XCTUnwrap(PDFDocument(url: url)?.page(at: 0))
     let thumbnail = reopenedPage.thumbnail(of: CGSize(width: 200, height: 400),
@@ -70,10 +65,10 @@ final class MutablePageImageEncoderTests: XCTestCase {
     let higherQualityPage = try InkSignPdfMutablePageImageEncoder.encode(
       source, geometry: geometry, targetDpi: 72, jpegQuality: 1)
 
-    XCTAssertLessThan(try serializedSize(of: lowerResolutionPage),
-                      try serializedSize(of: defaultPage))
-    XCTAssertLessThan(try serializedSize(of: lowerQualityPage),
-                      try serializedSize(of: higherQualityPage))
+    XCTAssertLessThan(lowerResolutionPage.jpeg.count,
+                      defaultPage.jpeg.count)
+    XCTAssertLessThan(lowerQualityPage.jpeg.count,
+                      higherQualityPage.jpeg.count)
   }
 
   func testExplicitDpiDoesNotUpscaleBeyondSmallSourceResolution() throws {
@@ -87,8 +82,8 @@ final class MutablePageImageEncoderTests: XCTestCase {
     let sourceResolution = try InkSignPdfMutablePageImageEncoder.encode(
       source, geometry: geometry, targetDpi: 10)
 
-    XCTAssertEqual(try serializedSize(of: requestedHighDpi),
-                   try serializedSize(of: sourceResolution))
+    XCTAssertEqual(requestedHighDpi.jpeg.count,
+                   sourceResolution.jpeg.count)
   }
 
   private func makeJPEG(orientation: UInt32) throws -> URL {
@@ -152,10 +147,10 @@ final class MutablePageImageEncoderTests: XCTestCase {
     return url
   }
 
-  private func serializedSize(of page: PDFPage) throws -> Int {
-    let document = PDFDocument()
-    document.insert(page, at: 0)
-    return try XCTUnwrap(document.dataRepresentation()).count
+  private func assemble(_ encoded: InkSignPdfEncodedImage, to url: URL) throws {
+    let pages = try InkSignPdfPdfiumBackend.assemble(data: nil, operation: .create,
+      inputs: [encoded.nativeInput], pageIndex: 0, destinationIndex: 0, outputURL: url)
+    XCTAssertEqual(pages.count, 1)
   }
 
   private func temporaryPDFURL() -> URL {

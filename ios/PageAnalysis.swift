@@ -1,6 +1,5 @@
 import CoreGraphics
 import Foundation
-import PDFKit
 
 struct InkSignPdfKeyTextMatch {
   let bounds: CGRect
@@ -89,60 +88,34 @@ struct InkSignPdfPageAnalysis {
                                              sourceRules: projected.map { $0.0 })
   }
 
-  static func build(page: PDFPage,
-                    mediaBox: CGRect) -> InkSignPdfPageAnalysis {
-    let sourceText = page.string ?? ""
-    let sourceString = sourceText as NSString
-    let sourceGeometry = PageGeometry(mediaBox: mediaBox, rotation: page.rotation)
-    let pageSize = sourceGeometry.displaySize
-    let sourceToCanonical = sourceGeometry.displayToCanonicalTransform
-    let pageRef = page.pageRef
-    let characterBounds: [CGRect?]
-    if let pageRef {
-      let transform = pageRef.getDrawingTransform(.mediaBox,
-                                                  rect: CGRect(origin: .zero, size: pageSize),
-                                                  rotate: 0,
-                                                  preserveAspectRatio: false)
-      characterBounds = (0..<sourceString.length).map { index -> CGRect? in
-        // Range selections keep geometry aligned with page.string's reading order.
-        guard let selection = page.selection(for: NSRange(location: index, length: 1)) else { return nil }
-        let bounds = selection.bounds(for: page)
-        guard !bounds.isNull, !bounds.isEmpty else { return nil }
-        return Self.sourceDisplayRect(bounds, transform: transform, pageSize: pageSize)
+  static func build(snapshot: InkSignPdfPdfiumAnalysis) -> InkSignPdfPageAnalysis {
+    var units: [UInt16] = []
+    var bounds: [CGRect?] = []
+    var rows: [Int] = []
+    units.reserveCapacity(snapshot.glyphs.count)
+    bounds.reserveCapacity(snapshot.glyphs.count)
+    rows.reserveCapacity(snapshot.glyphs.count)
+    // Every scalar has a source slot, even when it has no drawable geometry.
+    // Surrogate pairs repeat its geometry so all downstream NSRanges use UTF-16.
+    for glyph in snapshot.glyphs {
+      let scalar = UnicodeScalar(glyph.scalar) ?? UnicodeScalar(0xFFFD)!
+      for unit in String(scalar).utf16 {
+        units.append(unit)
+        bounds.append(glyph.hasBounds ? glyph.bounds : nil)
+        rows.append(glyph.visualRow)
       }
-    } else {
-      characterBounds = []
     }
-    let rowBounds = characterBounds.enumerated().map { index, bounds -> CGRect? in
-      Self.isSpace(sourceString.character(at: index)) ? nil : bounds
+    let text = String(decoding: units, as: UTF16.self)
+    let visualRows = zip(snapshot.rowTops, snapshot.rowBottoms).map {
+      InkSignPdfVisualRow(top: CGFloat($0.0.doubleValue), bottom: CGFloat($0.1.doubleValue))
     }
-    let (characterVisualRows, visualRows) = Self.visualRows(for: rowBounds)
-    let displayedRules = pageRef.map {
-      InkSignPdfPlacementRuleDetector.scan(page: $0, mediaBox: mediaBox)
-    } ?? []
-    let labelCandidates = Self.prepareLabels(sourceText: sourceText,
-                                             characterBounds: characterBounds,
-                                             characterVisualRows: characterVisualRows,
-                                             visualRows: visualRows)
-    let canonicalBounds = characterBounds.map { $0.map { $0.applying(sourceToCanonical) } }
-    let rules = displayedRules.enumerated().map { index, rule in
-      InkSignPdfCanonicalWritingRule(start: CGPoint(x: rule.minX, y: rule.y).applying(sourceToCanonical),
-        end: CGPoint(x: rule.maxX, y: rule.y).applying(sourceToCanonical), sourceIndex: index)
+    let rules = snapshot.rules.enumerated().map { index, rule in
+      InkSignPdfCanonicalWritingRule(start: rule.start, end: rule.end, sourceIndex: index)
     }
-    let canonicalLabels = labelCandidates.map { label in
-      let bounds = label.match.bounds.applying(sourceToCanonical)
-      let rowStart = label.match.rowStart.applying(sourceToCanonical)
-      let rowEnd = label.match.rowEnd.applying(sourceToCanonical)
-      return InkSignPdfPreparedLabel(sourceRanges: label.sourceRanges, fieldName: label.fieldName, tokens: label.tokens,
-        match: InkSignPdfKeyTextMatch(bounds: bounds, sourceIndex: label.match.sourceIndex,
-          lineHeight: abs(rowEnd.y - rowStart.y), lineCenterY: (rowStart.y + rowEnd.y) / 2,
-          rowStart: rowStart, rowEnd: rowEnd))
-    }
-    return InkSignPdfPageAnalysis(sourceText: sourceText,
-                                  characterBounds: canonicalBounds,
-                                  characterVisualRows: characterVisualRows,
-                                  rules: rules,
-                                  labelCandidates: canonicalLabels)
+    return InkSignPdfPageAnalysis(sourceText: text, characterBounds: bounds,
+      characterVisualRows: rows, rules: rules,
+      labelCandidates: prepareLabels(sourceText: text, characterBounds: bounds,
+                                      characterVisualRows: rows, visualRows: visualRows))
   }
 
   func lookup(key: String) -> InkSignPdfTextLookup {
@@ -307,47 +280,4 @@ struct InkSignPdfPageAnalysis {
     UnicodeScalar(value).map { CharacterSet.whitespacesAndNewlines.contains($0) } ?? false
   }
 
-  private static func sourceDisplayRect(_ rect: CGRect,
-                                   transform: CGAffineTransform,
-                                   pageSize: CGSize) -> CGRect {
-    let corners = [CGPoint(x: rect.minX, y: rect.minY),
-                   CGPoint(x: rect.maxX, y: rect.minY),
-                   CGPoint(x: rect.maxX, y: rect.maxY),
-                   CGPoint(x: rect.minX, y: rect.maxY)].map { point -> CGPoint in
-      let mapped = point.applying(transform)
-      return CGPoint(x: mapped.x, y: pageSize.height - mapped.y)
-    }
-    let xs = corners.map(\.x)
-    let ys = corners.map(\.y)
-    guard let minX = xs.min(), let maxX = xs.max(),
-          let minY = ys.min(), let maxY = ys.max() else { return .null }
-    return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
-  }
-
-  private static func visualRows(for bounds: [CGRect?]) -> ([Int], [InkSignPdfVisualRow]) {
-    let ordered = bounds.enumerated().compactMap { index, rect -> (center: CGFloat, height: CGFloat, index: Int)? in
-      guard let rect else { return nil }
-      return (rect.midY, rect.height, index)
-    }.sorted { $0.center < $1.center }
-    var rows: [(center: CGFloat, height: CGFloat, count: Int, top: CGFloat, bottom: CGFloat)] = []
-    var result = [Int](repeating: -1, count: bounds.count)
-    for item in ordered {
-      if rows.isEmpty || abs(item.center - rows[rows.count - 1].center) >
-        max(1.5, min(item.height, rows[rows.count - 1].height) * 0.35) {
-        let rect = bounds[item.index]!
-        rows.append((item.center, item.height, 1, rect.minY, rect.maxY))
-      } else {
-        let last = rows.count - 1
-        let row = rows[last]
-        let count = CGFloat(row.count)
-        rows[last] = ((row.center * count + item.center) / (count + 1),
-                      (row.height * count + item.height) / (count + 1),
-                      row.count + 1,
-                      min(row.top, bounds[item.index]!.minY),
-                      max(row.bottom, bounds[item.index]!.maxY))
-      }
-      result[item.index] = rows.count - 1
-    }
-    return (result, rows.map { InkSignPdfVisualRow(top: $0.top, bottom: $0.bottom) })
-  }
 }

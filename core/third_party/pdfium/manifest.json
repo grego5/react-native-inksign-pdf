@@ -55,6 +55,9 @@
       "status": "published; archive structure and symbols validated in CI",
       "androidAssetBytes": 26945983,
       "androidAssetSha256": "31776b9aa7d5fe5950794aa0d1547182fae593214f0005708e6a5e94acb7cbf2",
+      "appleAsset": "PDFium-static-157.0.8086.0.xcframework.tar.gz",
+      "appleAssetBytes": 346727156,
+      "appleAssetSha256": "0eb0043326416d27222a1edf31b60c7e05dea34657c766b701ead977ef0e04f4",
       "checksumsAssetBytes": 98,
       "checksumsAssetSha256": "d7531ae0d22f3c2556b1ba5a19a2e9d49f90f0c5667994a2c705b5f6e43342e9",
       "artifacts": [

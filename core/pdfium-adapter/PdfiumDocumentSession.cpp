@@ -487,8 +487,18 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
   // object rules as plain cached data after this page handle is released.
   if (extractText) {
     FPDF_TEXTPAGE textPage = FPDFText_LoadPage(page.get());
-    if (textPage != nullptr) {
+    if (textPage == nullptr) {
+      return {PdfiumErrorCode::PageOpenFailed, "FPDFText_LoadPage failed"};
+    }
+    struct TextPageCloser {
+      FPDF_TEXTPAGE value;
+      ~TextPageCloser() { FPDFText_ClosePage(value); }
+    } closeTextPage{textPage};
+    {
       const int count = FPDFText_CountChars(textPage);
+      if (count < 0) {
+        return {PdfiumErrorCode::PageOpenFailed, "FPDFText_CountChars failed"};
+      }
       impl_->textCharacterCount += static_cast<std::uint64_t>(std::max(count, 0));
       if (count > 0) {
         analysis.text.resize(static_cast<std::size_t>(count));
@@ -583,7 +593,6 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
         analysis.visualRowTops.push_back(row.top);
         analysis.visualRowBottoms.push_back(row.bottom);
       }
-      FPDFText_ClosePage(textPage);
     }
     analysis.hasText = true;
   }

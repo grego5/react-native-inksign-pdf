@@ -8,7 +8,7 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
-  func testNativeExportPersistsVectorAnnotationsAndExpandedSignatureBounds() throws {
+  func testNativeExportEmbedsTextAndInkWithClippingAndSourcePreservation() throws {
     let sourceURL = temporaryPDFURL("native-export-source")
     let outputURL = temporaryPDFURL("native-export-output")
     defer {
@@ -24,6 +24,10 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     sourcePage.setBounds(mediaBox, for: .mediaBox)
     let cropBox = CGRect(x: -8, y: 28, width: 580, height: 760)
     sourcePage.setBounds(cropBox, for: .cropBox)
+    let sourceAnnotation = PDFAnnotation(bounds: CGRect(x: 410, y: 620, width: 30, height: 25),
+                                         forType: .square, withProperties: nil)
+    sourceAnnotation.contents = "Source annotation"
+    sourcePage.addAnnotation(sourceAnnotation)
     sourcePage.rotation = 90
     XCTAssertTrue(sourceDocument.write(to: sourceURL))
 
@@ -50,6 +54,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       text: boundedText,
       bounds: flowBounds,
       fontSize: 18,
+      textColor: "#FF0000",
       flowBounds: flowBounds,
       maxLines: 1,
       verticalAnchor: .bottom)
@@ -102,56 +107,21 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(page.rotation, 90)
     XCTAssertTrue((page.string ?? "").contains("Source page content"))
 
-    let textAnnotations = page.annotations.filter {
-      $0.type?.caseInsensitiveCompare("FreeText") == .orderedSame
+    XCTAssertEqual(page.annotations.count, committedPage.annotations.count)
+    XCTAssertEqual(page.annotations.first?.contents, "Source annotation")
+    let extracted = page.string ?? ""
+    for value in ["CoreText Latin", "Flow first line"] {
+      XCTAssertTrue(extracted.contains(value), "Exported text: \(extracted)")
     }
-    XCTAssertEqual(textAnnotations.count, text.count)
-    var unmatchedTextAnnotations = textAnnotations
-    for expected in text {
-      let index = try XCTUnwrap(unmatchedTextAnnotations.firstIndex {
-        $0.contents == expected.text
-      })
-      let annotation = unmatchedTextAnnotations.remove(at: index)
-      XCTAssertEqual(annotation.contents, expected.text)
-      XCTAssertTrue(annotation.hasAppearanceStream)
-      XCTAssertTrue(annotation.shouldDisplay)
-      XCTAssertTrue(annotation.shouldPrint)
-      let flags = InkSignPdfVectorAnnotation.flags(of: annotation)
-      XCTAssertEqual(flags & InkSignPdfVectorAnnotation.textFlags,
-                     InkSignPdfVectorAnnotation.textFlags)
-      XCTAssertEqual(flags & InkSignPdfVectorAnnotation.readOnlyFlag, 0)
-    }
-    XCTAssertTrue(unmatchedTextAnnotations.isEmpty)
-    let boundedExport = try XCTUnwrap(textAnnotations.first { $0.contents == boundedText })
-    XCTAssertTrue(boundedExport.hasAppearanceStream)
-    XCTAssertEqual(boundedExport.contents, boundedText)
-    let boundedPDFBounds = CGRect(x: committedMediaBox.minX + flowBounds.minX,
-                                  y: committedMediaBox.maxY - flowBounds.maxY,
-                                  width: flowBounds.width,
-                                  height: flowBounds.height)
-    assertBounds(boundedExport.bounds, equals: boundedPDFBounds)
-    XCTAssertEqual(boundedExport.bounds.height, flowBounds.height, accuracy: 0.01)
-
-    let signatureAnnotations = page.annotations.filter {
-      $0.type?.caseInsensitiveCompare("Stamp") == .orderedSame
-    }
-    XCTAssertFalse(signatureAnnotations.isEmpty)
-    var persistedSignatureBounds = CGRect.null
-    for annotation in signatureAnnotations {
-      XCTAssertTrue(annotation.hasAppearanceStream)
-      XCTAssertTrue(annotation.shouldDisplay)
-      XCTAssertTrue(annotation.shouldPrint)
-      XCTAssertEqual(InkSignPdfVectorAnnotation.flags(of: annotation), 708)
-      XCTAssertGreaterThan(annotation.bounds.width, 0)
-      XCTAssertGreaterThan(annotation.bounds.height, 0)
-      persistedSignatureBounds = persistedSignatureBounds.union(annotation.bounds)
-    }
-    var canonicalToPDF = PageGeometry(mediaBox: committedMediaBox, rotation: 0).canonicalToPDFTransform
-    let pathBounds = try XCTUnwrap(signature.path.copy(using: &canonicalToPDF)).boundingBoxOfPath
-    let expectedAnnotationBounds = pathBounds.insetBy(
-      dx: -InkSignPdfNativeExporter.signatureAppearanceMargin,
-      dy: -InkSignPdfNativeExporter.signatureAppearanceMargin)
-    assertBounds(persistedSignatureBounds, equals: expectedAnnotationBounds)
+    XCTAssertFalse(extracted.contains("Flow second line"), "Only selected complete lines are exported")
+    let reference = referenceImage(text: [text.last!], drawing: drawing, geometry: geometry)
+    let exported = page.thumbnail(of: geometry.displaySize, for: .mediaBox)
+    let red: (UInt8, UInt8, UInt8) -> Bool = { $0 > 180 && $1 < 80 && $2 < 80 }
+    let green: (UInt8, UInt8, UInt8) -> Bool = { $0 < 80 && $1 > 180 && $2 < 80 }
+    assertBounds(try colorBounds(exported, matches: red),
+                 equals: try colorBounds(reference, matches: red), tolerance: 2)
+    assertBounds(try colorBounds(exported, matches: green),
+                 equals: try colorBounds(reference, matches: green), tolerance: 2)
 
     let pdfBytes = try Data(contentsOf: outputURL)
     XCTAssertFalse(String(decoding: pdfBytes, as: UTF8.self).contains("/Subtype /Image"),
@@ -166,7 +136,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
            named: "pencilkit-signature-reference.png")
   }
 
-  func testFinalizeSerializesCommittedDrawingAndReopensVectorAppearance() throws {
+  func testFinalizeEmbedsCommittedInkAndPreservesRenderedContour() throws {
     let fixture = makeFixture(pageCount: 1, applyInitialViewport: false)
     defer {
       fixture.view.dispose()
@@ -188,22 +158,13 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
         defer { try? FileManager.default.removeItem(at: url) }
         let document = try XCTUnwrap(PDFDocument(url: url))
         let page = try XCTUnwrap(document.page(at: 0))
-        let annotation = try XCTUnwrap(page.annotations.first {
-          $0.type?.caseInsensitiveCompare("Stamp") == .orderedSame
-        })
-        XCTAssertTrue(annotation.hasAppearanceStream)
-        XCTAssertEqual(InkSignPdfVectorAnnotation.flags(of: annotation), 708)
-        let expectedPath = try XCTUnwrap(
-          InkSignPdfSignatureVectorPath.filledStrokes(in: drawing).first).path
-        let pathBounds = expectedPath.boundingBoxOfPath
-        let pdfBounds = CGRect(x: pathBounds.minX,
-                               y: 400 - pathBounds.maxY,
-                               width: pathBounds.width,
-                               height: pathBounds.height)
-        let expectedBounds = pdfBounds.insetBy(
-          dx: -InkSignPdfNativeExporter.signatureAppearanceMargin,
-          dy: -InkSignPdfNativeExporter.signatureAppearanceMargin)
-        self.assertBounds(annotation.bounds, equals: expectedBounds)
+        XCTAssertTrue(page.annotations.isEmpty, "Module ink is embedded page content")
+        let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
+        let reference = self.referenceImage(text: [], drawing: drawing, geometry: geometry)
+        let exported = page.thumbnail(of: geometry.displaySize, for: .mediaBox)
+        let black: (UInt8, UInt8, UInt8) -> Bool = { $0 < 60 && $1 < 60 && $2 < 60 }
+        self.assertBounds(try self.colorBounds(exported, matches: black),
+                          equals: try self.colorBounds(reference, matches: black), tolerance: 2)
         let pdfAttachment = XCTAttachment(data: try Data(contentsOf: url),
                                           uniformTypeIdentifier: "com.adobe.pdf")
         pdfAttachment.name = "finalized-signature-workflow.pdf"
@@ -212,7 +173,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
         self.attach(page.thumbnail(of: CGSize(width: 792, height: 612), for: .mediaBox),
                     named: "finalized-signature-workflow.png")
       } catch {
-        XCTFail("The finalized signature must reopen as a vector annotation: \(error)")
+        XCTFail("The finalized signature must reopen as embedded vector content: \(error)")
       }
     }
     result.catch { error in
@@ -303,7 +264,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
                     azimuth: 0, altitude: .pi / 2),
     ]
     let path = PKStrokePath(controlPoints: points, creationDate: Date())
-    let stroke = PKStroke(ink: PKInk(.pen, color: .systemBlue),
+    let stroke = PKStroke(ink: PKInk(.pen, color: .green),
                           path: path,
                           transform: .identity,
                           mask: nil)
@@ -341,11 +302,60 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
   }
 
   private func assertBounds(_ actual: CGRect, equals expected: CGRect,
-                            file: StaticString = #filePath, line: UInt = #line) {
-    XCTAssertEqual(actual.origin.x, expected.origin.x, accuracy: 0.01, file: file, line: line)
-    XCTAssertEqual(actual.origin.y, expected.origin.y, accuracy: 0.01, file: file, line: line)
-    XCTAssertEqual(actual.width, expected.width, accuracy: 0.01, file: file, line: line)
-    XCTAssertEqual(actual.height, expected.height, accuracy: 0.01, file: file, line: line)
+                            tolerance: CGFloat = 0.01, file: StaticString = #filePath, line: UInt = #line) {
+    XCTAssertEqual(actual.origin.x, expected.origin.x, accuracy: tolerance, file: file, line: line)
+    XCTAssertEqual(actual.origin.y, expected.origin.y, accuracy: tolerance, file: file, line: line)
+    XCTAssertEqual(actual.width, expected.width, accuracy: tolerance, file: file, line: line)
+    XCTAssertEqual(actual.height, expected.height, accuracy: tolerance, file: file, line: line)
+  }
+
+  private func referenceImage(text: [InkSignPdfTextAnnotation], drawing: PKDrawing,
+                              geometry: PageGeometry) -> UIImage {
+    let format = UIGraphicsImageRendererFormat()
+    format.scale = 1
+    return UIGraphicsImageRenderer(size: geometry.displaySize, format: format).image { renderer in
+      let context = renderer.cgContext
+      context.setFillColor(UIColor.white.cgColor)
+      context.fill(CGRect(origin: .zero, size: geometry.displaySize))
+      context.concatenate(geometry.canonicalToDisplayTransform)
+      XCTAssertTrue(InkSignPdfTextRenderer.drawCanonical(text, pageSize: geometry.mediaBox.size, in: context))
+      do {
+        for stroke in try InkSignPdfSignatureVectorPath.filledStrokes(in: drawing) {
+          context.setFillColor(stroke.color.cgColor)
+          context.addPath(stroke.path)
+          context.fillPath()
+        }
+      } catch { XCTFail("Reference vectorization failed: \(error)") }
+    }
+  }
+
+  private func colorBounds(_ image: UIImage,
+                           matches: (UInt8, UInt8, UInt8) -> Bool) throws -> CGRect {
+    let raster = try XCTUnwrap(image.cgImage)
+    let width = Int(image.size.width.rounded()), height = Int(image.size.height.rounded())
+    var bytes = [UInt8](repeating: 0, count: width * height * 4)
+    try bytes.withUnsafeMutableBytes { storage in
+      let context = try XCTUnwrap(CGContext(data: storage.baseAddress,
+        width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+        space: CGColorSpaceCreateDeviceRGB(), bitmapInfo:
+          CGBitmapInfo.byteOrder32Big.rawValue | CGImageAlphaInfo.premultipliedLast.rawValue))
+      context.draw(raster, in: CGRect(x: 0, y: 0, width: width, height: height))
+    }
+    var left = width, top = height, right = -1, bottom = -1
+    for y in 0..<height {
+      for x in 0..<width {
+        let index = (y * width + x) * 4
+        if bytes[index + 3] > 0 && matches(bytes[index], bytes[index + 1], bytes[index + 2]) {
+          left = min(left, x); top = min(top, y)
+          right = max(right, x); bottom = max(bottom, y)
+        }
+      }
+    }
+    guard right >= left, bottom >= top else {
+      XCTFail("Expected visible fixture color")
+      throw InkSignPdfNativeExporterError.invalidOutput("Missing rendered fixture color")
+    }
+    return CGRect(x: left, y: top, width: right - left + 1, height: bottom - top + 1)
   }
 
   private func attach(_ image: UIImage, named name: String) {

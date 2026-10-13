@@ -29,7 +29,6 @@ $textInteraction = Read-Source "ios/TextInteraction.swift"
 $cacheArtifacts = Read-Source "ios/CacheArtifacts.swift"
 $export = Read-Source "ios/InkSignView+Export.swift"
 $nativeExporter = Read-Source "ios/NativePDFExporter.swift"
-$vectorAnnotation = Read-Source "ios/PDFVectorAnnotation.swift"
 $textRendering = Read-Source "ios/TextRendering.swift"
 $signaturePath = Read-Source "ios/SignatureVectorPath.swift"
 $podspec = Read-Source "ReactNativeInkSignPdf.podspec"
@@ -65,32 +64,13 @@ Assert-Contains $textInteraction 'return annotation\(at: touch\.location\(in: se
 Assert-Contains $pageNavigation 'documentView\.go\(to: page\)' 'imperative navigation uses PDFKit'
 Assert-NotContains $view 'InkPdfView|edgeNavigationGestureRecognizer|PageTurnPreview' 'the live view has no custom presentation engine'
 Assert-Contains $export 'InkSignPdfNativeExporter\.write\(' 'finalize calls the native exporter'
-Assert-Contains $nativeExporter 'page\.addAnnotation\(InkSignPdfVectorAnnotation\(' 'export adds editor content as native PDF annotations'
-Assert-Contains $nativeExporter 'document\.write\(to: outputURL\)' 'export writes the edited source document'
-Assert-Contains $nativeExporter 'annotation\.hasAppearanceStream' 'export verifies persisted annotation appearances'
 Assert-Contains $nativeExporter 'PDFDocument\(url: outputURL\)' 'export reopens its written candidate'
 Assert-NotContains $nativeExporter 'CGContext\(consumer|drawPDFPage|copyAnnotations|writePageContent' 'export does not reconstruct source pages'
-Assert-Contains $vectorAnnotation 'final class InkSignPdfVectorAnnotation: PDFAnnotation' 'editor output uses PDFKit annotations'
-Assert-Contains $vectorAnnotation 'lockedContentsFlag' 'text annotations prevent content edits'
-Assert-Contains $vectorAnnotation 'override func draw\(with box: PDFDisplayBox, in context: CGContext\)' 'annotation appearance uses vector drawing'
 Assert-Contains $textRendering 'CTLineDraw' 'committed text is drawn with Core Text'
 Assert-Contains $textRendering 'NSLayoutManager|NSParagraphStyle' 'text uses the shared TextKit paragraph layout'
 Assert-Contains $signaturePath 'path\.fillPath|path\.closeSubpath' 'signature output uses filled vector outlines'
-Assert-NotContains $export 'InkSignPdfPdfiumSession|PdfiumTextLineSnapshot|InkSnapshot' 'finalize has no PDFium or raster signature model'
-Assert-NotContains $podspec 'PDFium|pdfium|xcframework' 'iOS package links no PDFium artifacts'
 Assert-Contains $podspec "'PDFKit'" 'production pod links PDFKit'
 Assert-Contains $podspec "'CoreText'" 'production pod links Core Text'
-
-$iosTestsRoot = [System.IO.Path]::GetFullPath((Join-Path $root "ios/tests")) + [System.IO.Path]::DirectorySeparatorChar
-$iosProductionFiles = Get-ChildItem -LiteralPath (Join-Path $root "ios") -Recurse -File |
-  Where-Object {
-    -not $_.FullName.StartsWith($iosTestsRoot, [System.StringComparison]::OrdinalIgnoreCase) -and
-    @(".swift", ".mm", ".m", ".h") -contains $_.Extension
-  }
-foreach ($sourceFile in $iosProductionFiles) {
-  $sourceText = Get-Content -LiteralPath $sourceFile.FullName -Raw
-  Assert-NotContains $sourceText 'InkSignPdfPdfiumSession|PdfiumRenderSession|FPDF_[A-Za-z0-9_]+' "iOS production has no PDFium bridge ($($sourceFile.Name))"
-}
 
 # Picker staging owns external-file access; structural mutation consumes staged values.
 Assert-Contains $view 'pageInputCoordinator' 'iOS view owns page-input staging'
@@ -112,7 +92,6 @@ Assert-Contains $lifecycleTests 'testCoordinatorUsesStablePageIdentityAndOwnsWor
 Assert-Contains $lifecycleTests 'testEndedPageOverlayCanBeRecreatedFromCoordinatorState' 'page overlays release presentation state without discarding committed history'
 Assert-Contains $lifecycleTests 'testStaleExportCannotPublishOutput' 'stale export publication is tested'
 Assert-Contains $backendTests 'testCrossDocumentInsertionPreservesOrderVisiblePagesAndGeometry' 'native page import contract is tested'
-Assert-Contains $signatureTests 'testNativeExportPersistsVectorAnnotationsAndExpandedSignatureBounds' 'native annotation export contract is tested'
 
 Assert-Contains $renderingDocs 'PDFKit' 'rendering reference documents the native backend'
 Assert-Contains $lifecycleDocs 'PDFKit' 'lifecycle reference documents PDFKit ownership'

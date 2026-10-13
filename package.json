@@ -18,6 +18,7 @@
     "android/ink-engine-release.json",
     "core/third_party/pdfium",
     "tools/verify-pdfium.ps1",
+    "tools/fetch-pdfium-apple.rb",
     "THIRD_PARTY_NOTICES.md",
     "CREDITS.md",
     "ios",

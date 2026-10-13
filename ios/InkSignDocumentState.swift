@@ -631,7 +631,7 @@ final class InkSignPdfPageState {
   let history: InkSignPdfPageContentHistory
   let geometryRevision: UInt64
   let sourceGeometry: PageGeometry
-  /// Captured from the original page before PDFKit serialization.
+  /// Canonical source analysis of the working page, retained across unchanged imports.
   let sourceAnalysis: InkSignPdfPageAnalysis
 
   var contentRevision: UInt64 { history.revision }

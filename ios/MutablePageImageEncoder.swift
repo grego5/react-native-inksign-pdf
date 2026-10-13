@@ -1,12 +1,21 @@
 import CoreGraphics
 import Foundation
 import ImageIO
-import PDFKit
 import UIKit
 import UniformTypeIdentifiers
 
-/// Normalizes a selected image into a page-sized PDFKit image page. The source
-/// is never rewritten.
+struct InkSignPdfEncodedImage {
+  let jpeg: Data
+  let pageSize: CGSize
+  let rotation: Int
+
+  var nativeInput: InkSignPdfPdfiumInput {
+    InkSignPdfPdfiumInput(imageData: jpeg, pageSize: pageSize, rotation: rotation,
+      placement: CGAffineTransform(scaleX: pageSize.width, y: pageSize.height))
+  }
+}
+
+/// Normalizes a selected image into a page-sized JPEG. The source is unchanged.
 enum InkSignPdfMutablePageImageEncoder {
   private static let dpi = 200.0
   private static let pointsPerInch = 72.0
@@ -17,7 +26,7 @@ enum InkSignPdfMutablePageImageEncoder {
     geometry: PageGeometry,
     targetDpi: Double? = nil,
     jpegQuality: Double? = nil
-  ) throws -> PDFPage {
+  ) throws -> InkSignPdfEncodedImage {
     let pageWidth = geometry.mediaBox.width
     let pageHeight = geometry.mediaBox.height
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
@@ -95,14 +104,7 @@ enum InkSignPdfMutablePageImageEncoder {
     guard CGImageDestinationFinalize(destination) else {
       throw InkSignView.MutablePageError.unsupportedContent
     }
-    let imageScale = max(CGFloat(targetWidth) / pageWidth,
-                         CGFloat(targetHeight) / pageHeight)
-    guard let image = UIImage(data: data as Data, scale: imageScale),
-          let page = PDFPage(image: image) else {
-      throw InkSignView.MutablePageError.unsupportedContent
-    }
-    page.setBounds(geometry.mediaBox, for: .mediaBox)
-    page.rotation = geometry.rotation
-    return page
+    return InkSignPdfEncodedImage(jpeg: data as Data,
+      pageSize: CGSize(width: pageWidth, height: pageHeight), rotation: geometry.rotation)
   }
 }

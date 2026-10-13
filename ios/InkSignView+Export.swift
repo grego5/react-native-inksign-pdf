@@ -143,7 +143,7 @@ extension InkSignView {
       throw ExportError.unsupportedContent
     } catch {
       policy.deleteExact(output)
-      throw ExportError.failed
+      throw normalizeExportError(error)
     }
   }
 
@@ -157,6 +157,10 @@ extension InkSignView {
 
   private static func normalizeExportError(_ error: Error) -> Error {
     if let exportError = error as? ExportError { return exportError }
+    let native = error as NSError
+    if native.domain == "InkSignPdf.Export" || native.domain == "InkSignPdf.Pdfium" {
+      return error
+    }
     return ExportError.failed
   }
 }

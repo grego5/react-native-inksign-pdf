@@ -1,6 +1,6 @@
 #include "pdfium-adapter/PdfiumDocumentSession.hpp"
 #include "pdfium-adapter/PdfiumPageAssembler.hpp"
-#include "pdfium-adapter/PdfiumSignedDocumentExporter.hpp"
+#include "pdfium-adapter/PdfiumContentWriter.hpp"
 
 #include <algorithm>
 #include <array>
@@ -22,10 +22,10 @@ using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyCommand;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyOperation;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageMetadata;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageRenderRequest;
-using margelo::nitro::inksignpdf::pdfium::PdfiumExportTextLine;
-using margelo::nitro::inksignpdf::pdfium::PdfiumInkBitmap;
-using margelo::nitro::inksignpdf::pdfium::PdfiumSignedDocumentExporter;
-using margelo::nitro::inksignpdf::pdfium::PdfiumSignedExportPage;
+
+using margelo::nitro::inksignpdf::pdfium::PdfiumContentInput;
+using margelo::nitro::inksignpdf::pdfium::PdfiumContentWriter;
+using margelo::nitro::inksignpdf::pdfium::PdfiumShapedRun;
 
 namespace {
 
@@ -211,26 +211,34 @@ extern "C" bool ReactNativeInkSignPdfPdfiumSessionLifecycleSmoke() {
     return false;
   }
 
-  PdfiumSignedExportPage signedPage;
-  signedPage.expectedGeometry = metadata;
-  PdfiumInkBitmap ink;
-  std::array<std::uint8_t, 16> inkPixels{
-      0, 0, 255, 128, 0, 0, 0, 0, 0, 255, 0, 128, 0, 0, 0, 0};
-  ink.bgra = inkPixels;
-  ink.width = 2;
-  ink.height = 2;
-  ink.stride = 8;
-  ink.left = 10.0;
-  ink.top = 10.0;
-  ink.displayWidth = 20.0;
-  ink.displayHeight = 20.0;
-  signedPage.ink = std::move(ink);
-  signedPage.textLines.push_back(
-      {u"PDFium", 15.0, 35.0, 10.0, 0xFF102030u, false});
-  const auto signedCandidate = PdfiumSignedDocumentExporter::write(
-      textPdf("[10 20 110 220]", "", 90), {signedPage});
+  PdfiumContentInput content;
+  content.pageIndices = {0};
+  content.pageDimensions = {200, 100};
+  content.pageRotations = {1};
+  content.pathPageIndices = {0};
+  content.pathCommandOffsets = {0, 5};
+  content.pathCommandTypes = {0, 1, 1, 1, 3};
+  content.pathCoordinates = {10, 10, 0, 0, 0, 0, 30, 10, 0, 0, 0, 0,
+                             30, 30, 0, 0, 0, 0, 10, 30, 0, 0, 0, 0,
+                             0, 0, 0, 0, 0, 0};
+  content.textRunPageIndices = {0};
+  content.textRunLineIds = {0};
+  content.textRunTexts = {u"PDFium"};
+  content.textRunSourceRanges = {0, 6};
+  content.textRunBidiLevels = {0};
+  content.textRunVisualOrder = {0};
+  content.textRunBaseDirections = {0};
+  content.textRunAlignments = {0};
+  content.textRunFontIndices = {-1};
+  content.textRunGeometry = {15, 80, 35, 10, 35};
+  content.textRunColors = {static_cast<std::int32_t>(0xFF102030u)};
+  content.textRunTransforms = {1, 0, 0, 1, 0, 0};
+  std::vector<std::uint8_t> signedBytes;
+  const auto signedCandidate = PdfiumContentWriter::write(
+      textPdf("[10 20 110 220]", "", 90), content,
+      [](auto, auto, auto, bool, float) { return PdfiumShapedRun{}; }, signedBytes);
   if (!signedCandidate) return false;
-  auto signedSession = PdfiumDocumentSession::open(signedCandidate.bytes);
+  auto signedSession = PdfiumDocumentSession::open(signedBytes);
   PdfiumPageMetadata signedMetadata;
   if (!signedSession || signedSession.session->pageCount() != 1 ||
       !signedSession.session->inspectPage(0, signedMetadata) ||
@@ -240,14 +248,6 @@ extern "C" bool ReactNativeInkSignPdfPdfiumSessionLifecycleSmoke() {
       signedMetadata.mediaBoxTop != 220.0 || signedMetadata.rotation != 1) {
     return false;
   }
-  signedPage.textLines[0].rightToLeft = true;
-  const auto unsupportedSignedCandidate = PdfiumSignedDocumentExporter::write(
-      textPdf("[10 20 110 220]", "", 90), {signedPage});
-  if (unsupportedSignedCandidate ||
-      unsupportedSignedCandidate.error.code != PdfiumErrorCode::UnsupportedText) {
-    return false;
-  }
-
   auto renderSession = PdfiumDocumentSession::open(
       textPdf("[0 0 100 100]", "0 0 0 rg 10 5 30 20 re f\n"));
   if (!renderSession) return false;

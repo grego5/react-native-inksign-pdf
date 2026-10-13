@@ -6,6 +6,38 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class PlacementRuleDetectorTests: XCTestCase {
+  func testPDFiumAnalysisKeepsCanonicalLabelAndRuleThroughIntrinsicRotation() throws {
+    let url = try makePDF { context in
+      drawFixtureLabel("Name", at: CGPoint(x: 80, y: 120), in: context)
+      context.move(to: CGPoint(x: 160, y: 120))
+      context.addLine(to: CGPoint(x: 300, y: 120))
+      context.strokePath()
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let initial = try analyze(url)
+    let initialMatch = try XCTUnwrap(initial.lookup(key: "Name").matches.first)
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    page.setBounds(CGRect(x: 20, y: 30, width: 595, height: 842), for: .mediaBox)
+    page.rotation = 90
+    XCTAssertTrue(document.write(to: url))
+    let snapshots = try InkSignPdfPdfiumBackend.analyze(data: Data(contentsOf: url), pageIndices: [0])
+    let snapshot = try XCTUnwrap(snapshots.first)
+    XCTAssertEqual(snapshot.metadata.rotation, 90)
+    XCTAssertEqual(snapshot.metadata.mediaBox.size, CGSize(width: 595, height: 842))
+    let rotated = InkSignPdfPageAnalysis.build(snapshot: snapshot)
+    let match = try XCTUnwrap(rotated.lookup(key: "Name").matches.first)
+    XCTAssertEqual(match.bounds.minX, initialMatch.bounds.minX - 20, accuracy: 0.01)
+    XCTAssertEqual(match.bounds.minY, initialMatch.bounds.minY + 30, accuracy: 0.01)
+    XCTAssertEqual(match.bounds.width, initialMatch.bounds.width, accuracy: 0.01)
+    XCTAssertEqual(match.bounds.height, initialMatch.bounds.height, accuracy: 0.01)
+    XCTAssertEqual(rotated.rules.count, initial.rules.count)
+    let rule = try XCTUnwrap(rotated.rules.first)
+    let initialRule = try XCTUnwrap(initial.rules.first)
+    XCTAssertEqual(rule.start.x, initialRule.start.x - 20, accuracy: 0.01)
+    XCTAssertEqual(rule.start.y, initialRule.start.y + 30, accuracy: 0.01)
+  }
+
   func testJoinedWholeLabelMatchesMissingSpaceWithoutAcceptingPartialLabel() throws {
     let url = try makePDF { context in
       drawFixtureLabel("FullName", at: CGPoint(x: 80, y: 120), in: context)
@@ -14,7 +46,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let document = try XCTUnwrap(PDFDocument(url: url))
     let page = try XCTUnwrap(document.page(at: 0))
     try requireDrawableLabel("FullName", in: page)
-    let analysis = InkSignPdfPageAnalysis.build(page: page, mediaBox: page.bounds(for: .mediaBox))
+    let analysis = try analyze(url)
     XCTAssertEqual(analysis.lookup(key: "Full Name").matches.count, 1)
     XCTAssertFalse(analysis.lookup(key: "Name").hasLiteralMatch)
     XCTAssertFalse(analysis.lookup(key: "Full").hasLiteralMatch)
@@ -97,8 +129,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let document = try XCTUnwrap(PDFDocument(url: url))
     let page = try XCTUnwrap(document.page(at: 0))
     let mediaBox = page.bounds(for: .mediaBox)
-    let lookup = InkSignPdfPageAnalysis.build(page: page,
-                                              mediaBox: mediaBox).lookup(key: "name")
+    let lookup = try analyze(url).lookup(key: "name")
     XCTAssertTrue(lookup.hasLiteralMatch)
     let matches = lookup.matches
     XCTAssertEqual(matches.count, 2)
@@ -124,15 +155,14 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let page = try XCTUnwrap(document.page(at: 0))
     let key = try XCTUnwrap(page.string)
 
-    let lookup = InkSignPdfPageAnalysis.build(page: page,
-                                              mediaBox: page.bounds(for: .mediaBox)).lookup(key: key)
+    let lookup = try analyze(url).lookup(key: key)
     XCTAssertFalse(lookup.hasLiteralMatch,
                    "The API matches complete prepared labels, not source text spanning visual rows")
     let matches = lookup.matches
     XCTAssertTrue(matches.isEmpty)
   }
 
-  func testPDFKitExtractedSpaceWithoutGeometryStillAllowsMultiwordKeyLookup() throws {
+  func testPDFiumMultiwordLookupRetainsRepeatedWordsAndAcceptsReorderedWords() throws {
     let url = try makePDF { context in
       drawFixtureLabel("Full Name", at: CGPoint(x: 80, y: 120), in: context)
     }
@@ -145,10 +175,8 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let match = sourceString.range(of: "Full Name")
     XCTAssertNotEqual(match.location, NSNotFound, "PDFKit extracted: \(source)")
     try requireDrawableLabel("Full Name", in: page)
-    let spaceIndex = match.location + ("Full" as NSString).length
 
-    let analysis = InkSignPdfPageAnalysis.build(page: page,
-                                                mediaBox: page.bounds(for: .mediaBox))
+    let analysis = try analyze(url)
     let lookup = analysis.lookup(key: "Full Name")
     XCTAssertTrue(lookup.hasLiteralMatch,
       "Extracted: \(source); rows: \(analysis.characterVisualRows); labels: \(analysis.labelCandidates.map(\.fieldName))")
@@ -162,24 +190,8 @@ final class PlacementRuleDetectorTests: XCTestCase {
     XCTAssertEqual(reorderedLookup.matches.first?.bounds, lookup.matches.first?.bounds)
     XCTAssertFalse(analysis.lookup(key: "Full Nam").hasLiteralMatch)
 
-    // PDFKit may assign a rectangle to inferred whitespace. Remove only that
-    // geometry to cover extracted spaces with no drawable character bounds.
-    var characterBounds = analysis.characterBounds
-    XCTAssertEqual(characterBounds.count, sourceString.length)
-    characterBounds[spaceIndex] = nil
-    var characterVisualRows = analysis.characterVisualRows
-    characterVisualRows[spaceIndex] = -1
-    let geometrySparseAnalysis = InkSignPdfPageAnalysis(
-      sourceText: analysis.sourceText,
-      characterBounds: characterBounds,
-      characterVisualRows: characterVisualRows,
-      rules: analysis.rules,
-      labelCandidates: analysis.labelCandidates)
-    let geometrySparseLookup = geometrySparseAnalysis.lookup(key: "Full Name")
-    XCTAssertTrue(geometrySparseLookup.hasLiteralMatch)
-    XCTAssertEqual(geometrySparseLookup.matches.count, 1)
-    XCTAssertGreaterThan(geometrySparseLookup.matches[0].lineHeight, 0)
-    XCTAssertNotNil(geometrySparseLookup.matches[0].lineCenterY)
+    XCTAssertFalse(analysis.lookup(key: "Full Full Name").hasLiteralMatch)
+
   }
 
   func testMultiwordKeyDoesNotCombineDistantFieldsOnOneRow() throws {
@@ -191,7 +203,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: url) }
     let document = try XCTUnwrap(PDFDocument(url: url))
     let page = try XCTUnwrap(document.page(at: 0))
-    let analysis = InkSignPdfPageAnalysis.build(page: page, mediaBox: page.bounds(for: .mediaBox))
+    let analysis = try analyze(url)
     XCTAssertFalse(analysis.lookup(key: "Full").matches.isEmpty)
     XCTAssertFalse(analysis.lookup(key: "Name").matches.isEmpty)
     XCTAssertTrue(analysis.lookup(key: "Full Name").matches.isEmpty)
@@ -248,8 +260,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let extracted = try XCTUnwrap(page.string)
     XCTAssertEqual(extracted.lowercased().components(separatedBy: "name").count - 1, 2,
                    "The PDF-backed fixture must expose both occurrences: \(extracted)")
-    let analysis = InkSignPdfPageAnalysis.build(page: page,
-                                                mediaBox: mediaBox)
+    let analysis = try analyze(url)
     let lookup = analysis.lookup(key: "Name")
     XCTAssertTrue(lookup.hasLiteralMatch)
     XCTAssertEqual(lookup.matches.count, 2,
@@ -271,7 +282,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     }
     let original = try InkSignPdfDocumentCandidateLoader.load(url: originalURL)
     let working = try InkSignPdfDocumentCandidateLoader.load(url: workingURL,
-                                                            retainingAnalysisFrom: original.pages)
+                                                            retainingAnalysis: [0: original.pages[0].sourceAnalysis])
     let rebound = InkSignPdfDocumentCandidateLoader.rebinding(original.pages[0], to: working.pages[0])
     try FileManager.default.removeItem(at: originalURL)
 
@@ -410,11 +421,21 @@ final class PlacementRuleDetectorTests: XCTestCase {
     return url
   }
 
+  private func analyze(_ url: URL, pageIndex: Int = 0) throws -> InkSignPdfPageAnalysis {
+    let snapshots = try InkSignPdfPdfiumBackend.analyze(data: Data(contentsOf: url),
+                                                       pageIndices: [NSNumber(value: pageIndex)])
+    return InkSignPdfPageAnalysis.build(snapshot: try XCTUnwrap(snapshots.first))
+  }
+
   private func scan(_ url: URL, pageIndex: Int = 0) throws -> [InkSignPdfPlacementRule] {
     let document = try XCTUnwrap(PDFDocument(url: url))
     let page = try XCTUnwrap(document.page(at: pageIndex))
-    return InkSignPdfPlacementRuleDetector.scan(url: url,
-                                                pageIndex: pageIndex,
-                                                mediaBox: page.bounds(for: .mediaBox))
+    let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
+    return try analyze(url, pageIndex: pageIndex).rules.compactMap { rule in
+      let start = geometry.canonicalToDisplay(rule.start)
+      let end = geometry.canonicalToDisplay(rule.end)
+      guard abs(start.y - end.y) <= 0.001 else { return nil }
+      return InkSignPdfPlacementRule(minX: min(start.x, end.x), maxX: max(start.x, end.x), y: start.y)
+    }
   }
 }

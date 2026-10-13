@@ -12,6 +12,8 @@
   [page history](view-lifecycle.md#page-history-and-disposal).
 - The PDFium worker preserves source pages and their order, adds ink as vector paths
   and text as positioned PDF text objects, then serializes a candidate.
+- JNI owns marshaling and output-file IO. The shared content writer owns PDF
+  embedding/validation; Android's adapter supplies HarfBuzz-shaped clusters.
 - Reopen the candidate with PDFium and validate page metadata, object counts, path
   geometry, text font sizes, and placements before atomically publishing it.
 - Export leaves source files and the working document unchanged. Text shaping and

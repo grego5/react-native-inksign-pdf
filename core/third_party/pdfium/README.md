@@ -13,6 +13,10 @@ checksums are pinned in `manifest.json`. Gradle fetches the
 Android uses static `libpdfium.a` archives that are final-linked into the native
 module. No separate `libpdfium.so` is packaged.
 
+The iOS pod prepares the pinned static XCFramework through
+`tools/fetch-pdfium-apple.rb`, including local path installations. Verified SDKs
+are cached in ignored `ios/build/pdfium/sdk`; Xcode links its target slice.
+
 The Android and Apple build workflows use pinned upstream source and
 `bblanchon/pdfium-binaries` tooling. `publish-pdfium.yml` publishes their outputs
 independently, with separate platform checksum lists.

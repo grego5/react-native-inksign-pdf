@@ -11,8 +11,8 @@
   captured activity before callbacks so newer requests retain ownership.
 - `ViewerViewportController` owns programmatic viewport writes, motion,
   keyboard space, and settled zoom events. PDFKit owns its live scroll geometry.
-- Serial PDF queue analyzes each original page once during open/import, before
-  PDFKit serialization. Page state owns immutable canonical text/rule analysis;
+- Serial PDF queue builds PDFium text/rule analysis from working/candidate bytes.
+  Page state owns immutable canonical snapshots;
   navigation, reordering, and rotation preserve it. Analysis retains no source
   PDF bytes or framework page objects.
 - `getPage()` shares stored analysis through the viewer command queue; target
@@ -31,7 +31,8 @@
   readiness; claim completion before viewport mutation to prevent layout reentry.
 - Cancellation invalidates queued publication immediately. The PDF queue retains
   resources used by running work until cleanup can safely release them.
-- Page assembly prepares and validates a detached candidate. Failed, cancelled,
+- PDFium page assembly prepares and validates a detached candidate, then PDFKit
+  reopens it for presentation. Failed, cancelled,
   or stale mutations leave the published document intact.
 - Structural publication updates document/order/selection/dirty state together.
   Resolve after active page, overlay, transform, and requested viewport readiness.

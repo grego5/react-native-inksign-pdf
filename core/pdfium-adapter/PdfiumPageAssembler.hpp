@@ -36,6 +36,7 @@ struct PdfiumAppendInput final {
   std::vector<std::uint8_t> bytes;
   double pageWidth = 0.0;
   double pageHeight = 0.0;
+  int rotation = 0;
   PdfiumImagePlacement placement;
 };
 

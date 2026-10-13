@@ -14,13 +14,20 @@ enum InkSignPdfDocumentCandidateError: Error {
 
 enum InkSignPdfDocumentCandidateLoader {
   static func load(url: URL,
-                   retainingAnalysisFrom sourcePages: [InkSignPdfPageState]? = nil) throws -> InkSignPdfDocumentCandidate {
+                   retainingAnalysis: [Int: InkSignPdfPageAnalysis] = [:]) throws -> InkSignPdfDocumentCandidate {
     guard let document = PDFDocument(url: url) else {
       throw InkSignPdfDocumentCandidateError.unreadable
     }
     guard document.pageCount > 0 else { throw InkSignPdfDocumentCandidateError.empty }
-    if let sourcePages, sourcePages.count != document.pageCount {
-      throw InkSignPdfDocumentCandidateError.unreadable
+    let missing = (0..<document.pageCount).filter { retainingAnalysis[$0] == nil }
+    var analyses = retainingAnalysis
+    if !missing.isEmpty {
+      let data = try Data(contentsOf: url)
+      let snapshots = try InkSignPdfPdfiumBackend.analyze(data: data,
+        pageIndices: missing.map { NSNumber(value: $0) })
+      for snapshot in snapshots {
+        analyses[snapshot.metadata.pageIndex] = InkSignPdfPageAnalysis.build(snapshot: snapshot)
+      }
     }
 
     var pages: [InkSignPdfPageState] = []
@@ -29,17 +36,17 @@ enum InkSignPdfDocumentCandidateLoader {
       guard let page = document.page(at: index) else {
         throw InkSignPdfDocumentCandidateError.unreadable
       }
-      pages.append(try pageState(for: page, sourceAnalysis: sourcePages?[index].sourceAnalysis))
+      guard let analysis = analyses[index] else { throw InkSignPdfDocumentCandidateError.unreadable }
+      pages.append(try pageState(for: page, sourceAnalysis: analysis))
     }
     return InkSignPdfDocumentCandidate(document: document, pages: pages)
   }
 
   static func pageState(for page: PDFPage,
-                        sourceAnalysis: InkSignPdfPageAnalysis? = nil) throws -> InkSignPdfPageState {
+                        sourceAnalysis: InkSignPdfPageAnalysis) throws -> InkSignPdfPageState {
     let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
     guard geometry.isValid else { throw InkSignPdfDocumentCandidateError.invalidGeometry }
-    let analysis = sourceAnalysis ?? InkSignPdfPageAnalysis.build(page: page, mediaBox: geometry.mediaBox)
-    return InkSignPdfPageState(page: page, geometry: geometry, sourceAnalysis: analysis)
+    return InkSignPdfPageState(page: page, geometry: geometry, sourceAnalysis: sourceAnalysis)
   }
 
   static func rebinding(_ oldPage: InkSignPdfPageState,

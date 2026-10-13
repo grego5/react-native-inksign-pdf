@@ -294,11 +294,9 @@ extension InkSignView {
         if sourceData.starts(with: [0xff, 0xd8, 0xff]) {
           let geometry = PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 595.28, height: 841.89),
                                       rotation: 0)
-          let imagePage = try InkSignPdfMutablePageImageEncoder.encode(url, geometry: geometry)
-          let document = PDFDocument()
-          document.insert(imagePage, at: 0)
-          guard let data = document.dataRepresentation() else { throw LoadError.pdfLoadFailed }
-          try data.write(to: allocated, options: .atomic)
+          let image = try InkSignPdfMutablePageImageEncoder.encode(url, geometry: geometry)
+          _ = try InkSignPdfPdfiumBackend.assemble(data: nil, operation: .create,
+            inputs: [image.nativeInput], pageIndex: 0, destinationIndex: 0, outputURL: allocated)
         } else {
           try sourceData.write(to: allocated, options: .atomic)
         }
