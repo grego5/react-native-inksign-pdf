@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Complete (implementation and applicable simulator checks)
 Complexity: Medium
 Depends on: 09-13
 
@@ -83,3 +83,7 @@ ID reads must cause no analysis, selection, dirty, or history changes.
 - Complete when all three client forms share the contract and generated/public
   docs contain no stale iOS tag rejection. Mark runtime acceptance separately.
 - Proposed commit: `feat(ios): support session page tags and targeted lookup`.
+
+## Current integration
+
+Immutable tags live in core page records and survive rebinding/rotation/reorder. Ordered ID reads and tagged page queries share core metadata; empty reusable viewers return no IDs. Exact nonempty tags include whitespace strings. Core identity/tag checks passed; broader device acceptance is recorded in Task 13.

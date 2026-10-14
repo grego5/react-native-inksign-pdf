@@ -69,17 +69,19 @@ final class InkSignView: HybridInkSignViewSpec {
       }
     }
 
-    let operation: InkSignPdfDocumentCoordinator.OperationToken
+    let id: UUID
+    var generation: UInt64?
     let settlement: InkSignPdfOperationPromise<PageInfo>
     let zoom: Double?
     let focus: CGPoint?
     let fitToPage: Bool
     var phase: Phase = .preparing
 
-    init(operation: InkSignPdfDocumentCoordinator.OperationToken,
+    init(id: UUID = UUID(),
          promise: Promise<PageInfo>, zoom: Double?, focus: CGPoint?, fitToPage: Bool,
          phase: Phase = .preparing) {
-      self.operation = operation
+      self.id = id
+      self.generation = nil
       self.settlement = InkSignPdfOperationPromise(promise: promise)
       self.zoom = zoom
       self.focus = focus
@@ -97,7 +99,9 @@ final class InkSignView: HybridInkSignViewSpec {
     hostView: container,
     artifactPolicy: artifactPolicy)
   private lazy var canvasViewDelegate = InkSignPdfCanvasViewDelegate(owner: self)
-  let documentCoordinator: InkSignPdfDocumentCoordinator
+  let documentCore: InkSignDocumentCore
+  var documentCoordinator: InkSignPdfDocumentCoordinator { documentCore.coordinator }
+  var viewerDocument: InkSignPdfViewerDocument?
   lazy var textInteractionOverlay = InkSignPdfTextInteractionOverlay(frame: .zero)
   private lazy var pdfViewGestureDelegate = InkSignPdfViewGestureDelegate(owner: self)
   private(set) lazy var interaction = ViewerInteractionCoordinator(host: self)
@@ -116,7 +120,7 @@ final class InkSignView: HybridInkSignViewSpec {
   var nextDrawingTransactionID: UInt64 = 0
   var lastChange: (Int, Bool, String, String?, String?, Int?)?
   var lastPublicPage: PageChangeEvent?
-  var documentID: String?
+  var documentID: String? { documentCoordinator.documentID }
   var loadError: String?
   var isPickingPageCoords: Bool { interaction.isPickingCoordinates }
   func interactionMode() -> InteractionMode { interaction.mode }
@@ -136,7 +140,7 @@ final class InkSignView: HybridInkSignViewSpec {
   var overlayTransformPage: UUID?
   var attachedOverlayPage: UUID?
   var overlayTransformBounds = CGRect.zero
-  var overlayTransformMediaBox = CGRect.zero
+  var overlayTransformVisibleBox = CGRect.zero
   var pageToOverlayTransform: CGAffineTransform?
   var disposed = false
 
@@ -215,8 +219,10 @@ final class InkSignView: HybridInkSignViewSpec {
   }
 
   override init() {
-    documentCoordinator = InkSignPdfDocumentCoordinator(artifactPolicy: artifactPolicy)
+    documentCore = InkSignDocumentCore(artifactPolicy: artifactPolicy,
+                                       recordHistory: true, exportOwnership: .document)
     super.init()
+    _ = documentCore.observe { [weak self] change in self?.documentCoreDidChange(change) }
     container.clipsToBounds = true
     documentView.backgroundColor = .white
     documentView.isOpaque = true
@@ -224,7 +230,7 @@ final class InkSignView: HybridInkSignViewSpec {
     documentView.displayDirection = .horizontal
     documentView.usePageViewController(true, withViewOptions: nil)
     interaction.viewport.applyPagerDirectionNow()
-    documentView.displayBox = .mediaBox
+    documentView.displayBox = .cropBox
     documentView.displaysPageBreaks = false
     documentView.minScaleFactor = 0.1
     documentView.maxScaleFactor = 16
@@ -281,7 +287,8 @@ final class InkSignView: HybridInkSignViewSpec {
     textInteractionOverlay.discardForDisposal()
     documentView.document = nil
     overlayProvider.dispose()
-    documentCoordinator.dispose()
+    viewerDocument = nil
+    documentCore.dispose()
     textInteractionOverlay.dispose()
     if let backgroundObserver {
       NotificationCenter.default.removeObserver(backgroundObserver)
@@ -306,7 +313,8 @@ final class InkSignView: HybridInkSignViewSpec {
       self.pageNavigationRequestID &+= 1
       self.documentView.document = nil
       self.overlayProvider.dispose()
-      self.documentCoordinator.dispose()
+      self.viewerDocument = nil
+      self.documentCore.dispose()
       self.interaction.setBaseMode(ink: false, enabled: false, finish: false)
       self.attachedOverlayPage = nil
       self.invalidateOverlayTransformCache()
@@ -360,25 +368,7 @@ final class InkSignView: HybridInkSignViewSpec {
     }
   }
 
-  enum ExportError: LocalizedError {
-    case notReady
-    case invalidOutput
-    case cancelled
-    case unsupportedContent
-    case failed
-    case operationInProgress
 
-    var errorDescription: String? {
-      switch self {
-      case .notReady: return "view_not_ready: The PDF is not ready"
-      case .invalidOutput: return "invalid_output_path: The export path is invalid"
-      case .cancelled: return "operation_cancelled: PDF export was cancelled"
-      case .unsupportedContent: return "pdf_export_unsupported_content: The committed drawing uses unsupported ink"
-      case .failed: return "pdf_export_failed: Unable to export the PDF"
-      case .operationInProgress: return "operation_in_progress: Another document operation is active"
-      }
-    }
-  }
 
   enum ViewportError: LocalizedError {
     case invalidOptions(String)
@@ -394,49 +384,5 @@ final class InkSignView: HybridInkSignViewSpec {
     }
   }
 
-  enum TextError: LocalizedError, CustomStringConvertible {
-    case notReady
-    case notFocused
-    case invalidText
-    case invalidBounds
-    case cancelled
-    case keyNotFound
-    case ruleNotFound
-    case documentNotOpen
-    case pageNotFound
-    case textNotFound
-    case targetAmbiguous
-    case textDoesNotFit
 
-    var errorDescription: String? { description }
-
-    var description: String {
-      switch self {
-      case .notReady:
-        return "view_not_ready: The PDF view is not ready for text interaction"
-      case .notFocused:
-        return "text_not_focused: No text annotation is selected"
-      case .invalidText:
-        return "invalid_text: Text must not be empty"
-      case .invalidBounds:
-        return "invalid_text_bounds: Text bounds must define an ordered rectangle inside the active page"
-      case .cancelled:
-        return "operation_cancelled: The text request was disposed or superseded"
-      case .keyNotFound:
-        return "text_key_not_found: The requested text key was not found on the active page"
-      case .ruleNotFound:
-        return "text_rule_not_found: The selected text key has no usable rule or visible line"
-      case .documentNotOpen:
-        return "document_not_open: A document must be open before acquiring a prepared page"
-      case .pageNotFound:
-        return "page_not_found: The requested page index is outside the document"
-      case .textNotFound:
-        return "text_not_found: The text ID does not belong to this page"
-      case .targetAmbiguous:
-        return "text_target_ambiguous: The source text target is ambiguous"
-      case .textDoesNotFit:
-        return "text_does_not_fit: The supplied value does not fit in the text target"
-      }
-    }
-  }
 }

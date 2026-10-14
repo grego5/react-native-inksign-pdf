@@ -1,3 +1,4 @@
+#include "pdfium-adapter/PdfiumPageGeometry.hpp"
 #include "pdfium-adapter/PdfiumDocumentSession.hpp"
 #include "pdfium-adapter/PdfiumFontFallback.hpp"
 #include "pdfium-adapter/PdfiumLibraryInternal.hpp"
@@ -153,6 +154,10 @@ struct PdfiumDocumentSession::Impl final {
     std::size_t pageIndex = 0;
     double pageWidth = 0.0;
     double pageHeight = 0.0;
+    double displayLeft = 0.0;
+    double displayTop = 0.0;
+    double displayWidth = 0.0;
+    double displayHeight = 0.0;
     bool hasText = false;
     bool hasRules = false;
     std::vector<unsigned long> text;
@@ -385,7 +390,7 @@ PdfiumError PdfiumDocumentSession::inspectPage(
   float mediaBoxBottom = 0.0f;
   float mediaBoxRight = 0.0f;
   float mediaBoxTop = 0.0f;
-  if (!FPDFPage_GetMediaBox(page.get(), &mediaBoxLeft, &mediaBoxBottom,
+  if (!readMediaBox(impl_->document, static_cast<int>(pageIndex), page.get(), &mediaBoxLeft, &mediaBoxBottom,
                             &mediaBoxRight, &mediaBoxTop)) {
     return {PdfiumErrorCode::PageOpenFailed,
             "PDFium page has no readable MediaBox"};
@@ -411,6 +416,13 @@ PdfiumError PdfiumDocumentSession::inspectPage(
   metadata.mediaBoxBottom = mediaBoxBottom;
   metadata.mediaBoxRight = mediaBoxRight;
   metadata.mediaBoxTop = mediaBoxTop;
+  FS_RECTF visible{};
+  if (!FPDF_GetPageBoundingBox(page.get(), &visible))
+    return {PdfiumErrorCode::PageOpenFailed, "PDFium page has no readable visible bounds"};
+  metadata.visibleLeft = visible.left;
+  metadata.visibleBottom = visible.bottom;
+  metadata.visibleRight = visible.right;
+  metadata.visibleTop = visible.top;
   return {};
 }
 
@@ -455,33 +467,29 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
   }
   ++impl_->pageAnalysisLoadCount;
 
-  const int sourceRotation = FPDFPage_GetRotation(page.get());
-  const double displayWidth = FPDF_GetPageWidth(page.get());
-  const double displayHeight = FPDF_GetPageHeight(page.get());
-  const double pageWidth = sourceRotation % 2 == 0 ? displayWidth : displayHeight;
-  const double pageHeight = sourceRotation % 2 == 0 ? displayHeight : displayWidth;
-  const int analysisRotation = (4 - sourceRotation) % 4;
+  float mediaLeft = 0, mediaBottom = 0, mediaRight = 0, mediaTop = 0;
+  if (!readMediaBox(impl_->document, static_cast<int>(pageIndex), page.get(),
+                    &mediaLeft, &mediaBottom, &mediaRight, &mediaTop)) {
+    return {PdfiumErrorCode::PageOpenFailed, "PDFium page has no readable MediaBox"};
+  }
+  const double pageWidth = static_cast<double>(mediaRight) - mediaLeft;
+  const double pageHeight = static_cast<double>(mediaTop) - mediaBottom;
   if (!std::isfinite(pageWidth) || !std::isfinite(pageHeight) ||
-      pageWidth <= 0.0 || pageHeight <= 0.0 ||
-      pageWidth > static_cast<double>((std::numeric_limits<int>::max)()) ||
-      pageHeight > static_cast<double>((std::numeric_limits<int>::max)())) {
-    return {PdfiumErrorCode::PageOpenFailed,
-            "PDFium page geometry is invalid"};
+      !std::isfinite(mediaLeft) || !std::isfinite(mediaTop) ||
+      pageWidth <= 0.0 || pageHeight <= 0.0) {
+    return {PdfiumErrorCode::PageOpenFailed, "PDFium page geometry is invalid"};
   }
   analysis.pageWidth = pageWidth;
   analysis.pageHeight = pageHeight;
-  // FPDF_PageToDevice takes integer pixel coordinates. Use a higher virtual
-  // resolution than one pixel per point so small vector shapes keep their
-  // sub-point geometry when mapped back into page coordinates.
-  constexpr double kDevicePixelsPerPoint = 64.0;
-  const double coordinateScale = std::min(
-      kDevicePixelsPerPoint,
-      static_cast<double>((std::numeric_limits<int>::max)()) /
-          std::max(pageWidth, pageHeight));
-  const int deviceWidth = static_cast<int>(std::ceil(pageWidth * coordinateScale));
-  const int deviceHeight = static_cast<int>(std::ceil(pageHeight * coordinateScale));
-  const double sx = pageWidth / static_cast<double>(deviceWidth);
-  const double sy = pageHeight / static_cast<double>(deviceHeight);
+  FS_RECTF visibleBox{};
+  if (!FPDF_GetPageBoundingBox(page.get(), &visibleBox)) {
+    return {PdfiumErrorCode::PageOpenFailed, "PDFium page has no readable display bounds"};
+  }
+  analysis.displayLeft = visibleBox.left - mediaLeft;
+  analysis.displayTop = mediaTop - visibleBox.top;
+  analysis.displayWidth = visibleBox.right - visibleBox.left;
+  analysis.displayHeight = visibleBox.top - visibleBox.bottom;
+  const int sourceRotation = FPDFPage_GetRotation(page.get());
 
   // Both consumers share one loaded page. Keep the extracted text and drawing
   // object rules as plain cached data after this page handle is released.
@@ -507,15 +515,10 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
       const auto mapCharacterBox = [&](double left, double right, double bottom,
                                        double top, int index)
           -> std::optional<PdfiumTextKeyMatch> {
-        int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
-        if (!FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight, analysisRotation,
-                               left, bottom, &x0, &y0) ||
-            !FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight, analysisRotation,
-                               right, top, &x1, &y1)) return std::nullopt;
-        const double xMin = std::min(x0, x1) * sx;
-        const double xMax = std::max(x0, x1) * sx;
-        const double yMin = std::min(y0, y1) * sy;
-        const double yMax = std::max(y0, y1) * sy;
+        const double xMin = std::min(left, right) - mediaLeft;
+        const double xMax = std::max(left, right) - mediaLeft;
+        const double yMin = mediaTop - std::max(bottom, top);
+        const double yMax = mediaTop - std::min(bottom, top);
         if (!std::isfinite(xMin) || !std::isfinite(xMax) || !std::isfinite(yMin) ||
             !std::isfinite(yMax) || xMax <= xMin || yMax <= yMin) return std::nullopt;
         return PdfiumTextKeyMatch{xMin, yMin, xMax, yMax, static_cast<double>(index),
@@ -602,19 +605,10 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
     if (copyCandidates) impl_->trimPageAnalyses();
     return {};
   }
-  const auto toDisplayPoint = [&](double x, double y) -> std::optional<Point> {
+  const auto toCanonicalPoint = [&](double x, double y) -> std::optional<Point> {
     if (!std::isfinite(x) || !std::isfinite(y)) return std::nullopt;
-    int deviceX = 0;
-    int deviceY = 0;
-    // Cancel intrinsic /Rotate before retaining geometry or assigning rows.
-    if (!FPDF_PageToDevice(page.get(), 0, 0, deviceWidth, deviceHeight,
-                           analysisRotation, x, y, &deviceX, &deviceY)) {
-      return std::nullopt;
-    }
-    return Point{static_cast<double>(deviceX) * pageWidth /
-                     static_cast<double>(deviceWidth),
-                 static_cast<double>(deviceY) * pageHeight /
-                     static_cast<double>(deviceHeight)};
+    // Drawing-object matrices already produce unrotated PDF coordinates.
+    return Point{x - mediaLeft, mediaTop - y};
   };
   const auto appendLine = [&](Point first, Point last, double minimumLength = 50.0) {
     const double dx = std::abs(first.x - last.x);
@@ -684,8 +678,8 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
           if (type == FPDF_SEGMENT_MOVETO) {
             current = point;
           } else if (type == FPDF_SEGMENT_LINETO && current) {
-            const auto first = toDisplayPoint(current->x, current->y);
-            const auto last = toDisplayPoint(point.x, point.y);
+            const auto first = toCanonicalPoint(current->x, current->y);
+            const auto last = toCanonicalPoint(point.x, point.y);
             if (first && last) appendLine(*first, *last);
             current = point;
           } else {
@@ -708,7 +702,7 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
     double maxY = -(std::numeric_limits<double>::infinity)();
     bool validBounds = true;
     for (const auto& corner : bounds) {
-      const auto display = toDisplayPoint(corner.x, corner.y);
+      const auto display = toCanonicalPoint(corner.x, corner.y);
       if (!display) {
         validBounds = false;
         break;
@@ -828,6 +822,10 @@ PdfiumError PdfiumDocumentSession::preparePageAnalysis(
   }
   snapshot.pageWidth = found->pageWidth;
   snapshot.pageHeight = found->pageHeight;
+  snapshot.displayLeft = found->displayLeft;
+  snapshot.displayTop = found->displayTop;
+  snapshot.displayWidth = found->displayWidth;
+  snapshot.displayHeight = found->displayHeight;
   snapshot.text = found->text;
   snapshot.characterBounds = found->characterBounds;
   snapshot.visualRows = found->visualRows;
@@ -976,6 +974,34 @@ void PdfiumDocumentSession::closeUnchecked() noexcept {
     impl_->document = nullptr;
   }
   impl_.reset();
+}
+
+void projectVisiblePageAnalysis(PdfiumPageAnalysisSnapshot& snapshot) {
+  const double left = snapshot.displayLeft, top = snapshot.displayTop;
+  for (auto& bounds : snapshot.characterBounds) {
+    if (!bounds) continue;
+    bounds->left -= left; bounds->right -= left;
+    bounds->top -= top; bounds->bottom -= top; bounds->lineCenter -= top;
+    if (bounds->right <= 0 || bounds->left >= snapshot.displayWidth ||
+        bounds->bottom <= 0 || bounds->top >= snapshot.displayHeight) bounds.reset();
+  }
+  for (auto& y : snapshot.visualRowTops) y -= top;
+  for (auto& y : snapshot.visualRowBottoms) y -= top;
+  std::vector<PdfiumRuleSegment> rules;
+  rules.reserve(snapshot.rules.size());
+  for (auto rule : snapshot.rules) {
+    rule.startX -= left; rule.endX -= left; rule.startY -= top; rule.endY -= top;
+    if (std::max(rule.startX, rule.endX) < 0 || std::min(rule.startX, rule.endX) > snapshot.displayWidth ||
+        std::max(rule.startY, rule.endY) < 0 || std::min(rule.startY, rule.endY) > snapshot.displayHeight) continue;
+    rule.startX = std::clamp(rule.startX, 0.0, snapshot.displayWidth);
+    rule.endX = std::clamp(rule.endX, 0.0, snapshot.displayWidth);
+    rule.startY = std::clamp(rule.startY, 0.0, snapshot.displayHeight);
+    rule.endY = std::clamp(rule.endY, 0.0, snapshot.displayHeight);
+    if (rule.startX != rule.endX || rule.startY != rule.endY) rules.push_back(rule);
+  }
+  snapshot.rules = std::move(rules);
+  snapshot.pageWidth = snapshot.displayWidth; snapshot.pageHeight = snapshot.displayHeight;
+  snapshot.displayLeft = 0; snapshot.displayTop = 0;
 }
 
 }  // namespace margelo::nitro::inksignpdf::pdfium

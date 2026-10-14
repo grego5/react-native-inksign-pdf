@@ -1,3 +1,4 @@
+#include "pdfium-adapter/PdfiumPageGeometry.hpp"
 #include "pdfium-adapter/PdfiumContentWriter.hpp"
 #include "pdfium-adapter/PdfiumLibraryInternal.hpp"
 #include <fpdf_edit.h>
@@ -243,6 +244,10 @@ bool near(double actual, double expected) {
          std::abs(actual - expected) <= 0.05;
 }
 
+bool dimensionsMatch(FPDF_PAGE page, double width, double height) {
+  return near(FPDF_GetPageWidthF(page), width) && near(FPDF_GetPageHeightF(page), height);
+}
+
 bool preciseNear(double actual, double expected) {
   return std::isfinite(actual) && std::isfinite(expected) &&
          std::abs(actual - expected) <= 0.001;
@@ -259,15 +264,15 @@ bool pathMatchesExpected(FPDF_PAGEOBJECT object,
                          int end,
                          const std::vector<std::int32_t>& commandTypes,
                          const std::vector<float>& coordinates,
-                         double mediaBoxLeft,
-                         double mediaBoxTop,
+                         double visibleBoxLeft,
+                         double visibleBoxTop,
                          std::string& mismatch) {
   const auto expectedCoordinate = [&](int commandIndex, int slot) {
     const float value = pathCoordinate(coordinates, commandIndex, slot);
     if (slot == 1 || slot == 3 || slot == 5) {
-      return static_cast<float>(mediaBoxTop - value);
+      return static_cast<float>(visibleBoxTop - value);
     }
-    return static_cast<float>(mediaBoxLeft + value);
+    return static_cast<float>(visibleBoxLeft + value);
   };
   struct ExpectedSegment {
     int type;
@@ -450,8 +455,8 @@ std::string writeImpl(
     }
     FPDFPage_SetRotation(page.get(), pageRotations[pageIndex]);
     if (page.get() == nullptr ||
-        !near(FPDF_GetPageWidthF(page.get()), pageDimensions[pageIndex * 2]) ||
-        !near(FPDF_GetPageHeightF(page.get()), pageDimensions[pageIndex * 2 + 1])) {
+        !dimensionsMatch(page.get(),
+                         pageDimensions[pageIndex * 2], pageDimensions[pageIndex * 2 + 1])) {
       return "Source page dimensions do not match the export snapshot";
     }
   }
@@ -726,18 +731,18 @@ std::string writeImpl(
     }
     auto page = pageFor(pageIndex);
     if (page == nullptr) return "PDFium could not load the page for an ink path";
-    float mediaBoxLeft = 0.0f, mediaBoxBottom = 0.0f;
-    float mediaBoxRight = 0.0f, mediaBoxTop = 0.0f;
-    if (!FPDFPage_GetMediaBox(page, &mediaBoxLeft, &mediaBoxBottom,
-                              &mediaBoxRight, &mediaBoxTop)) {
-      return "PDFium could not read the page MediaBox for an ink path";
+    float visibleBoxLeft = 0.0f, visibleBoxBottom = 0.0f;
+    float visibleBoxRight = 0.0f, visibleBoxTop = 0.0f;
+    if (!readCoordinateBox(page, &visibleBoxLeft, &visibleBoxBottom,
+                              &visibleBoxRight, &visibleBoxTop)) {
+      return "PDFium could not read the page visible bounds for an ink path";
     }
     const auto pageCoordinateAt = [&](int commandIndex, int slot) -> float {
       const float value = pathCoordinates[static_cast<std::size_t>(commandIndex) * 6 + slot];
       if (slot == 1 || slot == 3 || slot == 5) {
-        return mediaBoxTop - value;
+        return visibleBoxTop - value;
       }
-      return mediaBoxLeft + value;
+      return visibleBoxLeft + value;
     };
     if (pathCommandTypes[begin] != 0) return "Path does not begin with a move command";
     ScopedPageObject pathObject(
@@ -796,12 +801,12 @@ std::string writeImpl(
         (static_cast<std::uint32_t>(color) >> 24) & 0xFF);
   };
   auto textMatrix = [&](std::size_t runIndex, float x, float baselineTop,
-                             double mediaBoxLeft, double mediaBoxTop,
+                             double visibleBoxLeft, double visibleBoxTop,
                              float horizontalScale = 1.0f) {
     const auto* t = textRunTransforms.data() + runIndex * 6;
     return FS_MATRIX{t[0] * horizontalScale, -t[1] * horizontalScale, -t[2], t[3],
-      static_cast<float>(mediaBoxLeft + t[0] * x + t[2] * baselineTop + t[4]),
-      static_cast<float>(mediaBoxTop - (t[1] * x + t[3] * baselineTop + t[5]))};
+      static_cast<float>(visibleBoxLeft + t[0] * x + t[2] * baselineTop + t[4]),
+      static_cast<float>(visibleBoxTop - (t[1] * x + t[3] * baselineTop + t[5]))};
   };
 
 
@@ -811,11 +816,11 @@ std::string writeImpl(
     const int pageIndex = lineKey.first;
     auto page = pageFor(pageIndex);
     if (page == nullptr) return "Text run page index is invalid";
-    float mediaBoxLeft = 0.0f, mediaBoxBottom = 0.0f;
-    float mediaBoxRight = 0.0f, mediaBoxTop = 0.0f;
-    if (!FPDFPage_GetMediaBox(page, &mediaBoxLeft, &mediaBoxBottom,
-                              &mediaBoxRight, &mediaBoxTop)) {
-      return "PDFium could not read the page MediaBox for text";
+    float visibleBoxLeft = 0.0f, visibleBoxBottom = 0.0f;
+    float visibleBoxRight = 0.0f, visibleBoxTop = 0.0f;
+    if (!readCoordinateBox(page, &visibleBoxLeft, &visibleBoxBottom,
+                              &visibleBoxRight, &visibleBoxTop)) {
+      return "PDFium could not read the page visible bounds for text";
     }
     auto& segments = shapedLines[lineIndex++];
     std::sort(segments.begin(), segments.end(), [&](const auto& left, const auto& right) {
@@ -848,7 +853,7 @@ std::string writeImpl(
               glyph.fontSize));
           const std::uint32_t cid = glyph.cid;
           const FS_MATRIX matrix = textMatrix(glyph.runIndex, glyph.x, glyph.baselineFromTop,
-                                               mediaBoxLeft, mediaBoxTop, glyph.horizontalScale);
+                                               visibleBoxLeft, visibleBoxTop, glyph.horizontalScale);
           if (object->get() == nullptr ||
               !FPDFText_SetCharcodes(object->get(), &cid, 1) ||
               !FPDFTextObj_SetTextRenderMode(object->get(), FPDF_TEXTRENDERMODE_FILL) ||
@@ -887,7 +892,7 @@ std::string writeImpl(
       }
       utf16.push_back(0);
       const FS_MATRIX matrix = textMatrix(segment.runIndex, segment.originX, segment.baselineFromTop,
-                                           mediaBoxLeft, mediaBoxTop);
+                                           visibleBoxLeft, visibleBoxTop);
       if (!FPDFText_SetText(textObject.get(), utf16.data()) ||
           !FPDFTextObj_SetTextRenderMode(textObject.get(), FPDF_TEXTRENDERMODE_FILL) ||
           !setTextColor(textObject.get(), segment.color) ||
@@ -933,13 +938,13 @@ std::string writeImpl(
           bounds[2] <= bounds[0] || bounds[3] <= bounds[1])
         return "Text clip rectangle is invalid";
       clippedPage = std::make_unique<ScopedPage>(FPDFPage_New(rawDocument, pageCount,
-          mediaBoxRight - mediaBoxLeft, mediaBoxTop - mediaBoxBottom));
+          visibleBoxRight - visibleBoxLeft, visibleBoxTop - visibleBoxBottom));
       if (clippedPage->get() == nullptr) return "Could not create isolated text page";
       destination = clippedPage->get();
     }
     for (std::size_t objectIndex = 0; objectIndex < lineObjects.size(); ++objectIndex) {
       auto& object = lineObjects[objectIndex];
-      if (clip) FPDFPageObj_Transform(object->get(), 1, 0, 0, 1, -mediaBoxLeft, -mediaBoxBottom);
+      if (clip) FPDFPageObj_Transform(object->get(), 1, 0, 0, 1, -visibleBoxLeft, -visibleBoxBottom);
       if (!FPDFPage_InsertObject(destination, object->get())) {
         return "PDFium could not insert a shaped text glyph";
       }
@@ -962,7 +967,7 @@ std::string writeImpl(
       for (float x : {(*clip)[0], (*clip)[2]}) {
         for (float y : {(*clip)[1], (*clip)[3]}) {
           const float px = a * x + c * y + textRunTransforms[transform + 4];
-          const float py = mediaBoxTop - mediaBoxBottom -
+          const float py = visibleBoxTop - visibleBoxBottom -
               (b * x + d * y + textRunTransforms[transform + 5]);
           left = std::min(left, px); right = std::max(right, px);
           bottom = std::min(bottom, py); top = std::max(top, py);
@@ -977,7 +982,7 @@ std::string writeImpl(
       ScopedPageObject form(FPDF_NewFormObjectFromXObject(xobject));
       FPDF_CloseXObject(xobject);
       if (form.get() == nullptr) return "Could not instantiate clipped text form";
-      FPDFPageObj_Transform(form.get(), 1, 0, 0, 1, mediaBoxLeft, mediaBoxBottom);
+      FPDFPageObj_Transform(form.get(), 1, 0, 0, 1, visibleBoxLeft, visibleBoxBottom);
       if (!FPDFPage_InsertObject(page, form.get())) return "Could not insert clipped text form";
       form.release();
       clippedPage.reset();
@@ -1034,19 +1039,19 @@ std::string writeImpl(
     int pathCount = 0;
     int textCount = 0;
     if (page.get() == nullptr ||
-        !near(FPDF_GetPageWidthF(page.get()), pageDimensions[pageIndex * 2]) ||
-        !near(FPDF_GetPageHeightF(page.get()), pageDimensions[pageIndex * 2 + 1]) ||
+        !dimensionsMatch(page.get(),
+                         pageDimensions[pageIndex * 2], pageDimensions[pageIndex * 2 + 1]) ||
         FPDFPage_GetRotation(page.get()) != pageRotations[pageIndex] ||
         !objectCounts(page.get(), pathCount, textCount) ||
         pathCount != originalPaths[pageIndex] + addedPaths[pageIndex] ||
         textCount != originalTexts[pageIndex] + addedTexts[pageIndex]) {
       return "Saved candidate page metadata or vector object counts do not match";
     }
-    float mediaBoxLeft = 0.0f, mediaBoxBottom = 0.0f;
-    float mediaBoxRight = 0.0f, mediaBoxTop = 0.0f;
-    if (!FPDFPage_GetMediaBox(page.get(), &mediaBoxLeft, &mediaBoxBottom,
-                              &mediaBoxRight, &mediaBoxTop)) {
-      return "Saved candidate page MediaBox is unavailable";
+    float visibleBoxLeft = 0.0f, visibleBoxBottom = 0.0f;
+    float visibleBoxRight = 0.0f, visibleBoxTop = 0.0f;
+    if (!readCoordinateBox(page.get(), &visibleBoxLeft, &visibleBoxBottom,
+                              &visibleBoxRight, &visibleBoxTop)) {
+      return "Saved candidate visible bounds are unavailable";
     }
 
     int seenPaths = 0;
@@ -1065,7 +1070,7 @@ std::string writeImpl(
           const int end = pathCommandOffsets[expectedIndex + 1];
           std::string mismatch;
           if (!pathMatchesExpected(object, begin, end, pathCommandTypes, pathCoordinates,
-                                   mediaBoxLeft, mediaBoxTop, mismatch)) {
+                                   visibleBoxLeft, visibleBoxTop, mismatch)) {
             return "Saved candidate path geometry does not match the export snapshot: " + mismatch;
           }
         }

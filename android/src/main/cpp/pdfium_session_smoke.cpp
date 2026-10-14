@@ -206,8 +206,8 @@ extern "C" bool ReactNativeInkSignPdfPdfiumSessionLifecycleSmoke() {
   if (!geometrySession || !geometrySession.session->inspectPage(0, metadata) ||
       metadata.rotation != 1 || metadata.mediaBoxLeft != 10.0 ||
       metadata.mediaBoxBottom != 20.0 || metadata.mediaBoxRight != 110.0 ||
-      metadata.mediaBoxTop != 220.0 || metadata.canonicalWidth() != 100.0 ||
-      metadata.canonicalHeight() != 200.0) {
+      metadata.mediaBoxTop != 220.0 || (metadata.mediaBoxRight - metadata.mediaBoxLeft) != 100.0 ||
+      (metadata.mediaBoxTop - metadata.mediaBoxBottom) != 200.0) {
     return false;
   }
 

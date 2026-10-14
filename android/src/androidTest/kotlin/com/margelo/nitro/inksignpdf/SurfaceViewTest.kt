@@ -525,7 +525,7 @@ class SurfaceViewTest {
       harness.surface.switchPage(1)
       harness.clear()
       assertEquals(0, harness.surface.completedPagesSnapshot()[1].strokes.size)
-      assertEquals(InkState(true, false, false), states.last())
+      assertEquals(InkState(true, false, true), states.last())
     }
   }
 
@@ -551,12 +551,13 @@ class SurfaceViewTest {
       harness.undo()
       harness.redo()
       harness.clear()
+      assertEquals(0, harness.surface.completedPagesSnapshot().first().strokes.size)
+      // Clearing is undoable and leaves the reported state unchanged after redo.
       assertEquals(
         listOf(
           InkState(true, false, true),
           InkState(false, true, false),
           InkState(true, false, true),
-          InkState(true, false, false),
         ),
         states,
       )

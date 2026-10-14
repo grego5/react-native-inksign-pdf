@@ -9,6 +9,13 @@ struct PenValue {
 struct PageGeometry {
   let mediaBox: CGRect
   let rotation: Int
+  let visibleBox: CGRect
+
+  init(mediaBox: CGRect, rotation: Int, visibleBox: CGRect? = nil) {
+    self.mediaBox = mediaBox
+    self.rotation = rotation
+    self.visibleBox = visibleBox ?? mediaBox
+  }
 
   static let empty = PageGeometry(mediaBox: .zero, rotation: 0)
 
@@ -16,6 +23,9 @@ struct PageGeometry {
     mediaBox.minX.isFinite && mediaBox.minY.isFinite &&
       mediaBox.width.isFinite && mediaBox.height.isFinite &&
       mediaBox.width > 0 && mediaBox.height > 0 &&
+      visibleBox.minX.isFinite && visibleBox.minY.isFinite &&
+      visibleBox.width.isFinite && visibleBox.height.isFinite &&
+      visibleBox.width > 0 && visibleBox.height > 0 && mediaBox.contains(visibleBox) &&
       [0, 90, 180, 270].contains(Self.normalizedRotation(rotation))
   }
 
@@ -26,9 +36,9 @@ struct PageGeometry {
   var displaySize: CGSize {
     switch Self.normalizedRotation(rotation) {
     case 90, 270:
-      return CGSize(width: mediaBox.height, height: mediaBox.width)
+      return CGSize(width: visibleBox.height, height: visibleBox.width)
     default:
-      return mediaBox.size
+      return visibleBox.size
     }
   }
 
@@ -36,22 +46,22 @@ struct PageGeometry {
     switch Self.normalizedRotation(rotation) {
     case 90:
       return CGAffineTransform(a: 0, b: 1, c: 1, d: 0,
-                               tx: mediaBox.minX, ty: mediaBox.minY)
+                               tx: visibleBox.minX, ty: visibleBox.minY)
     case 180:
       return CGAffineTransform(a: -1, b: 0, c: 0, d: 1,
-                               tx: mediaBox.maxX, ty: mediaBox.minY)
+                               tx: visibleBox.maxX, ty: visibleBox.minY)
     case 270:
       return CGAffineTransform(a: 0, b: -1, c: -1, d: 0,
-                               tx: mediaBox.maxX, ty: mediaBox.maxY)
+                               tx: visibleBox.maxX, ty: visibleBox.maxY)
     default:
       return CGAffineTransform(a: 1, b: 0, c: 0, d: -1,
-                               tx: mediaBox.minX, ty: mediaBox.maxY)
+                               tx: visibleBox.minX, ty: visibleBox.maxY)
     }
   }
 
-  /// PDF coordinates include the media-box origin and have a bottom-left origin.
+  /// PDF coordinates include the visible-box origin and have a bottom-left origin.
   var canonicalToPDFTransform: CGAffineTransform {
-    CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: mediaBox.minX, ty: mediaBox.maxY)
+    CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: visibleBox.minX, ty: visibleBox.maxY)
   }
 
   var displayToCanonicalTransform: CGAffineTransform {
@@ -66,7 +76,7 @@ struct PageGeometry {
   func canonicalToDisplay(_ point: CGPoint) -> CGPoint { point.applying(canonicalToDisplayTransform) }
 
   func layoutToCanonical(rotation: Int) -> CGAffineTransform {
-    PageGeometry(mediaBox: mediaBox, rotation: rotation).displayToCanonicalTransform
+    PageGeometry(mediaBox: mediaBox, rotation: rotation, visibleBox: visibleBox).displayToCanonicalTransform
   }
 
   func layoutToDisplay(rotation: Int) -> CGAffineTransform {

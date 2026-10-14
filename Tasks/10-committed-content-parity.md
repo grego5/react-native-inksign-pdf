@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Complete (implementation and applicable simulator checks)
 Complexity: High
 Depends on: 09
 
@@ -24,10 +24,9 @@ untracked edits by clearing history or patching dirty flags.
 
 ## Current contract
 
-Swift committed text methods query the overlay for defaults/draft precedence.
-History restores complete page snapshots. That cannot safely support independent
-untracked edits: undoing an unrelated action could erase them. Android uses a
-permanent base plus keyed tracked overrides and retains target identities.
+Core committed text uses explicit targets and owner-local defaults. Viewer
+wrappers apply draft precedence. History uses a permanent base plus keyed tracked
+overrides, preserving independent base edits through undo/redo.
 
 ## Implementation
 
@@ -65,6 +64,19 @@ permanent base plus keyed tracked overrides and retains target identities.
    publishing; stale drafts/strokes cannot overwrite newer core edits.
 
 ## Static validation and completion
+
+- History now composes permanent base and identity-scoped text/drawing overrides.
+  Retained undo/redo identities force tracked writes; independent base writes
+  preserve redo and survive unrelated history application.
+- Core candidate creation applies construction-selected history recording.
+- Core text resolution/value/options operations use stable page contexts and
+  committed state. Viewer draft forwarding and core-bound handles are integrated.
+- Named fonts load atomically, reuse source resources across aliases, and supply
+  the same face to measurement, rendering, and export. Current/retained text
+  identity metadata belongs to history; fresh drawing/text edits avoid composed
+  page scans.
+- Whitespace checks pass. Public wrapper checks passed 22/22 through the authorized
+  validation chat; current Swift compilation and focused core/history/font checks passed.
 
 - An untracked target survives unrelated undo/redo and does not dirty its page;
   a tracked target cannot escape retained history through the flag.

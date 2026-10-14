@@ -7,6 +7,7 @@ NS_ASSUME_NONNULL_BEGIN
 @interface InkSignPdfPdfiumPageMetadata : NSObject
 @property(nonatomic, readonly) NSInteger pageIndex;
 @property(nonatomic, readonly) CGRect mediaBox;
+@property(nonatomic, readonly) CGRect visibleBox;
 @property(nonatomic, readonly) NSInteger rotation;
 @property(nonatomic, readonly) CGSize displaySize;
 @end

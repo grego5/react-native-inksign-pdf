@@ -1,16 +1,21 @@
 import Foundation
 import NitroModules
 
-/** Binds one text target without retaining page analysis or the owning view. */
+/// Stable target identity retains its document core; draft presentation is optional.
 final class HybridTextHandle: HybridTextHandleSpec, InkSignPdfTextPageContext {
   private weak var owner: InkSignView?
+  private let core: InkSignDocumentCore
   let generation: UInt64
   let pageID: UUID
   private let textID: Double
   var modeSession: InkSignPdfModeSessionToken? { nil }
+  private var context: InkSignPdfCorePageContext {
+    InkSignPdfCorePageContext(generation: generation, pageID: pageID)
+  }
 
   init(owner: InkSignView, generation: UInt64, pageID: UUID, textID: Double) {
     self.owner = owner
+    self.core = owner.documentCore
     self.generation = generation
     self.pageID = pageID
     self.textID = textID
@@ -18,24 +23,40 @@ final class HybridTextHandle: HybridTextHandleSpec, InkSignPdfTextPageContext {
   }
 
   func getValue() throws -> String {
-    try withOwner { try $0.preparedTextValue(self, id: textID) }
+    try withCore {
+      let (_, target) = try core.target(context, id: textID)
+      if let draft = owner?.textInteractionOverlay.preparedDraftText(id: target.id, pageID: pageID) {
+        return draft
+      }
+      return try core.textValue(context, id: textID)
+    }
   }
 
   func setValue(text: String, options: TextAnnotationOptions?) throws {
-    guard options == nil else { throw InkSignView.HeadlessFeatureError.androidOnly }
-    try withOwner { try $0.setPreparedTextValue(self, id: textID, text: text) }
+    try withCore {
+      if let owner { try owner.setPreparedTextValue(self, id: textID, text: text, options: options) }
+      else { try core.setTextValue(context, id: textID, text: text, options: options) }
+    }
   }
 
   func setOptions(options: TextAnnotationOptions) throws {
-    try withOwner { try $0.setPreparedTextOptions(self, id: textID, options: options) }
+    try withCore {
+      if let owner { try owner.setPreparedTextOptions(self, id: textID, options: options) }
+      else { try core.setTextOptions(context, id: textID, options: options) }
+    }
   }
 
   func adjustSize(delta: Double) throws -> Double {
-    try withOwner { try $0.adjustPreparedTextSize(self, id: textID, delta: delta) }
+    try withCore {
+      if let owner { return try owner.adjustPreparedTextSize(self, id: textID, delta: delta) }
+      return try core.adjustTextSize(context, id: textID, delta: delta)
+    }
   }
 
-  private func withOwner<T>(_ action: (InkSignView) throws -> T) throws -> T {
-    guard let owner else { throw InkSignView.TextError.cancelled }
-    return try owner.performOnMainSync { try action(owner) }
+  private func withCore<Value>(_ action: () throws -> Value) throws -> Value {
+    try core.onOwnerSync {
+      _ = try core.page(context)
+      return try action()
+    }
   }
 }

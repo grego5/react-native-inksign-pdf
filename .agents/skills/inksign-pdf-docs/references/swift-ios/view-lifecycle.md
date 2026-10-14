@@ -2,56 +2,50 @@
 
 ## Ownership
 
-- `InkSignView` adapts Nitro, runs the FIFO command queue, and connects owners.
-  Document/history ownership: [architecture](../architecture.md).
-- `ViewerInteractionCoordinator` owns mode tokens, base view/ink policy,
-  coordinate picking, and pending page presentation. Text activity comes from
-  the overlay; input requires ready page/overlay/transform geometry.
-  Mode transitions defer state snapshots until settlement; text cleanup retires
-  captured activity before callbacks so newer requests retain ownership.
-- `ViewerViewportController` owns programmatic viewport writes, motion,
-  keyboard space, and settled zoom events. PDFKit owns its live scroll geometry.
-- Serial PDF queue builds PDFium text/rule analysis from working/candidate bytes.
-  Page state owns immutable canonical snapshots;
-  navigation, reordering, and rotation preserve it. Analysis retains no source
-  PDF bytes or framework page objects.
-- `getPage()` shares stored analysis through the viewer command queue; target
-  fallback reads it from page state. Analysis lives with retained pages/handles.
-  Page deletion releases targets; surviving pages retain their session on publication.
-- `PDFView` owns page presentation, viewport gestures, and overlay lifecycle.
-- The page overlay provider supplies page-scoped ink canvases. The text overlay
-  owns temporary editing state.
+- `InkSignDocumentCore` owns document FIFO, committed pages/targets/history,
+  analysis, named fonts, export, and artifacts. Headless handles retain the core;
+  viewer page wrappers add mode authorization and local draft precedence.
+- Document state stores ordered stable page IDs and metadata. Page records hold
+  geometry, content history, tags, and canonical analysis. PDFKit objects and
+  active-page selection belong to `InkSignPdfViewerDocument` in the viewer.
+- `ViewerInteractionCoordinator` owns modes, picking, and presentation requests.
+  `ViewerViewportController` owns focus, motion, keyboard space, and settled zoom.
+  The text overlay owns drafts/selection; page overlays own live PencilKit input.
+- Serial PDF work returns owned candidates and analysis. Canonical analysis and
+  owner-executor rotation/pair caches survive reorder and logical rotation;
+  replacement/page retirement release them. Snapping and field resolution share
+  the same projection.
 
 ## Publication
 
 - Follow shared [ordering/cancellation](../architecture.md#document-operations).
-  Open clears old presentation after preceding work, then loads a working copy
-  on the serial PDF queue; admission generation survives initial publication.
-- Install only current candidates. Open resolves after PDFView/active-overlay
-  readiness; claim completion before viewport mutation to prevent layout reentry.
-- Cancellation invalidates queued publication immediately. The PDF queue retains
-  resources used by running work until cleanup can safely release them.
-- PDFium page assembly prepares and validates a detached candidate, then PDFKit
-  reopens it for presentation. Failed, cancelled,
-  or stale mutations leave the published document intact.
-- Structural publication updates document/order/selection/dirty state together.
-  Resolve after active page, overlay, transform, and requested viewport readiness.
-  Retain target selection through intermediate PDFKit page notifications.
-- Structural suspension disables interaction independently of mode; completion
-  applies the latest policy. Navigation and structural failure recovery share
-  presentation readiness; requests are claimed before viewport work and settle
-  once. Import selection follows shared defaults.
-- Rotation updates coordinator orientation/geometry revision, applies it to the
-  in-memory PDFKit page, and relayouts. Assembly rebinds orientation;
-  [export](export.md) persists it. Shared geometry/history invariants apply.
+  Core commands publish independently of rendering. Viewer adapters additionally
+  wait for page/overlay/transform/viewport readiness.
+- Open and assembly validate detached PDFium candidates before publication.
+  Assembly failure preserves the published snapshot; failed open leaves no
+  loaded document. Presentation failure reports an error without rolling back
+  valid core data.
+- Viewer imports apply current/firstAdded/lastAdded selection after publication.
+  Reorder preserves the selected ID; deletion selects the neighboring page.
+  Core preflight classifies removal/movement before editor suspension; queued
+  execution rechecks the same policy against current page identity.
+- Rotation commits logical orientation in the core, then installs PDFKit
+  presentation. Existing annotations retain captured layout. Assembly preserves
+  orientation; [export](export.md) persists it.
+- Presentation requests are claimed before viewport writes and settle once.
+  Structural suspension disables interaction; completion applies current policy.
+  Core content changes refresh affected presentation; inactive-page edits leave
+  the active overlay intact.
 
-## Presentation and navigation
+## Retirement
 
-- The view maps displayed `PDFPage` objects to coordinator page IDs. The
-  mapping drives page-scoped overlays and history.
-- PDFKit page/view conversion aligns overlays during zoom, scrolling, and page
-  changes.
-- Page-change callbacks follow installed page switches.
-- Replacement/disposal retires mode callers, picking, presentation, and motion
-  through the interaction owner. Running PDF work retains its FIFO slot and
-  resources until completion; shared cleanup rules apply.
+- Normal close drains admitted document work. Immediate cancellation/disposal
+  rejects callers and prevents late publication; running worker resources remain
+  owned until completion. Headless successful exports belong to the caller.
+- Core publication retires replaced working files; reader leases defer deletion
+  while PDFKit reads a retired snapshot. Callers do not own retirement.
+  Replacement/disposal cancels modes, picking, presentation, and motion, detaches
+  overlays, and releases leases. Named fonts survive viewer document replacement
+  and retire with their owning core.
+- Events project committed core metadata plus local viewer state. Page callbacks
+  follow installed presentation; mode cleanup retires activity before callbacks.

@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Complete (implementation and applicable simulator checks)
 Complexity: High
 Depends on: 02, 09-13
 
@@ -94,3 +94,7 @@ Reuse the native regression instead of reproducing its cache implementation.
 - Complete when lookup/snapping share projected source geometry, identities are
   stable for the same pair, and cache pressure cannot reject valid preparation.
 - Proposed commit: `fix(ios): align prepared rotation and analysis lifetime`.
+
+## Current integration
+
+PreparedDocumentPage retains owner-executor projections and directional label/rule pair results. Manual snapping and field resolution share it. Projected row height uses endpoint distance at quarter turns. Rebinding and rotation preserve the prepared owner. Simulator analysis and rotation/lifecycle checks passed; physical presentation acceptance remains in Task 13.

@@ -147,7 +147,7 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
   private var generation: UInt64?
 
   var overlayView: InkSignPdfPageOverlayView {
-    guard let page = owner?.documentCoordinator.document?.activePage.page else {
+    guard let page = owner?.viewerDocument?.activePDFPage else {
       return fallbackOverlay
     }
     return overlay(for: page)
@@ -193,7 +193,7 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
   }
 
   func canvasView(for pageID: UUID) -> InkCanvasView? {
-    guard let page = owner?.documentCoordinator.document?.pages.first(where: { $0.id == pageID })?.page else {
+    guard let page = owner?.viewerDocument?.pdfPage(for: pageID) else {
       return nil
     }
     return overlay(for: page).canvasView
@@ -243,7 +243,7 @@ final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
   }
 
   private func pageID(for page: PDFPage) -> UUID? {
-    guard let state = owner?.documentCoordinator.document else { return nil }
+    guard let state = owner?.viewerDocument else { return nil }
     let index = state.document.index(for: page)
     guard index >= 0, index < state.pages.count else { return nil }
     return state.pages[index].id

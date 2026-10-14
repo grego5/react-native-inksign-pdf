@@ -19,6 +19,9 @@
 
 ## Text
 
+- Shared backend projection maps source analysis into unrotated visible-box
+  coordinates (CropBox intersected with MediaBox); guides are clipped to that area.
+  `PageCoordinates` applies displayed rotation after this conversion.
 - `PageCoordinates` maps annotation layout → canonical → display for editor,
   rendering, selection, and drag. Shared [geometry](../architecture.md#document-model)
   and [export](export.md) contracts apply.

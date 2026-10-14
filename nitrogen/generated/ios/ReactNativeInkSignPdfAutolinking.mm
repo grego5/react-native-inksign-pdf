@@ -11,6 +11,7 @@
 #import <type_traits>
 
 #include "HybridInkSignViewSpecSwift.hpp"
+#include "HybridInkSignDocumentFactorySpecSwift.hpp"
 
 @interface ReactNativeInkSignPdfAutolinking : NSObject
 @end
@@ -25,6 +26,13 @@
     "InkSignView",
     []() -> std::shared_ptr<HybridObject> {
       std::shared_ptr<HybridInkSignViewSpec> hybridObject = ReactNativeInkSignPdf::ReactNativeInkSignPdfAutolinking::createInkSignView();
+      return hybridObject;
+    }
+  );
+  HybridObjectRegistry::registerHybridObjectConstructor(
+    "InkSignDocumentFactory",
+    []() -> std::shared_ptr<HybridObject> {
+      std::shared_ptr<HybridInkSignDocumentFactorySpec> hybridObject = ReactNativeInkSignPdf::ReactNativeInkSignPdfAutolinking::createInkSignDocumentFactory();
       return hybridObject;
     }
   );

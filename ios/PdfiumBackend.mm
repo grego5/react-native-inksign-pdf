@@ -54,8 +54,11 @@ std::vector<std::uint8_t> ownedBytes(NSData *data) {
 - (instancetype)initWithMetadata:(const pdfium::PdfiumPageMetadata&)metadata {
   if ((self = [super init])) {
     _pageIndex = static_cast<NSInteger>(metadata.pageIndex);
+    _visibleBox = CGRectMake(metadata.visibleLeft, metadata.visibleBottom,
+      metadata.visibleRight - metadata.visibleLeft, metadata.visibleTop - metadata.visibleBottom);
     _mediaBox = CGRectMake(metadata.mediaBoxLeft, metadata.mediaBoxBottom,
-                           metadata.canonicalWidth(), metadata.canonicalHeight());
+                           metadata.mediaBoxRight - metadata.mediaBoxLeft,
+                           metadata.mediaBoxTop - metadata.mediaBoxBottom);
     _rotation = metadata.rotation * 90;
     _displaySize = CGSizeMake(metadata.width, metadata.height);
   }
@@ -186,8 +189,8 @@ std::vector<std::uint8_t> ownedBytes(NSData *data) {
           rotation % 90 != 0) return invalid("Invalid export page order or rotation");
       input.pageIndices.push_back(static_cast<std::int32_t>(index));
       input.pageRotations.push_back(static_cast<std::int32_t>(rotation / 90));
-      input.pageDimensions.push_back(rotation % 180 ? page.mediaBox.size.height : page.mediaBox.size.width);
-      input.pageDimensions.push_back(rotation % 180 ? page.mediaBox.size.width : page.mediaBox.size.height);
+      input.pageDimensions.push_back(rotation % 180 ? page.visibleBox.size.height : page.visibleBox.size.width);
+      input.pageDimensions.push_back(rotation % 180 ? page.visibleBox.size.width : page.visibleBox.size.height);
     }
     for (NSData *font in fonts) {
       input.fontResources.push_back(ownedBytes(font));
@@ -356,6 +359,7 @@ std::vector<std::uint8_t> ownedBytes(NSData *data) {
       pdfium::PdfiumPageAnalysisSnapshot snapshot;
       result = opened.session->preparePageAnalysis(static_cast<std::size_t>(index), snapshot);
       if (!result) { report(error, result); return nil; }
+      pdfium::projectVisiblePageAnalysis(snapshot);
       [pages addObject:[[InkSignPdfPdfiumAnalysis alloc] initWithMetadata:metadata snapshot:snapshot]];
     }
     return [pages copy];

@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Completed (static; runtime gates pending)
+Status: Complete (iOS implementation and applicable simulator checks)
 Complexity: High
 Depends on: 04, 06
 

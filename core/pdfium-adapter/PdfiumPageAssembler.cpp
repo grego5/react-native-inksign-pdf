@@ -1,3 +1,4 @@
+#include "pdfium-adapter/PdfiumPageGeometry.hpp"
 #include "pdfium-adapter/PdfiumPageAssembler.hpp"
 #include "pdfium-adapter/PdfiumLibraryInternal.hpp"
 
@@ -166,7 +167,7 @@ PdfiumError inspectPages(FPDF_DOCUMENT document,
     float mediaBoxTop = 0.0f;
     if (!(width > 0.0) || !(height > 0.0) || !finite(width) ||
         !finite(height) || rotation < 0 || rotation > 3 ||
-        !FPDFPage_GetMediaBox(page.get(), &mediaBoxLeft, &mediaBoxBottom,
+        !readMediaBox(document, index, page.get(), &mediaBoxLeft, &mediaBoxBottom,
                               &mediaBoxRight, &mediaBoxTop) ||
         !finite(mediaBoxLeft) || !finite(mediaBoxBottom) ||
         !finite(mediaBoxRight) || !finite(mediaBoxTop) ||
@@ -183,6 +184,11 @@ PdfiumError inspectPages(FPDF_DOCUMENT document,
     metadata.mediaBoxBottom = mediaBoxBottom;
     metadata.mediaBoxRight = mediaBoxRight;
     metadata.mediaBoxTop = mediaBoxTop;
+    FS_RECTF visible{};
+    if (!FPDF_GetPageBoundingBox(page.get(), &visible))
+      return {PdfiumErrorCode::PageOpenFailed, "PDFium page has no readable visible bounds"};
+    metadata.visibleLeft = visible.left; metadata.visibleBottom = visible.bottom;
+    metadata.visibleRight = visible.right; metadata.visibleTop = visible.top;
     pages.push_back(metadata);
   }
   return {};
@@ -206,7 +212,11 @@ bool sameMetadata(const PdfiumPageMetadata& expected,
           kDimensionTolerance &&
       std::abs(expected.mediaBoxRight - actual.mediaBoxRight) <=
           kDimensionTolerance &&
-      std::abs(expected.mediaBoxTop - actual.mediaBoxTop) <= kDimensionTolerance;
+      std::abs(expected.mediaBoxTop - actual.mediaBoxTop) <= kDimensionTolerance &&
+      std::abs(expected.visibleLeft - actual.visibleLeft) <= kDimensionTolerance &&
+      std::abs(expected.visibleBottom - actual.visibleBottom) <= kDimensionTolerance &&
+      std::abs(expected.visibleRight - actual.visibleRight) <= kDimensionTolerance &&
+      std::abs(expected.visibleTop - actual.visibleTop) <= kDimensionTolerance;
 }
 
 PdfiumError appendImage(FPDF_DOCUMENT document,
@@ -442,6 +452,10 @@ PdfiumPageAssemblyResult PdfiumPageAssembler::assemble(
             static_cast<double>(static_cast<float>(input.pageWidth));
         imagePage.mediaBoxTop =
             static_cast<double>(static_cast<float>(input.pageHeight));
+        imagePage.visibleLeft = imagePage.mediaBoxLeft;
+        imagePage.visibleBottom = imagePage.mediaBoxBottom;
+        imagePage.visibleRight = imagePage.mediaBoxRight;
+        imagePage.visibleTop = imagePage.mediaBoxTop;
         expectedPages.push_back(imagePage);
       }
     }

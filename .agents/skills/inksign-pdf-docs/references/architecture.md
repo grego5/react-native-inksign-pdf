@@ -1,7 +1,7 @@
 # Architecture overview
 
 React Native InkSign PDF is a Fabric/Nitro module for signing ordered PDF
-documents through a viewer or Android headless API. JavaScript composes the
+documents through a viewer or headless API. JavaScript composes the
 screen and sends commands; native code owns
 document bytes, page presentation, input conversion, committed content, history,
 and export.
@@ -73,23 +73,21 @@ and export.
   those fields change. Page events carry no index/count, dirty, or content flags.
   Deferred interaction transactions publish their final state.
 
-## Android document ownership
+## Document ownership
 
-`DocumentCore` owns the asynchronous command queue, synchronous committed-edit
-entry points, history policy, and resource lifetime for viewer and headless
-adapters. Its `MutableDocumentCoordinator` stores page/content state;
-`PdfSessionWorker` serializes backend parsing, analysis, assembly, rendering, and
-export. `DocumentTextCommands` owns target operations and annotation construction;
-`TextAnnotationLayout` supplies sizing and reflow.
+Shared requirements define API behavior; neither platform is the reference
+implementation. Platform discoveries inform corrections to both implementations.
 
-The viewer reads metadata and immutable content snapshots through
-`DocumentReadState`, submits committed edits through the core, and consumes its
-change subscription. Gestures, drafts, editor measurement, selection, viewport,
-and rendering belong to the viewer. Draft precedence is applied locally before
-submitting a committed edit; core commands do not query presentation.
-Android viewer state owns the active page ID. Core history and clearing commands
-target explicit page IDs; document snapshots and structural candidates contain
-no viewer selection.
+Android `DocumentCore` and Swift `InkSignDocumentCore` own asynchronous FIFO,
+synchronous committed edits, ordered stable pages/targets, history, analysis,
+fonts, export, and cleanup. PDFium work runs on the serial backend executor;
+CoreText shapes iOS text and HarfBuzz shapes Android text.
+
+Viewers own active-page selection, rendering, gestures, drafts, selection, and
+viewport readiness. They submit explicit-page edits and consume committed
+changes. Core publication succeeds independently of optional presentation;
+viewer commands may additionally await installation. PDFKit objects and working
+file presentation leases stay in the Swift viewer adapter.
 
 ```mermaid
 flowchart LR
@@ -101,15 +99,15 @@ flowchart LR
   Changes --> Rendering[Viewer rendering]
 ```
 
-Android supports headless `openDoc()` and named-font preloading. Resource,
-prepared page analysis, and publication contracts are in
-[Android lifecycle](android/view-lifecycle.md); output ownership and font rendering
-are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle.
+Both platforms support headless `openDoc()` and named-font loading. Resource and
+publication contracts: [Android lifecycle](android/view-lifecycle.md),
+[iOS lifecycle](swift-ios/view-lifecycle.md). Platform shaping/embedding policy:
+[Android export](android/export.md), [iOS export](swift-ios/export.md).
 
 ## Document model
 
-- Page order is document state. Android active-page identity belongs to viewer
-  state; iOS retains it in its PDFKit document coordinator. Ink and text are
+- Page order is document state; active-page identity belongs to viewer state.
+  Ink and text are
   committed per-page content; active gestures, predictions, editor drafts, and
   selection are temporary presentation state.
 - Prepared pages bind immutable source analysis to a stable page ID. Async
@@ -129,11 +127,11 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
   Drafts and committed annotations own formatting; target options supply defaults
   for empty targets. Re-resolution preserves formatting. Headless automatic
   direction follows React Native app direction.
-- Android programmatic text mutations accept per-call `untracked?: boolean`,
+- Programmatic text mutations accept per-call `untracked?: boolean`,
   defaulting to false. Untracked edits enter the permanent base without changing
   dirty state; retained tracked edits on the same identity cause the flag
   to be ignored. See [page history](android/view-lifecycle.md#page-history-and-disposal).
-  Draft interaction remains tracked. iOS rejects `untracked: true`.
+  Draft interaction remains tracked; headless cores retain base edits without undo.
 - `getSelectedText()` reads overlay selection on the UI thread, returning null
   or a document/page/text-bound handle. It needs no source analysis, retains the
   view weakly, and uses the same value/formatting mutations as prepared pages.
@@ -145,7 +143,7 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
   with `text_target_ambiguous`. Named focus uses the rule; free focus uses center.
   Vertical rules reject new field insertion/focus; existing text stays editable.
 - Target bounds, rule endpoints, and detection regions use canonical rotation-zero,
-  media-box-relative top-left coordinates. Named identity uses source glyph ranges
+  visible-box-relative top-left coordinates. Named identity uses source glyph ranges
   and rule identity; free bounds are canonicalized before reuse/adoption.
 - Annotations retain local layout/flow bounds and captured orientation.
   Layout → canonical → display mapping preserves wrapping. Rotation preserves
@@ -160,7 +158,7 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
   working document to a separate output. It does not consume or replace the
   working document.
 
-## Page tags (Android)
+## Page tags
 
 - The core assigns one optional, immutable tag to every page loaded by an
   open/import call. Tags are nonempty, nonunique strings matched exactly.
@@ -168,7 +166,7 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
   `getPage({ tag, index? })` prepares one current match in FIFO order; index defaults
   to zero and missing matches reject with `page_not_found`. Neither changes selection.
 - Tags follow page identity through structural edits, appear in page state only,
-  and end with the session. Export does not persist them. iOS rejects tag operations.
+  and end with the session. Export does not persist them.
 
 ## Document operations
 
@@ -226,7 +224,7 @@ are in [Android export](android/export.md). iOS uses its PDFKit viewer lifecycle
 - Disposal invalidates the session, cancels pending operations, clears callbacks
   and presentation, and releases resources through the same cleanup rules.
 - Font-file ownership: [Android lifecycle](android/view-lifecycle.md#fonts).
-  iOS uses system font fallback.
+  iOS named fonts retain owned bytes; CoreText supplies system glyph fallback.
 - Required validation covers replacement during each asynchronous operation,
   stale success and failure, empty imports, repeated opens, disposal, exactly-once
   settlement, unchanged newer content/history, and eventual resource cleanup.

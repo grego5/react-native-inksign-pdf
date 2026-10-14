@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Complete (implementation and applicable simulator checks)
 Complexity: High
 Depends on: 08
 
@@ -27,10 +27,9 @@ or replace the existing interaction/viewport owners.
 
 ## Current contract
 
-InkSignView owns command ordering; state embeds PDFKit objects and selection.
-The backend phase preserves this temporarily. Async FIFO slots survive caller
-cancellation until native work finishes; synchronous reads/edits use published
-state. Those rules must survive extraction.
+The core owns async document FIFO and published state. Viewer adapters own
+presentation ordering and PDFKit readiness. FIFO slots survive caller cancellation
+until native work finishes; synchronous reads/edits use published state.
 
 ## Implementation
 
@@ -72,6 +71,29 @@ state. Those rules must survive extraction.
    release and retire them through core-owned cleanup, not a retained original copy.
 
 ## Static validation and completion
+
+- Introduced the core as coordinator/resource owner and added main-owner FIFO
+  admission independent of mode/presentation tokens. Viewer disposal shuts down
+  its core. Open preparation and finalize execute through that FIFO; the viewer
+  queue still orders their presentation-facing commands.
+- The core owns source read/image conversion, pending working resources, export
+  snapshots, worker execution, publication, and cleanup. Workers retain the
+  coordinator rather than a view. Core export skips PDFKit interoperability checks;
+  backend fixture tests retain them.
+- Structural assembly/publication now runs in core admission. Commit releases
+  its slot before viewer readiness; presentation failures do not roll back data.
+  Reusable viewer close drains FIFO; immediate close rejects queued clients and
+  retains running worker lifetime. Discarded structural inputs are released.
+- Candidates and committed page/document records now contain PDFium metadata,
+  canonical analysis, stable identities, content, and histories. PDFKit objects
+  and active selection are removed from these records; viewer adapters own both.
+- Headless open publishes independently of presentation; terminal/idempotent
+  close rejects new access, drains admitted operations, and awaits worker cleanup.
+  Successful export ownership is construction-selected. History policy is stored
+  for Task 10's content model. Commit notifications snapshot observer callbacks.
+- Viewer selection, working-file leases, and explicit-page structural commands
+  are integrated. Runtime lifetime/reentry acceptance awaits the current-source
+  validation chat; earlier backend passes do not cover extraction.
 
 - Trace open/add/reorder/rotate/finalize/close without allocating any view.
 - Core state has no active selection, PDFKit objects, drafts, viewport, or mode.

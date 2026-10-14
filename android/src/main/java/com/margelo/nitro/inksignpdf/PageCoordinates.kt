@@ -2,7 +2,7 @@ package com.margelo.nitro.inksignpdf
 
 import android.graphics.Matrix
 
-/** Canonical media-box-relative, top-left content and displayed page geometry. */
+/** Unrotated visible-box-relative, top-left content and displayed page geometry. */
 internal class PageCoordinates(private val page: PdfPageDimensions) {
   val rawWidth: Double
     get() = if (page.rotation % 2 == 0) page.width else page.height

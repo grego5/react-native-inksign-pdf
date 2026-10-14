@@ -474,7 +474,7 @@ function createValidatedDocument(native: InkSignDocument): InkSignDocument {
   return {
     __type: native.__type, name: native.name,
     toString: () => native.toString(), equals: other => native.equals(other), dispose: () => native.dispose(),
-    get pageCount() { return native.pageCount; },
+    get pageCount() { return native.getState().pageCount; },
     getState: () => native.getState(),
     getPage(index) {
       return callAsync(() => validatePageQuery(index, true), async () => createValidatedDocumentPage(await native.getPage(index)));
@@ -508,7 +508,6 @@ function createValidatedDocument(native: InkSignDocument): InkSignDocument {
 /** Loads a PDF or image into an independent native session without mounting a view. */
 export function openDoc(uri: string, options?: DocumentOpenOptions): Promise<InkSignDocument> {
   return callAsync(() => {
-    if (Platform.OS !== 'android') throw argumentError('unsupported_platform', 'Headless documents are currently Android-only');
     validateDocumentPath(uri);
     validateAddPagesOptions(options);
     if (options?.androidFallbackFont !== undefined) {

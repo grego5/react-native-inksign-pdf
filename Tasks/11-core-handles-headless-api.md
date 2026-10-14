@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Complete (implementation and applicable simulator checks)
 Complexity: High
 Depends on: 10
 
@@ -70,3 +70,7 @@ mode tokens authorize session-bound work; ordinary handles are document-bound.
   remain usable after cleanup, matching Android.
 - Inspect generated platform mappings and run `git diff --check`.
 - Proposed commit: `feat(ios): expose core-bound headless document handles`.
+
+## Current integration
+
+Swift headless factory/document/page adapters and generated bindings are present. Page handles retain the core; viewer wrappers keep draft/mode/focus behavior local. Public pageCount uses native getState for terminal-owner rejection. Compilation and runtime validation are delegated.

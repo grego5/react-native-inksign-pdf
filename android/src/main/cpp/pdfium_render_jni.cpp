@@ -3,6 +3,7 @@
 #include <android/bitmap.h>
 
 #include <cassert>
+#include <algorithm>
 #include <cstdint>
 #include <cmath>
 #include <fstream>
@@ -24,6 +25,8 @@ using margelo::nitro::inksignpdf::pdfium::PdfiumAppendInputType;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyCommand;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssemblyOperation;
 using margelo::nitro::inksignpdf::pdfium::PdfiumPageAssembler;
+using margelo::nitro::inksignpdf::pdfium::PdfiumPageAnalysisSnapshot;
+using margelo::nitro::inksignpdf::pdfium::PdfiumRuleSegment;
 
 struct ScopedBitmapUnlock final {
   JNIEnv* env;
@@ -300,11 +303,15 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativeHorizontalSnapCandid
     JNIEnv* env, jclass, jlong handle, jint pageIndex) {
   const auto* session = reinterpret_cast<const PdfiumDocumentSession*>(handle);
   assert(session != nullptr);
-  std::vector<margelo::nitro::inksignpdf::pdfium::PdfiumHorizontalSnapCandidate>
-      candidates;
-  if (!session->inspectHorizontalSnapCandidates(
-          static_cast<std::size_t>(pageIndex), candidates)) {
+  margelo::nitro::inksignpdf::pdfium::PdfiumPageAnalysisSnapshot snapshot;
+  if (!session->preparePageAnalysis(static_cast<std::size_t>(pageIndex), snapshot)) {
     return nullptr;
+  }
+  std::vector<margelo::nitro::inksignpdf::pdfium::PdfiumHorizontalSnapCandidate> candidates;
+  margelo::nitro::inksignpdf::pdfium::projectVisiblePageAnalysis(snapshot);
+  for (const auto& rule : snapshot.rules) {
+    if (std::abs(rule.startY - rule.endY) > 0.001) continue;
+    candidates.push_back({std::min(rule.startX, rule.endX), std::max(rule.startX, rule.endX), rule.startY});
   }
   if (candidates.size() >
       static_cast<std::size_t>((std::numeric_limits<jsize>::max)() / 3)) {
@@ -334,27 +341,31 @@ Java_com_margelo_nitro_inksignpdf_PdfiumRenderSession_nativePreparedPageAnalysis
     return nullptr;
   }
   constexpr std::size_t kGlyphWidth = 10;
-  const auto count = 4 + snapshot.text.size() * kGlyphWidth + snapshot.rules.size() * 4;
+  margelo::nitro::inksignpdf::pdfium::projectVisiblePageAnalysis(snapshot);
+  const auto& rules = snapshot.rules;
+  const auto count = 4 + snapshot.text.size() * kGlyphWidth + rules.size() * 4;
   if (count > static_cast<std::size_t>((std::numeric_limits<jsize>::max)())) return nullptr;
   auto values = env->NewDoubleArray(static_cast<jsize>(count));
   if (values == nullptr) return nullptr;
   std::vector<jdouble> flattened;
   flattened.reserve(count);
-  flattened.insert(flattened.end(), {snapshot.pageWidth, snapshot.pageHeight,
-      static_cast<jdouble>(snapshot.text.size()), static_cast<jdouble>(snapshot.rules.size())});
+  flattened.insert(flattened.end(), {snapshot.displayWidth, snapshot.displayHeight,
+      static_cast<jdouble>(snapshot.text.size()), static_cast<jdouble>(rules.size())});
   for (std::size_t index = 0; index < snapshot.text.size(); ++index) {
     flattened.push_back(static_cast<jdouble>(snapshot.text[index]));
     const auto& bounds = snapshot.characterBounds[index];
     flattened.push_back(bounds ? 1.0 : 0.0);
     if (bounds) {
-      flattened.insert(flattened.end(), {bounds->left, bounds->top, bounds->right,
-          bounds->bottom, bounds->sourceIndex, bounds->lineCenter, bounds->lineHeight});
+      flattened.insert(flattened.end(), {bounds->left,
+          bounds->top, bounds->right,
+          bounds->bottom, bounds->sourceIndex,
+          bounds->lineCenter, bounds->lineHeight});
     } else {
       flattened.insert(flattened.end(), {0.0, 0.0, 0.0, 0.0, static_cast<jdouble>(index), 0.0, 0.0});
     }
     flattened.push_back(static_cast<jdouble>(snapshot.visualRows[index]));
   }
-  for (const auto& rule : snapshot.rules) {
+  for (const auto& rule : rules) {
     flattened.insert(flattened.end(), {rule.startX, rule.startY, rule.endX, rule.endY});
   }
   env->SetDoubleArrayRegion(values, 0, static_cast<jsize>(flattened.size()), flattened.data());

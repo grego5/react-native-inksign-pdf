@@ -25,9 +25,10 @@ enum InkSignPdfNativeExporterError: LocalizedError {
 
 /// Writes committed canonical content into a detached PDFium document.
 enum InkSignPdfNativeExporter {
-  static func write(sourceURL: URL, pages: [ExportPageSnapshot], outputURL: URL) throws {
-    let source = try Data(contentsOf: sourceURL)
-    let metadata = try InkSignPdfPdfiumBackend.inspect(data: source)
+  static func write(sourceURL: URL, pages: [ExportPageSnapshot], outputURL: URL,
+                    validatePDFKit: Bool = true) throws {
+    let source = try stage("source_read") { try Data(contentsOf: sourceURL) }
+    let metadata = try stage("source_inspection") { try InkSignPdfPdfiumBackend.inspect(data: source) }
     guard !pages.isEmpty, metadata.count == pages.count,
           pages.enumerated().allSatisfy({ $0.offset == $0.element.pageIndex }) else {
       throw InkSignPdfNativeExporterError.invalidPageOrder
@@ -39,11 +40,14 @@ enum InkSignPdfNativeExporter {
     for snapshot in pages {
       let page = metadata[snapshot.pageIndex]
       let expected = snapshot.sourceGeometry ?? snapshot.geometry
-      guard sameRect(page.mediaBox, expected.mediaBox), page.rotation == expected.rotation else {
+      guard sameRect(page.mediaBox, expected.mediaBox),
+            sameRect(page.visibleBox, expected.visibleBox), page.rotation == expected.rotation else {
         throw InkSignPdfNativeExporterError.invalidOutput("source geometry differs from captured state")
       }
       for annotation in snapshot.textAnnotations {
-        let layout = try resources.prepare(annotation, pageSize: page.mediaBox.size)
+        let layout = try stage("text_resources") {
+          try resources.prepare(annotation, pageSize: page.visibleBox.size)
+        }
         let color = try argb(layout.color)
         for line in layout.lines {
           for (order, prepared) in line.runs.enumerated() {
@@ -85,10 +89,13 @@ enum InkSignPdfNativeExporter {
         throw InkSignPdfNativeExporterError.unsupportedInk(String(describing: error))
       }
     }
-    let output = try InkSignPdfPdfiumBackend.write(data: source, pages: metadata,
-      rotations: pages.map { NSNumber(value: $0.geometry.rotation) },
-      paths: paths, runs: runs, fonts: resources.fonts)
-    try output.write(to: outputURL, options: .atomic)
+    let output = try stage("pdfium_serialization") {
+      try InkSignPdfPdfiumBackend.write(data: source, pages: metadata,
+        rotations: pages.map { NSNumber(value: $0.geometry.rotation) },
+        paths: paths, runs: runs, fonts: resources.fonts)
+    }
+    try stage("output_write") { try output.write(to: outputURL, options: .atomic) }
+    guard validatePDFKit else { return }
     // PDFKit is the current viewer: verify interoperability before publication.
     guard let original = PDFDocument(data: source), let reopened = PDFDocument(url: outputURL),
           reopened.pageCount == pages.count else {
@@ -112,6 +119,19 @@ enum InkSignPdfNativeExporter {
       throw InkSignPdfNativeExporterError.invalidOutput("invalid text color")
     }
     return 0xff000000 | rgb
+  }
+
+  private static func stage<T>(_ name: String, _ operation: () throws -> T) throws -> T {
+    do { return try operation() }
+    catch {
+      let underlying = error as NSError
+      var info = underlying.userInfo
+      info[NSLocalizedDescriptionKey] = "export_\(name): \(underlying.localizedDescription)"
+      info[NSUnderlyingErrorKey] = underlying
+      info["exportStage"] = name
+      // Keep native error domain/code and source information for callers.
+      throw NSError(domain: underlying.domain, code: underlying.code, userInfo: info)
+    }
   }
 
   private static func exportPath(_ stroke: InkSignPdfFilledStroke,

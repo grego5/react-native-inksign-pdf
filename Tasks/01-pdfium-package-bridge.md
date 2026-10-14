@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Completed (static); linkage/runtime acceptance deferred to Task 08
+Status: Complete (iOS implementation and applicable simulator checks)
 Complexity: Medium
 Depends on: none
 
@@ -57,7 +57,7 @@ and destruction. Keep that worker and process-level library lifetime.
 
 - Trace download failure, cache recovery, destruction, and error conversion.
 - Inspect package and pod source paths, including the example's local dependency.
-- Run `git diff --check`; linkage acceptance remains pending for Task 08.
+- Run `git diff --check`; iOS linkage and applicable runtime gates passed in Task 08.
 - Proposed commit: `build(ios): consume pinned PDFium static SDK`.
 
 ## Implementation result
@@ -68,4 +68,4 @@ and destruction. Keep that worker and process-level library lifetime.
 - The bridge returns owned metadata, canonical glyph/row/rule snapshots, and
   NSError failures; all session resources are scoped to the synchronous call.
 - The fetcher is included in published package files. No tests/builds/Pod
-  installation ran; Apple linkage and runtime acceptance remain unverified.
+  installation, Apple linkage, and focused runtime acceptance passed.

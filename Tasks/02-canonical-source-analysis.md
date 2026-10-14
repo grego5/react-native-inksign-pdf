@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Completed (static); fixture migration/runtime acceptance deferred
+Status: Complete (iOS implementation and applicable simulator checks)
 Complexity: High
 Depends on: 01
 

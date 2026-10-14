@@ -21,7 +21,7 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
     var changes = [PageChangeEvent]()
     fixture.view.onPageChange = { changes.append($0) }
 
-    let page = try XCTUnwrap(fixture.view.documentCoordinator.document?.pages[1].page)
+    let page = try XCTUnwrap(fixture.view.viewerDocument?.document.page(at: 1))
     fixture.view.documentView.go(to: page)
     fixture.view.documentViewDidNavigate(to: page)
     let overlay = try XCTUnwrap(fixture.view.overlayProvider.pdfView(
@@ -31,7 +31,7 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
                                          willDisplayOverlayView: overlay,
                                          for: page)
 
-    XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.id, fixture.pages[1])
+    XCTAssertEqual(fixture.view.viewerDocument?.activePage.id, fixture.pages[1])
     XCTAssertEqual(changes.map(\.pageId), [fixture.pages[1].uuidString])
     XCTAssertNil(fixture.view.interaction.presentation)
   }
@@ -48,7 +48,7 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
       }
     }
 
-    let page = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage.page)
+    let page = try XCTUnwrap(fixture.view.viewerDocument?.activePDFPage)
     XCTAssertTrue(fixture.view.documentView.currentPage === page)
     let overlay = try XCTUnwrap(fixture.view.overlayProvider.pdfView(
       fixture.view.documentView,
@@ -59,6 +59,6 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
 
     XCTAssertEqual(completionCount, 1)
     XCTAssertNil(fixture.view.interaction.presentation)
-    XCTAssertEqual(fixture.view.documentCoordinator.document?.activePage.id, fixture.pages[1])
+    XCTAssertEqual(fixture.view.viewerDocument?.activePage.id, fixture.pages[1])
   }
 }

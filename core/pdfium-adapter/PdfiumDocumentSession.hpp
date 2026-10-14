@@ -68,8 +68,11 @@ struct PdfiumPageMetadata final {
   double mediaBoxRight = 0.0;
   double mediaBoxTop = 0.0;
 
-  double canonicalWidth() const { return mediaBoxRight - mediaBoxLeft; }
-  double canonicalHeight() const { return mediaBoxTop - mediaBoxBottom; }
+  double visibleLeft = 0.0;
+  double visibleBottom = 0.0;
+  double visibleRight = 0.0;
+  double visibleTop = 0.0;
+
 };
 
 struct PdfiumRenderRect final {
@@ -118,6 +121,11 @@ struct PdfiumRuleSegment final {
 struct PdfiumPageAnalysisSnapshot final {
   double pageWidth = 0.0;
   double pageHeight = 0.0;
+  // Visible bounding box in unrotated, MediaBox-relative top-left coordinates.
+  double displayLeft = 0.0;
+  double displayTop = 0.0;
+  double displayWidth = 0.0;
+  double displayHeight = 0.0;
   std::vector<unsigned long> text;
   std::vector<std::optional<PdfiumTextKeyMatch>> characterBounds;
   std::vector<int> visualRows;
@@ -125,6 +133,8 @@ struct PdfiumPageAnalysisSnapshot final {
   std::vector<double> visualRowBottoms;
   std::vector<PdfiumRuleSegment> rules;
 };
+
+void projectVisiblePageAnalysis(PdfiumPageAnalysisSnapshot& snapshot);
 
 /** Internal counters exposed to instrumentation tests for cache reuse checks. */
 struct PdfiumPageAnalysisScanCounts final {

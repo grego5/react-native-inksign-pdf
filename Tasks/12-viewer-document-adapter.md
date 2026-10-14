@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Complete (implementation and applicable simulator checks)
 Complexity: High
 Depends on: 11
 
@@ -76,3 +76,7 @@ drafts, selection, active page, motion, and render caches belong to presentation
   supersession, page deletion, and already-committed publication after cancellation.
 - Run `git diff --check`. Proposed commit:
   `refactor(ios): present document-core changes through viewer adapters`.
+
+## Current integration
+
+ViewerDocumentState owns PDFKit objects, selection, and working-file leases. Open/import/remove/move/rotate commit through the core before presentation readiness. Content notifications refresh active overlays; document/structural adapters install the committed snapshot. Current-source compilation and lifecycle checks passed (45/45).

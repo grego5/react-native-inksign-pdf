@@ -42,11 +42,11 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     let view = InkSignView()
     let state = InkSignPdfDocumentState(sourceURL: workingURL,
                                         workingURL: workingURL,
-                                        document: loaded.document,
                                         pages: states)
     XCTAssertTrue(view.documentCoordinator.publish(state,
                                                     generation: view.documentCoordinator.generation))
-    XCTAssertTrue(view.documentCoordinator.selectPage(at: activePageIndex))
+    view.viewerDocument = try! InkSignPdfViewerDocument(core: state, coordinator: view.documentCoordinator)
+    XCTAssertTrue(view.viewerDocument!.selectPage(at: activePageIndex))
 
     let controller = UIViewController()
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
@@ -55,11 +55,13 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     view.view.frame = controller.view.bounds
     window.makeKeyAndVisible()
     controller.view.layoutIfNeeded()
-    view.overlayProvider.install(document: loaded.document,
+    view.overlayProvider.install(document: view.viewerDocument!.document,
                                  generation: view.documentCoordinator.generation)
-    view.documentView.document = loaded.document
-    view.documentView.go(to: states[activePageIndex].page)
+    let requestedPage = view.viewerDocument!.pdfPage(for: states[activePageIndex].id)!
+    view.documentView.document = view.viewerDocument!.document
+    view.documentView.go(to: requestedPage)
     view.documentView.layoutIfNeeded()
+    XCTAssertTrue(view.viewerDocument!.selectPage(at: activePageIndex))
     if applyInitialViewport {
       XCTAssertTrue(view.interaction.viewport.applyViewport(target: ViewportTarget(
         zoom: view.documentView.scaleFactorForSizeToFit,
@@ -111,7 +113,7 @@ func appendTextAnnotationForTest(
   in view: InkSignView,
   pageIndex: Int
 ) throws -> InkSignPdfTextAnnotation {
-  let document = try XCTUnwrap(view.documentCoordinator.document)
+  let document = try XCTUnwrap(view.viewerDocument)
   let state = try XCTUnwrap(document.pages.indices.contains(pageIndex) ? document.pages[pageIndex] : nil)
   let alignment: TextAlignment
   switch annotation.alignment {
@@ -146,7 +148,7 @@ func insertTextForTest(
   options: TextAnnotationOptions?,
   in view: InkSignView
 ) throws -> InkSignPdfTextAnnotation {
-  let state = try XCTUnwrap(view.documentCoordinator.document?.activePage)
+  let state = try XCTUnwrap(view.viewerDocument?.activePage)
   try view.textInteractionOverlay.addTextAnnotation(
     text: text,
     bounds: bounds,

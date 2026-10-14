@@ -18,6 +18,12 @@ namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `CreateInputAreaOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct CreateInputAreaOptions; }
+// Forward declaration of `DocumentAddPagesOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
+// Forward declaration of `DocumentAddPagesResult` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentAddPagesResult; }
+// Forward declaration of `DocumentOpenOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOpenOptions; }
 // Forward declaration of `DocumentState` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
@@ -26,6 +32,12 @@ namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
+// Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
+// Forward declaration of `HybridInkSignDocumentFactorySpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentFactorySpec; }
+// Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
@@ -91,10 +103,16 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "AddPagesResult.hpp"
 #include "AndroidFallbackFont.hpp"
 #include "CreateInputAreaOptions.hpp"
+#include "DocumentAddPagesOptions.hpp"
+#include "DocumentAddPagesResult.hpp"
+#include "DocumentOpenOptions.hpp"
 #include "DocumentState.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
+#include "HybridDocumentPageSpec.hpp"
+#include "HybridInkSignDocumentFactorySpec.hpp"
+#include "HybridInkSignDocumentSpec.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "HybridModeSessionSpec.hpp"
 #include "HybridTextHandleSpec.hpp"
@@ -147,6 +165,12 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 // Forward declarations of Swift defined types
 // Forward declaration of `HybridAnalyzedPageSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridAnalyzedPageSpec_cxx; }
+// Forward declaration of `HybridDocumentPageSpec_cxx` to properly resolve imports.
+namespace ReactNativeInkSignPdf { class HybridDocumentPageSpec_cxx; }
+// Forward declaration of `HybridInkSignDocumentFactorySpec_cxx` to properly resolve imports.
+namespace ReactNativeInkSignPdf { class HybridInkSignDocumentFactorySpec_cxx; }
+// Forward declaration of `HybridInkSignDocumentSpec_cxx` to properly resolve imports.
+namespace ReactNativeInkSignPdf { class HybridInkSignDocumentSpec_cxx; }
 // Forward declaration of `HybridInkSignViewSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 // Forward declaration of `HybridModeSessionSpec_cxx` to properly resolve imports.

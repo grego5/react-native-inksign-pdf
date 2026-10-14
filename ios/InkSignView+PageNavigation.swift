@@ -11,17 +11,17 @@ extension InkSignView {
 
   func documentViewDidNavigate(to page: PDFPage) {
     guard !suppressesOpenPresentationCallbacks,
-          let state = documentCoordinator.document else { return }
+          let state = viewerDocument else { return }
     let index = state.document.index(for: page)
     guard state.pages.indices.contains(index) else { return }
     if let request = interaction.presentation, request.structural,
        state.pages[index].id != request.pageID { return }
     if index != state.activePageIndex {
       let activePageID = state.activePage.id
-      guard interaction.finishInteraction(), documentCoordinator.document === state,
+      guard interaction.finishInteraction(), viewerDocument === state,
             state.activePage.id == activePageID else { return }
       attachedOverlayPage = nil
-      documentCoordinator.selectPage(id: state.pages[index].id)
+      viewerDocument?.selectPage(id: state.pages[index].id)
       let request = interaction.beginPresentation(page: state.activePage) { [weak self] result in
         if case .success = result { self?.emitPageState() }
       }
@@ -30,8 +30,8 @@ extension InkSignView {
       invalidateOverlayTransformCache()
       textInteractionOverlay.syncContent()
     }
-    guard let active = documentCoordinator.document?.activePage,
-          active.page === page, overlayProvider.isDisplaying(page),
+    guard let active = viewerDocument?.activePage,
+          viewerDocument?.activePDFPage === page, overlayProvider.isDisplaying(page),
           let canvas = overlayProvider.canvasView(for: active.id) else { return }
     overlayDidDisplay(canvas, for: active.id)
   }
@@ -39,17 +39,17 @@ extension InkSignView {
   @discardableResult
   func switchPage(to pageIndex: Int,
                   completion: ((Result<PageInfo, Error>) -> Void)? = nil) throws -> InkSignPdfNativePageInfo {
-    guard let state = documentCoordinator.document else { throw ViewportError.notReady }
+    guard let state = viewerDocument else { throw ViewportError.notReady }
     try interaction.viewport.requireViewportReady(request: .preserve)
     guard state.pages.indices.contains(pageIndex) else {
       throw ViewportError.invalidOptions("page index is out of range")
     }
     if pageIndex == state.activePageIndex { return try currentPageInfo() }
     let activePageID = state.activePage.id
-    guard interaction.finishInteraction(), documentCoordinator.document === state,
+    guard interaction.finishInteraction(), viewerDocument === state,
           state.activePage.id == activePageID else { throw ViewportError.cancelled }
     attachedOverlayPage = nil
-    guard documentCoordinator.selectPage(id: state.pages[pageIndex].id) != nil else {
+    guard viewerDocument?.selectPage(id: state.pages[pageIndex].id) != nil else {
       throw ViewportError.notReady
     }
     let request = interaction.beginPresentation(page: state.activePage, completion: completion)
@@ -57,16 +57,16 @@ extension InkSignView {
     textInteractionOverlay.clearPlacementRules()
     invalidateOverlayTransformCache()
     textInteractionOverlay.syncContent()
-    interaction.viewport.navigate(to: state.activePage.page)
-    if documentView.currentPage === state.activePage.page {
-      documentViewDidNavigate(to: state.activePage.page)
+    interaction.viewport.navigate(to: state.activePDFPage)
+    if documentView.currentPage === state.activePDFPage {
+      documentViewDidNavigate(to: state.activePDFPage)
     }
     return try currentPageInfo()
   }
 
   func finishPagePresentationIfReady() {
     guard let request = interaction.presentation,
-          let state = documentCoordinator.document,
+          let state = viewerDocument,
           documentCoordinator.generation == request.generation,
           state.activePage.id == request.pageID,
           state.activePage.geometryRevision == request.geometryRevision,

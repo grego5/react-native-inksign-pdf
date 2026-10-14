@@ -9,13 +9,15 @@
 - Export applies pending page rotation to a detached PDF after verifying source
   geometry. CoreText shapes and selects lines in saved local layout, and the
   renderer maps that layout to canonical content. `PageGeometry` converts
-  canonical content to PDF coordinates, including the media-box origin. Captured
+  canonical content to PDF coordinates, including the visible-box origin. Captured
   current rotation is applied once as output page metadata. PencilKit ink keeps
   its canonical content mapping; text retains its captured wrapping.
 
 - PDFium carries source pages and annotations into the output and embeds module
   text and vector ink. CoreText supplies positioned glyphs and exact font tables;
   unsupported font instances reject export. Resources belong to one export.
+- The default editor, preview, and export face is static `ArialMT`. CoreText
+  resolves missing glyphs; each resolved fallback must be exactly embeddable.
 - A bounded text annotation uses its fixed flow rectangle as its PDF bounds;
   measured visible text may occupy less of that rectangle.
 - Text flow regions, line limits, and vertical anchors determine the same

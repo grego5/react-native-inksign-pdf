@@ -164,7 +164,7 @@ class InkHistoryTest {
     history.undoMutation()
     assertEquals(InkState(false, true, false), history.state())
     history.redoMutation(); history.clearMutation()
-    assertEquals(InkState(true, false, false), history.state())
+    assertEquals(InkState(true, false, true), history.state())
     history.undoMutation()
     assertEquals(listOf(first), history.snapshot())
   }
@@ -225,7 +225,7 @@ class InkHistoryTest {
     history.appendText(text)
 
     history.clearMutation()
-    assertEquals(InkState(true, false, false), history.state())
+    assertEquals(InkState(true, false, true), history.state())
     history.undoMutation()
     assertEquals(2, history.contentSnapshot().size)
     assertEquals(InkState(true, true, true), history.state())

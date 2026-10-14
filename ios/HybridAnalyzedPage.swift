@@ -7,12 +7,12 @@ protocol InkSignPdfTextPageContext {
   var modeSession: InkSignPdfModeSessionToken? { get }
 }
 
-/** Retains immutable source analysis while keeping the owning view weak. */
+/** Retains the core and stable page identity while keeping presentation weak. */
 final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContext {
   private weak var owner: InkSignView?
+  private let core: InkSignDocumentCore?
   let generation: UInt64
   let pageID: UUID
-  let analysis: InkSignPdfPageAnalysis
   let modeSession: InkSignPdfModeSessionToken?
 
   /** Nitrogen requires a default factory for returned HybridObjects. Handles
@@ -20,81 +20,112 @@ final class HybridAnalyzedPage: HybridAnalyzedPageSpec, InkSignPdfTextPageContex
   override init() {
     let pageID = UUID()
     self.owner = nil
+    self.core = nil
     self.generation = 0
     self.modeSession = nil
     self.pageID = pageID
-    self.analysis = InkSignPdfPageAnalysis(sourceText: "", characterBounds: [],
-      characterVisualRows: [], rules: [], labelCandidates: [])
     super.init()
   }
 
   init(owner: InkSignView,
        generation: UInt64,
        pageID: UUID,
-       analysis: InkSignPdfPageAnalysis,
        modeSession: InkSignPdfModeSessionToken? = nil) {
     self.owner = owner
+    self.core = owner.documentCore
     self.generation = generation
     self.pageID = pageID
-    self.analysis = analysis
     self.modeSession = modeSession
     super.init()
   }
 
   func getState() throws -> PageInfo {
-    try withOwner { owner in
-      let document = owner.documentCoordinator.document!
-      let index = document.pages.firstIndex { $0.id == self.pageID }!
-      return owner.toPublicPageInfo(InkSignPdfNativePageInfo(
-        pageIndex: index, pageCount: document.pages.count, geometry: document.pages[index].geometry))
-    }
+    try withCore { try $0.pageInfo(context) }
+  }
+
+  private var context: InkSignPdfCorePageContext {
+    InkSignPdfCorePageContext(generation: generation, pageID: pageID)
   }
 
   func resolveInputUnderline(options: ResolveInputUnderlineOptions) throws -> Double {
-    try withOwner { try $0.resolvePreparedText(self, options: InputTargetResolutionOptions(options)) }
+    try resolveInputTarget(options: InputTargetResolutionOptions(options))
   }
 
   func createInputArea(options: CreateInputAreaOptions) throws -> Double {
-    try withOwner { try $0.resolvePreparedText(self, options: InputTargetResolutionOptions(options)) }
+    try resolveInputTarget(options: InputTargetResolutionOptions(options))
+  }
+
+  func resolveInputTarget(options: InputTargetResolutionOptions) throws -> Double {
+    try withCore { try $0.resolveText(context, options: options) }
   }
 
   func getTextValue(id: Double) throws -> String {
-    try withOwner { try $0.preparedTextValue(self, id: id) }
+    try withCore { core in
+      let (_, target) = try core.target(context, id: id)
+      if let draft = owner?.textInteractionOverlay.preparedDraftText(id: target.id, pageID: pageID) { return draft }
+      return try core.textValue(context, id: id)
+    }
   }
 
   func setTextValue(id: Double, text: String, options: TextAnnotationOptions?) throws {
-    guard options == nil else { throw InkSignView.HeadlessFeatureError.androidOnly }
-    try withOwner { try $0.setPreparedTextValue(self, id: id, text: text) }
+    try withCore { core in
+      if let owner { try owner.setPreparedTextValue(self, id: id, text: text, options: options) }
+      else { try core.setTextValue(context, id: id, text: text, options: options) }
+    }
   }
 
   func setTextOptions(id: Double, options: TextAnnotationOptions) throws {
-    try withOwner { try $0.setPreparedTextOptions(self, id: id, options: options) }
+    try withCore { core in
+      if let owner { try owner.setPreparedTextOptions(self, id: id, options: options) }
+      else { try core.setTextOptions(context, id: id, options: options) }
+    }
   }
 
   func adjustTextSize(id: Double, delta: Double) throws -> Double {
-    try withOwner { try $0.adjustPreparedTextSize(self, id: id, delta: delta) }
+    try withCore { core in
+      if let owner { return try owner.adjustPreparedTextSize(self, id: id, delta: delta) }
+      return try core.adjustTextSize(context, id: id, delta: delta)
+    }
   }
 
   func getInputTarget(id: Double) throws -> InputTarget {
-    try withOwner { try $0.preparedInputTarget(self, id: id) }
+    try withCore { core in
+      if let owner { return try owner.preparedInputTarget(self, id: id) }
+      return try core.inputTarget(context, id: id)
+    }
   }
 
   func getInputTargets() throws -> [InputTarget] {
-    try withOwner { try $0.preparedTextEntries(self) }
+    try withCore { core in
+      if let owner { return try owner.preparedTextEntries(self) }
+      return try core.inputTargets(context)
+    }
   }
 
   func focusInputTarget(id: Double, options: InputTargetFocusOptions?) throws -> Promise<Void> {
     try withOwner { try $0.focusPreparedText(self, id: id, options: options) }
   }
 
+  private func withCore<Value>(_ action: (InkSignDocumentCore) throws -> Value) throws -> Value {
+    guard let core else { throw TextError.cancelled }
+    return try core.onOwnerSync {
+      if let modeSession {
+        guard let owner else { throw TextError.cancelled }
+        try owner.interaction.requireSession(modeSession)
+      }
+      _ = try core.page(context)
+      return try action(core)
+    }
+  }
+
   private func withOwner<T>(_ action: (InkSignView) throws -> T) throws -> T {
-    guard let owner else { throw InkSignView.TextError.cancelled }
+    guard let owner else { throw TextError.cancelled }
     return try owner.performOnMainSync {
       if let modeSession { try owner.interaction.requireSession(modeSession) }
       guard !owner.disposed,
             owner.documentCoordinator.generation == generation,
             owner.documentCoordinator.document?.pages.contains(where: { $0.id == pageID }) == true else {
-        throw InkSignView.TextError.cancelled
+        throw TextError.cancelled
       }
       return try action(owner)
     }

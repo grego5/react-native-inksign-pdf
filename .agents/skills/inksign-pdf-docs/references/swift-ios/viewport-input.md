@@ -15,7 +15,8 @@
   text activity, base view/ink policy, and presentation readiness. PDFKit and
   PencilKit apply it; overlay attachment and layout reconcile the current policy.
   See [ownership](view-lifecycle.md).
-- `PageGeometry` confines PDFKit media-box/bottom-left coordinates to adapters;
+- `PageGeometry` retains MediaBox and visible bounds; PDFKit uses CropBox.
+  Canonical content is visible-box-relative; bottom-left PDF coordinates stay in adapters;
   public focus/bounds use displayed top-left points. Editing preserves zoom and
   may pan for caret visibility. Shared [geometry](../architecture.md#document-model) applies.
 - Focus positions the requested page point. Editing keeps the caret above the
@@ -71,9 +72,9 @@
 
 ## Prepared page text
 
-- Import-time PDFKit analysis pairs original UTF-16 ranges with range-selection
-  bounds and groups complete visual labels. Rules retain canonical endpoints and
-  source identity; analysis ownership: [lifecycle](view-lifecycle.md#ownership). Shared
+- Import-time PDFium analysis retains canonical glyph bounds, UTF-16 ranges,
+  complete labels, and rule endpoints. Core-owned displayed projections and
+  directional pair caches serve field resolution and manual snapping. Ownership: [lifecycle](view-lifecycle.md#ownership). Shared
   [lookup, values, adoption, and focus](../architecture.md#document-model) apply.
 - Finalize formatting before measuring visible bounds. Cache/target lifetime:
   [ownership](view-lifecycle.md#ownership).

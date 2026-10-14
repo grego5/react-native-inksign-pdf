@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Simulator complete; physical-device acceptance pending
 Complexity: High
 Depends on: 09-12 and backend checkpoint 08
 
@@ -93,3 +93,25 @@ performance benchmark. Neither this file nor the index grants execution permissi
   headless workflow and optional viewer integration. No custom renderer or new
   public document-sharing/attachment API is introduced.
 - Proposed commit: `test(ios): verify headless parity and document-core contracts`.
+
+## Current integration
+
+DocumentCoreTests covers headless edit/export/close, FIFO close draining, independent base history, atomic fonts/source aliases, and page/target/tag identity across import/reorder/rotation. Its full run passed four cases and timed out in close draining; that case passed in isolation. The full core gate remains pending.
+
+Current export and placement-analysis suites passed. The page-state history test passed after correcting fixture page selection. Live editor width now uses TextKit line widths instead of a caret rectangle from the previous layout. All four focused direction-switch, short-text, complete-line, and snapping checks passed. Complete-line assertions use retained laid-out lines; snapping assertions convert through the current presentation transform. Logs: `review-direction-draft-exact.log`, `review-short-text-width.log`, and `review-two-text-options.log` on the authorized Mac test host. Broader viewer lifecycle/navigation and Android shared-code validation remain outstanding.
+
+## Lifecycle follow-up verification
+
+Full core (5) and navigation (3) suites passed. Focused coordinate cancellation, rejected/no-op draft preservation, caret visibility, and immediate-close checks passed. Reader-lease cleanup passed through retention and release/deletion. Three serial runs of each immediate-close/replacement case passed (9 executions) with a 60-second two-view completion deadline; the first two-view run needed 54.943 seconds on the VM. Prompt cancellation retained its 2-second assertion. Temporary core-load traces were removed. A final full lifecycle/text run and Android shared-code validation remain pending.
+
+## Final simulator integration results
+
+Current-source lifecycle passed 45/45 and text interaction passed 49/49 across the final two runs. Core passed 5/5 and PDF navigation passed 3/3. Artifact ownership checks use a controlled worker barrier; addPages completion allows 120 seconds for Mac VM overhead (observed 57.281 seconds). No production timing policy changed. Lifecycle log: `integration-final-lifecycle-class-rerun.log`; text log: `integration-final-lifecycle-text-interaction.log`. Android crop-coordinate validation and physical iOS presentation checks remain unverified.
+
+## Structural correction follow-up
+
+Core structural publication owns replaced-file retirement; reader leases protect retained presentation. Open settlement has no rollback state or success flag. Removal/movement share core preflight before viewer suspension and at FIFO execution. Authored whitespace passed; current-source compilation and focused headless/lifecycle/artifact checks remain pending for these corrections. Earlier passing suites predate this change.
+
+## Completion boundary
+
+Structural corrections compiled and passed core 5/5 plus focused lifecycle 7/7. The core completion watchdog is 120 seconds; it measures no performance requirement. Implementation and simulator acceptance are complete. Physical iOS presentation and deferred Android shared-code validation remain outside the completed boundary. No full cross-platform/device acceptance claim is made.

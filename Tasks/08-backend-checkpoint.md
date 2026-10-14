@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Test sources prepared; awaiting user execution
+Status: Complete (iOS checkpoint; Android shared-code validation deferred)
 Complexity: High
 Depends on: 01-07
 
@@ -76,6 +76,12 @@ are authorized by this file.
 Proposed commit: `test(ios): establish PDFium backend interoperability checkpoint`.
 
 ## Prepared checks
+
+- Shared canonical analysis maps PDF text/object coordinates directly relative
+  to the resolved MediaBox; CropBox and intrinsic rotation do not shift stored
+  geometry. This correction awaits rerunning the rotation-origin regression.
+- Table borders retain the shared Android candidate policy. The iOS regression
+  checks the two horizontal edges rather than expecting detector-specific removal.
 
 - Analysis fixtures use the native PDFium snapshot, including intrinsic rotation
   and a nonzero MediaBox origin. Rule-scanning cases use the production backend.

@@ -16,6 +16,10 @@ namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
 namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
 // Forward declaration of `AndroidFallbackFont` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
+// Forward declaration of `DocumentAddPagesResult` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentAddPagesResult; }
+// Forward declaration of `DocumentOpenOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOpenOptions; }
 // Forward declaration of `DocumentState` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
@@ -24,6 +28,12 @@ namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
+// Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
+// Forward declaration of `HybridInkSignDocumentFactorySpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentFactorySpec; }
+// Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
 // Forward declaration of `HybridInkSignViewSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignViewSpec; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
@@ -82,6 +92,12 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 // Forward declarations of Swift defined types
 // Forward declaration of `HybridAnalyzedPageSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridAnalyzedPageSpec_cxx; }
+// Forward declaration of `HybridDocumentPageSpec_cxx` to properly resolve imports.
+namespace ReactNativeInkSignPdf { class HybridDocumentPageSpec_cxx; }
+// Forward declaration of `HybridInkSignDocumentFactorySpec_cxx` to properly resolve imports.
+namespace ReactNativeInkSignPdf { class HybridInkSignDocumentFactorySpec_cxx; }
+// Forward declaration of `HybridInkSignDocumentSpec_cxx` to properly resolve imports.
+namespace ReactNativeInkSignPdf { class HybridInkSignDocumentSpec_cxx; }
 // Forward declaration of `HybridInkSignViewSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 // Forward declaration of `HybridModeSessionSpec_cxx` to properly resolve imports.
@@ -94,10 +110,15 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "AddPagesOptions.hpp"
 #include "AddPagesResult.hpp"
 #include "AndroidFallbackFont.hpp"
+#include "DocumentAddPagesResult.hpp"
+#include "DocumentOpenOptions.hpp"
 #include "DocumentState.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
 #include "HybridAnalyzedPageSpec.hpp"
+#include "HybridDocumentPageSpec.hpp"
+#include "HybridInkSignDocumentFactorySpec.hpp"
+#include "HybridInkSignDocumentSpec.hpp"
 #include "HybridInkSignViewSpec.hpp"
 #include "HybridModeSessionSpec.hpp"
 #include "HybridTextHandleSpec.hpp"
@@ -155,107 +176,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline std::string get_std__optional_std__string_(const std::optional<std::string>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::shared_ptr<Promise<void>>
-  /**
-   * Specialized version of `std::shared_ptr<Promise<void>>`.
-   */
-  using std__shared_ptr_Promise_void__ = std::shared_ptr<Promise<void>>;
-  inline std::shared_ptr<Promise<void>> create_std__shared_ptr_Promise_void__() noexcept {
-    return Promise<void>::create();
-  }
-  inline PromiseHolder<void> wrap_std__shared_ptr_Promise_void__(std::shared_ptr<Promise<void>> promise) noexcept {
-    return PromiseHolder<void>(std::move(promise));
-  }
-  
-  // pragma MARK: std::function<void()>
-  /**
-   * Specialized version of `std::function<void()>`.
-   */
-  using Func_void = std::function<void()>;
-  /**
-   * Wrapper class for a `std::function<void()>`, this can be used from Swift.
-   */
-  class Func_void_Wrapper final {
-  public:
-    explicit Func_void_Wrapper(std::function<void()>&& func): _function(std::make_unique<std::function<void()>>(std::move(func))) {}
-    inline void call() const noexcept {
-      _function->operator()();
-    }
-  private:
-    std::unique_ptr<std::function<void()>> _function;
-  } SWIFT_NONCOPYABLE;
-  Func_void create_Func_void(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_Wrapper wrap_Func_void(Func_void value) noexcept {
-    return Func_void_Wrapper(std::move(value));
-  }
-  
-  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
-  /**
-   * Specialized version of `std::function<void(const std::exception_ptr&)>`.
-   */
-  using Func_void_std__exception_ptr = std::function<void(const std::exception_ptr& /* error */)>;
-  /**
-   * Wrapper class for a `std::function<void(const std::exception_ptr& / * error * /)>`, this can be used from Swift.
-   */
-  class Func_void_std__exception_ptr_Wrapper final {
-  public:
-    explicit Func_void_std__exception_ptr_Wrapper(std::function<void(const std::exception_ptr& /* error */)>&& func): _function(std::make_unique<std::function<void(const std::exception_ptr& /* error */)>>(std::move(func))) {}
-    inline void call(std::exception_ptr error) const noexcept {
-      _function->operator()(error);
-    }
-  private:
-    std::unique_ptr<std::function<void(const std::exception_ptr& /* error */)>> _function;
-  } SWIFT_NONCOPYABLE;
-  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
-    return Func_void_std__exception_ptr_Wrapper(std::move(value));
-  }
-  
-  // pragma MARK: std::optional<double>
-  /**
-   * Specialized version of `std::optional<double>`.
-   */
-  using std__optional_double_ = std::optional<double>;
-  inline std::optional<double> create_std__optional_double_(const double& value) noexcept {
-    return std::optional<double>(value);
-  }
-  inline bool has_value_std__optional_double_(const std::optional<double>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline double get_std__optional_double_(const std::optional<double>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<FieldFocusVerticalAnchor>
-  /**
-   * Specialized version of `std::optional<FieldFocusVerticalAnchor>`.
-   */
-  using std__optional_FieldFocusVerticalAnchor_ = std::optional<FieldFocusVerticalAnchor>;
-  inline std::optional<FieldFocusVerticalAnchor> create_std__optional_FieldFocusVerticalAnchor_(const FieldFocusVerticalAnchor& value) noexcept {
-    return std::optional<FieldFocusVerticalAnchor>(value);
-  }
-  inline bool has_value_std__optional_FieldFocusVerticalAnchor_(const std::optional<FieldFocusVerticalAnchor>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline FieldFocusVerticalAnchor get_std__optional_FieldFocusVerticalAnchor_(const std::optional<FieldFocusVerticalAnchor>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<InputTargetFocusOptions>
-  /**
-   * Specialized version of `std::optional<InputTargetFocusOptions>`.
-   */
-  using std__optional_InputTargetFocusOptions_ = std::optional<InputTargetFocusOptions>;
-  inline std::optional<InputTargetFocusOptions> create_std__optional_InputTargetFocusOptions_(const InputTargetFocusOptions& value) noexcept {
-    return std::optional<InputTargetFocusOptions>(value);
-  }
-  inline bool has_value_std__optional_InputTargetFocusOptions_(const std::optional<InputTargetFocusOptions>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline InputTargetFocusOptions get_std__optional_InputTargetFocusOptions_(const std::optional<InputTargetFocusOptions>& optional) noexcept {
     return optional.value();
   }
   
@@ -330,6 +250,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline std::variant<nitro::NullType, std::string> get_std__optional_std__variant_nitro__NullType__std__string__(const std::optional<std::variant<nitro::NullType, std::string>>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<double>
+  /**
+   * Specialized version of `std::optional<double>`.
+   */
+  using std__optional_double_ = std::optional<double>;
+  inline std::optional<double> create_std__optional_double_(const double& value) noexcept {
+    return std::optional<double>(value);
+  }
+  inline bool has_value_std__optional_double_(const std::optional<double>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline double get_std__optional_double_(const std::optional<double>& optional) noexcept {
     return optional.value();
   }
   
@@ -419,17 +354,17 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return vector;
   }
   
-  // pragma MARK: std::shared_ptr<HybridAnalyzedPageSpec>
+  // pragma MARK: std::shared_ptr<HybridDocumentPageSpec>
   /**
-   * Specialized version of `std::shared_ptr<HybridAnalyzedPageSpec>`.
+   * Specialized version of `std::shared_ptr<HybridDocumentPageSpec>`.
    */
-  using std__shared_ptr_HybridAnalyzedPageSpec_ = std::shared_ptr<HybridAnalyzedPageSpec>;
-  std::shared_ptr<HybridAnalyzedPageSpec> create_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
-  void* NON_NULL get_std__shared_ptr_HybridAnalyzedPageSpec_(std__shared_ptr_HybridAnalyzedPageSpec_ cppType);
+  using std__shared_ptr_HybridDocumentPageSpec_ = std::shared_ptr<HybridDocumentPageSpec>;
+  std::shared_ptr<HybridDocumentPageSpec> create_std__shared_ptr_HybridDocumentPageSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridDocumentPageSpec_(std__shared_ptr_HybridDocumentPageSpec_ cppType);
   
-  // pragma MARK: std::weak_ptr<HybridAnalyzedPageSpec>
-  using std__weak_ptr_HybridAnalyzedPageSpec_ = std::weak_ptr<HybridAnalyzedPageSpec>;
-  inline std__weak_ptr_HybridAnalyzedPageSpec_ weakify_std__shared_ptr_HybridAnalyzedPageSpec_(const std::shared_ptr<HybridAnalyzedPageSpec>& strong) noexcept { return strong; }
+  // pragma MARK: std::weak_ptr<HybridDocumentPageSpec>
+  using std__weak_ptr_HybridDocumentPageSpec_ = std::weak_ptr<HybridDocumentPageSpec>;
+  inline std__weak_ptr_HybridDocumentPageSpec_ weakify_std__shared_ptr_HybridDocumentPageSpec_(const std::shared_ptr<HybridDocumentPageSpec>& strong) noexcept { return strong; }
   
   // pragma MARK: Result<PageInfo>
   using Result_PageInfo_ = Result<PageInfo>;
@@ -438,15 +373,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline Result_PageInfo_ create_Result_PageInfo_(const std::exception_ptr& error) noexcept {
     return Result<PageInfo>::withError(error);
-  }
-  
-  // pragma MARK: Result<std::shared_ptr<Promise<void>>>
-  using Result_std__shared_ptr_Promise_void___ = Result<std::shared_ptr<Promise<void>>>;
-  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::shared_ptr<Promise<void>>& value) noexcept {
-    return Result<std::shared_ptr<Promise<void>>>::withValue(value);
-  }
-  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::exception_ptr& error) noexcept {
-    return Result<std::shared_ptr<Promise<void>>>::withError(error);
   }
   
   // pragma MARK: Result<double>
@@ -494,6 +420,423 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Result<std::vector<InputTarget>>::withError(error);
   }
   
+  // pragma MARK: std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>>`.
+   */
+  using std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec___ = std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>>;
+  inline std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> create_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec___() noexcept {
+    return Promise<std::shared_ptr<HybridDocumentPageSpec>>::create();
+  }
+  inline PromiseHolder<std::shared_ptr<HybridDocumentPageSpec>> wrap_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec___(std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> promise) noexcept {
+    return PromiseHolder<std::shared_ptr<HybridDocumentPageSpec>>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::shared_ptr<HybridDocumentPageSpec>& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const std::shared_ptr<HybridDocumentPageSpec>&)>`.
+   */
+  using Func_void_std__shared_ptr_HybridDocumentPageSpec_ = std::function<void(const std::shared_ptr<HybridDocumentPageSpec>& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::shared_ptr<HybridDocumentPageSpec>& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__shared_ptr_HybridDocumentPageSpec__Wrapper final {
+  public:
+    explicit Func_void_std__shared_ptr_HybridDocumentPageSpec__Wrapper(std::function<void(const std::shared_ptr<HybridDocumentPageSpec>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::shared_ptr<HybridDocumentPageSpec>& /* result */)>>(std::move(func))) {}
+    inline void call(std::shared_ptr<HybridDocumentPageSpec> result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::shared_ptr<HybridDocumentPageSpec>& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__shared_ptr_HybridDocumentPageSpec_ create_Func_void_std__shared_ptr_HybridDocumentPageSpec_(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__shared_ptr_HybridDocumentPageSpec__Wrapper wrap_Func_void_std__shared_ptr_HybridDocumentPageSpec_(Func_void_std__shared_ptr_HybridDocumentPageSpec_ value) noexcept {
+    return Func_void_std__shared_ptr_HybridDocumentPageSpec__Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::function<void(const std::exception_ptr& /* error */)>
+  /**
+   * Specialized version of `std::function<void(const std::exception_ptr&)>`.
+   */
+  using Func_void_std__exception_ptr = std::function<void(const std::exception_ptr& /* error */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::exception_ptr& / * error * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__exception_ptr_Wrapper final {
+  public:
+    explicit Func_void_std__exception_ptr_Wrapper(std::function<void(const std::exception_ptr& /* error */)>&& func): _function(std::make_unique<std::function<void(const std::exception_ptr& /* error */)>>(std::move(func))) {}
+    inline void call(std::exception_ptr error) const noexcept {
+      _function->operator()(error);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::exception_ptr& /* error */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__exception_ptr create_Func_void_std__exception_ptr(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__exception_ptr_Wrapper wrap_Func_void_std__exception_ptr(Func_void_std__exception_ptr value) noexcept {
+    return Func_void_std__exception_ptr_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::variant<double, TaggedPageQuery>
+  /**
+   * Wrapper struct for `std::variant<double, TaggedPageQuery>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
+   */
+  struct std__variant_double__TaggedPageQuery_ final {
+    std::variant<double, TaggedPageQuery> variant;
+    std__variant_double__TaggedPageQuery_(std::variant<double, TaggedPageQuery> variant): variant(variant) { }
+    operator std::variant<double, TaggedPageQuery>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline double get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline TaggedPageQuery get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_double__TaggedPageQuery_ create_std__variant_double__TaggedPageQuery_(double value) noexcept {
+    return std__variant_double__TaggedPageQuery_(value);
+  }
+  inline std__variant_double__TaggedPageQuery_ create_std__variant_double__TaggedPageQuery_(const TaggedPageQuery& value) noexcept {
+    return std__variant_double__TaggedPageQuery_(value);
+  }
+  
+  // pragma MARK: std::vector<std::string>
+  /**
+   * Specialized version of `std::vector<std::string>`.
+   */
+  using std__vector_std__string_ = std::vector<std::string>;
+  inline std::vector<std::string> create_std__vector_std__string_(size_t size) noexcept {
+    std::vector<std::string> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<void>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<void>>`.
+   */
+  using std__shared_ptr_Promise_void__ = std::shared_ptr<Promise<void>>;
+  inline std::shared_ptr<Promise<void>> create_std__shared_ptr_Promise_void__() noexcept {
+    return Promise<void>::create();
+  }
+  inline PromiseHolder<void> wrap_std__shared_ptr_Promise_void__(std::shared_ptr<Promise<void>> promise) noexcept {
+    return PromiseHolder<void>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void()>
+  /**
+   * Specialized version of `std::function<void()>`.
+   */
+  using Func_void = std::function<void()>;
+  /**
+   * Wrapper class for a `std::function<void()>`, this can be used from Swift.
+   */
+  class Func_void_Wrapper final {
+  public:
+    explicit Func_void_Wrapper(std::function<void()>&& func): _function(std::make_unique<std::function<void()>>(std::move(func))) {}
+    inline void call() const noexcept {
+      _function->operator()();
+    }
+  private:
+    std::unique_ptr<std::function<void()>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void create_Func_void(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_Wrapper wrap_Func_void(Func_void value) noexcept {
+    return Func_void_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::vector<NamedFontSource>
+  /**
+   * Specialized version of `std::vector<NamedFontSource>`.
+   */
+  using std__vector_NamedFontSource_ = std::vector<NamedFontSource>;
+  inline std::vector<NamedFontSource> create_std__vector_NamedFontSource_(size_t size) noexcept {
+    std::vector<NamedFontSource> vector;
+    vector.reserve(size);
+    return vector;
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<DocumentAddPagesResult>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<DocumentAddPagesResult>>`.
+   */
+  using std__shared_ptr_Promise_DocumentAddPagesResult__ = std::shared_ptr<Promise<DocumentAddPagesResult>>;
+  inline std::shared_ptr<Promise<DocumentAddPagesResult>> create_std__shared_ptr_Promise_DocumentAddPagesResult__() noexcept {
+    return Promise<DocumentAddPagesResult>::create();
+  }
+  inline PromiseHolder<DocumentAddPagesResult> wrap_std__shared_ptr_Promise_DocumentAddPagesResult__(std::shared_ptr<Promise<DocumentAddPagesResult>> promise) noexcept {
+    return PromiseHolder<DocumentAddPagesResult>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const DocumentAddPagesResult& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const DocumentAddPagesResult&)>`.
+   */
+  using Func_void_DocumentAddPagesResult = std::function<void(const DocumentAddPagesResult& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const DocumentAddPagesResult& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_DocumentAddPagesResult_Wrapper final {
+  public:
+    explicit Func_void_DocumentAddPagesResult_Wrapper(std::function<void(const DocumentAddPagesResult& /* result */)>&& func): _function(std::make_unique<std::function<void(const DocumentAddPagesResult& /* result */)>>(std::move(func))) {}
+    inline void call(DocumentAddPagesResult result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const DocumentAddPagesResult& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_DocumentAddPagesResult create_Func_void_DocumentAddPagesResult(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_DocumentAddPagesResult_Wrapper wrap_Func_void_DocumentAddPagesResult(Func_void_DocumentAddPagesResult value) noexcept {
+    return Func_void_DocumentAddPagesResult_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::optional<ImagePageSize>
+  /**
+   * Specialized version of `std::optional<ImagePageSize>`.
+   */
+  using std__optional_ImagePageSize_ = std::optional<ImagePageSize>;
+  inline std::optional<ImagePageSize> create_std__optional_ImagePageSize_(const ImagePageSize& value) noexcept {
+    return std::optional<ImagePageSize>(value);
+  }
+  inline bool has_value_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline ImagePageSize get_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<std::string>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<std::string>>`.
+   */
+  using std__shared_ptr_Promise_std__string__ = std::shared_ptr<Promise<std::string>>;
+  inline std::shared_ptr<Promise<std::string>> create_std__shared_ptr_Promise_std__string__() noexcept {
+    return Promise<std::string>::create();
+  }
+  inline PromiseHolder<std::string> wrap_std__shared_ptr_Promise_std__string__(std::shared_ptr<Promise<std::string>> promise) noexcept {
+    return PromiseHolder<std::string>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::string& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const std::string&)>`.
+   */
+  using Func_void_std__string = std::function<void(const std::string& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::string& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__string_Wrapper final {
+  public:
+    explicit Func_void_std__string_Wrapper(std::function<void(const std::string& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::string& /* result */)>>(std::move(func))) {}
+    inline void call(std::string result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::string& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__string create_Func_void_std__string(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__string_Wrapper wrap_Func_void_std__string(Func_void_std__string value) noexcept {
+    return Func_void_std__string_Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridInkSignDocumentSpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridInkSignDocumentSpec>`.
+   */
+  using std__shared_ptr_HybridInkSignDocumentSpec_ = std::shared_ptr<HybridInkSignDocumentSpec>;
+  std::shared_ptr<HybridInkSignDocumentSpec> create_std__shared_ptr_HybridInkSignDocumentSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridInkSignDocumentSpec_(std__shared_ptr_HybridInkSignDocumentSpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridInkSignDocumentSpec>
+  using std__weak_ptr_HybridInkSignDocumentSpec_ = std::weak_ptr<HybridInkSignDocumentSpec>;
+  inline std__weak_ptr_HybridInkSignDocumentSpec_ weakify_std__shared_ptr_HybridInkSignDocumentSpec_(const std::shared_ptr<HybridInkSignDocumentSpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<DocumentState>
+  using Result_DocumentState_ = Result<DocumentState>;
+  inline Result_DocumentState_ create_Result_DocumentState_(const DocumentState& value) noexcept {
+    return Result<DocumentState>::withValue(value);
+  }
+  inline Result_DocumentState_ create_Result_DocumentState_(const std::exception_ptr& error) noexcept {
+    return Result<DocumentState>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>>>
+  using Result_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec____ = Result<std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>>>;
+  inline Result_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec____ create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec____(const std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec____ create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec____(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::vector<std::string>>
+  using Result_std__vector_std__string__ = Result<std::vector<std::string>>;
+  inline Result_std__vector_std__string__ create_Result_std__vector_std__string__(const std::vector<std::string>& value) noexcept {
+    return Result<std::vector<std::string>>::withValue(value);
+  }
+  inline Result_std__vector_std__string__ create_Result_std__vector_std__string__(const std::exception_ptr& error) noexcept {
+    return Result<std::vector<std::string>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<void>>>
+  using Result_std__shared_ptr_Promise_void___ = Result<std::shared_ptr<Promise<void>>>;
+  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::shared_ptr<Promise<void>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<void>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_void___ create_Result_std__shared_ptr_Promise_void___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<void>>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<DocumentAddPagesResult>>>
+  using Result_std__shared_ptr_Promise_DocumentAddPagesResult___ = Result<std::shared_ptr<Promise<DocumentAddPagesResult>>>;
+  inline Result_std__shared_ptr_Promise_DocumentAddPagesResult___ create_Result_std__shared_ptr_Promise_DocumentAddPagesResult___(const std::shared_ptr<Promise<DocumentAddPagesResult>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<DocumentAddPagesResult>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_DocumentAddPagesResult___ create_Result_std__shared_ptr_Promise_DocumentAddPagesResult___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<DocumentAddPagesResult>>>::withError(error);
+  }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<std::string>>>
+  using Result_std__shared_ptr_Promise_std__string___ = Result<std::shared_ptr<Promise<std::string>>>;
+  inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::shared_ptr<Promise<std::string>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::string>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::string>>>::withError(error);
+  }
+  
+  // pragma MARK: std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>
+  /**
+   * Specialized version of `std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>`.
+   */
+  using std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___ = std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>;
+  inline std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>> create_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___() noexcept {
+    return Promise<std::shared_ptr<HybridInkSignDocumentSpec>>::create();
+  }
+  inline PromiseHolder<std::shared_ptr<HybridInkSignDocumentSpec>> wrap_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___(std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>> promise) noexcept {
+    return PromiseHolder<std::shared_ptr<HybridInkSignDocumentSpec>>(std::move(promise));
+  }
+  
+  // pragma MARK: std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>
+  /**
+   * Specialized version of `std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>&)>`.
+   */
+  using Func_void_std__shared_ptr_HybridInkSignDocumentSpec_ = std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>;
+  /**
+   * Wrapper class for a `std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& / * result * /)>`, this can be used from Swift.
+   */
+  class Func_void_std__shared_ptr_HybridInkSignDocumentSpec__Wrapper final {
+  public:
+    explicit Func_void_std__shared_ptr_HybridInkSignDocumentSpec__Wrapper(std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>>(std::move(func))) {}
+    inline void call(std::shared_ptr<HybridInkSignDocumentSpec> result) const noexcept {
+      _function->operator()(result);
+    }
+  private:
+    std::unique_ptr<std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>> _function;
+  } SWIFT_NONCOPYABLE;
+  Func_void_std__shared_ptr_HybridInkSignDocumentSpec_ create_Func_void_std__shared_ptr_HybridInkSignDocumentSpec_(void* NON_NULL swiftClosureWrapper) noexcept;
+  inline Func_void_std__shared_ptr_HybridInkSignDocumentSpec__Wrapper wrap_Func_void_std__shared_ptr_HybridInkSignDocumentSpec_(Func_void_std__shared_ptr_HybridInkSignDocumentSpec_ value) noexcept {
+    return Func_void_std__shared_ptr_HybridInkSignDocumentSpec__Wrapper(std::move(value));
+  }
+  
+  // pragma MARK: std::optional<AndroidFallbackFont>
+  /**
+   * Specialized version of `std::optional<AndroidFallbackFont>`.
+   */
+  using std__optional_AndroidFallbackFont_ = std::optional<AndroidFallbackFont>;
+  inline std::optional<AndroidFallbackFont> create_std__optional_AndroidFallbackFont_(const AndroidFallbackFont& value) noexcept {
+    return std::optional<AndroidFallbackFont>(value);
+  }
+  inline bool has_value_std__optional_AndroidFallbackFont_(const std::optional<AndroidFallbackFont>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline AndroidFallbackFont get_std__optional_AndroidFallbackFont_(const std::optional<AndroidFallbackFont>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<DocumentOpenOptions>
+  /**
+   * Specialized version of `std::optional<DocumentOpenOptions>`.
+   */
+  using std__optional_DocumentOpenOptions_ = std::optional<DocumentOpenOptions>;
+  inline std::optional<DocumentOpenOptions> create_std__optional_DocumentOpenOptions_(const DocumentOpenOptions& value) noexcept {
+    return std::optional<DocumentOpenOptions>(value);
+  }
+  inline bool has_value_std__optional_DocumentOpenOptions_(const std::optional<DocumentOpenOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline DocumentOpenOptions get_std__optional_DocumentOpenOptions_(const std::optional<DocumentOpenOptions>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridInkSignDocumentFactorySpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridInkSignDocumentFactorySpec>`.
+   */
+  using std__shared_ptr_HybridInkSignDocumentFactorySpec_ = std::shared_ptr<HybridInkSignDocumentFactorySpec>;
+  std::shared_ptr<HybridInkSignDocumentFactorySpec> create_std__shared_ptr_HybridInkSignDocumentFactorySpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridInkSignDocumentFactorySpec_(std__shared_ptr_HybridInkSignDocumentFactorySpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridInkSignDocumentFactorySpec>
+  using std__weak_ptr_HybridInkSignDocumentFactorySpec_ = std::weak_ptr<HybridInkSignDocumentFactorySpec>;
+  inline std__weak_ptr_HybridInkSignDocumentFactorySpec_ weakify_std__shared_ptr_HybridInkSignDocumentFactorySpec_(const std::shared_ptr<HybridInkSignDocumentFactorySpec>& strong) noexcept { return strong; }
+  
+  // pragma MARK: Result<std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>>
+  using Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____ = Result<std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>>;
+  inline Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____ create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____(const std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>& value) noexcept {
+    return Result<std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>>::withValue(value);
+  }
+  inline Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____ create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>>::withError(error);
+  }
+  
+  // pragma MARK: std::optional<FieldFocusVerticalAnchor>
+  /**
+   * Specialized version of `std::optional<FieldFocusVerticalAnchor>`.
+   */
+  using std__optional_FieldFocusVerticalAnchor_ = std::optional<FieldFocusVerticalAnchor>;
+  inline std::optional<FieldFocusVerticalAnchor> create_std__optional_FieldFocusVerticalAnchor_(const FieldFocusVerticalAnchor& value) noexcept {
+    return std::optional<FieldFocusVerticalAnchor>(value);
+  }
+  inline bool has_value_std__optional_FieldFocusVerticalAnchor_(const std::optional<FieldFocusVerticalAnchor>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline FieldFocusVerticalAnchor get_std__optional_FieldFocusVerticalAnchor_(const std::optional<FieldFocusVerticalAnchor>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<InputTargetFocusOptions>
+  /**
+   * Specialized version of `std::optional<InputTargetFocusOptions>`.
+   */
+  using std__optional_InputTargetFocusOptions_ = std::optional<InputTargetFocusOptions>;
+  inline std::optional<InputTargetFocusOptions> create_std__optional_InputTargetFocusOptions_(const InputTargetFocusOptions& value) noexcept {
+    return std::optional<InputTargetFocusOptions>(value);
+  }
+  inline bool has_value_std__optional_InputTargetFocusOptions_(const std::optional<InputTargetFocusOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline InputTargetFocusOptions get_std__optional_InputTargetFocusOptions_(const std::optional<InputTargetFocusOptions>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::shared_ptr<HybridAnalyzedPageSpec>
+  /**
+   * Specialized version of `std::shared_ptr<HybridAnalyzedPageSpec>`.
+   */
+  using std__shared_ptr_HybridAnalyzedPageSpec_ = std::shared_ptr<HybridAnalyzedPageSpec>;
+  std::shared_ptr<HybridAnalyzedPageSpec> create_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftUnsafePointer) noexcept;
+  void* NON_NULL get_std__shared_ptr_HybridAnalyzedPageSpec_(std__shared_ptr_HybridAnalyzedPageSpec_ cppType);
+  
+  // pragma MARK: std::weak_ptr<HybridAnalyzedPageSpec>
+  using std__weak_ptr_HybridAnalyzedPageSpec_ = std::weak_ptr<HybridAnalyzedPageSpec>;
+  inline std__weak_ptr_HybridAnalyzedPageSpec_ weakify_std__shared_ptr_HybridAnalyzedPageSpec_(const std::shared_ptr<HybridAnalyzedPageSpec>& strong) noexcept { return strong; }
+  
   // pragma MARK: std::shared_ptr<HybridTextHandleSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridTextHandleSpec>`.
@@ -538,35 +881,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   Func_void_std__shared_ptr_HybridAnalyzedPageSpec_ create_Func_void_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftClosureWrapper) noexcept;
   inline Func_void_std__shared_ptr_HybridAnalyzedPageSpec__Wrapper wrap_Func_void_std__shared_ptr_HybridAnalyzedPageSpec_(Func_void_std__shared_ptr_HybridAnalyzedPageSpec_ value) noexcept {
     return Func_void_std__shared_ptr_HybridAnalyzedPageSpec__Wrapper(std::move(value));
-  }
-  
-  // pragma MARK: std::variant<double, TaggedPageQuery>
-  /**
-   * Wrapper struct for `std::variant<double, TaggedPageQuery>`.
-   * std::variant cannot be used in Swift because of a Swift bug.
-   * Not even specializing it works. So we create a wrapper struct.
-   */
-  struct std__variant_double__TaggedPageQuery_ final {
-    std::variant<double, TaggedPageQuery> variant;
-    std__variant_double__TaggedPageQuery_(std::variant<double, TaggedPageQuery> variant): variant(variant) { }
-    operator std::variant<double, TaggedPageQuery>() const noexcept {
-      return variant;
-    }
-    inline size_t index() const noexcept {
-      return variant.index();
-    }
-    inline double get_0() const noexcept {
-      return std::get<0>(variant);
-    }
-    inline TaggedPageQuery get_1() const noexcept {
-      return std::get<1>(variant);
-    }
-  };
-  inline std__variant_double__TaggedPageQuery_ create_std__variant_double__TaggedPageQuery_(double value) noexcept {
-    return std__variant_double__TaggedPageQuery_(value);
-  }
-  inline std__variant_double__TaggedPageQuery_ create_std__variant_double__TaggedPageQuery_(const TaggedPageQuery& value) noexcept {
-    return std__variant_double__TaggedPageQuery_(value);
   }
   
   // pragma MARK: std::optional<std::variant<double, TaggedPageQuery>>
@@ -661,21 +975,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline Result_std__shared_ptr_Promise_PageCoords___ create_Result_std__shared_ptr_Promise_PageCoords___(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<Promise<PageCoords>>>::withError(error);
-  }
-  
-  // pragma MARK: std::optional<AndroidFallbackFont>
-  /**
-   * Specialized version of `std::optional<AndroidFallbackFont>`.
-   */
-  using std__optional_AndroidFallbackFont_ = std::optional<AndroidFallbackFont>;
-  inline std::optional<AndroidFallbackFont> create_std__optional_AndroidFallbackFont_(const AndroidFallbackFont& value) noexcept {
-    return std::optional<AndroidFallbackFont>(value);
-  }
-  inline bool has_value_std__optional_AndroidFallbackFont_(const std::optional<AndroidFallbackFont>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline AndroidFallbackFont get_std__optional_AndroidFallbackFont_(const std::optional<AndroidFallbackFont>& optional) noexcept {
-    return optional.value();
   }
   
   // pragma MARK: std::optional<DoubleTapOptions>
@@ -944,17 +1243,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::vector<NamedFontSource>
-  /**
-   * Specialized version of `std::vector<NamedFontSource>`.
-   */
-  using std__vector_NamedFontSource_ = std::vector<NamedFontSource>;
-  inline std::vector<NamedFontSource> create_std__vector_NamedFontSource_(size_t size) noexcept {
-    std::vector<NamedFontSource> vector;
-    vector.reserve(size);
-    return vector;
-  }
-  
   // pragma MARK: std::shared_ptr<Promise<PageInfo>>
   /**
    * Specialized version of `std::shared_ptr<Promise<PageInfo>>`.
@@ -1068,17 +1356,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::vector<std::string>
-  /**
-   * Specialized version of `std::vector<std::string>`.
-   */
-  using std__vector_std__string_ = std::vector<std::string>;
-  inline std::vector<std::string> create_std__vector_std__string_(size_t size) noexcept {
-    std::vector<std::string> vector;
-    vector.reserve(size);
-    return vector;
-  }
-  
   // pragma MARK: std::optional<std::vector<std::string>>
   /**
    * Specialized version of `std::optional<std::vector<std::string>>`.
@@ -1091,21 +1368,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline std::vector<std::string> get_std__optional_std__vector_std__string__(const std::optional<std::vector<std::string>>& optional) noexcept {
-    return optional.value();
-  }
-  
-  // pragma MARK: std::optional<ImagePageSize>
-  /**
-   * Specialized version of `std::optional<ImagePageSize>`.
-   */
-  using std__optional_ImagePageSize_ = std::optional<ImagePageSize>;
-  inline std::optional<ImagePageSize> create_std__optional_ImagePageSize_(const ImagePageSize& value) noexcept {
-    return std::optional<ImagePageSize>(value);
-  }
-  inline bool has_value_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
-    return optional.has_value();
-  }
-  inline ImagePageSize get_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
     return optional.value();
   }
   
@@ -1183,40 +1445,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::shared_ptr<Promise<std::string>>
-  /**
-   * Specialized version of `std::shared_ptr<Promise<std::string>>`.
-   */
-  using std__shared_ptr_Promise_std__string__ = std::shared_ptr<Promise<std::string>>;
-  inline std::shared_ptr<Promise<std::string>> create_std__shared_ptr_Promise_std__string__() noexcept {
-    return Promise<std::string>::create();
-  }
-  inline PromiseHolder<std::string> wrap_std__shared_ptr_Promise_std__string__(std::shared_ptr<Promise<std::string>> promise) noexcept {
-    return PromiseHolder<std::string>(std::move(promise));
-  }
-  
-  // pragma MARK: std::function<void(const std::string& /* result */)>
-  /**
-   * Specialized version of `std::function<void(const std::string&)>`.
-   */
-  using Func_void_std__string = std::function<void(const std::string& /* result */)>;
-  /**
-   * Wrapper class for a `std::function<void(const std::string& / * result * /)>`, this can be used from Swift.
-   */
-  class Func_void_std__string_Wrapper final {
-  public:
-    explicit Func_void_std__string_Wrapper(std::function<void(const std::string& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::string& /* result */)>>(std::move(func))) {}
-    inline void call(std::string result) const noexcept {
-      _function->operator()(result);
-    }
-  private:
-    std::unique_ptr<std::function<void(const std::string& /* result */)>> _function;
-  } SWIFT_NONCOPYABLE;
-  Func_void_std__string create_Func_void_std__string(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_std__string_Wrapper wrap_Func_void_std__string(Func_void_std__string value) noexcept {
-    return Func_void_std__string_Wrapper(std::move(value));
-  }
-  
   // pragma MARK: std::shared_ptr<HybridInkSignViewSpec>
   /**
    * Specialized version of `std::shared_ptr<HybridInkSignViewSpec>`.
@@ -1256,15 +1484,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Result<Viewport>::withError(error);
   }
   
-  // pragma MARK: Result<DocumentState>
-  using Result_DocumentState_ = Result<DocumentState>;
-  inline Result_DocumentState_ create_Result_DocumentState_(const DocumentState& value) noexcept {
-    return Result<DocumentState>::withValue(value);
-  }
-  inline Result_DocumentState_ create_Result_DocumentState_(const std::exception_ptr& error) noexcept {
-    return Result<DocumentState>::withError(error);
-  }
-  
   // pragma MARK: Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>
   using Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__ = Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>;
   inline Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__ create_Result_std__variant_std__shared_ptr_HybridTextHandleSpec___nitro__NullType__(const std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>& value) noexcept {
@@ -1274,15 +1493,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Result<std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType>>::withError(error);
   }
   
-  // pragma MARK: Result<std::vector<std::string>>
-  using Result_std__vector_std__string__ = Result<std::vector<std::string>>;
-  inline Result_std__vector_std__string__ create_Result_std__vector_std__string__(const std::vector<std::string>& value) noexcept {
-    return Result<std::vector<std::string>>::withValue(value);
-  }
-  inline Result_std__vector_std__string__ create_Result_std__vector_std__string__(const std::exception_ptr& error) noexcept {
-    return Result<std::vector<std::string>>::withError(error);
-  }
-  
   // pragma MARK: Result<std::shared_ptr<HybridModeSessionSpec>>
   using Result_std__shared_ptr_HybridModeSessionSpec__ = Result<std::shared_ptr<HybridModeSessionSpec>>;
   inline Result_std__shared_ptr_HybridModeSessionSpec__ create_Result_std__shared_ptr_HybridModeSessionSpec__(const std::shared_ptr<HybridModeSessionSpec>& value) noexcept {
@@ -1290,15 +1500,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   }
   inline Result_std__shared_ptr_HybridModeSessionSpec__ create_Result_std__shared_ptr_HybridModeSessionSpec__(const std::exception_ptr& error) noexcept {
     return Result<std::shared_ptr<HybridModeSessionSpec>>::withError(error);
-  }
-  
-  // pragma MARK: Result<std::shared_ptr<Promise<std::string>>>
-  using Result_std__shared_ptr_Promise_std__string___ = Result<std::shared_ptr<Promise<std::string>>>;
-  inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::shared_ptr<Promise<std::string>>& value) noexcept {
-    return Result<std::shared_ptr<Promise<std::string>>>::withValue(value);
-  }
-  inline Result_std__shared_ptr_Promise_std__string___ create_Result_std__shared_ptr_Promise_std__string___(const std::exception_ptr& error) noexcept {
-    return Result<std::shared_ptr<Promise<std::string>>>::withError(error);
   }
 
 } // namespace margelo::nitro::inksignpdf::bridge::swift

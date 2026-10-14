@@ -12,14 +12,14 @@ extension InkSignView {
     invalidateOverlayTransformCache()
   }
 
-  /// Converts an overlay point into canonical media-box-relative page coordinates.
+  /// Converts an overlay point into canonical visible-box-relative page coordinates.
   func canonicalPagePoint(fromOverlay point: CGPoint) -> CGPoint? {
-    guard let state = documentCoordinator.document,
+    guard let state = viewerDocument,
           attachedOverlayPage == state.activePage.id,
           let transform = pageToOverlayTransform,
           let inverse = transform.invertedIfFinite else { return nil }
     let pagePoint = point.applying(inverse)
-    let pageSize = state.activePage.geometry.mediaBox.size
+    let pageSize = state.activePage.geometry.visibleBox.size
     guard pagePoint.x.isFinite, pagePoint.y.isFinite,
           pagePoint.x >= 0, pagePoint.x <= pageSize.width,
           pagePoint.y >= 0, pagePoint.y <= pageSize.height else { return nil }
@@ -27,7 +27,7 @@ extension InkSignView {
   }
 
   func isSupportedPage(_ pageID: UUID) -> Bool {
-    guard let state = documentCoordinator.document else { return false }
+    guard let state = viewerDocument else { return false }
     return state.activePage.id == pageID && state.activePage.geometry.isValid
   }
 
@@ -60,7 +60,7 @@ extension InkSignView {
 
   func overlayLayoutChanged(_ overlay: InkCanvasView) {
     guard !disposed, overlay === canvasView,
-          let pageID = documentCoordinator.document?.activePage.id,
+          let pageID = viewerDocument?.activePage.id,
           attachedOverlayPage == pageID, isSupportedPage(pageID) else { return }
     refreshOverlayTransform(overlay, for: pageID)
     finishPagePresentationIfReady()
@@ -71,7 +71,7 @@ extension InkSignView {
   func refreshActiveOverlayTransform() {
     interaction.viewport.reconcileTextViewportInset()
     interaction.viewport.scheduleZoomReport()
-    guard let state = documentCoordinator.document,
+    guard let state = viewerDocument,
           let canvas = overlayProvider.canvasView(for: state.activePage.id) else { return }
     refreshOverlayTransform(canvas, for: state.activePage.id)
   }
@@ -81,16 +81,16 @@ extension InkSignView {
   func refreshOverlayTransform(_ overlay: InkCanvasView, for pageID: UUID) {
     interaction.viewport.scheduleZoomReport()
     guard isSupportedPage(pageID), attachedOverlayPage == pageID,
-          let state = documentCoordinator.document,
+          let state = viewerDocument,
           let page = documentView.currentPage,
-          page === state.activePage.page else {
+          page === state.activePDFPage else {
       invalidateOverlayTransformCache()
       return
     }
-    let mediaBox = state.activePage.geometry.mediaBox
+    let visibleBox = state.activePage.geometry.visibleBox
     func overlayPoint(canonical: CGPoint) -> CGPoint {
-      let pdfPoint = CGPoint(x: canonical.x + mediaBox.minX,
-                             y: mediaBox.maxY - canonical.y)
+      let pdfPoint = CGPoint(x: canonical.x + visibleBox.minX,
+                             y: visibleBox.maxY - canonical.y)
       let viewPoint = documentView.convert(pdfPoint, from: page)
       return overlay.convert(viewPoint, from: documentView)
     }
@@ -112,7 +112,7 @@ extension InkSignView {
     }
     if overlayTransformPage == pageID,
        overlayTransformBounds == overlay.bounds,
-       overlayTransformMediaBox == mediaBox,
+       overlayTransformVisibleBox == visibleBox,
        pageToOverlayTransform == transform {
       updateCanvasPen(overlay)
       return
@@ -121,7 +121,7 @@ extension InkSignView {
     pageToOverlayTransform = transform
     overlayTransformPage = pageID
     overlayTransformBounds = overlay.bounds
-    overlayTransformMediaBox = mediaBox
+    overlayTransformVisibleBox = visibleBox
     installCommittedDrawing()
     textInteractionOverlay.syncTransform()
     updateCanvasPen(overlay)
@@ -130,7 +130,7 @@ extension InkSignView {
   func invalidateOverlayTransformCache() {
     overlayTransformPage = nil
     overlayTransformBounds = .zero
-    overlayTransformMediaBox = .zero
+    overlayTransformVisibleBox = .zero
     pageToOverlayTransform = nil
   }
 }

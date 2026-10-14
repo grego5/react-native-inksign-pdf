@@ -27,7 +27,7 @@ extension InkSignView {
   /// receives the coordinator's ID through canvasGestureWillBegin.
   func canvasViewDidBeginUsingTool(_ canvasView: PKCanvasView) {
     guard canvasView === self.canvasView,
-          interaction.acceptsInkInput, documentCoordinator.document != nil,
+          interaction.acceptsInkInput, viewerDocument != nil,
           pageToOverlayTransform != nil,
           activeDrawingTransactionID == nil,
           endedDrawingTransactionID == nil else {
@@ -43,7 +43,7 @@ extension InkSignView {
     }
     pendingDrawingTransactionID = nil
     activeDrawingTransactionID = transactionID
-    activeDrawingBaseline = documentCoordinator.document?.activePage.history.content
+    activeDrawingBaseline = viewerDocument?.activePage.history.content
     activeDrawingPageToOverlayTransform = pageToOverlayTransform
   }
 
@@ -67,7 +67,7 @@ extension InkSignView {
 
   func canvasGestureWillBegin(_ canvas: InkCanvasView) -> UInt64? {
     interaction.viewport.cancelMotion()
-    guard canvas === canvasView, interaction.acceptsInkInput, documentCoordinator.document != nil,
+    guard canvas === canvasView, interaction.acceptsInkInput, viewerDocument != nil,
           pageToOverlayTransform != nil else {
       return nil
     }
@@ -132,10 +132,9 @@ extension InkSignView {
       installPenAfterDrawing()
       return
     }
-    guard let page = documentCoordinator.document?.activePage else { return }
-    page.history.record(type: .ink,
-                        before: baseline,
-                        after: baseline.replacingDrawing(finished))
+    guard let page = viewerDocument?.activePage else { return }
+    _ = try? documentCore.commitDrawing(finished, replacing: baseline.drawing,
+      context: InkSignPdfCorePageContext(generation: documentCoordinator.generation, pageID: page.id))
     installCommittedDrawing()
     installPenAfterDrawing()
     emitChange()
@@ -148,8 +147,8 @@ extension InkSignView {
 
   func installCommittedDrawing() {
     let displayed: PKDrawing
-    let committedDrawing = documentCoordinator.document?.activePage.history.content.drawing ?? PKDrawing()
-    if let activePageID = documentCoordinator.document?.activePage.id,
+    let committedDrawing = viewerDocument?.activePage.history.content.drawing ?? PKDrawing()
+    if let activePageID = viewerDocument?.activePage.id,
        attachedOverlayPage == activePageID,
        overlayTransformPage == activePageID,
        let transform = pageToOverlayTransform {

@@ -133,7 +133,7 @@ final class ViewerInteractionCoordinator {
   func beginSession(_ mode: InputMode, options: TextModeOptions?) throws -> InkSignPdfModeSessionToken {
     guard !host.disposed else { throw InkSignView.LoadError.cancelled }
     guard let generation = host.interactionGeneration else {
-      guard mode == .view else { throw InkSignView.TextError.documentNotOpen }
+      guard mode == .view else { throw TextError.documentNotOpen }
       let token = InkSignPdfModeSessionToken(generation: host.documentCoordinator.generation, mode: .view)
       token.cancelled = true
       return token
@@ -224,8 +224,8 @@ final class ViewerInteractionCoordinator {
     host.enqueueCoordinatePicker(modeSession, start: { [weak self] in
       guard let self, self.coordinateRequest === request else { throw InkSignView.LoadError.cancelled }
       try self.viewport.requireViewportReady(request: .preserve)
-      guard let page = self.host.documentCoordinator.document?.activePage else {
-        throw InkSignView.TextError.documentNotOpen
+      guard let page = self.host.viewerDocument?.activePage else {
+        throw TextError.documentNotOpen
       }
       let generation = self.host.documentCoordinator.generation
       let geometryRevision = page.geometryRevision
@@ -241,7 +241,7 @@ final class ViewerInteractionCoordinator {
       self.host.finishTextInteraction()
       guard self.coordinateRequest === request, self.coordinateRequestIsAuthorized(request),
             self.host.documentCoordinator.generation == generation,
-            self.host.documentCoordinator.document?.activePage.id == page.id,
+            self.host.viewerDocument?.activePage.id == page.id,
             page.geometryRevision == geometryRevision else {
         throw InkSignView.LoadError.cancelled
       }
@@ -256,7 +256,7 @@ final class ViewerInteractionCoordinator {
     return request.result.promise
   }
   private func coordinateTargetIsCurrent(_ target: CoordinateRequest.Target) -> Bool {
-    guard !host.disposed, let page = host.documentCoordinator.document?.activePage else { return false }
+    guard !host.disposed, let page = host.viewerDocument?.activePage else { return false }
     return host.documentCoordinator.generation == target.generation &&
       page.id == target.pageID && page.geometryRevision == target.geometryRevision
   }
@@ -320,8 +320,8 @@ final class ViewerInteractionCoordinator {
   func presentationIsCurrent(_ request: PresentationRequest) -> Bool {
     presentationRevision == request.revision && !host.disposed &&
       host.documentCoordinator.generation == request.generation &&
-      host.documentCoordinator.document?.activePage.id == request.pageID &&
-      host.documentCoordinator.document?.activePage.geometryRevision == request.geometryRevision
+      host.viewerDocument?.activePage.id == request.pageID &&
+      host.viewerDocument?.activePage.geometryRevision == request.geometryRevision
   }
   func claimPresentation(_ request: PresentationRequest) -> Bool {
     guard presentation === request else { return false }
@@ -358,7 +358,7 @@ final class ViewerInteractionCoordinator {
 }
 
 extension InkSignView: ViewerInteractionHost {
-  var interactionGeneration: UInt64? { documentCoordinator.document == nil ? nil : documentCoordinator.generation }
+  var interactionGeneration: UInt64? { viewerDocument == nil ? nil : documentCoordinator.generation }
   var textActivity: InteractionMode { textInteractionOverlay.interactionMode() }
   func finishTextInteraction() { textInteractionOverlay.finishForLifecycle() }
   func armTextInteraction(_ token: InkSignPdfModeSessionToken) throws {

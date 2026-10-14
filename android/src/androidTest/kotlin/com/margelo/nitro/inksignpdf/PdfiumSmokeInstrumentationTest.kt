@@ -156,6 +156,35 @@ class PdfiumSmokeInstrumentationTest {
   }
 
   @Test
+  fun croppedAnalysisMatchesTheSameVisibleContentOnAnUncroppedPage() {
+    val ordinaryContent = "BT /F1 20 Tf 1 0 0 1 50 550 Tm (Name) Tj ET\n" +
+      "100 540 m 350 540 l S\n"
+    val croppedContent = "BT /F1 20 Tf 1 0 0 1 150 650 Tm (Name) Tj ET\n" +
+      "200 640 m 450 640 l S\n"
+    for (rotation in listOf(0, 90, 180, 270)) {
+      PdfiumRenderSession.open(textPagePdf(ordinaryContent, 400, 600, rotation = rotation)).use { ordinary ->
+        PdfiumRenderSession.open(textPagePdf(croppedContent, 600, 800,
+          cropBox = "100 100 500 700", rotation = rotation)).use { cropped ->
+          val expected = ordinary.preparePageAnalysis(0)
+          val actual = cropped.preparePageAnalysis(0)
+          val expectedMatch = completeLabelMatches(preparedTextLabels(expected), "Name").single().match
+          val actualMatch = completeLabelMatches(preparedTextLabels(actual), "Name").single().match
+          assertEquals(expectedMatch.left, actualMatch.left, 0.001)
+          assertEquals(expectedMatch.top, actualMatch.top, 0.001)
+          assertEquals(expectedMatch.right, actualMatch.right, 0.001)
+          assertEquals(expectedMatch.bottom, actualMatch.bottom, 0.001)
+          assertEquals(ordinary.horizontalSnapCandidates(0), cropped.horizontalSnapCandidates(0))
+          val size = cropped.pageSize(0)
+          val dimensions = PdfPageDimensions(size.width, size.height, size.rotation)
+          val expectedProjection = PreparedPageContext(1, "ordinary", expected).projected(dimensions)
+          val actualProjection = PreparedPageContext(1, "cropped", actual).projected(dimensions)
+          assertEquals(expectedProjection.rules, actualProjection.rules)
+        }
+      }
+    }
+  }
+
+  @Test
   fun reopenedDocumentDoesNotReusePreviousPageAnalysis() {
     PdfiumRenderSession.open(textPdf()).use { original ->
       assertTrue(completeLabelMatches(
@@ -538,11 +567,13 @@ class PdfiumSmokeInstrumentationTest {
     return textPagePdf(content, pageWidth = 120)
   }
 
-  private fun textPagePdf(content: String, pageWidth: Int = 100, pageHeight: Int = 100): ByteArray {
+  private fun textPagePdf(content: String, pageWidth: Int = 100, pageHeight: Int = 100,
+                          cropBox: String? = null, rotation: Int = 0): ByteArray {
     val objects = listOf(
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
       "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
       "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $pageWidth $pageHeight] " +
+        (cropBox?.let { "/CropBox [$it] " } ?: "") + "/Rotate $rotation " +
         "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
       "4 0 obj\n<< /Length ${content.toByteArray(Charsets.ISO_8859_1).size} >>\n" +
         "stream\n$content\nendstream\nendobj\n",

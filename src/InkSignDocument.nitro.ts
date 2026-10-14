@@ -29,11 +29,11 @@ export interface DocumentAddPagesResult {
   pageCount: number
 }
 
-export interface DocumentPage extends HybridObject<{ android: 'kotlin' }>, PageTextMethods {
+export interface DocumentPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }>, PageTextMethods {
   getState(): PageInfo
 }
 
-export interface InkSignDocument extends HybridObject<{ android: 'kotlin' }> {
+export interface InkSignDocument extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   getState(): DocumentState
   readonly pageCount: number
   getPage(index: PageQuery): Promise<DocumentPage>
@@ -50,6 +50,6 @@ export interface InkSignDocument extends HybridObject<{ android: 'kotlin' }> {
   close(): Promise<void>
 }
 
-export interface InkSignDocumentFactory extends HybridObject<{ android: 'kotlin' }> {
+export interface InkSignDocumentFactory extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   openDoc(uri: string, options?: DocumentOpenOptions): Promise<InkSignDocument>
 }

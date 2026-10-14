@@ -14,7 +14,7 @@ enum InkSignPdfTextEditorLayout {
       editor.textContainer.size = CGSize(width: contentWidth,
                                          height: .greatestFiniteMagnitude)
       editor.layoutManager.ensureLayout(for: editor.textContainer)
-      return contentWidthExtent(of: editor, insets: insets)
+      return contentWidthExtent(of: editor)
     }
 
     var contentWidth: CGFloat
@@ -49,17 +49,13 @@ enum InkSignPdfTextEditorLayout {
                   height: max(contentHeight + emptyLineHeight, font.lineHeight) + insets.top + insets.bottom)
   }
 
-  private static func contentWidthExtent(of editor: UITextView,
-                                        insets: UIEdgeInsets) -> CGFloat {
-    let glyphBounds = editor.layoutManager.usedRect(for: editor.textContainer)
-    let caretInView = editor.selectedTextRange.map { editor.caretRect(for: $0.end) } ?? .null
-    let caretInContainer = caretInView.offsetBy(
-      dx: editor.contentOffset.x - insets.left,
-      dy: editor.contentOffset.y - insets.top)
-    let textAndCaretBounds = glyphBounds.union(caretInContainer)
-    let widthFromAnchor = editor.textAlignment == .right
-      ? editor.textContainer.size.width - textAndCaretBounds.minX
-      : textAndCaretBounds.maxX
-    return max(widthFromAnchor, 0)
+  private static func contentWidthExtent(of editor: UITextView) -> CGFloat {
+    let manager = editor.layoutManager
+    let range = NSRange(location: 0, length: manager.numberOfGlyphs)
+    var width: CGFloat = 0
+    manager.enumerateLineFragments(forGlyphRange: range) { _, usedRect, _, _, _ in
+      width = max(width, usedRect.width)
+    }
+    return ceil(width)
   }
 }

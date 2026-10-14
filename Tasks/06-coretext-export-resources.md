@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Completed (static; runtime gates pending)
+Status: Complete (iOS implementation and applicable simulator checks)
 Complexity: High
 Depends on: 05
 
@@ -66,7 +66,7 @@ Text retains its captured layout after page rotation.
 - Preview and export share selected lines and captured wrapping without a second
   shaping pass. Existing hard bounds and alignment remain authoritative.
 - Font feasibility failures are distinguishable from write/reopen failures;
-  runtime embeddability remains pending.
+  focused runtime embedding/export checks passed.
 - Run `git diff --check`.
 - Proposed commit: `feat(ios): prepare CoreText glyphs and fonts for PDFium export`.
 
@@ -80,4 +80,4 @@ Text retains its captured layout after page rotation.
 - Native values bridge owned resources to the common writer. Local Form XObject
   clipping and recursive composed-transform validation are connected to export.
 - Authored whitespace check passed. Compilation and runtime checks remain
-  deferred; exact Apple-font embeddability is unverified.
+  covered by focused CoreText export checks; supported font policy remains explicit.

@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Planned
+Status: Implementation complete; remaining device/shared-code acceptance deferred
 Complexity: Medium
 Depends on: 14-15 and existing checkpoints 08/13
 
@@ -94,3 +94,7 @@ content scans. Verify those details without implementing a second ownership mode
   match Android. Keep implementation/static/runtime acceptance distinct; final
   acceptance includes Tasks 08, 13, and these additional parity observations.
 - Proposed commit: `test(ios): close recent Android contract parity gaps`.
+
+## Current integration
+
+History owns retained text counts and keyed current-value reads; fresh text/drawing edits avoid composed-page identity scans. Named fonts share source resources, preserve aliases, and load atomically. Shared/iOS docs and README platform scope are updated. Public API (22), headless core (5), lifecycle (45), and text interaction (49) checks passed. Subsequent structural corrections passed core (5) and focused lifecycle (7). Physical iOS presentation and Android shared crop-coordinate validation remain deferred.

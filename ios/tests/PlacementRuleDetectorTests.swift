@@ -19,6 +19,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let document = try XCTUnwrap(PDFDocument(url: url))
     let page = try XCTUnwrap(document.page(at: 0))
     page.setBounds(CGRect(x: 20, y: 30, width: 595, height: 842), for: .mediaBox)
+    page.setBounds(CGRect(x: 20, y: 30, width: 595, height: 842), for: .cropBox)
     page.rotation = 90
     XCTAssertTrue(document.write(to: url))
     let snapshots = try InkSignPdfPdfiumBackend.analyze(data: Data(contentsOf: url), pageIndices: [0])
@@ -36,6 +37,35 @@ final class PlacementRuleDetectorTests: XCTestCase {
     let initialRule = try XCTUnwrap(initial.rules.first)
     XCTAssertEqual(rule.start.x, initialRule.start.x - 20, accuracy: 0.01)
     XCTAssertEqual(rule.start.y, initialRule.start.y + 30, accuracy: 0.01)
+  }
+
+  func testCroppedAnalysisUsesVisibleOriginAtEveryRotation() throws {
+    let url = try makePDF { context in
+      drawFixtureLabel("Name", at: CGPoint(x: 80, y: 120), in: context)
+      context.setLineWidth(1)
+      context.move(to: CGPoint(x: 140, y: 120))
+      context.addLine(to: CGPoint(x: 340, y: 120))
+      context.strokePath()
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let baseline = try analyze(url)
+    let match = try XCTUnwrap(baseline.lookup(key: "Name").matches.first)
+    let rule = try XCTUnwrap(baseline.rules.first)
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let crop = CGRect(x: 40, y: 50, width: 500, height: 750)
+    for rotation in [0, 90, 180, 270] {
+      page.setBounds(crop, for: .cropBox)
+      page.rotation = rotation
+      XCTAssertTrue(document.write(to: url))
+      let cropped = try analyze(url)
+      let croppedMatch = try XCTUnwrap(cropped.lookup(key: "Name").matches.first)
+      let croppedRule = try XCTUnwrap(cropped.rules.first)
+      XCTAssertEqual(croppedMatch.bounds.minX, match.bounds.minX - crop.minX, accuracy: 0.01)
+      XCTAssertEqual(croppedMatch.bounds.minY, match.bounds.minY - (842 - crop.maxY), accuracy: 0.01)
+      XCTAssertEqual(croppedRule.start.x, rule.start.x - crop.minX, accuracy: 0.01)
+      XCTAssertEqual(croppedRule.start.y, rule.start.y - (842 - crop.maxY), accuracy: 0.01)
+    }
   }
 
   func testJoinedWholeLabelMatchesMissingSpaceWithoutAcceptingPartialLabel() throws {
@@ -287,7 +317,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     try FileManager.default.removeItem(at: originalURL)
 
     XCTAssertEqual(rebound.id, original.pages[0].id)
-    XCTAssertTrue(try XCTUnwrap(rebound.page.string).contains("Owner"))
+    XCTAssertTrue(try XCTUnwrap(PDFDocument(url: workingURL)?.page(at: 0)?.string).contains("Owner"))
     XCTAssertTrue(rebound.sourceAnalysis.lookup(key: "Name").hasLiteralMatch)
     XCTAssertFalse(rebound.sourceAnalysis.lookup(key: "Owner").hasLiteralMatch)
     let replacement = try InkSignPdfDocumentCandidateLoader.load(url: workingURL)
@@ -320,7 +350,7 @@ final class PlacementRuleDetectorTests: XCTestCase {
     XCTAssertEqual(rtl?.contentMaxX, 38)
   }
 
-  func testTableBorderStrokesDoNotBecomeWritingRules() throws {
+  func testTableBorderStrokesRetainSharedHorizontalRuleCandidates() throws {
     let url = try makePDF { context in
       context.setLineWidth(1)
       for y in [CGFloat(650), 720] {
@@ -338,7 +368,10 @@ final class PlacementRuleDetectorTests: XCTestCase {
     }
     defer { try? FileManager.default.removeItem(at: url) }
 
-    XCTAssertTrue(try scan(url).isEmpty)
+    let rules = try scan(url)
+    XCTAssertEqual(rules.count, 2)
+    XCTAssertEqual(rules.map(\.y).sorted(), [650, 720])
+    XCTAssertTrue(rules.allSatisfy { abs($0.minX - 44) < 0.01 && abs($0.maxX - 540) < 0.01 })
   }
 
   func testScansOptionalSuppliedSolidRulePDF() throws {

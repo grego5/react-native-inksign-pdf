@@ -76,7 +76,8 @@ struct InkSignPdfPageAnalysis {
       let rowStart = geometry.canonicalToDisplay(match.rowStart)
       let rowEnd = geometry.canonicalToDisplay(match.rowEnd)
       return InkSignPdfKeyTextMatch(bounds: bounds, sourceIndex: match.sourceIndex,
-        lineHeight: abs(rowEnd.y - rowStart.y), lineCenterY: (rowStart.y + rowEnd.y) / 2)
+        lineHeight: hypot(rowEnd.x - rowStart.x, rowEnd.y - rowStart.y),
+        lineCenterY: (rowStart.y + rowEnd.y) / 2, rowStart: rowStart, rowEnd: rowEnd)
     }
     let projected = self.rules.compactMap { rule -> (InkSignPdfCanonicalWritingRule, InkSignPdfPlacementRule)? in
       let start = geometry.canonicalToDisplay(rule.start)

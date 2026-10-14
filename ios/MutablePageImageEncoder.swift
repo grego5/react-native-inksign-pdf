@@ -31,13 +31,13 @@ enum InkSignPdfMutablePageImageEncoder {
     let pageHeight = geometry.mediaBox.height
     guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
           CGImageSourceGetCount(source) > 0 else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
 
     guard let sourceProperties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
           let sourceWidth = (sourceProperties[kCGImagePropertyPixelWidth as String] as? NSNumber)?.doubleValue,
           let sourceHeight = (sourceProperties[kCGImagePropertyPixelHeight as String] as? NSNumber)?.doubleValue else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
     let orientation = (sourceProperties[kCGImagePropertyOrientation as String] as? NSNumber)?.uint32Value ?? 1
     let swapsDimensions = (5...8).contains(Int(orientation))
@@ -74,7 +74,7 @@ enum InkSignPdfMutablePageImageEncoder {
             space: CGColorSpaceCreateDeviceRGB(),
             bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
           ) else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
 
     context.setFillColor(CGColor(gray: 1, alpha: 1))
@@ -91,18 +91,18 @@ enum InkSignPdfMutablePageImageEncoder {
       height: drawnSize.height)
     context.draw(image, in: target)
     guard let normalized = context.makeImage() else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
 
     let data = NSMutableData()
     guard let destination = CGImageDestinationCreateWithData(
       data, UTType.jpeg.identifier as CFString, 1, nil) else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
     CGImageDestinationAddImage(destination, normalized,
                               [kCGImageDestinationLossyCompressionQuality: jpegQuality ?? 0.72] as CFDictionary)
     guard CGImageDestinationFinalize(destination) else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
     return InkSignPdfEncodedImage(jpeg: data as Data,
       pageSize: CGSize(width: pageWidth, height: pageHeight), rotation: geometry.rotation)

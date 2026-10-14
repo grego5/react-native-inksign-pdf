@@ -7,6 +7,7 @@ protocol ViewerViewportHost: AnyObject {
   var container: UIView { get }
   var documentView: PDFView { get }
   var documentCoordinator: InkSignPdfDocumentCoordinator { get }
+  var viewerDocument: InkSignPdfViewerDocument? { get }
   var overlayProvider: PageOverlayProvider { get }
   var attachedOverlayPage: UUID? { get }
   var overlayTransformPage: UUID? { get }
@@ -52,6 +53,7 @@ final class ViewerViewportController {
   private var container: UIView { host.container }
   private var documentView: PDFView { host.documentView }
   private var documentCoordinator: InkSignPdfDocumentCoordinator { host.documentCoordinator }
+  private var viewerDocument: InkSignPdfViewerDocument? { host.viewerDocument }
   private var overlayProvider: PageOverlayProvider { host.overlayProvider }
   private var disposed: Bool { host.disposed }
   private var pagerDirection: PagerDirection? { host.pagerDirection }
@@ -133,8 +135,8 @@ final class ViewerViewportController {
   func applyViewport(target: ViewportTarget, preservingMotion: Bool = false) -> Bool {
     let requestID = self.requestID
     if !preservingMotion { motion.cancel() }
-    guard self.requestID == requestID, let state = documentCoordinator.document,
-          documentView.currentPage === state.activePage.page,
+    guard self.requestID == requestID, let state = viewerDocument,
+          documentView.currentPage === state.activePDFPage,
           documentView.bounds.width > 0, documentView.bounds.height > 0,
           let scroll = pageViewportScrollView(),
           scroll.bounds.width > 0, scroll.bounds.height > 0,
@@ -144,7 +146,7 @@ final class ViewerViewportController {
     let geometry = state.activePage.geometry
     func contentPoint(_ point: CGPoint) -> CGPoint {
       content.convert(documentView.convert(point.applying(geometry.displayToPDFTransform),
-                                            from: state.activePage.page), from: documentView)
+                                            from: state.activePDFPage), from: documentView)
     }
     let focus = contentPoint(target.focus)
     let unitX = contentPoint(CGPoint(x: target.focus.x + 1, y: target.focus.y))
@@ -167,7 +169,7 @@ final class ViewerViewportController {
       documentView.layoutIfNeeded()
       reconcileTextViewportInset(scroll)
       let focusedPoint = documentView.convert(target.focus.applying(geometry.displayToPDFTransform),
-                                              from: state.activePage.page)
+                                              from: state.activePDFPage)
       _ = movePageViewport(by: CGPoint(x: documentView.bounds.midX - focusedPoint.x,
                                        y: documentView.bounds.midY - focusedPoint.y))
       host.refreshViewportOverlay(for: state.activePage.id)
@@ -180,7 +182,7 @@ final class ViewerViewportController {
   func animateViewport(target: ViewportTarget,
                        modeSession: InkSignPdfModeSessionToken? = nil,
                        completion: @escaping (Result<Void, Error>) -> Void) {
-    guard let page = documentCoordinator.document?.activePage,
+    guard let page = viewerDocument?.activePage,
           let scroll = pageViewportScrollView() else {
       completion(.failure(ViewportError.notReady)); return
     }
@@ -196,8 +198,8 @@ final class ViewerViewportController {
       guard let self, self.hostReference != nil, let scroll else { return false }
       return !self.disposed && self.documentView.window != nil &&
         self.documentCoordinator.generation == generation &&
-        self.documentCoordinator.document?.activePage.id == pageID &&
-        self.documentCoordinator.document?.activePage.geometryRevision == geometryRevision &&
+        self.viewerDocument?.activePage.id == pageID &&
+        self.viewerDocument?.activePage.geometryRevision == geometryRevision &&
         self.requestID == requestID && (modeSession.map(self.interaction.sessionIsCurrent) ?? true) &&
         self.pageViewportScrollView() === scroll
     }
@@ -226,8 +228,8 @@ final class ViewerViewportController {
                         zoom: Double,
                         verticalAnchor: FieldFocusVerticalAnchor,
                         edgeOffset: Double) -> ViewportTarget? {
-    guard let state = documentCoordinator.document,
-          documentView.currentPage === state.activePage.page,
+    guard let state = viewerDocument,
+          documentView.currentPage === state.activePDFPage,
           documentView.bounds.height > 0,
           zoom.isFinite, edgeOffset.isFinite else { return nil }
     let targetZoom = min(max(CGFloat(zoom), documentView.minScaleFactor), documentView.maxScaleFactor)
@@ -268,13 +270,13 @@ final class ViewerViewportController {
   }
 
   func viewportReadiness() -> ViewportReadiness {
-    let state = documentCoordinator.document
+    let state = viewerDocument
     return ViewportReadiness(
       documentReady: state?.activePage.geometry.isValid == true,
       viewInWindow: documentView.window != nil,
       hasUsableBounds: documentView.bounds.width > 0 && documentView.bounds.height > 0,
       activeOverlayAttached: state.map {
-        host.attachedOverlayPage == $0.activePage.id && documentView.currentPage === $0.activePage.page &&
+        host.attachedOverlayPage == $0.activePage.id && documentView.currentPage === $0.activePDFPage &&
           host.overlayTransformPage == $0.activePage.id && host.pageToOverlayTransform != nil
       } == true,
       fitScaleUsable: usableFitScale() != nil)
@@ -289,9 +291,9 @@ final class ViewerViewportController {
 
   func currentViewportSnapshot() throws -> Viewport {
     try requireViewportReady(request: .preserve)
-    guard let state = documentCoordinator.document,
+    guard let state = viewerDocument,
           let page = documentView.currentPage,
-          page === state.activePage.page else {
+          page === state.activePDFPage else {
       throw ViewportError.notReady
     }
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
@@ -312,7 +314,7 @@ final class ViewerViewportController {
   }
 
   func viewportTarget(for request: ViewportRequest) -> ViewportTarget? {
-    let pageGeometry = documentCoordinator.document?.activePage.geometry ?? .empty
+    let pageGeometry = viewerDocument?.activePage.geometry ?? .empty
     switch request {
     case .preserve:
       return nil
@@ -346,9 +348,9 @@ final class ViewerViewportController {
     let requestID = self.requestID
     if !preservingMotion { motion.cancel() }
     guard self.requestID == requestID, !disposed,
-          let state = documentCoordinator.document,
+          let state = viewerDocument,
           let page = documentView.currentPage,
-          page === state.activePage.page,
+          page === state.activePDFPage,
           documentView.bounds.width > 0,
           documentView.bounds.height > 0,
           translation.x.isFinite,
@@ -358,7 +360,7 @@ final class ViewerViewportController {
   }
 
   private func pageViewportScrollView() -> UIScrollView? {
-    guard let pageID = documentCoordinator.document?.activePage.id,
+    guard let pageID = viewerDocument?.activePage.id,
           host.attachedOverlayPage == pageID else { return nil }
     // Start above the page overlay, skipping its PKCanvasView scroll view.
     var ancestor = overlayProvider.overlayView.superview
@@ -417,7 +419,7 @@ final class ViewerViewportController {
 
   func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
     guard !disposed, !interaction.isInk,
-          documentCoordinator.document != nil else { return }
+          viewerDocument != nil else { return }
     if !isFittedToPage() {
       let requestID = supersede()
       guard self.requestID == requestID else { return }
@@ -437,7 +439,7 @@ final class ViewerViewportController {
     let location = recognizer.location(in: documentView)
     guard let page = documentView.currentPage else { return }
     let pdfPoint = documentView.convert(location, to: page)
-    guard let geometry = documentCoordinator.document?.activePage.geometry else { return }
+    guard let geometry = viewerDocument?.activePage.geometry else { return }
     let tappedPoint = pdfPoint.applying(geometry.displayToPDFTransform.inverted())
     guard tappedPoint.x.isFinite, tappedPoint.y.isFinite else { return }
     let focus = tappedPoint
@@ -460,14 +462,14 @@ final class ViewerViewportController {
   }
 
   func isFittedToPage() -> Bool {
-    guard let pageGeometry = documentCoordinator.document?.activePage.geometry,
+    guard let pageGeometry = viewerDocument?.activePage.geometry,
           pageGeometry.isValid,
           documentView.bounds.width > 0, documentView.bounds.height > 0,
           let fitScale = usableFitScale(),
           documentView.scaleFactor.isFinite else { return false }
 
     let viewPrecision = max(0.5, 1.0 / max(UIScreen.main.scale, 1.0))
-    let pageExtent = max(pageGeometry.mediaBox.width, pageGeometry.mediaBox.height)
+    let pageExtent = max(pageGeometry.visibleBox.width, pageGeometry.visibleBox.height)
     let scaleTolerance = viewPrecision / pageExtent
     guard scaleTolerance.isFinite,
           abs(documentView.scaleFactor - fitScale) <= scaleTolerance else {
@@ -475,8 +477,8 @@ final class ViewerViewportController {
     }
 
     guard let page = documentView.currentPage,
-          page === documentCoordinator.document?.activePage.page else { return false }
-    let pageCenter = CGPoint(x: pageGeometry.mediaBox.midX, y: pageGeometry.mediaBox.midY)
+          page === viewerDocument?.activePDFPage else { return false }
+    let pageCenter = CGPoint(x: pageGeometry.visibleBox.midX, y: pageGeometry.visibleBox.midY)
     let pageCenterInView = documentView.convert(pageCenter, from: page)
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
     let centerDistance = hypot(pageCenterInView.x - viewCenter.x,
@@ -486,9 +488,9 @@ final class ViewerViewportController {
   }
 
   private func currentDisplayedFocus() -> CGPoint? {
-    guard let state = documentCoordinator.document,
+    guard let state = viewerDocument,
           let page = documentView.currentPage,
-          page === state.activePage.page else { return nil }
+          page === state.activePDFPage else { return nil }
     let viewCenter = CGPoint(x: documentView.bounds.midX, y: documentView.bounds.midY)
     let pdfPoint = documentView.convert(viewCenter, to: page)
     return pdfPoint.applying(state.activePage.geometry.displayToPDFTransform.inverted())
@@ -515,7 +517,7 @@ final class ViewerViewportController {
   }
 
   func applyViewport(request: ViewportRequest) {
-    guard let pageID = documentCoordinator.document?.activePage.id else { return }
+    guard let pageID = viewerDocument?.activePage.id else { return }
     documentView.autoScales = false
     switch request {
     case .preserve:
@@ -554,7 +556,7 @@ final class ViewerViewportController {
   }
 
   func scheduleZoomReport() {
-    guard !disposed, let state = documentCoordinator.document,
+    guard !disposed, let state = viewerDocument,
           let fit = usableFitScale() else { return }
     let sample = (state.activePage.id, documentView.scaleFactor, fit)
     if let previous = zoomReportSample, previous == sample,
@@ -568,13 +570,13 @@ final class ViewerViewportController {
 
   private func queueZoomReport() {
     let work = DispatchWorkItem { [weak self] in
-      guard let self, self.hostReference != nil, !self.disposed, let state = self.documentCoordinator.document else { return }
+      guard let self, self.hostReference != nil, !self.disposed, let state = self.viewerDocument else { return }
       if self.motion.isRunning || self.hasActiveViewportGesture(in: self.documentView) {
         self.queueZoomReport()
         return
       }
       guard let fit = self.usableFitScale() else { return }
-      guard self.documentView.currentPage === state.activePage.page,
+      guard self.documentView.currentPage === state.activePDFPage,
             self.host.attachedOverlayPage == state.activePage.id,
             self.host.pageToOverlayTransform != nil else { return }
       let zoom = Double(self.documentView.scaleFactor / fit)

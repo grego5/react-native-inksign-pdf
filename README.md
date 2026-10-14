@@ -96,14 +96,14 @@ The receiver determines which API you use:
 | Handle     | Obtain it with                                                                    | Used for                             |
 | ---------- | --------------------------------------------------------------------------------- | ------------------------------------ |
 | `view`     | `ref.current`                                                                     | Viewer navigation and interaction    |
-| `document` | `await openDoc(uri)`                                                              | Headless document editing on Android |
+| `document` | `await openDoc(uri)`                                                              | Headless document editing |
 | `page`     | `await view.getPage()`, `await document.getPage(0)`, or `await session.getPage()` | Page inspection and text edits       |
 | `session`  | `view.setMode(...)`                                                               | A workflow tied to the current mode  |
 | `text`     | `view.getSelectedText()`                                                          | Editing the selected text item       |
 
 ### Viewer ref
 
-- `view.loadFonts(fonts)` — Preload named fonts on Android.
+- `view.loadFonts(fonts)` — Preload named fonts.
 - `view.open(path, options?)` — Open a local PDF or JPEG path or `file://` URI.
   JPEG becomes one A4 page. Omitted viewport options fit the page.
 - `view.close(cancelPending?)` — Close after earlier operations finish. Pass `true`
@@ -124,7 +124,7 @@ The receiver determines which API you use:
   the current page. The returned page stays bound to that page after navigation
   or reordering, and becomes invalid when its page or document is removed.
 - `view.getPageIdsByTag(tag)` — Read matching IDs in current document order without
-  preparing analysis. Android-only; see [page tags](#page-tags-android).
+  preparing analysis; see [page tags](#page-tags).
 - `view.setMode(mode, options?)` — Enter `'view'`, `'ink'`, or `'text'` synchronously
   once the document is ready. Preserves the viewport and returns a mode session.
   Options apply only to text mode; viewport changes wait for a placement tap.
@@ -146,10 +146,9 @@ x, y }`, then return to view mode. Page or mode changes and teardown cancel
 - `view.setTextDirection(direction)` — Set the base text direction: `'ltr'`, `'rtl'`,
   or `'auto'` to follow app direction.
 - `view.finalize()` — Export to a temporary PDF `file://` URI. Copy it to persistent
-  storage before closing the viewer if you need to retain it. On iOS, original
-  PDF text may lose search/copy support after export.
+  storage before closing the viewer if you need to retain it.
 
-### Headless document (Android)
+### Headless document
 
 - `document.getState()` — Read document metadata.
 - `document.getPage(indexOrTagQuery)` — Obtain a page handle.
@@ -175,7 +174,7 @@ page, measured rightward and downward from its top-left corner.
 - `page.resolveInputUnderline({ fieldName, ...options })` — Detect a searchable label and adjacent underline, returning an input target ID.
 - `page.createInputArea({ bounds, ...options })` — Define an input target directly by its rectangle.
 - `page.getTextValue(id)` — Read entered text, falling back to embedded PDF text or `''`.
-- `page.setTextValue(id, text, options?)` — Atomically write module text and optional formatting on Android. Pass `''` to remove it and reveal
+- `page.setTextValue(id, text, options?)` — Atomically write module text and optional formatting. Pass `''` to remove it and reveal
   any embedded value. Viewer commits are tracked by default; headless commits are untracked.
 - `page.setTextOptions(id, options)` — Update formatting; omitted options retain their values.
 - `page.adjustTextSize(id, delta)` — Increase or decrease font size by page points; return the resulting size.
@@ -184,7 +183,7 @@ page, measured rightward and downward from its top-left corner.
 - `page.focusInputTarget(id, options?)` — Focus a resolved target without changing mode. Available on viewer/session page handles only; headless pages have no focus.
   Options are `zoom`, `verticalAnchor` (`'top'`, `'bottom'`, or `'center'`), and `edgeOffset` in page points. Defaults to zoom 2 and center.
 
-On Android, pass `untracked: true` to a programmatic text mutation to update the
+Pass `untracked: true` to a programmatic text mutation to update the
 permanent base outside undo/redo history:
 
 ```ts
@@ -220,7 +219,7 @@ retarget it; document closure, page deletion, or target invalidation rejects
 operations.
 
 - `text.getValue()` — Read the current value.
-- `text.setValue(text, options?)` — Update text and optional formatting on Android; `''` removes module text.
+- `text.setValue(text, options?)` — Update text and optional formatting; `''` removes module text.
 - `text.setOptions(options)` — Update formatting.
 - `text.adjustSize(delta)` — Adjust font size by page points and return the result.
 
@@ -302,7 +301,7 @@ Expo packaged asset. Android keeps the font in memory for the document session.
 <InkSignView androidFallbackFont={{ uri: fontUri }} />
 ```
 
-### Headless documents and named fonts (Android)
+### Headless documents and named fonts
 
 `openDoc(uri, options?)` opens a PDF or image without mounting a view. It exposes
 `pageCount`, `getPage(indexOrTagQuery)`, `getPageIdsByTag(tag)`, `addPages({ sources })`, `removePage(index)`,
@@ -315,7 +314,7 @@ The output file remains yours after closing the document.
 `getState()`. It is terminal, idempotent, and resolves after admitted work and native
 resource cleanup complete. Retained page handles reject edits after close.
 
-### Page tags (Android)
+### Page tags
 
 Pass `tag` to `open()`, `openDoc()`, or `addPages()` to label all pages loaded by
 that call. Tags stay with pages when reordered, but are not saved in exported PDFs.
@@ -353,7 +352,7 @@ try {
 }
 ```
 
-On Android, both viewer and headless APIs support `loadFonts([{ name, uri }])`.
+Both viewer and headless APIs support `loadFonts([{ name, uri }])`.
 Load a static `.ttf` from a local or bundled asset URI, then pass its name as
 `font` when resolving, inserting, or formatting text. Omit `font` to keep the
 current selection; use `font: null` to restore the system font.

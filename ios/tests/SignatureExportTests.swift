@@ -39,7 +39,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     let signature = try XCTUnwrap(InkSignPdfSignatureVectorPath.filledStrokes(in: drawing).first)
     XCTAssertGreaterThan(signature.path.boundingBoxOfPath.height, 8)
     let geometry = PageGeometry(mediaBox: committedMediaBox,
-                                rotation: committedPage.rotation)
+                                rotation: committedPage.rotation, visibleBox: committedCropBox)
     let flowBounds = CGRect(x: 60, y: 190, width: 260, height: 72)
     let boundedText = "Flow first line\nFlow second line"
     let boundedVisibleBounds = InkSignPdfTextRenderer.visibleBounds(
@@ -58,14 +58,16 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       flowBounds: flowBounds,
       maxLines: 1,
       verticalAnchor: .bottom)
-    let boundedLineHeight = InkSignPdfTextStyle.font(size: 18).lineHeight
+    let singleLineBounds = InkSignPdfTextRenderer.visibleBounds(
+      for: "Flow first line", fontSize: 18, isRTL: false,
+      flowBounds: flowBounds, maxLines: 1, verticalAnchor: .bottom)
     XCTAssertFalse(InkSignPdfTextRenderer.fits(boundedText,
                                                 fontSize: 18,
                                                 isRTL: false,
                                                 flowBounds: flowBounds,
                                                 maxLines: 1))
     XCTAssertGreaterThan(boundedVisibleBounds.height, 0)
-    XCTAssertLessThanOrEqual(boundedVisibleBounds.height, boundedLineHeight + 0.01)
+    assertBounds(boundedVisibleBounds, equals: singleLineBounds)
     XCTAssertEqual(boundedVisibleBounds.maxY, flowBounds.maxY, accuracy: 0.01)
     let text = [
       InkSignPdfTextAnnotation(id: 7, text: "CoreText Latin",
@@ -77,7 +79,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       InkSignPdfTextAnnotation(id: 9, text: "العربية",
                                bounds: CGRect(x: 60, y: 150, width: 260, height: 32),
                                fontSize: 18, isRTL: true),
-      boundedAnnotation.replacingText(boundedText, pageSize: geometry.mediaBox.size),
+      boundedAnnotation.replacingText(boundedText, pageSize: geometry.visibleBox.size),
     ]
     let snapshot = ExportPageSnapshot(pageIndex: 0,
                                       pageID: UUID(),
@@ -96,7 +98,10 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
         attachment.lifetime = .keepAlways
         add(attachment)
       }
-      throw error
+      let native = error as NSError
+      XCTFail("Export failed at \(native.userInfo["exportStage"] ?? "unreported stage"): " +
+              "\(native.domain) (\(native.code)): \(native.localizedDescription)")
+      return
     }
 
     let reopened = try XCTUnwrap(PDFDocument(url: outputURL))
@@ -115,7 +120,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     }
     XCTAssertFalse(extracted.contains("Flow second line"), "Only selected complete lines are exported")
     let reference = referenceImage(text: [text.last!], drawing: drawing, geometry: geometry)
-    let exported = page.thumbnail(of: geometry.displaySize, for: .mediaBox)
+    let exported = page.thumbnail(of: geometry.displaySize, for: .cropBox)
     let red: (UInt8, UInt8, UInt8) -> Bool = { $0 > 180 && $1 < 80 && $2 < 80 }
     let green: (UInt8, UInt8, UInt8) -> Bool = { $0 < 80 && $1 > 180 && $2 < 80 }
     assertBounds(try colorBounds(exported, matches: red),
@@ -144,7 +149,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     }
 
     let drawing = straightVariableWidthDrawing()
-    let page = try XCTUnwrap(fixture.view.documentCoordinator.document?.activePage)
+    let page = try XCTUnwrap(fixture.view.viewerDocument?.activePage)
     let before = page.history.content
     XCTAssertTrue(page.history.record(type: .ink,
                                       before: before,
@@ -159,9 +164,10 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
         let document = try XCTUnwrap(PDFDocument(url: url))
         let page = try XCTUnwrap(document.page(at: 0))
         XCTAssertTrue(page.annotations.isEmpty, "Module ink is embedded page content")
-        let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
+        let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation,
+                                    visibleBox: page.bounds(for: .cropBox).intersection(page.bounds(for: .mediaBox)))
         let reference = self.referenceImage(text: [], drawing: drawing, geometry: geometry)
-        let exported = page.thumbnail(of: geometry.displaySize, for: .mediaBox)
+        let exported = page.thumbnail(of: geometry.displaySize, for: .cropBox)
         let black: (UInt8, UInt8, UInt8) -> Bool = { $0 < 60 && $1 < 60 && $2 < 60 }
         self.assertBounds(try self.colorBounds(exported, matches: black),
                           equals: try self.colorBounds(reference, matches: black), tolerance: 2)
@@ -318,7 +324,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
       context.setFillColor(UIColor.white.cgColor)
       context.fill(CGRect(origin: .zero, size: geometry.displaySize))
       context.concatenate(geometry.canonicalToDisplayTransform)
-      XCTAssertTrue(InkSignPdfTextRenderer.drawCanonical(text, pageSize: geometry.mediaBox.size, in: context))
+      XCTAssertTrue(InkSignPdfTextRenderer.drawCanonical(text, pageSize: geometry.visibleBox.size, in: context))
       do {
         for stroke in try InkSignPdfSignatureVectorPath.filledStrokes(in: drawing) {
           context.setFillColor(stroke.color.cgColor)

@@ -47,9 +47,11 @@ final class InkSignPdfCoreTextExportResources {
       let runs = CTLineGetGlyphRuns(positioned.line) as! [CTRun]
       let prepared = try runs.map { run -> InkSignPdfExportTextRun in
         let attributes = CTRunGetAttributes(run) as NSDictionary
-        guard let font = attributes[kCTFontAttributeName] as? CTFont else {
+        guard let fontValue = attributes[kCTFontAttributeName],
+              CFGetTypeID(fontValue as CFTypeRef) == CTFontGetTypeID() else {
           throw failure("export_font_unavailable", "CoreText run has no resolved font")
         }
+        let font = fontValue as! CTFont
         let bytes = try fontData(font)
         let fontIndex: Int
         if let existing = fontIndices[bytes] {
@@ -103,13 +105,15 @@ final class InkSignPdfCoreTextExportResources {
     if let variations = CTFontCopyVariation(font), CFDictionaryGetCount(variations) != 0 {
       throw failure("export_font_unsupported", "Variable font instance cannot be embedded exactly: \(name)")
     }
-    guard let tags = CTFontCopyAvailableTables(font, .excludeSynthetic) as? [NSNumber] else {
+    guard let tags = CTFontCopyAvailableTables(font, []) else {
       throw failure("export_font_unavailable", "No readable font tables: \(name)")
     }
     var tables: [(UInt32, Data)] = []
-    for number in tags {
-      let tag = number.uint32Value
-      if let data = CTFontCopyTable(font, tag, .excludeSynthetic) {
+    // CoreText stores CTFontTableTag integers as raw CFArray pointer values,
+    // not CFNumber objects. Bridging this array to [NSNumber] dereferences tags.
+    for index in 0..<CFArrayGetCount(tags) {
+      let tag = UInt32(truncatingIfNeeded: UInt(bitPattern: CFArrayGetValueAtIndex(tags, index)))
+      if let data = CTFontCopyTable(font, tag, []) {
         tables.append((tag, data as Data))
       }
     }

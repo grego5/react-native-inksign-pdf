@@ -82,12 +82,16 @@ extension InkSignView {
         guard !self.disposed else { throw LoadError.cancelled }
         self.cancelViewerCommands()
         self.closePublishedDocument()
-        return Promise<Void>.resolved()
+        return self.documentCore.closeViewerDocument(cancelPending: true)
       }
     }
     return enqueueViewerCommand {
-      self.closePublishedDocument()
-      return Promise<Void>.resolved()
+      let settlement = InkSignPdfOperationPromise<Void>()
+      self.documentCore.closeViewerDocument(cancelPending: false).then { _ in
+        self.closePublishedDocument()
+        settlement.resolve(())
+      }.catch { error in settlement.reject(error) }
+      return settlement.promise
     }
   }
 
@@ -101,10 +105,9 @@ extension InkSignView {
     interaction.viewport.supersede()
     pageNavigationRequestID &+= 1
 
-    documentCoordinator.closeDocument()
     interaction.resetAvailability()
-    documentID = nil
     documentView.document = nil
+    viewerDocument = nil
     overlayProvider.reset()
     attachedOverlayPage = nil
     invalidateOverlayTransformCache()
@@ -126,13 +129,12 @@ extension InkSignView {
   }
 
   func open(path: String, options: ViewOpenOptions?) throws -> Promise<PageInfo> {
-    if options?.tag != nil { throw HeadlessFeatureError.pageTagsAndroidOnly }
     let viewport = options.map { ViewportOptions(x: $0.x, y: $0.y, zoom: $0.zoom) }
     cancelPresentationCommands()
-    return enqueueViewerCommand { try self.openNow(path: path, options: viewport) }
+    return enqueueViewerCommand { try self.openNow(path: path, options: viewport, tag: options?.tag) }
   }
 
-  private func openNow(path: String, options: ViewportOptions?) throws -> Promise<PageInfo> {
+  private func openNow(path: String, options: ViewportOptions?, tag: String? = nil) throws -> Promise<PageInfo> {
     let promise = Promise<PageInfo>()
     performOnMain {
       self.loadError = nil
@@ -144,6 +146,7 @@ extension InkSignView {
           zoom: viewport.zoom,
           focus: viewport.focus,
           fitToPage: viewport.fitToPage,
+          tag: tag,
           promise: promise
         )
       } catch {
@@ -202,15 +205,13 @@ extension InkSignView {
   }
 
   func documentStateSnapshot() -> DocumentState {
-    if documentCoordinator.document == nil { documentID = nil }
-    else if documentID == nil { documentID = UUID().uuidString }
     return DocumentState(documentId: documentID.map { .second($0) } ?? .first(.null),
       pageCount: Double(documentCoordinator.document?.pages.count ?? 0), isDirty: documentCoordinator.isDirty)
   }
 
   func setMode(mode: InputMode, options: TextModeOptions?) throws -> any HybridModeSessionSpec {
     try performOnMainSync {
-      if case .second? = options?.font { throw HeadlessFeatureError.androidOnly }
+      _ = try documentCore.fonts.resolve(options?.font)
       let token = try interaction.beginSession(mode, options: options)
       return HybridModeSession(owner: self, token: token)
     }
@@ -221,6 +222,7 @@ extension InkSignView {
     zoom: Double?,
     focus: CGPoint?,
     fitToPage: Bool,
+    tag: String? = nil,
     promise: Promise<PageInfo>
   ) {
     guard !disposed else {
@@ -230,11 +232,6 @@ extension InkSignView {
     let replacedOpen = pendingOpen
     interaction.retireRequests()
     pendingOpen = nil
-    guard let operation = documentCoordinator.admit(.open) else {
-      replacedOpen?.settlement.reject(LoadError.cancelled)
-      promise.reject(withError: LoadError.operationInProgress)
-      return
-    }
     interaction.resetAvailability()
     textInteractionOverlay.discardForDocumentReplacement()
     pageInputCoordinator.cancelPending()
@@ -244,13 +241,13 @@ extension InkSignView {
     interaction.setBaseMode(ink: false, enabled: false, finish: false)
     textInteractionOverlay.clearPlacementRules()
     documentView.document = nil
+    viewerDocument = nil
     overlayProvider.reset()
-    documentID = nil
-    documentCoordinator.clearDocument()
     attachedOverlayPage = nil
     invalidateOverlayTransformCache()
     emitChange(force: true)
-    pendingOpen = PendingOpen(operation: operation,
+    let requestID = UUID()
+    pendingOpen = PendingOpen(id: requestID,
                               promise: promise,
                               zoom: zoom,
                               focus: focus,
@@ -260,7 +257,7 @@ extension InkSignView {
     let sourceURL: URL
     if let fileURL = URL(string: path), fileURL.isFileURL {
       if let host = fileURL.host, !host.isEmpty, host.lowercased() != "localhost" {
-        finishLoad(operation: operation, error: .invalidSourcePath)
+        finishLoad(requestID: requestID, error: .invalidSourcePath)
         return
       }
       sourceURL = fileURL
@@ -268,92 +265,40 @@ extension InkSignView {
       sourceURL = URL(fileURLWithPath: path)
     }
     let url = sourceURL.standardizedFileURL.resolvingSymlinksInPath()
-    documentCoordinator.pdfQueue.async { [weak self, coordinator = documentCoordinator] in
+    documentCore.open(sourceURL: url, tag: tag).then { [weak self, coordinator = documentCoordinator] candidate in
+      guard let self, !self.disposed, coordinator.document === candidate,
+            self.pendingOpen?.id == requestID else { return }
+      self.installOpenCandidate(candidate, requestID: requestID)
+    }.catch { [weak self] error in
       guard let self else { return }
-      var workingURL: URL?
-      var ownsWorkingURL = false
-      defer {
-        if !ownsWorkingURL, let workingURL { coordinator.discardArtifact(workingURL) }
-      }
-      var isDirectory: ObjCBool = false
-      guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
-            !isDirectory.boolValue, FileManager.default.isReadableFile(atPath: url.path) else {
-        self.finishLoad(operation: operation, error: .invalidSourcePath); return
-      }
-      guard let sourceData = try? Data(contentsOf: url, options: [.mappedIfSafe]) else {
-        self.finishLoad(operation: operation, error: .pdfLoadFailed); return
-      }
-      do {
-        let allocated = try self.artifactPolicy.allocateWorkingSource()
-        guard coordinator.registerPendingArtifact(allocated, for: operation) else {
-          self.artifactPolicy.deleteExact(allocated)
-          self.finishLoad(operation: operation, error: .cancelled)
-          return
+      let mapped: LoadError
+      if let failure = error as? InkSignPdfLoadError {
+        switch failure {
+        case .invalidSource: mapped = .invalidSourcePath
+        case .empty: mapped = .unsupportedPdf
+        case .cancelled: mapped = .cancelled
+        case .failed: mapped = .pdfLoadFailed
         }
-        workingURL = allocated
-        if sourceData.starts(with: [0xff, 0xd8, 0xff]) {
-          let geometry = PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: 595.28, height: 841.89),
-                                      rotation: 0)
-          let image = try InkSignPdfMutablePageImageEncoder.encode(url, geometry: geometry)
-          _ = try InkSignPdfPdfiumBackend.assemble(data: nil, operation: .create,
-            inputs: [image.nativeInput], pageIndex: 0, destinationIndex: 0, outputURL: allocated)
-        } else {
-          try sourceData.write(to: allocated, options: .atomic)
-        }
-      } catch {
-        self.finishLoad(operation: operation, error: .pdfLoadFailed); return
+      } else if let failure = error as? InkSignPdfDocumentCandidateError, failure == .empty {
+        mapped = .unsupportedPdf
+      } else {
+        mapped = .pdfLoadFailed
       }
-      guard let workingURL else {
-        self.finishLoad(operation: operation, error: .pdfLoadFailed); return
-      }
-      let loadedCandidate: InkSignPdfDocumentCandidate
-      do {
-        loadedCandidate = try InkSignPdfDocumentCandidateLoader.load(url: workingURL)
-      } catch let candidateError as InkSignPdfDocumentCandidateError {
-        let loadError: LoadError
-        switch candidateError {
-        case .empty:
-          loadError = .unsupportedPdf
-        case .unreadable, .invalidGeometry:
-          loadError = .pdfLoadFailed
-        }
-        self.finishLoad(operation: operation, error: loadError); return
-      } catch {
-        self.finishLoad(operation: operation, error: .pdfLoadFailed); return
-      }
-      let loadedDocument = loadedCandidate.document
-      let loadedPages = loadedCandidate.pages
-      ownsWorkingURL = true
-      DispatchQueue.main.async { [weak self, coordinator] in
-        guard let self, !self.disposed,
-              coordinator.isCurrent(operation),
-              self.pendingOpen?.operation.id == operation.id else {
-          coordinator.discardArtifact(workingURL)
-          return
-        }
-        let newDocument = InkSignPdfDocumentState(sourceURL: url,
-                                                  workingURL: workingURL,
-                                                  document: loadedDocument,
-                                                  pages: loadedPages)
-        self.installOpenCandidate(newDocument, operation: operation, workingURL: workingURL)
-      }
+      self.finishLoad(requestID: requestID, error: mapped)
     }
   }
 
   func installOpenCandidate(
     _ candidate: InkSignPdfDocumentState,
-    operation: InkSignPdfDocumentCoordinator.OperationToken,
-    workingURL: URL
+    requestID: UUID
   ) {
     guard var pending = pendingOpen,
-          pending.operation.id == operation.id,
+          pending.id == requestID,
           pending.phase == .preparing,
-          documentCoordinator.isCurrent(operation),
-          !disposed else {
-      documentCoordinator.discardArtifact(workingURL)
-      return
-    }
+          documentCoordinator.document === candidate,
+          !disposed else { return }
 
+    pending.generation = documentCoordinator.generation
     pending.phase = .installing
     pendingOpen = pending
     interaction.finishInteraction()
@@ -368,37 +313,39 @@ extension InkSignView {
     // PDFKit releases the old page overlays as it drops the old document.
     // The provider then retires any overlays PDFKit did not end explicitly.
     documentView.document = nil
+    viewerDocument = nil
     overlayProvider.reset()
-    guard documentCoordinator.publish(candidate, operation: operation) else {
-      documentCoordinator.discardArtifact(workingURL)
-      failOpenAttempt(error: LoadError.pdfLoadFailed, pending: pending)
-      return
-    }
-    documentCoordinator.claimArtifact(workingURL)
-    documentID = UUID().uuidString
-    overlayProvider.install(document: candidate.document, generation: operation.generation)
-    documentView.document = candidate.document
-    guard documentView.document === candidate.document else {
+    let presented: InkSignPdfViewerDocument
+    do { presented = try InkSignPdfViewerDocument(core: candidate, coordinator: documentCoordinator) }
+    catch { failOpenAttempt(error: LoadError.pdfLoadFailed); return }
+    viewerDocument = presented
+    overlayProvider.install(document: presented.document, generation: documentCoordinator.generation)
+    documentView.document = presented.document
+    guard documentView.document === presented.document else {
       failOpenAttempt(error: LoadError.pdfLoadFailed)
       return
     }
-    interaction.viewport.navigate(to: candidate.pages[0].page)
+    interaction.viewport.navigate(to: presented.activePDFPage)
     configureDoubleTapGestureRecognition()
     pending.phase = .awaitingReadiness
     pendingOpen = pending
     _ = completeOpenIfReady()
   }
 
-  func finishLoad(operation: InkSignPdfDocumentCoordinator.OperationToken,
+  func finishLoad(requestID: UUID,
                   error: LoadError) {
     DispatchQueue.main.async { [weak self] in
       guard let self, !self.disposed,
-            self.documentCoordinator.isCurrent(operation),
             let pending = self.pendingOpen,
-            pending.operation.id == operation.id,
+            pending.id == requestID,
             pending.phase == .preparing else { return }
       self.failOpenAttempt(error: error, pending: pending)
     }
+  }
+
+  func isOpenPresentationCurrent(_ pending: PendingOpen) -> Bool {
+    !disposed && pendingOpen?.id == pending.id &&
+      (pending.generation == nil || pending.generation == documentCoordinator.generation)
   }
 
   func failOpenAttempt(
@@ -407,8 +354,8 @@ extension InkSignView {
   ) {
     guard var pending = pendingOpen,
           pending.phase != .clearing,
-          documentCoordinator.isCurrent(pending.operation),
-          (failed.map { $0.operation.id == pending.operation.id } ?? true) else { return }
+          isOpenPresentationCurrent(pending),
+          (failed.map { $0.id == pending.id } ?? true) else { return }
     pending.phase = .clearing
     pendingOpen = pending
     interaction.finishInteraction()
@@ -418,9 +365,8 @@ extension InkSignView {
     interaction.setBaseMode(ink: false, enabled: false, finish: false)
     textInteractionOverlay.clearPlacementRules()
     documentView.document = nil
+    viewerDocument = nil
     overlayProvider.reset()
-    documentCoordinator.settle(pending.operation, succeeded: false)
-    documentCoordinator.clearDocument()
     attachedOverlayPage = nil
     invalidateOverlayTransformCache()
     pendingOpen = nil
@@ -437,7 +383,7 @@ extension InkSignView {
   }
 
   func currentPageInfo() throws -> InkSignPdfNativePageInfo {
-    guard let state = documentCoordinator.document else { throw ViewportError.notReady }
+    guard let state = viewerDocument else { throw ViewportError.notReady }
     return InkSignPdfNativePageInfo(pageIndex: state.activePageIndex,
                                     pageCount: state.pages.count,
                                     geometry: state.activePage.geometry)
@@ -446,7 +392,7 @@ extension InkSignView {
   func toPublicPageInfo(_ info: InkSignPdfNativePageInfo) -> PageInfo {
     let event = toPageChangeEvent(info)
     let page = documentCoordinator.document!.pages[info.pageIndex]
-    return PageInfo(tag: nil, hasInk: !page.history.content.drawing.strokes.isEmpty,
+    return PageInfo(tag: page.tag, hasInk: !page.history.content.drawing.strokes.isEmpty,
                     hasText: !page.history.content.textAnnotations.isEmpty,
                     pageIndex: Double(info.pageIndex), pageCount: Double(info.pageCount),
                     isDirty: page.history.state.isDirty, pageId: event.pageId,
@@ -467,9 +413,13 @@ extension InkSignView {
 
   func emitPageState() {
     guard !disposed, !suppressesOpenPresentationCallbacks else { return }
-    guard let document = documentCoordinator.document else { lastPublicPage = nil; return }
-    let value = toPageChangeEvent(InkSignPdfNativePageInfo(pageIndex: document.activePageIndex,
-      pageCount: document.pages.count, geometry: document.activePage.geometry))
+    guard let document = viewerDocument else { lastPublicPage = nil; return }
+    let page = document.activePage
+    let size = page.geometry.displaySize
+    let value = PageChangeEvent(pageId: page.id.uuidString,
+      width: Double(size.width), height: Double(size.height),
+      rotation: Double(page.geometry.rotation),
+      canUndo: page.history.canUndo, canRedo: page.history.canRedo)
     if let previous = lastPublicPage,
        previous.pageId == value.pageId, previous.width == value.width,
        previous.height == value.height, previous.rotation == value.rotation,

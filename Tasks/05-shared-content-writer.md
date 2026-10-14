@@ -2,7 +2,7 @@
 
 [Plan](../TASKS.md)
 
-Status: Completed (static); Android export regression/runtime acceptance deferred
+Status: Complete (iOS checkpoint; Android shared-code validation deferred)
 Complexity: High
 Depends on: 01
 

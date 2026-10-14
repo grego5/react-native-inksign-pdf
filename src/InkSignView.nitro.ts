@@ -17,9 +17,9 @@ export type TextColor = string
 export interface PageChangeEvent {
   /** Stable identity for this page within the open document. */
   pageId: string
-  /** Displayed width in PDF points (1/72 inch), after page rotation. */
+  /** Visible page width in PDF points (1/72 inch), after rotation; honors imported CropBox. */
   width: number
-  /** Displayed height in PDF points (1/72 inch), after page rotation. */
+  /** Visible page height in PDF points (1/72 inch), after rotation; honors imported CropBox. */
   height: number
   /** Clockwise page rotation in degrees: 0, 90, 180, or 270. */
   rotation: number
@@ -51,7 +51,7 @@ export interface DocumentState {
 }
 
 /** Text-flow rectangle in displayed PDF page points, matching PageInfo width/height.
- * Origin is the rotated page's top-left; x increases rightward and y downward.
+ * Origin is the rotated visible page's top-left; x increases rightward and y downward.
  * Existing text keeps its captured layout orientation when the page rotates.
  */
 export interface TextAnnotationBounds {
@@ -63,7 +63,7 @@ export interface TextAnnotationBounds {
 
 /** Text presentation options used by direct insertion and dimensioned placement. */
 export interface TextPresentationOptions {
-  /** Preloaded owner-local font name; null restores the system font. Android only. */
+  /** Preloaded owner-local font name; null restores the system font. */
   font?: string | null
   /** Canonical page-unit font size for this text target. */
   fontSize?: number
@@ -225,7 +225,7 @@ export interface ImagePageSize {
 }
 
 export interface AddPagesOptions {
-  /** Session-only tag assigned to every page imported by this call. Android-only. */
+  /** Session-only tag assigned to every page imported by this call. */
   tag?: string
   /** Restricts the native picker. Omission permits both `pdf` and `image`. */
   type?: PageType
@@ -272,7 +272,7 @@ export interface ViewportOptions {
 }
 
 export interface ViewOpenOptions extends ViewportOptions {
-  /** Session-only tag assigned to every opened page. Android-only. */
+  /** Session-only tag assigned to every opened page. */
   tag?: string
 }
 
@@ -329,7 +329,7 @@ export interface InkSignViewProps extends HybridViewProps {
 }
 
 export interface InkSignViewMethods extends HybridViewMethods {
-  /** Preload named text fonts once per viewer. Android only until iOS uses PDFium. */
+  /** Preload named text fonts once per viewer.  */
   loadFonts(fonts: NamedFontSource[]): Promise<void>
   /** Opens a local PDF or JPEG path/file:// URI. JPEG becomes one A4 page; omitted options fit. */
   open(path: string, options?: ViewOpenOptions): Promise<PageInfo>
@@ -357,7 +357,7 @@ export interface InkSignViewMethods extends HybridViewMethods {
   getSelectedText(): TextHandle | null
   /** Prepares a document-bound page that survives mode changes; omission selects the active page. */
   getPage(pageIndex?: PageQuery): Promise<AnalyzedPage>
-  /** Reads matching IDs in current document order without preparing analysis. Android-only. */
+  /** Reads matching IDs in current document order without preparing analysis. */
   getPageIdsByTag(tag: string): string[]
   /** Synchronously enters a mode, preserves the viewport, and supersedes the previous session. Requires a ready document. Options apply only to text placement; their viewport changes wait for a valid tap. */
   setMode(mode: InputMode, options?: TextModeOptions): ModeSession

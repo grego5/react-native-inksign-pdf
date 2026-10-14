@@ -68,10 +68,10 @@ extension InkSignView {
   @objc func handleCoordinateTap(_ recognizer: UITapGestureRecognizer) {
     guard recognizer.state == .ended, !disposed,
           interaction.isPickingCoordinates,
-          let document = documentCoordinator.document else { return }
+          let document = viewerDocument else { return }
     let location = recognizer.location(in: documentView)
     guard let page = documentView.page(for: location, nearest: false),
-          page === document.activePage.page else { return }
+          page === document.activePDFPage else { return }
     let point = documentView.convert(location, to: page)
       .applying(document.activePage.geometry.displayToPDFTransform.inverted())
     interaction.selectCoordinates(point, page: document.activePage, index: document.activePageIndex)
@@ -112,13 +112,13 @@ extension InkSignView {
   @discardableResult
   func completeOpenIfReady() -> Bool {
     guard let pending = pendingOpen,
-          documentCoordinator.isCurrent(pending.operation),
+          isOpenPresentationCurrent(pending),
           !disposed else {
       return false
     }
 
     guard pending.phase == .awaitingReadiness,
-          let state = documentCoordinator.document,
+          let state = viewerDocument,
           state.activePageIndex == 0,
           documentView.document === state.document,
           interaction.viewport.viewportReadiness().allowsCommand(fitToPage: pending.fitToPage) else {
@@ -135,16 +135,15 @@ extension InkSignView {
             pageToOverlayTransform != nil else {
         throw ViewportError.notReady
       }
-      guard pendingOpen?.operation.id == pending.operation.id,
-            documentCoordinator.isCurrent(pending.operation), !disposed else { return true }
+      guard pendingOpen?.id == pending.id,
+            isOpenPresentationCurrent(pending), !disposed else { return true }
       let pageInfo = toPublicPageInfo(try currentPageInfo())
       let pageID = state.activePage.id
       interaction.setBaseMode(ink: false, enabled: true, finish: false)
       pendingOpen = nil
-      documentCoordinator.settle(pending.operation, succeeded: true)
       pending.settlement.resolve(pageInfo)
-      if !disposed, documentCoordinator.generation == pending.operation.generation,
-         documentCoordinator.document === state, state.activePage.id == pageID {
+      if !disposed, documentCoordinator.generation == pending.generation,
+         viewerDocument === state, state.activePage.id == pageID {
         emitPageState()
       }
       emitChange(force: true)
@@ -156,7 +155,7 @@ extension InkSignView {
   }
 
   private func openViewportTarget(for pending: PendingOpen) -> ViewportTarget? {
-    guard let state = documentCoordinator.document else { return nil }
+    guard let state = viewerDocument else { return nil }
     let size = state.activePage.geometry.displaySize
     let focus = pending.focus ?? CGPoint(x: size.width / 2, y: size.height / 2)
     if pending.fitToPage {

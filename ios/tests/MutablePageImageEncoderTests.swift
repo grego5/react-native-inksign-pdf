@@ -102,12 +102,12 @@ final class MutablePageImageEncoderTests: XCTestCase {
                                                             "public.jpeg" as CFString,
                                                             1,
                                                             nil) else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
     CGImageDestinationAddImage(destination, image,
                               [kCGImagePropertyOrientation: orientation] as CFDictionary)
     guard CGImageDestinationFinalize(destination) else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
     return url
   }
@@ -137,12 +137,12 @@ final class MutablePageImageEncoderTests: XCTestCase {
                                                             "public.jpeg" as CFString,
                                                             1,
                                                             nil) else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
     CGImageDestinationAddImage(destination, image,
                               [kCGImageDestinationLossyCompressionQuality: 1] as CFDictionary)
     guard CGImageDestinationFinalize(destination) else {
-      throw InkSignView.MutablePageError.unsupportedContent
+      throw MutablePageError.unsupportedContent
     }
     return url
   }

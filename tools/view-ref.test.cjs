@@ -11,6 +11,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 let attachments = 0;
 const calls = [];
 let selectedText = null;
+let headlessFactory;
+const platform = { OS: 'android' };
 const nativeSession = {
   getPage: async () => { calls.push('session-page'); return { getInputTargets: () => [] }; },
   requestUserTap: async () => ({ pageId: 'page', pageIndex: 0, x: 10, y: 20 }),
@@ -35,23 +37,98 @@ function NativeView({ hybridRef }) {
 
 const originalLoad = Module._load;
 let InkSignView;
+let openDoc;
 try {
   Module._load = function(request, parent, isMain) {
     if (request === 'react-native') {
-      return { Platform: { OS: 'android' } };
+      return { Platform: platform };
     }
     if (request === 'react-native-nitro-modules') {
-      return { callback: value => value, getHostComponent: () => NativeView };
+      return {
+        callback: value => value,
+        getHostComponent: () => NativeView,
+        NitroModules: { createHybridObject: name => {
+          assert.equal(name, 'InkSignDocumentFactory');
+          return headlessFactory;
+        } },
+      };
     }
     if (request === '../nitrogen/generated/shared/json/InkSignViewConfig.json') {
       return viewConfig;
     }
     return originalLoad.call(this, request, parent, isMain);
   };
-  ({ InkSignView } = require('../lib/commonjs/index.js'));
+  ({ InkSignView, openDoc } = require('../lib/commonjs/index.js'));
 } finally {
   Module._load = originalLoad;
 }
+
+test('iOS headless wrapper dispatches document and text operations without mounting a view', async () => {
+  const previousPlatform = platform.OS;
+  const mountedBefore = attachments;
+  const operations = [];
+  let closed = false;
+  let count = 1;
+  let value = '';
+  const nativePage = {
+    getState: () => ({ pageId: 'page-1', hasText: value !== '' }),
+    resolveInputUnderline: options => { operations.push(['resolve', options.fieldName]); return 7; },
+    getTextValue: id => { assert.equal(id, 7); return value; },
+    setTextValue: (id, text, options) => {
+      assert.equal(id, 7);
+      operations.push(['write', text, options.font]);
+      value = text;
+    },
+  };
+  const nativeDocument = {
+    get pageCount() { throw new Error('Use authoritative document state'); },
+    getState: () => {
+      if (closed) throw new Error('document_closed');
+      return { documentId: 'document-1', pageCount: count, isDirty: false };
+    },
+    getPage: async query => { operations.push(['page', query]); return nativePage; },
+    getPageIdsByTag: tag => tag === 'report' ? ['page-1'] : [],
+    loadFonts: async fonts => { operations.push(['fonts', fonts[0].name]); },
+    addPages: async options => {
+      operations.push(['append', options.sources[0]]);
+      return { addedPageCount: 1, pageCount: ++count };
+    },
+    finalize: async () => 'file:///output.pdf',
+    close: async () => { closed = true; },
+  };
+  try {
+    platform.OS = 'ios';
+    headlessFactory = { openDoc: async (uri, options) => {
+      operations.push(['open', uri, options.tag]);
+      return nativeDocument;
+    } };
+    const document = await openDoc('file:///source.pdf', { tag: 'report' });
+    assert.equal(document.pageCount, 1);
+    await document.loadFonts([{ name: 'form', uri: 'file:///font.ttf' }]);
+    const page = await document.getPage({ tag: 'report' });
+    const id = page.resolveInputUnderline({ fieldName: 'Name' });
+    page.setTextValue(id, 'Ada', { font: 'form' });
+    assert.equal(page.getTextValue(id), 'Ada');
+    assert.equal(page.getState().hasText, true);
+    assert.equal(page.focusInputTarget, undefined);
+    assert.deepEqual(document.getPageIdsByTag('report'), ['page-1']);
+    await document.addPages({ sources: ['file:///attachment.pdf'] });
+    assert.equal(document.pageCount, 2);
+    assert.equal(await document.finalize(), 'file:///output.pdf');
+    await document.close();
+    assert.throws(() => document.pageCount, /document_closed/);
+    assert.throws(() => document.getState(), /document_closed/);
+    assert.equal(attachments, mountedBefore);
+    assert.deepEqual(operations, [
+      ['open', 'file:///source.pdf', 'report'], ['fonts', 'form'],
+      ['page', { tag: 'report' }], ['resolve', 'Name'], ['write', 'Ada', 'form'],
+      ['append', 'file:///attachment.pdf'],
+    ]);
+  } finally {
+    platform.OS = previousPlatform;
+    headlessFactory = undefined;
+  }
+});
 
 test('selected text commands use native selection without preparing a page', async () => {
   const ref = React.createRef();
