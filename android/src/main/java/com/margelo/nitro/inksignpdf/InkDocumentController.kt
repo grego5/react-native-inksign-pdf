@@ -24,7 +24,7 @@ import kotlin.math.min
  */
 internal class InkDocumentController(
   context: Context,
-  private val sessionWorker: PdfSessionWorker,
+  sessionWorker: PdfSessionWorker?,
   private val requestInvalidate: () -> Unit,
   private val requestAnimation: () -> Unit,
   private val currentDocumentGeneration: () -> Long?,
@@ -32,6 +32,8 @@ internal class InkDocumentController(
   private val currentPageSwitchId: () -> Long?,
   tileCacheBudgetBytes: Long? = null,
 ) {
+  private var attachedWorker = sessionWorker
+  private val sessionWorker: PdfSessionWorker get() = checkNotNull(attachedWorker)
   internal data class TilePresentationStateForTest(
     val activeVisibleKeys: List<PdfTileKey>,
     val activePrefetchKeys: List<PdfTileKey>,
@@ -192,6 +194,12 @@ internal class InkDocumentController(
     val waiter = usableViewportWaiter ?: return
     usableViewportWaiter = null
     waiter(viewportSize)
+  }
+
+  fun bindSessionWorker(worker: PdfSessionWorker?) {
+    requireOnUiThread()
+    clearDocument()
+    attachedWorker = worker
   }
 
   fun clearDocument() {

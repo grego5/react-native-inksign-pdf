@@ -98,6 +98,22 @@ namespace margelo::nitro::inksignpdf {
     auto __result = method(_javaPart);
     return __result->toCpp();
   }
+  void JHybridDocumentPageSpec::undo() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("undo");
+    method(_javaPart);
+  }
+  void JHybridDocumentPageSpec::redo() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("redo");
+    method(_javaPart);
+  }
+  void JHybridDocumentPageSpec::clear() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clear");
+    method(_javaPart);
+  }
+  void JHybridDocumentPageSpec::clearInk() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("clearInk");
+    method(_javaPart);
+  }
   double JHybridDocumentPageSpec::resolveInputUnderline(const ResolveInputUnderlineOptions& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<double(jni::alias_ref<JResolveInputUnderlineOptions> /* options */)>("resolveInputUnderline");
     auto __result = method(_javaPart, JResolveInputUnderlineOptions::fromCpp(options));

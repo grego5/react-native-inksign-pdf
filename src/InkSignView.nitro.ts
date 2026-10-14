@@ -5,7 +5,7 @@ import type {
   HybridViewProps,
 } from 'react-native-nitro-modules'
 
-import type { NamedFontSource } from './InkSignDocument.nitro'
+import type { InkSignDocument, DocumentPage } from './InkSignDocument.nitro'
 
 /** Opaque RGB stroke color in `#RRGGBB` form. Invalid values are ignored natively. */
 export type StrokeColor = string
@@ -174,13 +174,6 @@ export interface PageTextMethods {
   getInputTargets(): InputTarget[]
 }
 
-export interface AnalyzedPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }>, PageTextMethods {
-  /** Reads current metadata for this stable page without switching the viewer. */
-  getState(): PageInfo
-  /** Focuses the target; omitted options use zoom 2 and center it without changing input mode. */
-  focusInputTarget(id: InputTargetId, options?: InputTargetFocusOptions): Promise<void>
-}
-
 /** Document-bound text target; remains usable after selection or page changes. */
 export interface TextHandle extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   getValue(): string
@@ -194,21 +187,20 @@ export interface TextHandle extends HybridObject<{ ios: 'swift'; android: 'kotli
 /** Operations scoped to one explicit mode request. Supersession rejects with operation_cancelled. */
 export interface ModeSession extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   /** Prepares a page bound to this session and its captured document. */
-  getPage(pageIndex?: PageQuery): Promise<AnalyzedPage>
+  getPage(pageIndex?: PageQuery): Promise<DocumentPage>
+  focusInputTarget(page: DocumentPage, id: InputTargetId, options?: InputTargetFocusOptions): Promise<void>
   /** Temporarily picks one page tap, then restores this session's input mode. */
   requestUserTap(): Promise<PageCoords>
   /** Preserves the viewport when omitted; an empty object fits the current page. */
   setViewport(options?: ViewportOptions): Promise<void>
 }
 
-export type PageType = 'pdf' | 'image'
 export type TextDirection = 'ltr' | 'rtl' | 'auto'
 export type InputMode = 'view' | 'ink' | 'text'
 export type TextAlignment = 'start' | 'end' | 'center'
 export type TextVerticalAnchor = 'top' | 'bottom'
 export type FieldFocusVerticalAnchor = 'top' | 'bottom' | 'center'
 export type TextKeyOccurrence = 'first' | 'last'
-export type AddPagesActivePage = 'current' | 'firstAdded' | 'lastAdded'
 
 export interface TaggedPageQuery {
   tag: string
@@ -222,30 +214,6 @@ export type PageQuery = number | TaggedPageQuery
 export interface ImagePageSize {
   width: number
   height: number
-}
-
-export interface AddPagesOptions {
-  /** Session-only tag assigned to every page imported by this call. */
-  tag?: string
-  /** Restricts the native picker. Omission permits both `pdf` and `image`. */
-  type?: PageType
-  /** Ordered local file paths or file URLs to import without presenting a picker. */
-  sources?: string[]
-  /** Dimensions used for every imported image. Defaults to the active page size or portrait A4. */
-  imagePageSize?: ImagePageSize
-  /** Omit for legacy 200 DPI output; explicit values cap at effective source DPI. */
-  targetDpi?: number
-  /** JPEG quality for imported image pages, from 0 to 1. Defaults to 0.72. */
-  jpegQuality?: number
-  /** Page selected after import. Defaults to `current`, or the first added page when creating a document. */
-  activePage?: AddPagesActivePage
-}
-
-export interface AddPagesResult {
-  /** Metadata for the active page; omitted when cancellation leaves no document. */
-  pageInfo?: PageInfo
-  /** Number of pages added. Cancellation and empty sources resolve with zero. */
-  addedPageCount: number
 }
 
 export interface ViewerState extends DocumentState {
@@ -271,11 +239,6 @@ export interface ViewportOptions {
   zoom?: number
 }
 
-export interface ViewOpenOptions extends ViewportOptions {
-  /** Session-only tag assigned to every opened page. */
-  tag?: string
-}
-
 export interface AndroidFallbackFont {
   /** Font source: HTTP(S), local file, content/resource URI, or packaged Android resource name. */
   uri: string
@@ -297,8 +260,9 @@ export interface DoubleTapOptions {
 }
 
 export interface InkSignViewProps extends HybridViewProps {
-  /** Android PDFium font source, loaded into memory for the document session; iOS ignores this. */
-  androidFallbackFont?: AndroidFallbackFont
+  /** Externally owned document. Removing it or unmounting detaches presentation only. */
+  document?: InkSignDocument
+
   strokeColor?: StrokeColor
   strokeMinWidth?: number
   strokeMaxWidth?: number
@@ -320,6 +284,8 @@ export interface InkSignViewProps extends HybridViewProps {
   keyboardAvoidanceEnabled?: boolean
   /** Controls which physical side contains the logical next page. Defaults to app direction. */
   pagerDirection?: PagerDirection
+  /** Default writing direction; omission/auto follows app layout. Updates the active editor without moving its bounds. */
+  textDirection?: TextDirection
   onStateChange?: (event: ViewerState) => void
   /** Active-page metadata after navigation or committed edits; deduplicated. */
   onPageChange?: (event: PageChangeEvent) => void
@@ -329,50 +295,19 @@ export interface InkSignViewProps extends HybridViewProps {
 }
 
 export interface InkSignViewMethods extends HybridViewMethods {
-  /** Preload named text fonts once per viewer.  */
-  loadFonts(fonts: NamedFontSource[]): Promise<void>
-  /** Opens a local PDF or JPEG path/file:// URI. JPEG becomes one A4 page; omitted options fit. */
-  open(path: string, options?: ViewOpenOptions): Promise<PageInfo>
-  /** Closes in FIFO order; omitted `cancelPending` is false. Pass true to cancel pending work. */
-  close(cancelPending?: boolean): Promise<void>
-  /** Adds pages from `sources`, or opens the native picker when sources are omitted. */
-  addPages(options?: AddPagesOptions): Promise<AddPagesResult>
-  /** Removes the active page. The document must retain at least one page. */
-  removePage(): Promise<PageInfo>
-  /** Moves the active page to the zero-based destination index. */
-  movePage(pageIndex: number): Promise<PageInfo>
-  /** Rotates the active page clockwise by 90, 180, or 270 degrees and persists the rotation to export. */
-  rotatePage(degrees: number): Promise<PageInfo>
   /** Selects the next page; stays on the last page at the end. */
   nextPage(): void
+  focusInputTarget(page: DocumentPage, id: InputTargetId, options?: InputTargetFocusOptions): Promise<void>
   /** Selects the previous page; stays on the first page at the beginning. */
   previousPage(): void
   /** Returns the active page's current focus coordinates and zoom. */
   getViewport(): Viewport
   /** Enters pageCoords mode on the active page without changing the viewport. One tap resolves and returns to view mode; page/mode changes or teardown cancel it. */
   requestUserTap(): Promise<PageCoords>
-  /** Synchronous document-wide metadata, independent of the active page. */
-  getState(): DocumentState
   /** Reads native selection synchronously; null when no text is selected. Handle operations reject after document/page/target invalidation. */
   getSelectedText(): TextHandle | null
-  /** Prepares a document-bound page that survives mode changes; omission selects the active page. */
-  getPage(pageIndex?: PageQuery): Promise<AnalyzedPage>
-  /** Reads matching IDs in current document order without preparing analysis. */
-  getPageIdsByTag(tag: string): string[]
   /** Synchronously enters a mode, preserves the viewport, and supersedes the previous session. Requires a ready document. Options apply only to text placement; their viewport changes wait for a valid tap. */
   setMode(mode: InputMode, options?: TextModeOptions): ModeSession
-  /** Undoes the last history change on the active page; no-op when history is empty. */
-  undo(): void
-  /** Redoes the next history change on the active page; no-op when redo history is empty. */
-  redo(): void
-  /** Clears editable ink and text from the active page. */
-  clear(): void
-  /** Clears only editable ink on the active page as one undoable change. */
-  clearInk(): void
-  /** Sets the base direction for new text; `auto` follows app RTL policy and is saved with each annotation. */
-  setTextDirection(direction: TextDirection): void
-  /** Returns a temporary local PDF file URI (file://). */
-  finalize(): Promise<string>
   /** Android debug builds only. Clears the bounded native trace and starts recording. */
   startDebugRecording(): void
   /** Android debug builds only. Stops accepting trace operations. */

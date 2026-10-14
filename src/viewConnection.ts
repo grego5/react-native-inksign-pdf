@@ -1,11 +1,10 @@
 import { argumentError } from './publicArguments';
 import type { InkSignView } from './InkSignView.nitro';
 
-/** React owns session initialization and attachment; native owns dispatched requests. */
+/** Queues viewer commands until the native ref is available. */
 export function createViewConnection() {
   let native: InkSignView | null = null;
   let mounted = true;
-  let initialized = false;
   const pending: { dispatch: (native: InkSignView) => void; reject: (reason: unknown) => void }[] = [];
 
   function cancelPending(message: string) {
@@ -24,9 +23,8 @@ export function createViewConnection() {
     for (const request of pending.splice(0)) request.dispatch(native);
   }
 
-  function invoke<T>(action: (native: InkSignView) => Promise<T>, cancel = false): Promise<T> {
+  function invoke<T>(action: (native: InkSignView) => Promise<T>): Promise<T> {
     if (!mounted) return Promise.reject(argumentError('operation_cancelled', 'The PDF view is unmounted'));
-    if (cancel) cancelPending('An immediate close cancelled this request');
     return new Promise((resolve, reject) => {
       pending.push({ reject, dispatch(value) {
         try { action(value).then(resolve, reject); } catch (error) { reject(error); }
@@ -43,15 +41,7 @@ export function createViewConnection() {
       native = value;
       dispatch();
     },
-    mount(initialize?: () => Promise<unknown>) {
-      mounted = true;
-      if (initialized) return;
-      initialized = true;
-      if (initialize) {
-        // Native reports load errors through onStateChange; cancellation is silent.
-        void initialize().catch(() => {});
-      }
-    },
+    mount() { mounted = true; },
     unmount() {
       mounted = false;
       // React's Strict Mode immediately replays effects. Release the

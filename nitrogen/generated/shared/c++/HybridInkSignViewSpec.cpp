@@ -14,8 +14,8 @@ namespace margelo::nitro::inksignpdf {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
-      prototype.registerHybridGetter("androidFallbackFont", &HybridInkSignViewSpec::getAndroidFallbackFont);
-      prototype.registerHybridSetter("androidFallbackFont", &HybridInkSignViewSpec::setAndroidFallbackFont);
+      prototype.registerHybridGetter("document", &HybridInkSignViewSpec::getDocument);
+      prototype.registerHybridSetter("document", &HybridInkSignViewSpec::setDocument);
       prototype.registerHybridGetter("strokeColor", &HybridInkSignViewSpec::getStrokeColor);
       prototype.registerHybridSetter("strokeColor", &HybridInkSignViewSpec::setStrokeColor);
       prototype.registerHybridGetter("strokeMinWidth", &HybridInkSignViewSpec::getStrokeMinWidth);
@@ -42,6 +42,8 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridSetter("keyboardAvoidanceEnabled", &HybridInkSignViewSpec::setKeyboardAvoidanceEnabled);
       prototype.registerHybridGetter("pagerDirection", &HybridInkSignViewSpec::getPagerDirection);
       prototype.registerHybridSetter("pagerDirection", &HybridInkSignViewSpec::setPagerDirection);
+      prototype.registerHybridGetter("textDirection", &HybridInkSignViewSpec::getTextDirection);
+      prototype.registerHybridSetter("textDirection", &HybridInkSignViewSpec::setTextDirection);
       prototype.registerHybridGetter("onStateChange", &HybridInkSignViewSpec::getOnStateChange);
       prototype.registerHybridSetter("onStateChange", &HybridInkSignViewSpec::setOnStateChange);
       prototype.registerHybridGetter("onPageChange", &HybridInkSignViewSpec::getOnPageChange);
@@ -50,28 +52,13 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridSetter("onZoomChange", &HybridInkSignViewSpec::setOnZoomChange);
       prototype.registerHybridGetter("onTextSelectionChange", &HybridInkSignViewSpec::getOnTextSelectionChange);
       prototype.registerHybridSetter("onTextSelectionChange", &HybridInkSignViewSpec::setOnTextSelectionChange);
-      prototype.registerHybridMethod("loadFonts", &HybridInkSignViewSpec::loadFonts);
-      prototype.registerHybridMethod("open", &HybridInkSignViewSpec::open);
-      prototype.registerHybridMethod("close", &HybridInkSignViewSpec::close);
-      prototype.registerHybridMethod("addPages", &HybridInkSignViewSpec::addPages);
-      prototype.registerHybridMethod("removePage", &HybridInkSignViewSpec::removePage);
-      prototype.registerHybridMethod("movePage", &HybridInkSignViewSpec::movePage);
-      prototype.registerHybridMethod("rotatePage", &HybridInkSignViewSpec::rotatePage);
       prototype.registerHybridMethod("nextPage", &HybridInkSignViewSpec::nextPage);
+      prototype.registerHybridMethod("focusInputTarget", &HybridInkSignViewSpec::focusInputTarget);
       prototype.registerHybridMethod("previousPage", &HybridInkSignViewSpec::previousPage);
       prototype.registerHybridMethod("getViewport", &HybridInkSignViewSpec::getViewport);
       prototype.registerHybridMethod("requestUserTap", &HybridInkSignViewSpec::requestUserTap);
-      prototype.registerHybridMethod("getState", &HybridInkSignViewSpec::getState);
       prototype.registerHybridMethod("getSelectedText", &HybridInkSignViewSpec::getSelectedText);
-      prototype.registerHybridMethod("getPage", &HybridInkSignViewSpec::getPage);
-      prototype.registerHybridMethod("getPageIdsByTag", &HybridInkSignViewSpec::getPageIdsByTag);
       prototype.registerHybridMethod("setMode", &HybridInkSignViewSpec::setMode);
-      prototype.registerHybridMethod("undo", &HybridInkSignViewSpec::undo);
-      prototype.registerHybridMethod("redo", &HybridInkSignViewSpec::redo);
-      prototype.registerHybridMethod("clear", &HybridInkSignViewSpec::clear);
-      prototype.registerHybridMethod("clearInk", &HybridInkSignViewSpec::clearInk);
-      prototype.registerHybridMethod("setTextDirection", &HybridInkSignViewSpec::setTextDirection);
-      prototype.registerHybridMethod("finalize", &HybridInkSignViewSpec::finalize);
       prototype.registerHybridMethod("startDebugRecording", &HybridInkSignViewSpec::startDebugRecording);
       prototype.registerHybridMethod("stopDebugRecording", &HybridInkSignViewSpec::stopDebugRecording);
       prototype.registerHybridMethod("exportDebugRecording", &HybridInkSignViewSpec::exportDebugRecording);

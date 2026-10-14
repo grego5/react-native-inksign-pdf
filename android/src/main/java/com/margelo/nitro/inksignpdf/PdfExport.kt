@@ -25,7 +25,6 @@ internal data class PdfExportSnapshot(
   val outputPath: String,
   val pages: List<PdfPageExportSnapshot>,
   val generation: Long,
-  val color: Int,
 ) {
   init {
     require(pages.isNotEmpty())

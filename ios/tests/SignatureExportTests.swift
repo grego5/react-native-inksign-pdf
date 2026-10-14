@@ -154,7 +154,8 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(page.history.record(type: .ink,
                                       before: before,
                                       after: before.replacingDrawing(drawing)))
-    let result = try fixture.view.finalize()
+    let owner = try attachedDocument(fixture.view)
+    let result = try owner.finalize()
     let finalized = expectation(description: "committed signature is exported")
     result.then { path in
       defer { finalized.fulfill() }

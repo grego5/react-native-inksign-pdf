@@ -35,6 +35,22 @@ abstract class HybridDocumentPageSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun undo(): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun redo(): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun clear(): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun clearInk(): Unit
+  
+  @DoNotStrip
+  @Keep
   abstract fun resolveInputUnderline(options: ResolveInputUnderlineOptions): Double
   
   @DoNotStrip

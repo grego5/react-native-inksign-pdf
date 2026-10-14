@@ -30,6 +30,9 @@ internal object PdfiumNativePdfExporter {
       page.strokes.flatMap { stroke -> stroke.contourPathData.map { page.pageIndex to it } }
     }
     val pathPageIndices = IntArray(paths.size) { paths[it].first }
+    val pathColors = snapshot.pages.flatMap { page ->
+      page.strokes.flatMap { stroke -> stroke.contourPathData.map { stroke.color } }
+    }.toIntArray()
     val pathCommandOffsets = IntArray(paths.size + 1)
     val pathCommands = paths.flatMap { it.second.commands }
     var commandOffset = 0
@@ -118,7 +121,7 @@ internal object PdfiumNativePdfExporter {
       explicitFontSelections,
       maySubsetFonts,
       forceSubsetSaveFailureForTesting,
-      snapshot.color,
+      pathColors,
     )
   }
 
@@ -148,6 +151,6 @@ internal object PdfiumNativePdfExporter {
     explicitFontSelections: IntArray,
     maySubsetFonts: Boolean,
     forceSubsetSaveFailureForTesting: Boolean,
-    inkColor: Int,
+    pathColors: IntArray,
   )
 }

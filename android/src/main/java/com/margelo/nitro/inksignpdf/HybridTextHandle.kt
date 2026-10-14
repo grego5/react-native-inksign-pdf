@@ -11,23 +11,10 @@ internal class HybridTextHandle(
   override val pageId: String,
   private val textId: Double,
 ) : HybridTextHandleSpec(), TextPageContext {
-  private val owner = WeakReference(owner)
+  private val core = owner.core
 
-  override fun getValue(): String = withOwner { it.readPreparedTextValue(this, textId) }
-
-  override fun setValue(text: String, options: TextAnnotationOptions?) {
-    withOwner { it.setPreparedTextValue(this, textId, text, options) }
-  }
-
-  override fun setOptions(options: TextAnnotationOptions) {
-    withOwner { it.setPreparedTextOptions(this, textId, options) }
-  }
-
-  override fun adjustSize(delta: Double): Double =
-    withOwner { it.adjustPreparedTextSize(this, textId, delta) }
-
-  private fun <T> withOwner(action: (HybridInkSignView) -> T): T =
-    owner.get()?.let { view -> view.withModeSession(null) { action(view) } } ?: throw PdfSessionException(
-      "operation_cancelled", "The text handle view has been disposed",
-    )
+  override fun getValue(): String = core.text.getValue(this, textId)
+  override fun setValue(text: String, options: TextAnnotationOptions?) = core.text.setValue(this, textId, text, options)
+  override fun setOptions(options: TextAnnotationOptions) = core.text.setOptions(this, textId, options)
+  override fun adjustSize(delta: Double): Double = core.text.adjustSize(this, textId, delta)
 }

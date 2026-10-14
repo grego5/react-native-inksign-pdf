@@ -36,6 +36,8 @@ namespace margelo::nitro::inksignpdf {
     [[nodiscard]]
     DocumentOpenOptions toCpp() const {
       static const auto clazz = javaClassStatic();
+      static const auto fieldRecordHistory = clazz->getField<jni::JBoolean>("recordHistory");
+      jni::local_ref<jni::JBoolean> recordHistory = this->getFieldValue(fieldRecordHistory);
       static const auto fieldTag = clazz->getField<jni::JString>("tag");
       jni::local_ref<jni::JString> tag = this->getFieldValue(fieldTag);
       static const auto fieldImagePageSize = clazz->getField<JImagePageSize>("imagePageSize");
@@ -47,6 +49,7 @@ namespace margelo::nitro::inksignpdf {
       static const auto fieldAndroidFallbackFont = clazz->getField<JAndroidFallbackFont>("androidFallbackFont");
       jni::local_ref<JAndroidFallbackFont> androidFallbackFont = this->getFieldValue(fieldAndroidFallbackFont);
       return DocumentOpenOptions(
+        recordHistory != nullptr ? std::make_optional(static_cast<bool>(recordHistory->value())) : std::nullopt,
         tag != nullptr ? std::make_optional(tag->toStdString()) : std::nullopt,
         imagePageSize != nullptr ? std::make_optional(imagePageSize->toCpp()) : std::nullopt,
         targetDpi != nullptr ? std::make_optional(targetDpi->value()) : std::nullopt,
@@ -61,11 +64,12 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JDocumentOpenOptions::javaobject> fromCpp(const DocumentOpenOptions& value) {
-      using JSignature = JDocumentOpenOptions(jni::alias_ref<jni::JString>, jni::alias_ref<JImagePageSize>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JAndroidFallbackFont>);
+      using JSignature = JDocumentOpenOptions(jni::alias_ref<jni::JBoolean>, jni::alias_ref<jni::JString>, jni::alias_ref<JImagePageSize>, jni::alias_ref<jni::JDouble>, jni::alias_ref<jni::JDouble>, jni::alias_ref<JAndroidFallbackFont>);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
         clazz,
+        value.recordHistory.has_value() ? jni::JBoolean::valueOf(value.recordHistory.value()) : nullptr,
         value.tag.has_value() ? jni::make_jstring(value.tag.value()) : nullptr,
         value.imagePageSize.has_value() ? JImagePageSize::fromCpp(value.imagePageSize.value()) : nullptr,
         value.targetDpi.has_value() ? jni::JDouble::valueOf(value.targetDpi.value()) : nullptr,

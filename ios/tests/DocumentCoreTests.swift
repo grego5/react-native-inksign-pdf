@@ -8,7 +8,7 @@ import UIKit
 import XCTest
 @testable import ReactNativeInkSignPdf
 
-final class DocumentCoreTests: XCTestCase {
+final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   func testHeadlessEditingExportAndCloseWithoutConstructingViewer() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
@@ -181,6 +181,63 @@ final class DocumentCoreTests: XCTestCase {
       XCTAssertTrue(expected.contains(selection.bounds(for: exported)),
         "Exported text must stay inside its physical visible-page target at rotation \(rotation)")
     }
+  }
+
+  func testDocumentAttachmentDetachesWithoutEndingOwnerOrHistory() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(core.open(sourceURL: source))
+    let document = HybridInkSignDocument(core: core)
+    let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+    let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+    let id = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: CGRect(x: 24, y: 80, width: 200, height: 60)))
+    try core.setTextValue(context, id: id, text: "Before attachment")
+    let first = makeFixture(pageCount: 1)
+    defer { first.view.dispose(); first.window.isHidden = true }
+    first.view.document = document
+    XCTAssertTrue(first.view.viewerDocument?.core === core.coordinator.document)
+    XCTAssertTrue(try core.pageInfo(context).canUndo)
+    first.view.document = nil
+    XCTAssertNil(first.view.viewerDocument)
+    XCTAssertEqual(try core.textValue(context, id: id), "Before attachment")
+    first.view.dispose()
+    try core.setTextValue(context, id: id, text: "After unmount")
+    let second = makeFixture(pageCount: 1)
+    defer { second.view.dispose(); second.window.isHidden = true }
+    second.view.document = document
+    XCTAssertTrue(second.view.viewerDocument?.core === core.coordinator.document)
+    XCTAssertEqual(try core.textValue(context, id: id), "After unmount")
+    XCTAssertEqual(try core.pageInfo(context).pageId, page.id.uuidString)
+    _ = try awaitValue(document.close())
+    XCTAssertNil(second.view.viewerDocument)
+    XCTAssertThrowsError(try core.textValue(context, id: id))
+  }
+
+  func testDocumentRejectsSecondViewerUntilFirstDetaches() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(core.open(sourceURL: source))
+    let document = HybridInkSignDocument(core: core)
+    let first = makeFixture(pageCount: 1)
+    let second = makeFixture(pageCount: 1)
+    let secondOriginalDocument = try XCTUnwrap(second.view.document as? HybridInkSignDocument)
+    defer {
+      first.view.dispose(); first.window.isHidden = true
+      second.view.dispose(); second.window.isHidden = true
+    }
+    first.view.document = document
+    second.view.document = document
+    XCTAssertTrue(second.view.document as? HybridInkSignDocument === secondOriginalDocument)
+    XCTAssertTrue(second.view.loadError?.hasPrefix("document_already_attached") == true)
+    first.view.document = nil
+    second.view.document = document
+    XCTAssertNotNil(second.view.document)
+    XCTAssertNil(second.view.loadError)
   }
 
   private func text(id: UInt64, value: String) -> InkSignPdfTextAnnotation {

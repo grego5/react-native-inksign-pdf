@@ -17,11 +17,9 @@ import {
   validateTextAnnotationOptions,
   validateTextModeOptions,
   validateViewportOptions,
-  validateViewOpenOptions,
 } from './publicArguments';
 import type {
   DocumentState,
-  AnalyzedPage,
   PageTextMethods,
   ModeSession,
   InputMode,
@@ -38,7 +36,6 @@ import type {
   PageInfo,
   PageQuery,
   TaggedPageQuery,
-  ViewOpenOptions,
   PageChangeEvent,
   PageCoords,
   TextAnnotationBounds,
@@ -46,13 +43,9 @@ import type {
   TextPresentationOptions,
   TextKeyOccurrence,
   TextModeOptions,
-  PageType,
   TextDirection,
   TextAlignment,
   TextVerticalAnchor,
-  AddPagesActivePage,
-  AddPagesOptions,
-  AddPagesResult,
   ImagePageSize,
   StrokeColor,
   TextColor,
@@ -64,7 +57,6 @@ import type {
   ViewerState,
   InteractionMode,
   InkSignView as InkSignViewNativeHandle,
-  AnalyzedPage as AnalyzedPageNativeHandle,
   InkSignViewMethods,
 } from './InkSignView.nitro';
 import type { NamedFontSource, DocumentOpenOptions, DocumentAddPagesOptions, DocumentAddPagesResult, DocumentPage, InkSignDocument, InkSignDocumentFactory } from './InkSignDocument.nitro';
@@ -72,7 +64,6 @@ export type { NamedFontSource, DocumentOpenOptions, DocumentAddPagesOptions, Doc
 
 export type {
   DocumentState,
-  AnalyzedPage,
   ModeSession,
   InputMode,
   InputTargetFocusOptions,
@@ -80,7 +71,6 @@ export type {
   PageInfo,
   PageQuery,
   TaggedPageQuery,
-  ViewOpenOptions,
   PageChangeEvent,
   PageCoords,
   TextAnnotationBounds,
@@ -88,13 +78,9 @@ export type {
   TextPresentationOptions,
   TextKeyOccurrence,
   TextModeOptions,
-  PageType,
   TextDirection,
   TextAlignment,
   TextVerticalAnchor,
-  AddPagesActivePage,
-  AddPagesOptions,
-  AddPagesResult,
   ImagePageSize,
   StrokeColor,
   TextColor,
@@ -129,10 +115,10 @@ const NativeInkSignView = getHostComponent<InkSignViewNativeProps, InkSignViewMe
 type NativeInkSignViewProps = React.ComponentProps<typeof NativeInkSignView>;
 export type InkSignViewProps = Omit<
   NativeInkSignViewProps,
-  'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomChange'
+  'document' | 'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomChange'
 > & {
-  /** Local PDF or JPEG path/file:// URI. JPEG becomes one contain-fitted A4 page. */
-  initialDocument?: string;
+  /** Initialized document owner; render the viewer after openDoc resolves. */
+  document: InkSignDocument;
   onStateChange?: InkSignViewNativeProps['onStateChange'];
   onPageChange?: InkSignViewNativeProps['onPageChange'];
   onZoomChange?: InkSignViewNativeProps['onZoomChange'];
@@ -173,9 +159,13 @@ function createValidatedModeSession(native: ModeSession): ModeSession {
     dispose: () => native.dispose(),
     getPage(pageIndex) {
       return callAsync(() => validatePageQuery(pageIndex), async () =>
-        createValidatedAnalyzedPage(await native.getPage(pageIndex)));
+        createValidatedDocumentPage(await native.getPage(pageIndex)));
     },
     requestUserTap: () => native.requestUserTap(),
+    focusInputTarget(page, id, options) {
+      return callAsync(() => validateInputTargetFocusOptions(options), () =>
+        native.focusInputTarget(nativePages.get(page) ?? page, id, options));
+    },
     setViewport(options) {
       return callAsync(() => validateViewportOptions(options), () => native.setViewport(options));
     },
@@ -250,26 +240,7 @@ function createValidatedPageText(native: PageTextMethods): PageTextMethods {
   };
 }
 
-function createValidatedAnalyzedPage(native: AnalyzedPageNativeHandle): AnalyzedPage {
-  return {
-    __type: native.__type,
-    name: native.name,
-    toString: () => native.toString(),
-    equals: (other) => native.equals(other),
-    dispose: () => native.dispose(),
-    getState: () => native.getState(),
-    ...createValidatedPageText(native),
-    focusInputTarget(id, options) {
-      validateInputTargetId(id);
-      return callAsync(
-        () => validateInputTargetFocusOptions(options),
-        () => native.focusInputTarget(id, options),
-      );
-    },
-  };
-}
-
-function createValidatedHandle(
+function createValidatedViewHandle(
   connection: ReturnType<typeof createViewConnection>,
 ): InkSignViewHandle {
   const getNative = connection.getNative;
@@ -285,80 +256,17 @@ function createValidatedHandle(
       return getNative().equals(nativeHandles.get(other)?.() ?? other);
     },
     dispose: () => getNative().dispose(),
-    open(path, viewport) {
-      return callAsync(
-        () => {
-          validateDocumentPath(path);
-          validateViewOpenOptions(viewport);
-        },
-        () => connection.invoke(native => native.open(path, viewport)),
-      );
-    },
-    close(cancelPending) {
-      return callAsync(() => {
-        if (cancelPending !== undefined && typeof cancelPending !== 'boolean') {
-          throw argumentError('invalid_close_options', 'Cancellation must be a boolean');
-        }
-      }, () => connection.invoke(native => native.close(cancelPending), cancelPending === true));
-    },
-    loadFonts(fonts) {
-      return callAsync(() => validateNamedFonts(fonts), () => connection.invoke(native => native.loadFonts(fonts)));
-    },
     requestUserTap: () => connection.invoke(native => native.requestUserTap()),
-    addPages(options) {
-      return callAsync(
-        () => validateAddPagesOptions(options),
-        () => connection.invoke(native => native.addPages(options)),
-      );
-    },
-    removePage: () =>
-      callAsync(
-        () => {},
-        () => connection.invoke(native => native.removePage()),
-      ),
-    movePage(pageIndex) {
-      return callAsync(
-        () => {
-          if (typeof pageIndex !== 'number' || !Number.isInteger(pageIndex) || pageIndex < 0) {
-            throw argumentError(
-              'invalid_page_index',
-              'The destination page index must be a non-negative integer',
-            );
-          }
-        },
-        () => connection.invoke(native => native.movePage(pageIndex)),
-      );
-    },
-    rotatePage(degrees) {
-      return callAsync(
-        () => {
-          if (degrees !== 90 && degrees !== 180 && degrees !== 270) {
-            throw argumentError(
-              'invalid_page_rotation',
-              'Page rotation must be 90, 180, or 270 degrees clockwise',
-            );
-          }
-        },
-        () => connection.invoke(native => native.rotatePage(degrees)),
-      );
-    },
     nextPage: () => getNative().nextPage(),
+    focusInputTarget(page, id, options) {
+      return callAsync(() => validateInputTargetFocusOptions(options), () =>
+        connection.invoke(native => native.focusInputTarget(nativePages.get(page) ?? page, id, options)));
+    },
     previousPage: () => getNative().previousPage(),
     getViewport: () => getNative().getViewport(),
-    getState: () => getNative().getState(),
-    getPageIdsByTag(tag) {
-      validatePageTag(tag);
-      return getNative().getPageIdsByTag(tag);
-    },
     getSelectedText() {
       const text = getNative().getSelectedText();
       return text === null ? null : createValidatedTextHandle(text);
-    },
-    getPage(pageIndex) {
-      return callAsync(
-        () => validatePageQuery(pageIndex),
-        async () => createValidatedAnalyzedPage(await connection.invoke(native => native.getPage(pageIndex))),
-      );
     },
     setMode(mode: InputMode, options?: TextModeOptions) {
       if (mode !== 'view' && mode !== 'ink' && mode !== 'text') {
@@ -370,21 +278,6 @@ function createValidatedHandle(
       if (mode === 'text') validateTextModeOptions(options);
       return createValidatedModeSession(getNative().setMode(mode, options));
     },
-    undo: () => getNative().undo(),
-    redo: () => getNative().redo(),
-    clear: () => getNative().clear(),
-    clearInk: () => getNative().clearInk(),
-    setTextDirection(direction) {
-      if (direction !== 'ltr' && direction !== 'rtl' && direction !== 'auto') {
-        throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');
-      }
-      getNative().setTextDirection(direction);
-    },
-    finalize: () =>
-      callAsync(
-        () => {},
-        () => connection.invoke(native => native.finalize()),
-      ),
     startDebugRecording: () => getNative().startDebugRecording(),
     stopDebugRecording: () => getNative().stopDebugRecording(),
     exportDebugRecording: () =>
@@ -400,8 +293,12 @@ function createValidatedHandle(
 export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>(
   (props, ref) => {
     validatePagerDirection(props.pagerDirection);
+    if (props.textDirection !== undefined && props.textDirection !== 'auto' &&
+        props.textDirection !== 'ltr' && props.textDirection !== 'rtl') {
+      throw argumentError('invalid_text_direction', 'Text direction must be ltr, rtl, or auto');
+    }
     const {
-      initialDocument,
+      document,
       onStateChange,
       onPageChange,
       onTextSelectionChange,
@@ -426,13 +323,10 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
         callbacks.current.onZoomChange?.(zoom)),
     }));
     const [connection] = useState(createViewConnection);
-    const [handle] = useState(() => createValidatedHandle(connection));
+    const [handle] = useState(() => createValidatedViewHandle(connection));
     useLayoutEffect(() => {
-      if (initialDocument !== undefined) validateDocumentPath(initialDocument);
-      connection.mount(
-        initialDocument === undefined ? undefined : () => handle.open(initialDocument),
-      );
-    }, [initialDocument]);
+      connection.mount();
+    }, []);
     // Suspense disconnects layout effects while retaining the native view.
     useEffect(() => () => connection.unmount(), []);
     useImperativeHandle(ref, () => handle, []);
@@ -440,6 +334,7 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
 
     return React.createElement(NativeInkSignView, {
       ...nativeProps,
+      document: nativeDocuments.get(document) ?? document,
       hybridRef: wrappedHybridRef,
       onStateChange: onStateChange ? nativeCallbacks.onStateChange : undefined,
       onPageChange: onPageChange ? nativeCallbacks.onPageChange : undefined,
@@ -456,24 +351,33 @@ function validateNamedFonts(fonts: NamedFontSource[]): void {
   }
 }
 
-function requiredPageIndex(index: number): void {
+function validateRequiredPageIndex(index: number): void {
   if (index === undefined) throw argumentError('invalid_page_index', 'A page index is required');
   validatePageIndex(index);
 }
 
 function createValidatedDocumentPage(native: DocumentPage): DocumentPage {
-  return {
+  const handle: DocumentPage = {
     __type: native.__type, name: native.name,
     toString: () => native.toString(), equals: other => native.equals(other), dispose: () => native.dispose(),
     getState: () => native.getState(),
+    undo: () => native.undo(),
+    redo: () => native.redo(),
+    clear: () => native.clear(),
+    clearInk: () => native.clearInk(),
     ...createValidatedPageText(native),
   };
+  nativePages.set(handle, native);
+  return handle;
 }
 
+const nativePages = new WeakMap<DocumentPage, DocumentPage>();
+const nativeDocuments = new WeakMap<InkSignDocument, InkSignDocument>();
+
 function createValidatedDocument(native: InkSignDocument): InkSignDocument {
-  return {
+  const handle: InkSignDocument = {
     __type: native.__type, name: native.name,
-    toString: () => native.toString(), equals: other => native.equals(other), dispose: () => native.dispose(),
+    toString: () => native.toString(), equals: other => native.equals(nativeDocuments.get(other as InkSignDocument) ?? other), dispose: () => native.dispose(),
     get pageCount() { return native.getState().pageCount; },
     getState: () => native.getState(),
     getPage(index) {
@@ -490,19 +394,21 @@ function createValidatedDocument(native: InkSignDocument): InkSignDocument {
         if (!options || !Array.isArray(options.sources)) throw argumentError('invalid_page_sources', 'Headless imports require explicit sources');
       }, () => native.addPages(options));
     },
-    removePage(index) { return callAsync(() => requiredPageIndex(index), () => native.removePage(index)); },
+    removePage(index) { return callAsync(() => validateRequiredPageIndex(index), () => native.removePage(index)); },
     movePage(fromIndex, toIndex) {
-      return callAsync(() => { requiredPageIndex(fromIndex); requiredPageIndex(toIndex); }, () => native.movePage(fromIndex, toIndex));
+      return callAsync(() => { validateRequiredPageIndex(fromIndex); validateRequiredPageIndex(toIndex); }, () => native.movePage(fromIndex, toIndex));
     },
     rotatePage(index, degrees) {
       return callAsync(() => {
-        requiredPageIndex(index);
+        validateRequiredPageIndex(index);
         if (degrees !== 90 && degrees !== 180 && degrees !== 270) throw argumentError('invalid_page_rotation', 'Use 90, 180, or 270 degrees');
       }, () => native.rotatePage(index, degrees));
     },
     finalize: () => native.finalize(),
     close: () => native.close(),
   };
+  nativeDocuments.set(handle, native);
+  return handle;
 }
 
 /** Loads a PDF or image into an independent native session without mounting a view. */
@@ -510,6 +416,9 @@ export function openDoc(uri: string, options?: DocumentOpenOptions): Promise<Ink
   return callAsync(() => {
     validateDocumentPath(uri);
     validateAddPagesOptions(options);
+    if (options?.recordHistory !== undefined && typeof options.recordHistory !== 'boolean') {
+      throw argumentError('invalid_document_options', 'recordHistory must be a boolean');
+    }
     if (options?.androidFallbackFont !== undefined) {
       validateDocumentPath(options.androidFallbackFont.uri);
       const index = options.androidFallbackFont.collectionIndex;

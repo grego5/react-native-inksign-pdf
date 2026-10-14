@@ -13,14 +13,15 @@ internal fun <T> Deferred<T>.asNitroPromise(): Promise<T> = Promise.async { awai
 class HybridInkSignDocumentFactory : HybridInkSignDocumentFactorySpec() {
   override fun openDoc(uri: String, options: DocumentOpenOptions?): Promise<HybridInkSignDocumentSpec> {
     val context = checkNotNull(NitroModules.applicationContext) { "React Native context is unavailable" }
-    return HybridInkSignDocument(context).open(uri, options)
+    return HybridInkSignDocument(context, options?.recordHistory ?: true).open(uri, options)
   }
 }
 
 /** Nitro adapter; document state, work ordering, and cleanup belong to DocumentCore. */
 @DoNotStrip
-internal class HybridInkSignDocument(context: Context) : HybridInkSignDocumentSpec() {
-  private val core = DocumentCore(context, recordHistory = false, exportOwnership = ExportOwnership.CALLER)
+internal class HybridInkSignDocument(internal val core: DocumentCore) : HybridInkSignDocumentSpec() {
+  constructor(context: Context, recordHistory: Boolean = true) : this(
+    DocumentCore(context, recordHistory = recordHistory, exportOwnership = ExportOwnership.CALLER))
   private var closePromise: Promise<Unit>? = null
 
   internal fun open(uri: String, options: DocumentOpenOptions?): Promise<HybridInkSignDocumentSpec> {
@@ -45,9 +46,7 @@ internal class HybridInkSignDocument(context: Context) : HybridInkSignDocumentSp
   override fun addPages(options: DocumentAddPagesOptions): Promise<DocumentAddPagesResult> = command {
     val dimensions = options.imagePageSize?.let { PdfPageDimensions(it.width, it.height) }
       ?: (if (core.state.hasDocument) core.state.pageMetadata(0).dimensions else null) ?: PdfPageDimensions(595.28, 841.89)
-    val added = core.addPages(AddPagesOptions(tag = options.tag, type = null, sources = options.sources,
-      imagePageSize = options.imagePageSize, targetDpi = options.targetDpi, jpegQuality = options.jpegQuality,
-      activePage = null), dimensions)
+    val added = core.addPages(options, dimensions)
     DocumentAddPagesResult(added.toDouble(), core.state.pageCount.toDouble())
   }
   override fun removePage(index: Double): Promise<Unit> = command { core.removePage(index) }
@@ -61,20 +60,32 @@ internal class HybridInkSignDocument(context: Context) : HybridInkSignDocumentSp
 }
 
 @DoNotStrip
-internal class HybridDocumentPage(core: DocumentCore, context: PreparedPageContext) : HybridDocumentPageSpec() {
-  private val core = WeakReference(core)
+internal class HybridDocumentPage(internal val core: DocumentCore, context: PreparedPageContext,
+  owner: HybridInkSignView? = null, internal val modeSession: ModeSessionToken? = null,
+) : HybridDocumentPageSpec() {
+  private val authorizationOwner = owner?.let(::WeakReference)
   private val prepared = WeakReference(context)
-  private val context: PreparedPageContext get() = prepared.get()
+  internal val context: PreparedPageContext get() = prepared.get()
     ?: throw PdfSessionException("operation_cancelled", "The prepared page was released")
-  private fun <T> use(action: (DocumentCore) -> T): T = core.get()?.let(action)
-    ?: throw PdfSessionException("operation_cancelled", "The document has been released")
-  override fun getState(): PageInfo = use { it.pageInfo(context) }
-  override fun resolveInputUnderline(options: ResolveInputUnderlineOptions) = use { it.text.resolve(context, options.resolutionOptions()) }
-  override fun createInputArea(options: CreateInputAreaOptions) = use { it.text.resolve(context, options.resolutionOptions()) }
-  override fun getTextValue(id: Double) = use { it.text.getValue(context, id) }
-  override fun setTextValue(id: Double, text: String, options: TextAnnotationOptions?) = use { it.text.setValue(context, id, text, options) }
-  override fun setTextOptions(id: Double, options: TextAnnotationOptions) = use { it.text.setOptions(context, id, options) }
-  override fun adjustTextSize(id: Double, delta: Double) = use { it.text.adjustSize(context, id, delta) }
-  override fun getInputTarget(id: Double) = use { it.text.getEntry(context, id) }
-  override fun getInputTargets() = use { it.text.getEntries(context) }
+  private fun <T> withPageAccess(action: (DocumentCore) -> T): T = core.withDocument {
+    modeSession?.let { token ->
+      val owner = authorizationOwner?.get()
+      if (owner == null || !owner.isAttachedTo(core)) throw PdfSessionException("operation_cancelled", "The mode session ended")
+      owner.requireModeSession(token)
+    }
+    action(core)
+  }
+  override fun undo() = withPageAccess { it.undo(context.pageId) }
+  override fun redo() = withPageAccess { it.redo(context.pageId) }
+  override fun clear() = withPageAccess { it.clearContent(context.pageId) }
+  override fun clearInk() = withPageAccess { it.clearInk(context.pageId) }
+  override fun getState(): PageInfo = withPageAccess { it.pageInfo(context) }
+  override fun resolveInputUnderline(options: ResolveInputUnderlineOptions) = withPageAccess { it.text.resolve(context, options.resolutionOptions()) }
+  override fun createInputArea(options: CreateInputAreaOptions) = withPageAccess { it.text.resolve(context, options.resolutionOptions()) }
+  override fun getTextValue(id: Double) = withPageAccess { it.text.getValue(context, id) }
+  override fun setTextValue(id: Double, text: String, options: TextAnnotationOptions?) = withPageAccess { it.text.setValue(context, id, text, options) }
+  override fun setTextOptions(id: Double, options: TextAnnotationOptions) = withPageAccess { it.text.setOptions(context, id, options) }
+  override fun adjustTextSize(id: Double, delta: Double) = withPageAccess { it.text.adjustSize(context, id, delta) }
+  override fun getInputTarget(id: Double) = withPageAccess { it.text.getEntry(context, id) }
+  override fun getInputTargets() = withPageAccess { it.text.getEntries(context) }
 }

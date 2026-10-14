@@ -319,6 +319,12 @@ struct InkSignPdfPageContentHistoryAction {
 
 /// Permanent base plus keyed tracked overrides. Undo never restores unrelated base content.
 final class InkSignPdfPageContentHistory {
+  struct TextPreview {
+    let id: UInt64
+    let annotation: InkSignPdfTextAnnotation?
+    let changed: Bool
+  }
+  var textPreview: TextPreview? { didSet { revision &+= 1 } }
   private var base: InkSignPdfPageContentSnapshot
   private var baseTextByID: [UInt64: InkSignPdfTextAnnotation]
   private var textOverrides: [UInt64: InkSignPdfTextOverride] = [:]
@@ -338,15 +344,19 @@ final class InkSignPdfPageContentHistory {
   }
 
   var content: InkSignPdfPageContentSnapshot {
-    let text = base.textAnnotations.filter { textOverrides[$0.id] == nil } +
+    var text = base.textAnnotations.filter { textOverrides[$0.id] == nil } +
       textOverrides.values.sorted { $0.order < $1.order }.compactMap(\.annotation)
+    if let preview = textPreview {
+      text.removeAll { $0.id == preview.id }
+      if let annotation = preview.annotation { text.append(annotation) }
+    }
     return InkSignPdfPageContentSnapshot(drawing: drawingOverride ?? base.drawing, textAnnotations: text)
   }
 
   var canUndo: Bool { !undoStack.isEmpty }
   var canRedo: Bool { !redoStack.isEmpty }
   var state: (canUndo: Bool, canRedo: Bool, isDirty: Bool) {
-    (canUndo, canRedo, canUndo)
+    (canUndo, canRedo, canUndo || (recordHistory && textPreview?.changed == true))
   }
 
   func hasRetainedHistory(for id: UInt64) -> Bool {
@@ -356,6 +366,7 @@ final class InkSignPdfPageContentHistory {
   var drawing: PKDrawing { drawingOverride ?? base.drawing }
 
   func text(for id: UInt64) -> InkSignPdfTextAnnotation? {
+    if let preview = textPreview, preview.id == id { return preview.annotation }
     if let override = textOverrides[id] { return override.annotation }
     return baseTextByID[id]
   }

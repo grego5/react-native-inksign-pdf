@@ -70,7 +70,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
 
             PdfExporter.export(snapshot, policy) { false }
@@ -115,7 +114,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
 
             PdfExporter.export(snapshot, policy) { false }
@@ -162,7 +160,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
 
             PdfExporter.export(snapshot, policy) { false }
@@ -213,7 +210,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
 
             PdfExporter.export(snapshot, policy) { false }
@@ -281,7 +277,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
 
             PdfExporter.export(snapshot, policy) { false }
@@ -336,7 +331,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
 
             val resolved = PdfExportTextResolver.resolve(snapshot)
@@ -400,7 +394,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
 
             val resolved = PdfExportTextResolver.resolve(
@@ -548,7 +541,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
 
             PdfExporter.export(snapshot, policy) { false }
@@ -607,7 +599,6 @@ internal class PdfExportContourTest {
                 outputPath = output.path,
                 pages = pages,
                 generation = 1L,
-                color = Color.BLACK,
             )
             val resolved = PdfExportTextResolver.resolve(snapshot)
             assumeTrue("The selected fonts must be embeddable and subsettable",
@@ -724,7 +715,6 @@ internal class PdfExportContourTest {
                     )
                 },
                 generation = 1L,
-                color = Color.BLACK,
             )
             val textSnapshot = PdfiumTextSnapshot(
                 fonts = listOf(PdfiumFontResource(fontBytes, collectionIndex = 0, fsType = fsType)),
@@ -804,7 +794,6 @@ internal class PdfExportContourTest {
                     ),
                 ),
                 generation = 1L,
-                color = Color.BLACK,
             )
             val resolved = PdfExportTextResolver.resolve(snapshot)
             assumeTrue("The Arabic font must resolve to an embeddable supported face",
@@ -895,7 +884,6 @@ internal class PdfExportContourTest {
                         ),
                     ),
                     generation = 1L,
-                    color = Color.BLACK,
                 ),
                 policy,
             ) { false }

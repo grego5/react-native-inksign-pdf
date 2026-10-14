@@ -55,6 +55,10 @@ namespace margelo::nitro::inksignpdf {
   public:
     // Methods
     PageInfo getState() override;
+    void undo() override;
+    void redo() override;
+    void clear() override;
+    void clearInk() override;
     double resolveInputUnderline(const ResolveInputUnderlineOptions& options) override;
     double createInputArea(const CreateInputAreaOptions& options) override;
     std::string getTextValue(double id) override;

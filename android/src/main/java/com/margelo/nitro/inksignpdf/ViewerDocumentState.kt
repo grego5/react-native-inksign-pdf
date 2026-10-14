@@ -36,14 +36,9 @@ internal class ViewerDocumentState(private val document: DocumentReadState) : Do
   }
 
   /** Preserve identity on reorder/rotation; select the next surviving page after deletion. */
-  fun pagesPublished(importSelection: AddPagesActivePage = AddPagesActivePage.CURRENT) {
-    val added = document.pageCount > publishedPageCount
-    val index = when {
-      added && importSelection == AddPagesActivePage.FIRSTADDED -> publishedPageCount
-      added && importSelection == AddPagesActivePage.LASTADDED -> document.pageCount - 1
-      else -> selectedPageId?.let(document::pageIndexForId)
-        ?: selectedIndex.coerceAtMost(document.pageCount - 1)
-    }
+  fun pagesPublished() {
+    val index = selectedPageId?.let(document::pageIndexForId)
+      ?: selectedIndex.coerceAtMost(document.pageCount - 1)
     activatePage(index)
     publishedPageCount = document.pageCount
   }

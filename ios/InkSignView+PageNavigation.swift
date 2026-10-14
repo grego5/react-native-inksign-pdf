@@ -10,8 +10,7 @@ extension InkSignView {
   }
 
   func documentViewDidNavigate(to page: PDFPage) {
-    guard !suppressesOpenPresentationCallbacks,
-          let state = viewerDocument else { return }
+    guard let state = viewerDocument else { return }
     let index = state.document.index(for: page)
     guard state.pages.indices.contains(index) else { return }
     if let request = interaction.presentation, request.structural,
@@ -67,7 +66,7 @@ extension InkSignView {
   func finishPagePresentationIfReady() {
     guard let request = interaction.presentation,
           let state = viewerDocument,
-          documentCoordinator.generation == request.generation,
+          attachedCore?.coordinator.generation == request.generation,
           state.activePage.id == request.pageID,
           state.activePage.geometryRevision == request.geometryRevision,
           interaction.viewport.viewportReadiness().allowsCommand(fitToPage: false) else { return }

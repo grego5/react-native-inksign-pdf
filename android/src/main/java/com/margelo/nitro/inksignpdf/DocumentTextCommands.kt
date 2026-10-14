@@ -9,12 +9,13 @@ internal class DocumentTextCommands(
 ) {
   private val coordinator get() = core.coordinator
   private val fonts get() = core.fonts
-  var defaultFontSize = defaultTextFontSize
-  var defaultTextColor = android.graphics.Color.BLACK
+  val defaultFontSize = defaultTextFontSize
+  val defaultTextColor = android.graphics.Color.BLACK
 
   internal fun resolveDirection(direction: TextDirection?): Boolean = when (direction) {
     TextDirection.RTL -> true
     TextDirection.LTR -> false
+    null -> appDirectionIsRtl()
     else -> appDirectionIsRtl()
   }
 
@@ -30,6 +31,7 @@ internal class DocumentTextCommands(
 
   internal fun applyEdit(context: TextPageContext, before: TextAnnotation?, after: TextAnnotation?) =
     core.withMutablePage(context) { page ->
+      core.requireContentMutationReady()
       val id = checkNotNull(after?.id ?: before?.id)
       target(context, id.toDouble())
       check(before == null || before.id == id) { "An edit cannot change text identity" }
@@ -42,6 +44,7 @@ internal class DocumentTextCommands(
 
   internal fun reserve(context: TextPageContext, canonicalBounds: PageRect,
                        options: TextAnnotationOptions? = null): Long = core.withMutablePage(context) { page ->
+    core.requireContentMutationReady()
     fonts.resolve(options?.font)
     coordinator.reserveTextTarget(page.id, null, null, canonicalBounds, options).id
   }
@@ -72,6 +75,7 @@ internal class DocumentTextCommands(
   internal fun insert(context: TextPageContext, bounds: TextAnnotationBounds, text: String,
                       options: TextAnnotationOptions? = null, requireVisibleLine: Boolean = false,
                       directionRtl: Boolean = resolveDirection(options?.direction)): TextAnnotation = core.withMutablePage(context) { page ->
+    core.requireContentMutationReady()
     val flow = programmaticTextFlowBounds(bounds, page.dimensions)
     val font = fonts.resolve(options?.font)
     val slot = coordinator.prepareTextTarget(page.id, null, null,
@@ -109,6 +113,9 @@ internal class DocumentTextCommands(
 
   internal fun getValue(context: TextPageContext, rawId: Double): String = core.withMutablePage(context) { page ->
     val slot = target(context, rawId)
+    core.activeTextEdit?.takeIf { it.context.pageId == page.id && it.id == slot.id }?.let {
+      return@withMutablePage it.current?.text ?: ""
+    }
     moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.text ?: slot.embeddedValue
   }
 
@@ -134,7 +141,9 @@ internal class DocumentTextCommands(
 
   internal fun setValue(context: TextPageContext, rawId: Double, text: String,
                         options: TextAnnotationOptions? = null) = core.withMutablePage(context) { page ->
+    core.requireContentMutationReady()
     val slot = target(context, rawId)
+    core.endTextEdit(slot.id)
     val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
     val proposed = merged(if (current == null) slot.options else null, options)
     // Resolve font and compute layout before publishing target or content changes.
@@ -145,9 +154,19 @@ internal class DocumentTextCommands(
     commit(page, current, updated, untracked = options?.untracked == true)
   }
 
+  internal fun captureEditOptions(context: TextPageContext, id: Long, options: TextAnnotationOptions) =
+    core.withMutablePage(context) {
+      core.requireContentMutationReady()
+      val slot = target(context, id.toDouble())
+      fonts.resolve(options.font)
+      slot.options = merged(slot.options, options)
+    }
+
   internal fun setOptions(context: TextPageContext, rawId: Double,
                           options: TextAnnotationOptions) = core.withMutablePage(context) { page ->
+    core.requireContentMutationReady()
     val slot = target(context, rawId)
+    core.endTextEdit(slot.id)
     val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
     val proposed = merged(if (current == null) slot.options else null, options)
     fonts.resolve(proposed.font, current?.font)
@@ -167,6 +186,7 @@ internal class DocumentTextCommands(
 
   internal fun resolve(context: PreparedPageContext, options: InputTargetResolutionOptions): Double =
     core.withMutablePage(context) { page ->
+      core.requireContentMutationReady()
       fonts.resolve(options.font)
       val coordinates = PageCoordinates(page.dimensions)
       val transform = coordinates.canonicalToDisplayTransform()
@@ -251,9 +271,10 @@ internal class DocumentTextCommands(
     core.withMutablePage(context) { page ->
       val slot = target(context, rawId)
       val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
-      val value = annotation?.text ?: slot.embeddedValue
+      val edit = core.activeTextEdit?.takeIf { it.context.pageId == page.id && it.id == slot.id }
+      val value = if (edit != null) edit.current?.text ?: "" else annotation?.text ?: slot.embeddedValue
       val source = when {
-        annotation != null -> TextValueSource.ANNOTATION
+        edit != null || annotation != null -> TextValueSource.ANNOTATION
         slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
         else -> TextValueSource.EMPTY
       }

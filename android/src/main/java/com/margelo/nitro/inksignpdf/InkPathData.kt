@@ -30,6 +30,7 @@ internal data class InkPathCommand(
 internal data class InkPathData(
   val commands: List<InkPathCommand>,
   val bounds: InkBounds,
+  val color: Int = android.graphics.Color.BLACK,
 ) {
   init {
     require(commands.isNotEmpty())

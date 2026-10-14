@@ -98,11 +98,11 @@ using namespace margelo::nitro::inksignpdf::views;
   if (hasTransactionPropChanges) {
     swiftPart.beforeUpdate();
 
-    // androidFallbackFont: optional
+    // document: optional
     if (oldViewProps == nullptr
-          ? newViewProps.androidFallbackFont.isProvided()
-          : !newViewProps.androidFallbackFont.hasSameValue(oldViewProps->androidFallbackFont)) {
-      swiftPart.setAndroidFallbackFont(newViewProps.androidFallbackFont.get());
+          ? newViewProps.document.isProvided()
+          : !newViewProps.document.hasSameValue(oldViewProps->document)) {
+      swiftPart.setDocument(newViewProps.document.get());
     }
     // strokeColor: optional
     if (oldViewProps == nullptr
@@ -181,6 +181,12 @@ using namespace margelo::nitro::inksignpdf::views;
           ? newViewProps.pagerDirection.isProvided()
           : !newViewProps.pagerDirection.hasSameValue(oldViewProps->pagerDirection)) {
       swiftPart.setPagerDirection(newViewProps.pagerDirection.get());
+    }
+    // textDirection: optional
+    if (oldViewProps == nullptr
+          ? newViewProps.textDirection.isProvided()
+          : !newViewProps.textDirection.hasSameValue(oldViewProps->textDirection)) {
+      swiftPart.setTextDirection(newViewProps.textDirection.get());
     }
     // onStateChange: optional
     if (oldViewProps == nullptr

@@ -99,6 +99,47 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
+  fun emptyTextEditHidesEmbeddedValueAndRetainsCapturedOptions() {
+    harness.runOnMain {
+      val page = harness.core.state.pageMetadata(0)
+      val context = DocumentPageContext(harness.core.state.generation, page.id)
+      val slot = harness.coordinator.reserveTextTarget(
+        pageId = page.id,
+        sourceIdentity = "transaction-test",
+        fieldName = "Name",
+        canonicalBounds = PageRect(20.0, 30.0, 200.0, 60.0),
+        options = null,
+        embeddedValue = "embedded value",
+      )
+      val edit = harness.core.beginTextEdit(context, slot.id)
+      val captured = TextAnnotationOptions(
+        untracked = null,
+        font = null,
+        fontSize = 18.0,
+        color = "#123456",
+        direction = TextDirection.RTL,
+        maxLines = null,
+        alignment = null,
+        verticalAnchor = null,
+      )
+
+      harness.core.updateTextEdit(edit, null, captured)
+      assertEquals("The live empty edit masks the embedded fallback", "", harness.core.text.getValue(context, slot.id.toDouble()))
+      assertEquals("The target reports the live value", "", harness.core.text.getEntry(context, slot.id.toDouble()).value)
+
+      harness.core.endTextEdit(slot.id)
+      assertEquals("Embedded text returns after the transaction ends", "embedded value",
+        harness.core.text.getValue(context, slot.id.toDouble()))
+      harness.core.text.setValue(context, slot.id.toDouble(), "replacement", null)
+      val annotation = checkNotNull(harness.coordinator.pageSnapshot(0).content
+        .single().textAnnotationOrNull())
+      assertEquals(18.0, annotation.fontSize, 0.0)
+      assertEquals(android.graphics.Color.rgb(0x12, 0x34, 0x56), annotation.textColor)
+      assertTrue(annotation.directionRtl)
+    }
+  }
+
+  @Test
   fun physicalRectangleAndAlignmentStayDirectionIndependent() {
     harness.runOnMain {
       harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
@@ -167,7 +208,6 @@ internal class TextPlacementInstrumentationTest {
               ),
             ),
             generation = 1L,
-            color = android.graphics.Color.BLACK,
           ),
         )
         val exportedLines = export.runs.groupBy { it.lineId }.values.toList()
@@ -365,7 +405,6 @@ internal class TextPlacementInstrumentationTest {
             ),
           ),
           generation = 1L,
-          color = android.graphics.Color.BLACK,
         )
         val exported = PdfExportTextResolver.resolve(snapshot)
         assertTrue(exported.runs.isNotEmpty())
@@ -447,7 +486,6 @@ internal class TextPlacementInstrumentationTest {
               ),
             ),
             generation = 1L,
-            color = android.graphics.Color.BLACK,
           ),
         )
         assertEquals(listOf("one", "two", "one"), exported.runs.map { it.text })
@@ -956,230 +994,6 @@ internal class TextPlacementInstrumentationTest {
       }
     } finally {
       source.delete()
-    }
-  }
-
-  @Test
-  fun replacementWaitingForViewportClearsPreviousDocumentAndEditor() = runBlocking {
-    val source = java.io.File.createTempFile("replacement-wait-", ".pdf").apply {
-      writeText("candidate")
-    }
-    var overlay: TextInteractionOverlay? = null
-    var originalGeneration = 0L
-    var replacement: Deferred<PdfPageInfo>? = null
-    val pageChanges = AtomicInteger()
-    val waiting = CompletableDeferred<Unit>()
-    try {
-      withContext(Dispatchers.Main) {
-        val activeOverlay = harness.createOverlay()
-        overlay = activeOverlay
-        harness.surface.onPageChange = { pageChanges.incrementAndGet() }
-        activeOverlay.armPlacement(1L)
-        assertTrue(dispatch(activeOverlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 1_100L))
-        assertTrue(dispatch(activeOverlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 1_120L))
-        assertEquals(InteractionMode.TEXTEDIT, activeOverlay.interactionMode())
-        originalGeneration = harness.coordinator.generation
-        harness.surface.layout(0, 0, 0, 0)
-      }
-
-      replacement = async(Dispatchers.Main) {
-        val pending = harness.coordinator.prepareOpen(
-          fallbackFont = null,
-          resolveFallbackFont = { error("No fallback font in this fixture") },
-          prepareSource = { destination -> withContext(Dispatchers.IO) { source.copyTo(destination, overwrite = true) } },
-          invalidatePrevious = {
-            checkNotNull(overlay).cancelForDocumentReplacement()
-            harness.surface.clearDocument()
-          },
-        )
-        try {
-          val presentation = harness.coordinator.awaitOpen(pending) {
-            waiting.complete(Unit)
-            val size = harness.surface.awaitUsableViewportSize()
-            harness.surface.prepareDocumentPresentation(pending.info,
-              OpenViewport(focus = null, zoom = null, fitToPage = true), size)
-          }
-          checkNotNull(overlay).finishForLifecycle()
-          harness.surface.beginOpenHandoff()
-          harness.coordinator.commitOpen(pending) {
-            harness.surface.publishOpenDocumentPresentation(presentation)
-            harness.surface.notifyPublishedOpenDocumentPresentation()
-          }
-          harness.surface.currentPageInfo()
-        } finally { harness.coordinator.finishOpen(pending) }
-      }
-      waiting.await()
-
-      withContext(Dispatchers.Main) {
-        assertEquals("", harness.coordinator.sourcePath)
-        assertTrue(harness.coordinator.generation > originalGeneration)
-        assertFalse(harness.coordinator.hasDocument)
-        assertEquals(InteractionMode.VIEW, checkNotNull(overlay).interactionMode())
-        assertNull(checkNotNull(overlay).editingAnnotationId())
-        assertEquals(InkState(false, false, false), harness.surface.lastReportedState)
-        assertEquals(0, pageChanges.get())
-      }
-
-      withContext(Dispatchers.Main) { harness.surface.layout(0, 0, 300, 300) }
-      val candidateInfo = checkNotNull(replacement).await()
-      assertEquals(0, candidateInfo.pageIndex)
-      assertTrue(harness.coordinator.sourcePath.isNotEmpty())
-      assertEquals(1, pageChanges.get())
-      withContext(Dispatchers.Main) {
-        assertEquals(InteractionMode.VIEW, checkNotNull(overlay).interactionMode())
-      }
-    } finally {
-      replacement?.cancelAndJoin()
-      source.delete()
-      withContext(Dispatchers.Main) {
-        overlay?.dispose()
-      }
-    }
-  }
-
-  @Test
-  fun presentationPreparationFailureLeavesViewEmptyAfterReplacementAdmission() = runBlocking {
-    val sourceA = java.io.File.createTempFile("open-a-", ".pdf").apply { writeText("open-a") }
-    val sourceB = java.io.File.createTempFile("open-b-", ".pdf").apply { writeText("open-b") }
-    try {
-      val openedA = openCandidate(sourceA)
-      val oldPath = harness.coordinator.sourcePath
-      val oldGeneration = harness.coordinator.generation
-      assertEquals(220.0, openedA.dimensions.width, 0.0)
-
-      val failed = runCatching {
-        openCandidate(sourceB, preparePresentation = { _, _ ->
-          throw PdfSessionException("presentation_failed", "Prepared viewport rejected")
-        })
-      }
-
-      assertTrue(failed.isFailure)
-      assertFalse(harness.coordinator.hasDocument)
-      assertEquals("", harness.coordinator.sourcePath)
-      assertTrue(harness.coordinator.generation > oldGeneration)
-      assertFalse(java.io.File(oldPath).exists())
-      assertTrue(harness.coordinator.workingFiles().isEmpty())
-      withContext(Dispatchers.Main) {
-        assertEquals(InkState(false, false, false), harness.surface.lastReportedState)
-      }
-      assertTrue(harness.openedResources.last().closed)
-      assertFalse(java.io.File(harness.openedResources.last().info.sourcePath).exists())
-      assertReaderCancelled(oldGeneration)
-    } finally {
-      sourceA.delete()
-      sourceB.delete()
-    }
-  }
-
-  @Test
-  fun rejectedHandoffCommitsEditorTextAndReconcilesStateOnce() = runBlocking {
-    val sourceA = java.io.File.createTempFile("open-a-", ".pdf").apply { writeText("open-a") }
-    val sourceB = java.io.File.createTempFile("open-b-", ".pdf").apply { writeText("open-b") }
-    val publicStates = mutableListOf<Pair<InkState, InteractionMode>>()
-    try {
-      openCandidate(sourceA)
-      val oldPath = harness.coordinator.sourcePath
-      val oldGeneration = harness.coordinator.generation
-      lateinit var overlay: TextInteractionOverlay
-      harness.runOnMain { overlay = harness.createOverlay() }
-      withContext(Dispatchers.Main) {
-        harness.surface.onStateChange = { state ->
-          if (!harness.surface.isOpenHandoffInProgress) {
-            publicStates += state to overlay.interactionMode()
-          }
-        }
-        overlay.onInteractionModeChanged = {
-          if (!harness.surface.isOpenHandoffInProgress) {
-            publicStates += harness.surface.lastReportedState to overlay.interactionMode()
-          }
-        }
-        overlay.armPlacement(oldGeneration)
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150.0f, 150.0f, 2_100L))
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150.0f, 150.0f, 2_120L))
-        editorView(overlay).setText("committed on abort")
-        assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
-        publicStates.clear()
-      }
-
-      val failed = runCatching {
-        openCandidate(sourceB, afterHandoff = {
-          harness.worker.reserveOpenAttemptId(oldGeneration)
-        })
-      }
-
-      assertTrue(failed.isFailure)
-      assertFalse(harness.coordinator.hasDocument)
-      assertEquals("", harness.coordinator.sourcePath)
-      assertTrue(harness.coordinator.generation > oldGeneration)
-      assertFalse(java.io.File(oldPath).exists())
-      assertNull(harness.coordinator.currentWorkingFile())
-      assertTrue(harness.coordinator.workingFiles().isEmpty())
-      withContext(Dispatchers.Main) {
-        assertEquals(InkState(false, false, false), harness.surface.lastReportedState)
-        assertEquals(InteractionMode.VIEW, overlay.interactionMode())
-        assertNull(overlay.editingAnnotationId())
-        assertNull(harness.surface.textPresentationSnapshot())
-        val finalState = publicStates.last()
-        assertFalse(finalState.first.canUndo)
-        assertFalse(finalState.first.isDirty)
-        assertEquals(InteractionMode.VIEW, finalState.second)
-      }
-      assertTrue(harness.openedResources.last().closed)
-      assertFalse(java.io.File(harness.openedResources.last().info.sourcePath).exists())
-      assertReaderCancelled(oldGeneration)
-    } finally {
-      sourceA.delete()
-      sourceB.delete()
-    }
-  }
-
-  @Test
-  fun cancellationAfterQueuedCommitStillPublishesMatchingDocument() = runBlocking {
-    val sourceA = java.io.File.createTempFile("open-a-", ".pdf").apply { writeText("open-a") }
-    val sourceB = java.io.File.createTempFile("open-b-", ".pdf").apply { writeText("open-b") }
-    val operationScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    var gate: CommitGate? = null
-    try {
-      openCandidate(sourceA)
-      val oldPath = harness.coordinator.sourcePath
-      val oldGeneration = harness.coordinator.generation
-      val commitGate = CommitGate()
-      gate = commitGate
-      harness.worker.beforeCommitPreparedOpen = commitGate::awaitRelease
-      val replacement = operationScope.async { openCandidate(sourceB) }
-      commitGate.awaitStarted()
-
-      withContext(Dispatchers.Main) {
-        assertFalse(harness.coordinator.hasDocument)
-        assertEquals("", harness.coordinator.sourcePath)
-        assertTrue(harness.coordinator.generation > oldGeneration)
-        assertEquals(InkState(false, false, false), harness.surface.lastReportedState)
-        assertFalse(harness.openedResources.last().closed)
-      }
-      replacement.cancel()
-      commitGate.release()
-      replacement.cancelAndJoin()
-
-      val newPath = harness.coordinator.sourcePath
-      val newGeneration = harness.coordinator.generation
-      assertTrue(newGeneration > oldGeneration)
-      assertTrue(newPath != oldPath)
-      assertFalse(java.io.File(oldPath).exists())
-      assertTrue(java.io.File(newPath).exists())
-      assertEquals(java.io.File(newPath), harness.coordinator.currentWorkingFile())
-      assertTrue(harness.coordinator.workingFiles().isEmpty())
-      withContext(Dispatchers.Main) {
-        assertEquals(160.0, harness.surface.currentPageInfo().dimensions.width, 0.0)
-      }
-      assertTrue(harness.openedResources[harness.openedResources.lastIndex - 1].closed)
-      assertFalse(harness.openedResources.last().closed)
-      assertReaderRenders(newGeneration)
-    } finally {
-      gate?.release()
-      harness.worker.beforeCommitPreparedOpen = null
-      operationScope.cancel()
-      sourceA.delete()
-      sourceB.delete()
     }
   }
 
@@ -2393,74 +2207,12 @@ internal class TextPlacementInstrumentationTest {
     assertEquals(before.bottom, after.bottom, 2.0)
   }
 
-  private suspend fun openCandidate(
-    source: java.io.File,
-    preparePresentation: ((PdfSessionInfo, ViewportSize) -> PreparedDocumentPresentation)? = null,
-    afterHandoff: () -> Unit = {},
-  ): PdfPageInfo = withContext(Dispatchers.Main.immediate) {
-    val pending = harness.coordinator.prepareOpen(
-      fallbackFont = null,
-      resolveFallbackFont = { error("No fallback font in this fixture") },
-      prepareSource = { destination -> withContext(Dispatchers.IO) { source.copyTo(destination, overwrite = true) } },
-      invalidatePrevious = {
-        harness.overlay?.cancelForDocumentReplacement()
-        harness.surface.clearDocument()
-        harness.surface.onStateChange?.invoke(harness.surface.lastReportedState)
-      },
-    )
-    try {
-      val presentation = harness.coordinator.awaitOpen(pending) {
-        val size = harness.surface.awaitUsableViewportSize()
-        preparePresentation?.invoke(pending.info, size)
-          ?: harness.surface.prepareDocumentPresentation(pending.info,
-            OpenViewport(focus = null, zoom = null, fitToPage = true), size)
-      }
-      harness.surface.beginOpenHandoff()
-      harness.overlay?.finishForLifecycle()
-      afterHandoff()
-      harness.coordinator.commitOpen(pending) {
-        harness.surface.publishOpenDocumentPresentation(presentation)
-        harness.surface.notifyPublishedOpenDocumentPresentation()
-      }
-      harness.surface.currentPageInfo()
-    } catch (error: Throwable) {
-      if (!pending.published) harness.surface.abortOpenHandoff()
-      throw error
-    } finally { harness.coordinator.finishOpen(pending) }
-  }
-
-  private fun assertReaderRenders(generation: Long) {
-    val result = renderReaderPage(generation)
-    assertTrue("PDF reader returned a render failure: ${result.exceptionOrNull()}", result.isSuccess)
-    val tile = result.getOrThrow()
-    try {
-      assertEquals(32, tile.bitmap.width)
-      assertEquals(32, tile.bitmap.height)
-      assertFalse(tile.bitmap.isRecycled)
-    } finally {
-      tile.bitmap.recycle()
+  private suspend fun openCandidate(source: java.io.File): PdfSessionInfo =
+    withContext(Dispatchers.Main.immediate) {
+      val info = harness.core.open(source.absolutePath)
+      harness.surface.installDocumentPresentation(zoom = null, focus = null, fitToPage = true)
+      info
     }
-  }
-
-  private fun assertReaderCancelled(generation: Long) {
-    val result = renderReaderPage(generation)
-    result.onSuccess { it.bitmap.recycle() }
-    assertTrue("stale PDF reader unexpectedly rendered a page", result.isFailure)
-  }
-
-  private fun renderReaderPage(generation: Long): Result<PdfTile> {
-    val completed = CountDownLatch(1)
-    val result = java.util.concurrent.atomic.AtomicReference<Result<PdfTile>>()
-    val request = PdfTileRequest(PdfTileKey(generation, 0L, 0, 0, 0, 0),
-      leftPx = 0, topPx = 0, widthPx = 32, heightPx = 32, scale = 1.0)
-    // Reader lifetime is independent of the viewer's changing tile-demand epoch.
-    harness.worker.renderPageBase(generation, request) {
-      result.set(it)
-      completed.countDown()
-    }
-    assertTrue("PDF reader did not answer the render request", completed.await(5L, TimeUnit.SECONDS))
-    return result.get()
-  }
 
   private fun choosePlacementDirection(overlay: TextInteractionOverlay, rtl: Boolean) {
     overlay.setTextDirection(if (rtl) TextDirection.RTL else TextDirection.LTR)

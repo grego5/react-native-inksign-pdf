@@ -1,13 +1,16 @@
 import { useRef, useState } from 'react';
 import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   InkSignView,
+  openDoc,
+  type InkSignDocument,
   isOperationCancelled,
-  type AddPagesOptions,
+  type DocumentAddPagesOptions,
   type PageChangeEvent,
   type ViewerState,
   type ViewportOptions,
@@ -19,6 +22,7 @@ import { DebugRecorder } from './DebugRecorder';
 export default function App() {
   const debugRecorderEnabled =
     Platform.OS === 'android' && process.env.EXPO_PUBLIC_ENABLE_DEBUG_RECORDER === 'true';
+  const [document, setDocument] = useState<InkSignDocument>();
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
   const modeRef = useRef<ViewerState['mode']>('view');
   const zoomRef = useRef(1);
@@ -42,15 +46,22 @@ export default function App() {
     setState(nextState);
   }
 
-  async function addPages(options?: AddPagesOptions) {
+  async function addPages(options?: Partial<DocumentAddPagesOptions>) {
     try {
-      const inkSignView = inkSignViewRef.current;
-      if (inkSignView === null) {
-        throw new Error('The InkSignView is not available');
+      const picked = options?.sources ?? await (async () => {
+        const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', document ? 'image/*' : 'image/jpeg'], multiple: true });
+        return result.canceled ? [] : result.assets.map(asset => asset.uri);
+      })();
+      if (picked.length === 0) return;
+      if (document) {
+        await document.addPages({ ...options, sources: picked });
+      } else {
+        const opened = await openDoc(picked[0]!, { androidFallbackFont });
+        try {
+          if (picked.length > 1) await opened.addPages({ ...options, sources: picked.slice(1) });
+          setDocument(opened);
+        } catch (error) { await opened.close(); throw error; }
       }
-
-      const result = await inkSignView.addPages(options);
-      if (result.pageInfo !== undefined) setPageInfo(result.pageInfo);
     } catch (error) {
       Alert.alert('Add pages failed', String(error));
     }
@@ -103,7 +114,7 @@ export default function App() {
       const session = view.setMode('view');
       const page = await session.getPage();
       const id = page.resolveInputUnderline({ fieldName, direction: fieldRtl ? 'rtl' : 'auto' });
-      await page.focusInputTarget(id, { zoom: 3, verticalAnchor: 'bottom', edgeOffset: 8 });
+      await session.focusInputTarget(page, id, { zoom: 3, verticalAnchor: 'bottom', edgeOffset: 8 });
       view.setMode('ink');
     } catch (error) {
       if (!isOperationCancelled(error)) Alert.alert('Field focus failed', String(error));
@@ -145,7 +156,7 @@ export default function App() {
     }
   }
 
-  function clearCurrentContent() {
+  async function clearCurrentContent() {
     const view = inkSignViewRef.current;
     if (!view) return;
     if (state.mode === 'textEdit') {
@@ -153,10 +164,18 @@ export default function App() {
       return;
     }
     try {
-      if (state.mode === 'ink') view.clearInk();
+      if (state.mode === 'ink' && document && state.pageIndex !== null) {
+        (await document.getPage(state.pageIndex)).clearInk();
+      }
     } catch (error) {
       Alert.alert('Clear failed', String(error));
     }
+  }
+
+  async function runHistory(action: 'undo' | 'redo') {
+    if (!document || state.pageIndex === null) return;
+    try { (await document.getPage(state.pageIndex))[action](); }
+    catch (error) { Alert.alert('History action failed', String(error)); }
   }
 
   function handlePageChange(next: PageChangeEvent) {
@@ -181,7 +200,7 @@ export default function App() {
     const inkSignView = inkSignViewRef.current;
     if (inkSignView === null || pageInfo === null) return;
     try {
-      setPageInfo(await inkSignView.removePage());
+      if (document && state.pageIndex !== null) await document.removePage(state.pageIndex);
     } catch (error) {
       Alert.alert('Remove page failed', String(error));
     }
@@ -191,7 +210,7 @@ export default function App() {
     const inkSignView = inkSignViewRef.current;
     if (inkSignView === null || state.pageIndex === null) return;
     try {
-      setPageInfo(await inkSignView.movePage(state.pageIndex + delta));
+      if (document) await document.movePage(state.pageIndex, state.pageIndex + delta);
     } catch (error) {
       Alert.alert('Move page failed', String(error));
     }
@@ -199,7 +218,7 @@ export default function App() {
 
   async function finalizePdf() {
     try {
-      const signedPath = await inkSignViewRef.current?.finalize();
+      const signedPath = await document?.finalize();
       if (signedPath === undefined) {
         throw new Error('The InkSignView is not available');
       }
@@ -219,20 +238,21 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.surfaceFrame}>
-          <InkSignView
+          {document && <InkSignView
+            document={document}
             ref={inkSignViewRef}
             style={styles.surface}
-            androidFallbackFont={Platform.OS === 'android' ? androidFallbackFont : undefined}
             strokeColor="#111111"
             strokeMinWidth={2.0}
             strokeMaxWidth={4.0}
             strokeSmoothing={0.4}
             defaultTextFontSize={16}
+            textDirection="auto"
             onStateChange={handleStateChange}
             onPageChange={handlePageChange}
             onZoomChange={zoom => { zoomRef.current = zoom; }}
             onTextSelectionChange={selection => setTextSelected(selection !== null)}
-          />
+          />}
           {state.mode === 'pageCoords' && (
             <View pointerEvents="none" style={styles.focusBanner}>
               <Text accessibilityRole="alert" style={styles.focusBannerText}>
@@ -308,12 +328,12 @@ export default function App() {
             <Action
               label="Undo"
               disabled={!pageInfo?.canUndo}
-              onPress={() => inkSignViewRef.current?.undo()}
+              onPress={() => { void runHistory('undo'); }}
             />
             <Action
               label="Redo"
               disabled={!pageInfo?.canRedo}
-              onPress={() => inkSignViewRef.current?.redo()}
+              onPress={() => { void runHistory('redo'); }}
             />
             {['ink', 'textEdit'].includes(state.mode) && (
               <Action

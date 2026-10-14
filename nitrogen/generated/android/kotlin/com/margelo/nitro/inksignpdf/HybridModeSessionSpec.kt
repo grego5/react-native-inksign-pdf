@@ -32,7 +32,11 @@ abstract class HybridModeSessionSpec: HybridObject() {
   // Methods
   @DoNotStrip
   @Keep
-  abstract fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridAnalyzedPageSpec>
+  abstract fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridDocumentPageSpec>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun focusInputTarget(page: HybridDocumentPageSpec, id: Double, options: InputTargetFocusOptions?): Promise<Unit>
   
   @DoNotStrip
   @Keep

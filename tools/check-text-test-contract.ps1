@@ -123,7 +123,7 @@ Assert-SourceContains $androidOverlayPath 'focusTextForEditing' 'viewport-owned 
 Assert-SourceContains $androidOverlayPath 'normalizeTextFontSize' 'Android shared default-font policy'
 Assert-SourceContains $androidHybridPath 'resolvePreparedText' 'prepared page resolution'
 Assert-SourceContains $androidHybridPath 'setPreparedTextValue' 'prepared page value mutation'
-Assert-SourceContains $androidHybridPath 'focusPreparedText' 'prepared page focus'
+Assert-SourceContains $androidHybridPath 'enqueueInputTargetFocus' 'prepared page focus'
 Assert-SourceContains $typescriptContractPath 'getPage\(pageIndex\?: number\): Promise<AnalyzedPage>' 'Nitro prepared page acquisition'
 Assert-SourceContains $typescriptContractPath 'onTextSelectionChange\?: \(selection: TextSelection \| null\)' 'Nitro selection callback'
 Assert-SourceContains $typescriptContractPath 'setMode\(mode: InputMode, options\?: TextModeOptions\): ModeSession' 'Nitro setMode contract'

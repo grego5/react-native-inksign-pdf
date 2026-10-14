@@ -254,8 +254,16 @@ internal fun localImeOverlapPx(
 internal class TextInteractionOverlay(
   context: Context,
   private val surface: SurfaceView,
-  private val core: DocumentCore,
+  core: DocumentCore? = null,
 ) : FrameLayout(context) {
+  private var attachedCore = core
+  private val core: DocumentCore get() = checkNotNull(attachedCore)
+  fun bindCore(next: DocumentCore?) {
+    cancelForDocumentReplacement()
+    attachedCore = next
+    configuredDirection?.let(::setTextDirection)
+  }
+
   private val fonts get() = core.fonts
 
   private fun activeContext(generation: Long, pageIndex: Int): DocumentPageContext {
@@ -352,8 +360,8 @@ internal class TextInteractionOverlay(
   internal var onTextSelectionChange: ((TextSelection?) -> Unit)? = null
   private var emittedSelection: TextSelection? = null
   private var editor: InputTargetView? = null
-  private val defaultFontSize get() = core.text.defaultFontSize
-  private val defaultTextColor get() = core.text.defaultTextColor
+  private var defaultFontSize = defaultTextFontSize
+  private var defaultTextColor = Color.BLACK
   private var editorBackgroundColor: Int? = null
   private var selectedBackgroundColor: Int? = null
   private var displayPresentation: TextPresentationSnapshot? = null
@@ -376,11 +384,12 @@ internal class TextInteractionOverlay(
   private var settlingEditor = false
   private var reportedMode: InteractionMode? = null
   private var requestedTextDirectionRtl: Boolean? = null
+  private var configuredDirection: TextDirection? = null
 
   var onInteractionModeChanged: (() -> Unit)? = null
 
   fun setDefaultTextColor(value: String?) {
-    core.text.defaultTextColor = parseTextColor(value, Color.BLACK)
+    defaultTextColor = parseTextColor(value, Color.BLACK)
   }
 
   fun setOutlineColor(value: String?) {
@@ -447,7 +456,7 @@ internal class TextInteractionOverlay(
   }
 
   fun setDefaultFontSize(value: Double?) {
-    core.text.defaultFontSize = normalizeTextFontSize(value)
+    defaultFontSize = normalizeTextFontSize(value)
   }
 
   fun increaseTextSize(): Double {
@@ -529,6 +538,7 @@ internal class TextInteractionOverlay(
   }
 
   internal fun setTextDirection(direction: TextDirection) {
+    configuredDirection = direction
     val isRtl = when (direction) {
       TextDirection.LTR -> false
       TextDirection.RTL -> true
@@ -577,6 +587,7 @@ internal class TextInteractionOverlay(
     )
     state.directionSwitchFrame = previousBounds
     reconcileEditorPresentation(entry, presentation)
+    publishEditorText()
   }
 
   private fun appLayoutIsRtl(): Boolean =
@@ -732,75 +743,6 @@ internal class TextInteractionOverlay(
     else -> null
   }
 
-  internal fun draftText(id: Long): String? =
-    (interactionState as? InteractionState.Editing)?.takeIf { it.id == id }?.let {
-      editor?.text?.toString() ?: ""
-    }
-
-  internal fun setPreparedDraftText(id: Long, value: String, options: TextAnnotationOptions? = null): Boolean {
-    val state = interactionState as? InteractionState.Editing ?: return false
-    if (state.id != id) return false
-    val entry = checkNotNull(editor)
-    val font = fonts.resolve(options?.font, state.font)
-    val size = options?.fontSize ?: state.fontSize
-    val color = parseTextColor(options?.color, state.textColor)
-    val direction = options?.direction?.let(::resolveDirection) ?: state.directionRtl
-    val lines = options?.maxLines?.toInt() ?: state.maxLines
-    val alignment = options?.alignment ?: state.alignment
-    val typeface = font?.typeface ?: TextLayoutSpec.typeface
-    val fits = state.flowBounds?.let { flow ->
-      TextLayoutSpec.fitsFlow(value, size, color, flow, lines, direction, alignment, typeface)
-    } ?: TextLayoutSpec.fitsMaxLines(value, size, color, lines, direction, alignment, typeface)
-    if (!fits) throw PdfSessionException("text_does_not_fit", "The supplied value does not fit in the text target")
-    state.font = font; state.fontSize = size; state.textColor = color
-    state.directionRtl = direction; state.maxLines = lines; state.alignment = alignment
-    state.verticalAnchor = options?.verticalAnchor ?: state.verticalAnchor
-    configureEditorPreservingSelection(entry, displayFontSize(size), direction, color, alignment)
-    entry.setText(value)
-    entry.setSelection(value.length)
-    invalidate()
-    return true
-  }
-
-  internal fun cancelPreparedDraft(id: Long): Boolean {
-    when (val state = interactionState) {
-      is InteractionState.Editing -> if (state.id == id) cancelEditing() else return false
-      is InteractionState.Selected -> if (state.annotation.id == id) clearSelection() else return false
-      is InteractionState.Dragging -> if (state.original.id == id) clearSelection() else return false
-      else -> return false
-    }
-    return true
-  }
-
-  internal fun preparedDraftFontSize(id: Long): Double? =
-    (interactionState as? InteractionState.Editing)?.takeIf { it.id == id }?.fontSize
-
-  internal fun preparedDefaultFontSize(): Double = defaultFontSize
-
-  internal fun setPreparedDraftOptions(id: Long, options: TextAnnotationOptions): Boolean {
-    val state = interactionState as? InteractionState.Editing ?: return false
-    if (state.id != id) return false
-    val entry = editor ?: return false
-    val directionRtl = when (options.direction) {
-      TextDirection.LTR -> false
-      TextDirection.RTL -> true
-      TextDirection.AUTO -> appLayoutIsRtl()
-      null -> state.directionRtl
-    }
-    val font = fonts.resolve(options.font, state.font)
-    state.font = font
-    state.fontSize = options.fontSize ?: state.fontSize
-    state.textColor = parseTextColor(options.color, state.textColor)
-    state.maxLines = options.maxLines?.toInt() ?: state.maxLines
-    state.alignment = options.alignment ?: state.alignment
-    state.verticalAnchor = options.verticalAnchor ?: state.verticalAnchor
-    state.directionRtl = directionRtl
-    configureEditorPreservingSelection(entry, displayFontSize(state.fontSize), directionRtl,
-      state.textColor, state.alignment)
-    invalidate()
-    return true
-  }
-
   internal fun interactionMode(): InteractionMode = when {
     interactionState is InteractionState.Placing -> InteractionMode.TEXTADD
     interactionState is InteractionState.Editing -> InteractionMode.TEXTEDIT
@@ -856,7 +798,10 @@ internal class TextInteractionOverlay(
         }
       }
       is InteractionState.Editing -> {
-        if (state.generation != presentation.generation || state.pageIndex != presentation.pageIndex) {
+        val current = presentation.annotations.firstOrNull { it.id == state.id }
+        if (state.generation != presentation.generation || state.pageIndex != presentation.pageIndex ||
+          (core.activeTextEdit?.id != state.id && current != state.original)
+        ) {
           cancelEditing()
         }
       }
@@ -1198,6 +1143,9 @@ internal class TextInteractionOverlay(
     caretFollowPaused = false
     editor?.let { removeView(it) }
     val state = checkNotNull(interactionState as? InteractionState.Editing)
+    val pageId = core.coordinator.page(state.pageIndex).id
+    core.beginTextEdit(DocumentPageContext(state.generation, pageId), state.id)
+    core.text.captureEditOptions(DocumentPageContext(state.generation, pageId), state.id, editingOptions(state))
     val entry = InputTargetView(context).apply {
       keepPrefixAtTop = state.flowBounds != null
       preserveComposingRangeForFilter = state.flowBounds != null || state.maxLines > 0
@@ -1277,6 +1225,7 @@ internal class TextInteractionOverlay(
           currentState?.directionSwitchFrame = null
           requestLayout()
           lastPresentation?.let { reconcileEditorPresentation(this@apply, it) }
+          publishEditorText()
           invalidate()
         }
       })
@@ -1447,21 +1396,10 @@ internal class TextInteractionOverlay(
       return state.original
     }
     val text = materializedEditorText(entry)
-    val original = state.original
     val finished = text.takeUnless { it.isBlank() }?.let { annotationAt(state, it, entry) }
     try {
-      when (val mutation = settleTextEditing(original, finished)) {
-        TextEditingMutation.NoOp -> Unit
-        is TextEditingMutation.Append -> {
-          commitText(state.generation, state.pageIndex, null, mutation.annotation)
-        }
-        is TextEditingMutation.Replace -> {
-          commitText(state.generation, state.pageIndex, mutation.before, mutation.after)
-        }
-        is TextEditingMutation.Remove -> {
-          commitText(state.generation, state.pageIndex, mutation.annotation, null)
-        }
-      }
+      core.activeTextEdit?.takeIf { it.id == state.id }?.let { core.updateTextEdit(it, finished, editingOptions(state)) }
+      core.endTextEdit(state.id)
     } finally {
       closeEditor()
       transitionTo(InteractionState.Idle)
@@ -1469,6 +1407,27 @@ internal class TextInteractionOverlay(
       emitInteractionModeChanged()
     }
     return finished
+  }
+
+  private fun publishEditorText() {
+    val state = interactionState as? InteractionState.Editing ?: return
+    val entry = editor ?: return
+    val edit = core.activeTextEdit?.takeIf { it.id == state.id } ?: return
+    val text = materializedEditorText(entry)
+    core.updateTextEdit(edit, text.takeUnless { it.isBlank() }?.let { annotationAt(state, it, entry) }, editingOptions(state))
+  }
+
+  private fun editingOptions(state: InteractionState.Editing) = TextAnnotationOptions(
+    untracked = null, font = null, fontSize = state.fontSize,
+    color = String.format(java.util.Locale.ROOT, "#%08X", state.textColor),
+    direction = if (state.directionRtl) TextDirection.RTL else TextDirection.LTR,
+    maxLines = state.maxLines.toDouble(), alignment = state.alignment, verticalAnchor = state.verticalAnchor,
+  )
+
+  internal fun endEditorTransaction(edit: DocumentTextEdit) {
+    val state = interactionState as? InteractionState.Editing ?: return
+    if (state.id != edit.id) return
+    cancelEditing()
   }
 
   private fun cancelEditing() {

@@ -4,9 +4,9 @@
 
 - UI-thread state uses displayed top-left page coordinates for focus. Transforms
   map stored content into display; ink input maps view coordinates to raw page content.
-- Mode changes commit drafts or cancel untapped placement. Text-mode viewport
+- Mode changes end core text transactions or cancel untapped placement. Text-mode viewport
   options apply after a valid tap. Session lifetime follows the shared
-  [operation contract](../architecture.md#document-operations).
+  [operation contract](../architecture.md#commands-and-lifetime).
 - `session.setViewport()` preserves the viewport; `{}` fits; text-only options preserve it.
   Zoom is absolute; paired x/y set page focus. Placement zoom alone focuses the
   editor. Caret/keyboard handling may pan without zooming; `doubleTap.zoom`
@@ -23,18 +23,18 @@
   coordinates (CropBox intersected with MediaBox); guides are clipped to that area.
   `PageCoordinates` applies displayed rotation after this conversion.
 - `PageCoordinates` maps annotation layout → canonical → display for editor,
-  rendering, selection, and drag. Shared [geometry](../architecture.md#document-model)
+  rendering, selection, and drag. Shared [geometry](../architecture.md#geometry-and-text-targets)
   and [export](export.md) contracts apply.
 - `TextInteractionOverlay` owns placement, hit testing, editing, dragging, and
   keyboard avoidance. Placement/editor-outside drags pan; two fingers pan/pinch
-  even over the editor. Viewport takeover retains drafts/armed placement and owns
+  even over the editor. Viewport takeover retains text transactions/armed placement and owns
   the stream until release; manual navigation pauses caret following until text changes.
   Lifecycle cancellation consumes the retired stream through release.
   Text gestures bypass ink/page navigation.
 - Final annotation construction uses the core text service with explicit
-  layout/flow bounds and optional editor-measured intrinsic size. Drafts remain
-  local; accepted edits publish through the core change subscription.
-- Shared [bounds/line limits](../architecture.md#system-boundaries) apply.
+  layout/flow bounds and optional editor-measured intrinsic size. The core owns
+  admitted text; editor state remains local. Publications refresh presentation.
+- Shared [bounds/line limits](../architecture.md#layout-and-editing) apply.
   Alignment and `verticalAnchor` position text inside fixed edges.
 - `setMode('text')` arms placement and reports `textAdd`. A valid tap opens
   the editor on finger-up; invalid taps keep it armed. Outside taps finish editing;
@@ -51,16 +51,17 @@
   Existing annotation editing/dragging does not snap.
 - Auto-sized editors reopen at the stored top edge. Keyboard handling changes
   the viewport rather than the annotation's position.
-- `setTextDirection()` updates future placement and the editor, preserving fixed
+- `textDirection` updates future placement and the editor, preserving fixed
   flow bounds; reflow/caret following use the updated direction. Explicit LTR/RTL
-  wins; `auto` uses app direction; omission uses the last setting or app direction.
+  options win; `auto` uses app direction; omitted options use the prop default.
+  An omitted prop follows app direction.
   Commit saves the resolved direction.
 
 ## Prepared page text
 
 - PDFium analysis retains complete label glyph ranges and source rule identity.
   Lookup, values, detection/adoption, and focus follow the shared
-  [document model](../architecture.md#document-model).
+  [document model](../architecture.md#geometry-and-text-targets).
 - Project source rules into current display before selection; finalize formatting
   before measuring visible bounds. [Cache/target lifetime](view-lifecycle.md#ownership).
 
@@ -90,5 +91,5 @@
   input and consume the retired stream through release.
 
 - Coordinate picking uses root viewport pan/pinch routing and consumes one valid
-  in-page tap. Shared [picker cancellation](../architecture.md#document-operations)
-  applies; Android detach also cancels the request.
+  in-page tap. Shared [picker cancellation](../architecture.md#commands-and-lifetime)
+  applies.

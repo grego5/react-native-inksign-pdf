@@ -14,6 +14,10 @@ public protocol HybridDocumentPageSpec_protocol: HybridObject {
 
   // Methods
   func getState() throws -> PageInfo
+  func undo() throws -> Void
+  func redo() throws -> Void
+  func clear() throws -> Void
+  func clearInk() throws -> Void
   func resolveInputUnderline(options: ResolveInputUnderlineOptions) throws -> Double
   func createInputArea(options: CreateInputAreaOptions) throws -> Double
   func getTextValue(id: Double) throws -> String

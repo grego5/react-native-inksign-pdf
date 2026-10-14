@@ -58,10 +58,8 @@ extension InkSignView {
       if hasDrawingTransaction { queuedPen = value } else { installPen(value) }
     case .defaultTextFontSize(let value):
       textInteractionOverlay.setDefaultFontSize(value)
-      documentCore.defaultTextFontSize = textInteractionOverlay.preparedDefaultFontSize
     case .defaultTextColor(let value):
       textInteractionOverlay.setDefaultTextColor(value)
-      documentCore.defaultTextColor = normalizeTextColor(value)
     case .outlineColor(let value):
       textInteractionOverlay.setOutlineColor(value)
     case .selectedOutlineColor(let value):

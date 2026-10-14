@@ -110,6 +110,30 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline void undo() override {
+      auto __result = _swiftPart.undo();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void redo() override {
+      auto __result = _swiftPart.redo();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void clear() override {
+      auto __result = _swiftPart.clear();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
+    inline void clearInk() override {
+      auto __result = _swiftPart.clearInk();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline double resolveInputUnderline(const ResolveInputUnderlineOptions& options) override {
       auto __result = _swiftPart.resolveInputUnderline(std::forward<decltype(options)>(options));
       if (__result.hasError()) [[unlikely]] {

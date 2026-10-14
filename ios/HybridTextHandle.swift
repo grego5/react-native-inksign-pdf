@@ -22,35 +22,15 @@ final class HybridTextHandle: HybridTextHandleSpec, InkSignPdfTextPageContext {
     super.init()
   }
 
-  func getValue() throws -> String {
-    try withCore {
-      let (_, target) = try core.target(context, id: textID)
-      if let draft = owner?.textInteractionOverlay.preparedDraftText(id: target.id, pageID: pageID) {
-        return draft
-      }
-      return try core.textValue(context, id: textID)
-    }
-  }
-
+  func getValue() throws -> String { try withCore { try core.textValue(context, id: textID) } }
   func setValue(text: String, options: TextAnnotationOptions?) throws {
-    try withCore {
-      if let owner { try owner.setPreparedTextValue(self, id: textID, text: text, options: options) }
-      else { try core.setTextValue(context, id: textID, text: text, options: options) }
-    }
+    try withCore { try core.setTextValue(context, id: textID, text: text, options: options) }
   }
-
   func setOptions(options: TextAnnotationOptions) throws {
-    try withCore {
-      if let owner { try owner.setPreparedTextOptions(self, id: textID, options: options) }
-      else { try core.setTextOptions(context, id: textID, options: options) }
-    }
+    try withCore { try core.setTextOptions(context, id: textID, options: options) }
   }
-
   func adjustSize(delta: Double) throws -> Double {
-    try withCore {
-      if let owner { return try owner.adjustPreparedTextSize(self, id: textID, delta: delta) }
-      return try core.adjustTextSize(context, id: textID, delta: delta)
-    }
+    try withCore { try core.adjustTextSize(context, id: textID, delta: delta) }
   }
 
   private func withCore<Value>(_ action: () throws -> Value) throws -> Value {

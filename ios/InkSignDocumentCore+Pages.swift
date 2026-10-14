@@ -19,7 +19,8 @@ extension InkSignDocumentCore {
     submit {
       try Self.validateTag(tag)
       guard !sources.isEmpty else { return .resolved(withResult: 0) }
-      let pageSize = self.coordinator.document?.pages.first?.geometry.displaySize ?? CGSize(width: 595.28, height: 841.89)
+      guard let document = self.coordinator.document else { throw TextError.documentNotOpen }
+      let pageSize = document.pages[0].geometry.displaySize
       let geometry = imageGeometry ?? PageGeometry(mediaBox: CGRect(origin: .zero, size: pageSize), rotation: 0)
       guard let operation = self.coordinator.admit(.structural) else {
         return .rejected(withError: MutablePageError.operationInProgress)
@@ -54,9 +55,11 @@ extension InkSignDocumentCore {
               coordinator.pdfQueue.async { coordinator.releaseStagedInputs(inputs) }
               throw MutablePageError.operationCancelled
             }
-            let state = coordinator.document
+            self.endTextEdit()
+            self.changed(.structuralWriteStarted)
+            guard let state = coordinator.document else { throw TextError.documentNotOpen }
             let input = InkSignPdfDocumentCoordinator.StructuralInput(operation: operation,
-              document: state, pages: state?.pages ?? [], targetPageID: state?.pages.first?.id ?? UUID(),
+              document: state, pages: state.pages, targetPageID: state.pages[0].id,
               targetPageIndex: 0, imageGeometry: geometry, imageTargetDpi: targetDpi,
               imageJpegQuality: jpegQuality, recordHistory: self.recordHistory, tag: tag)
             self.commitStructureNow(input, staged: inputs, command: .append).then { commit in
@@ -109,6 +112,8 @@ extension InkSignDocumentCore {
       guard let operation = self.coordinator.admit(.structural) else {
         return .rejected(withError: MutablePageError.operationInProgress)
       }
+      self.endTextEdit()
+      self.changed(.structuralWriteStarted)
       let input = InkSignPdfDocumentCoordinator.StructuralInput(operation: operation, document: state,
         pages: state.pages, targetPageID: state.pages[targetIndex].id, targetPageIndex: targetIndex,
         imageGeometry: state.pages[targetIndex].geometry, imageTargetDpi: nil, imageJpegQuality: nil,
@@ -145,8 +150,11 @@ extension InkSignDocumentCore {
       guard let operation = self.coordinator.admit(.structural) else {
         return .rejected(withError: MutablePageError.operationInProgress)
       }
+      self.endTextEdit()
+      self.changed(.structuralWriteStarted)
       guard self.coordinator.rotatePage(id: state.pages[targetIndex].id, degrees: degrees, operation: operation) != nil else {
         self.coordinator.settle(operation)
+        self.changed(.structure)
         return .rejected(withError: MutablePageError.operationCancelled)
       }
       self.coordinator.settle(operation)

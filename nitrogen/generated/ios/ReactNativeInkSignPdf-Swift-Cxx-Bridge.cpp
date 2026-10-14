@@ -8,7 +8,6 @@
 #include "ReactNativeInkSignPdf-Swift-Cxx-Bridge.hpp"
 
 // Include C++ implementation defined types
-#include "HybridAnalyzedPageSpecSwift.hpp"
 #include "HybridDocumentPageSpecSwift.hpp"
 #include "HybridInkSignDocumentFactorySpecSwift.hpp"
 #include "HybridInkSignDocumentSpecSwift.hpp"
@@ -116,22 +115,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return swiftPart.toUnsafe();
   }
   
-  // pragma MARK: std::shared_ptr<HybridAnalyzedPageSpec>
-  std::shared_ptr<HybridAnalyzedPageSpec> create_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
-    ReactNativeInkSignPdf::HybridAnalyzedPageSpec_cxx swiftPart = ReactNativeInkSignPdf::HybridAnalyzedPageSpec_cxx::fromUnsafe(swiftUnsafePointer);
-    return std::make_shared<margelo::nitro::inksignpdf::HybridAnalyzedPageSpecSwift>(swiftPart);
-  }
-  void* NON_NULL get_std__shared_ptr_HybridAnalyzedPageSpec_(std__shared_ptr_HybridAnalyzedPageSpec_ cppType) {
-    std::shared_ptr<margelo::nitro::inksignpdf::HybridAnalyzedPageSpecSwift> swiftWrapper = std::dynamic_pointer_cast<margelo::nitro::inksignpdf::HybridAnalyzedPageSpecSwift>(cppType);
-    #ifdef NITRO_DEBUG
-    if (swiftWrapper == nullptr) [[unlikely]] {
-      throw std::runtime_error("Class \"HybridAnalyzedPageSpec\" is not implemented in Swift!");
-    }
-    #endif
-    ReactNativeInkSignPdf::HybridAnalyzedPageSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
-    return swiftPart.toUnsafe();
-  }
-  
   // pragma MARK: std::shared_ptr<HybridTextHandleSpec>
   std::shared_ptr<HybridTextHandleSpec> create_std__shared_ptr_HybridTextHandleSpec_(void* NON_NULL swiftUnsafePointer) noexcept {
     ReactNativeInkSignPdf::HybridTextHandleSpec_cxx swiftPart = ReactNativeInkSignPdf::HybridTextHandleSpec_cxx::fromUnsafe(swiftUnsafePointer);
@@ -146,14 +129,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     #endif
     ReactNativeInkSignPdf::HybridTextHandleSpec_cxx& swiftPart = swiftWrapper->getSwiftPart();
     return swiftPart.toUnsafe();
-  }
-  
-  // pragma MARK: std::function<void(const std::shared_ptr<HybridAnalyzedPageSpec>& /* result */)>
-  Func_void_std__shared_ptr_HybridAnalyzedPageSpec_ create_Func_void_std__shared_ptr_HybridAnalyzedPageSpec_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_std__shared_ptr_HybridAnalyzedPageSpec_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::shared_ptr<HybridAnalyzedPageSpec>& result) mutable -> void {
-      swiftClosure.call(result);
-    };
   }
   
   // pragma MARK: std::function<void(const PageCoords& /* result */)>
@@ -209,22 +184,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     auto swiftClosure = ReactNativeInkSignPdf::Func_void_std__optional_std__variant_nitro__NullType__TextSelection__::fromUnsafe(swiftClosureWrapper);
     return [swiftClosure = std::move(swiftClosure)](const std::optional<std::variant<nitro::NullType, TextSelection>>& selection) mutable -> void {
       swiftClosure.call(selection);
-    };
-  }
-  
-  // pragma MARK: std::function<void(const PageInfo& /* result */)>
-  Func_void_PageInfo create_Func_void_PageInfo(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_PageInfo::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const PageInfo& result) mutable -> void {
-      swiftClosure.call(result);
-    };
-  }
-  
-  // pragma MARK: std::function<void(const AddPagesResult& /* result */)>
-  Func_void_AddPagesResult create_Func_void_AddPagesResult(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_AddPagesResult::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const AddPagesResult& result) mutable -> void {
-      swiftClosure.call(result);
     };
   }
   

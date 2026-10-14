@@ -104,7 +104,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
     jintArray explicitFontSelectionsValue,
     jboolean maySubsetFontsValue,
     jboolean forceSubsetSaveFailureForTestingValue,
-    jint inkColor) {
+    jintArray pathColorsValue) {
   std::string sourcePath;
   std::string destinationPath;
   if (!readPath(env, sourcePathValue, sourcePath) ||
@@ -122,6 +122,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
   std::vector<jdouble> pageDimensions;
   std::vector<jint> pageRotations;
   std::vector<jint> pathPageIndices;
+  std::vector<jint> pathColors;
   std::vector<jint> pathCommandOffsets;
   std::vector<jint> pathCommandTypes;
   std::vector<jfloat> pathCoordinates;
@@ -183,6 +184,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
       !copyArray(env, pageDimensionsValue, pageDimensions) ||
       !copyArray(env, pageRotationsValue, pageRotations) ||
       !copyArray(env, pathPageIndicesValue, pathPageIndices) ||
+      !copyArray(env, pathColorsValue, pathColors) ||
       !copyArray(env, pathCommandOffsetsValue, pathCommandOffsets) ||
       !copyArray(env, pathCommandTypesValue, pathCommandTypes) ||
       !copyArray(env, pathCoordinatesValue, pathCoordinates) ||
@@ -248,7 +250,7 @@ Java_com_margelo_nitro_inksignpdf_PdfiumNativePdfExporter_nativeExport(
   input.explicitFontSelections = std::move(explicitFontSelections);
   input.maySubsetFonts = maySubsetFontsValue == JNI_TRUE;
   input.forceSubsetSaveFailureForTesting = forceSubsetSaveFailureForTestingValue == JNI_TRUE;
-  input.inkColor = inkColor;
+  input.pathColors = std::move(pathColors);
   std::vector<std::uint8_t> candidateBytes;
   auto result = margelo::nitro::inksignpdf::pdfium::PdfiumContentWriter::write(
     sourceBytes, input, shapeAndroidPdfText, candidateBytes);

@@ -20,6 +20,9 @@ import java.util.Objects
 data class DocumentOpenOptions(
   @DoNotStrip
   @Keep
+  val recordHistory: Boolean?,
+  @DoNotStrip
+  @Keep
   val tag: String?,
   @DoNotStrip
   @Keep
@@ -39,7 +42,8 @@ data class DocumentOpenOptions(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is DocumentOpenOptions) return false
-    return Objects.deepEquals(this.tag, other.tag)
+    return Objects.deepEquals(this.recordHistory, other.recordHistory)
+      && Objects.deepEquals(this.tag, other.tag)
       && Objects.deepEquals(this.imagePageSize, other.imagePageSize)
       && Objects.deepEquals(this.targetDpi, other.targetDpi)
       && Objects.deepEquals(this.jpegQuality, other.jpegQuality)
@@ -48,6 +52,7 @@ data class DocumentOpenOptions(
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
+      recordHistory,
       tag,
       imagePageSize,
       targetDpi,
@@ -64,8 +69,8 @@ data class DocumentOpenOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(tag: String?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?, androidFallbackFont: AndroidFallbackFont?): DocumentOpenOptions {
-      return DocumentOpenOptions(tag, imagePageSize, targetDpi, jpegQuality, androidFallbackFont)
+    private fun fromCpp(recordHistory: Boolean?, tag: String?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?, androidFallbackFont: AndroidFallbackFont?): DocumentOpenOptions {
+      return DocumentOpenOptions(recordHistory, tag, imagePageSize, targetDpi, jpegQuality, androidFallbackFont)
     }
   }
 }

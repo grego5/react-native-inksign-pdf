@@ -20,7 +20,7 @@ namespace margelo::nitro::inksignpdf::views {
                                                  const HybridInkSignViewProps& sourceProps,
                                                  const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
-    androidFallbackFont(nitro::ReactProp<std::optional<AndroidFallbackFont>>::fromRawValue("InkSignView", "androidFallbackFont", rawProps, sourceProps.androidFallbackFont)),
+    document(nitro::ReactProp<std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>>::fromRawValue("InkSignView", "document", rawProps, sourceProps.document)),
     strokeColor(nitro::ReactProp<std::optional<std::string>>::fromRawValue("InkSignView", "strokeColor", rawProps, sourceProps.strokeColor)),
     strokeMinWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("InkSignView", "strokeMinWidth", rawProps, sourceProps.strokeMinWidth)),
     strokeMaxWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("InkSignView", "strokeMaxWidth", rawProps, sourceProps.strokeMaxWidth)),
@@ -34,6 +34,7 @@ namespace margelo::nitro::inksignpdf::views {
     doubleTap(nitro::ReactProp<std::optional<DoubleTapOptions>>::fromRawValue("InkSignView", "doubleTap", rawProps, sourceProps.doubleTap)),
     keyboardAvoidanceEnabled(nitro::ReactProp<std::optional<bool>>::fromRawValue("InkSignView", "keyboardAvoidanceEnabled", rawProps, sourceProps.keyboardAvoidanceEnabled)),
     pagerDirection(nitro::ReactProp<std::optional<PagerDirection>>::fromRawValue("InkSignView", "pagerDirection", rawProps, sourceProps.pagerDirection)),
+    textDirection(nitro::ReactProp<std::optional<TextDirection>>::fromRawValue("InkSignView", "textDirection", rawProps, sourceProps.textDirection)),
     onStateChange(nitro::ReactProp<std::optional<std::function<void(const ViewerState& /* event */)>>>::fromRawValue("InkSignView", "onStateChange", rawProps, sourceProps.onStateChange)),
     onPageChange(nitro::ReactProp<std::optional<std::function<void(const PageChangeEvent& /* event */)>>>::fromRawValue("InkSignView", "onPageChange", rawProps, sourceProps.onPageChange)),
     onZoomChange(nitro::ReactProp<std::optional<std::function<void(double /* zoom */)>>>::fromRawValue("InkSignView", "onZoomChange", rawProps, sourceProps.onZoomChange)),
@@ -42,7 +43,7 @@ namespace margelo::nitro::inksignpdf::views {
 
   bool HybridInkSignViewProps::filterObjectKeys(const std::string& propName) {
     switch (hashString(propName)) {
-      case hashString("androidFallbackFont"): return true;
+      case hashString("document"): return true;
       case hashString("strokeColor"): return true;
       case hashString("strokeMinWidth"): return true;
       case hashString("strokeMaxWidth"): return true;
@@ -56,6 +57,7 @@ namespace margelo::nitro::inksignpdf::views {
       case hashString("doubleTap"): return true;
       case hashString("keyboardAvoidanceEnabled"): return true;
       case hashString("pagerDirection"): return true;
+      case hashString("textDirection"): return true;
       case hashString("onStateChange"): return true;
       case hashString("onPageChange"): return true;
       case hashString("onZoomChange"): return true;

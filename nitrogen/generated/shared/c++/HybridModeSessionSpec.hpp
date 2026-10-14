@@ -13,21 +13,24 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-// Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
+// Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
 // Forward declaration of `TaggedPageQuery` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
+// Forward declaration of `InputTargetFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTargetFocusOptions; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 
 #include <memory>
-#include "HybridAnalyzedPageSpec.hpp"
+#include "HybridDocumentPageSpec.hpp"
 #include <NitroModules/Promise.hpp>
 #include "TaggedPageQuery.hpp"
 #include <variant>
 #include <optional>
+#include "InputTargetFocusOptions.hpp"
 #include "PageCoords.hpp"
 #include "ViewportOptions.hpp"
 
@@ -62,7 +65,8 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Methods
-      virtual std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) = 0;
+      virtual std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) = 0;
+      virtual std::shared_ptr<Promise<void>> focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) = 0;
       virtual std::shared_ptr<Promise<PageCoords>> requestUserTap() = 0;
       virtual std::shared_ptr<Promise<void>> setViewport(const std::optional<ViewportOptions>& options) = 0;
 

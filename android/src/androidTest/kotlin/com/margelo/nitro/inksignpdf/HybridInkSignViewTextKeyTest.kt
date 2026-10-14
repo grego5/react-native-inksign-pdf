@@ -44,35 +44,38 @@ internal class HybridInkSignViewTextKeyTest {
         ).also(resourceRef::set)
       },
     )
+    val document = HybridInkSignDocument(DocumentCore(
+      context, worker, recordHistory = true, exportOwnership = ExportOwnership.DOCUMENT,
+    ))
     val viewRef = AtomicReference<HybridInkSignView>()
     val surfaceRef = AtomicReference<SurfaceView>()
 
     try {
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context, worker)
+        val view = HybridInkSignView(context).also { it.document = document }
         viewRef.set(view)
-        assertTrue("An empty viewer has no matching page IDs", view.getPageIdsByTag("report").isEmpty())
+        assertTrue("An empty document has no matching page IDs", document.getPageIdsByTag("report").isEmpty())
         val host = view.view
         val exactSize = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         host.measure(exactSize, exactSize)
         host.layout(0, 0, 300, 300)
         surfaceRef.set((host as FrameLayout).getChildAt(0) as SurfaceView)
       }
-      awaitOpen(instrumentation, viewRef.get(), source.absolutePath, expectedPageCount = 3.0, tag = "report")
+      awaitOpen(instrumentation, document, source.absolutePath, expectedPageCount = 3.0, tag = "report")
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        val ids = view.getPageIdsByTag("report").toList()
+        val ids = document.getPageIdsByTag("report").toList()
         assertEquals((0 until 3).map { view.documentState.pageMetadata(it).id }, ids)
-        assertTrue(view.getPageIdsByTag("Report").isEmpty())
+        assertTrue(document.getPageIdsByTag("Report").isEmpty())
         assertEquals(0, view.documentState.activePageIndex)
-        assertTrue(!view.getState().isDirty)
+        assertTrue(!document.getState().isDirty)
       }
       assertTrue("ID lookup must not prepare analysis", resourceRef.get().analysisRequests.isEmpty())
       val missesSettled = CountDownLatch(2)
       val missErrors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
       instrumentation.runOnMainSync {
         listOf(TaggedPageQuery("missing", null), TaggedPageQuery("report", 3.0)).forEach { query ->
-          viewRef.get().getPage(Variant_Double_TaggedPageQuery.create(query))
+          document.getPage(PageQuery.create(query))
             .then { missErrors.add(AssertionError("Missing tagged page returned a handle")); missesSettled.countDown() }
             .catch { missErrors.add(it); missesSettled.countDown() }
         }
@@ -113,10 +116,10 @@ internal class HybridInkSignViewTextKeyTest {
 
       val settled = CountDownLatch(1)
       val failure = AtomicReference<Throwable>()
-      val prepared = AtomicReference<Promise<HybridAnalyzedPageSpec>>()
+      val prepared = AtomicReference<Promise<HybridDocumentPageSpec>>()
       blockAnalysis.set(true)
       instrumentation.runOnMainSync {
-        prepared.set(viewRef.get().getPage(Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", 2.0))))
+        prepared.set(document.getPage(PageQuery.create(TaggedPageQuery("report", 2.0))))
       }
       prepared.get().then { page ->
         setPreparedText(page, TextAnnotationBounds(20.0, 60.0, 120.0, 30.0), "new value")
@@ -179,18 +182,21 @@ internal class HybridInkSignViewTextKeyTest {
         )
       },
     )
+    val document = HybridInkSignDocument(DocumentCore(
+      context, worker, recordHistory = true, exportOwnership = ExportOwnership.DOCUMENT,
+    ))
     val viewRef = AtomicReference<HybridInkSignView>()
     try {
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context, worker)
+        val view = HybridInkSignView(context).also { it.document = document }
         viewRef.set(view)
         val size = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         view.view.measure(size, size)
         view.view.layout(0, 0, 300, 300)
       }
       val view = viewRef.get()
-      awaitOpen(instrumentation, view, sourceA.absolutePath)
-      val page = awaitPreparedPage(view.getPage(Variant_Double_TaggedPageQuery.create(0.0)))
+      awaitOpen(instrumentation, document, sourceA.absolutePath)
+      val page = awaitPreparedPage(document.getPage(PageQuery.create(0.0)))
       val bounds = TextAnnotationBounds(40.0, 60.0, 160.0, 40.0)
       val textId = setPreparedText(page, bounds, "note")
       val host = view.view as FrameLayout
@@ -241,7 +247,7 @@ internal class HybridInkSignViewTextKeyTest {
       handle.setValue("", null)
       assertEquals("", handle.getValue())
 
-      awaitOpen(instrumentation, view, sourceB.absolutePath)
+      awaitOpen(instrumentation, document, sourceB.absolutePath)
       try {
         handle.getValue()
         throw AssertionError("replacement must invalidate the old handle")
@@ -250,7 +256,7 @@ internal class HybridInkSignViewTextKeyTest {
       }
       assertTrue("replacement must clear selection", view.getSelectedText().isSecond)
       assertTrue("replacement must not inherit old text targets",
-        awaitPreparedPage(view.getPage(Variant_Double_TaggedPageQuery.create(0.0))).getInputTargets().isEmpty())
+        awaitPreparedPage(document.getPage(PageQuery.create(0.0))).getInputTargets().isEmpty())
     } finally {
       releaseAnalysis.countDown()
       instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
@@ -260,7 +266,7 @@ internal class HybridInkSignViewTextKeyTest {
   }
 
   @Test
-  fun replacementCancelsPendingPreparedPageAndInstallsOnlyNewDocument() {
+  fun replacingViewerOwnerDoesNotCancelOrdinaryPageLookup() {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
@@ -283,60 +289,80 @@ internal class HybridInkSignViewTextKeyTest {
         )
       },
     )
+    val documentA = HybridInkSignDocument(DocumentCore(
+      context, worker, recordHistory = true, exportOwnership = ExportOwnership.DOCUMENT,
+    ))
+    val documentB = HybridInkSignDocument(DocumentCore(
+      context,
+      PdfSessionWorker(opener = PdfSessionOpener { path, generation ->
+        BlockingAnalysisResource(
+          PdfSessionInfo(path, listOf(PdfPageDimensions(300.0, 300.0)), generation),
+          CountDownLatch(0), CountDownLatch(0), AtomicBoolean(false),
+        )
+      }),
+      recordHistory = true,
+      exportOwnership = ExportOwnership.DOCUMENT,
+    ))
     val viewRef = AtomicReference<HybridInkSignView>()
     try {
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context, worker)
+        val view = HybridInkSignView(context).also { it.document = documentA }
         viewRef.set(view)
         val exactSize = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         view.view.measure(exactSize, exactSize)
         view.view.layout(0, 0, 300, 300)
       }
-      awaitOpen(instrumentation, viewRef.get(), sourceA.absolutePath, expectedPageCount = 1.0)
-      val originalPath = viewRef.get().documentState.sourcePath
+      awaitOpen(instrumentation, documentA, sourceA.absolutePath, expectedPageCount = 1.0, tag = "owner-a")
+      awaitOpen(instrumentation, documentB, sourceB.absolutePath, expectedPageCount = 1.0, tag = "owner-b")
 
       val lookupSettled = CountDownLatch(1)
       val rejectionCount = AtomicInteger()
       val lookupError = AtomicReference<Throwable>()
-      val lookup = AtomicReference<Promise<HybridAnalyzedPageSpec>>()
+      val lookup = AtomicReference<Promise<HybridDocumentPageSpec>>()
       blockAnalysis.set(true)
       instrumentation.runOnMainSync {
-        lookup.set(viewRef.get().getPage(Variant_Double_TaggedPageQuery.create(0.0)))
+        lookup.set(documentA.getPage(PageQuery.create(0.0)))
       }
       lookup.get().then { lookupSettled.countDown() }
         .catch { error -> lookupError.set(error); rejectionCount.incrementAndGet(); lookupSettled.countDown() }
       assertTrue("prepared page analysis did not reach the worker", analysisStarted.await(10L, TimeUnit.SECONDS))
-      val openSettled = CountDownLatch(1)
-      val documentCleared = CountDownLatch(1)
-      val replacementInfo = AtomicReference<PageInfo>()
-      val replacementError = AtomicReference<Throwable>()
-      val replacement = AtomicReference<Promise<PageInfo>>()
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        view.onStateChange = { state ->
-          if (state.documentId?.asSecondOrNull() == null) documentCleared.countDown()
-        }
-        replacement.set(view.open(sourceB.absolutePath, null))
+        view.document = documentB
+        assertTrue("viewer did not install owner B", view.document === documentB)
+        assertEquals("owner-b", view.documentState.pageMetadata(0).tag)
       }
-      replacement.get().then { info -> replacementInfo.set(info); openSettled.countDown() }
-        .catch { error -> replacementError.set(error); openSettled.countDown() }
 
-      assertTrue("stale key lookup did not cancel promptly", lookupSettled.await(5L, TimeUnit.SECONDS))
-      assertEquals("operation_cancelled", (lookupError.get() as? PdfSessionException)?.code)
-      assertEquals(1, rejectionCount.get())
-      assertTrue("replacement did not clear the active document", documentCleared.await(5L, TimeUnit.SECONDS))
-      instrumentation.runOnMainSync { assertTrue(!viewRef.get().documentState.hasDocument) }
-      releaseAnalysis.countDown()
-      assertTrue("replacement open did not settle", openSettled.await(10L, TimeUnit.SECONDS))
-      replacementError.get()?.let { throw AssertionError("replacement open failed", it) }
-      assertEquals(1.0, replacementInfo.get().pageCount, 0.0)
+      assertTrue("owner A lookup completed before its analysis was released", !lookupSettled.await(250L, TimeUnit.MILLISECONDS))
+      assertEquals(0, rejectionCount.get())
       instrumentation.runOnMainSync {
-        assertTrue(viewRef.get().documentState.sourcePath != originalPath)
-        assertTrue(viewRef.get().documentState.pageSnapshot(0).content.isEmpty())
+        val view = viewRef.get()
+        assertTrue("viewer changed owners while analysis was blocked", view.document === documentB)
+        assertEquals("owner-b", view.documentState.pageMetadata(0).tag)
+      }
+      releaseAnalysis.countDown()
+      assertTrue("owner A page lookup did not complete", lookupSettled.await(10L, TimeUnit.SECONDS))
+      lookupError.get()?.let { throw AssertionError("ordinary owner A lookup failed", it) }
+      assertEquals(0, rejectionCount.get())
+      val pageA = awaitPreparedPage(lookup.get())
+      assertTrue(documentA.getPageIdsByTag("owner-a").contains(pageA.getState().pageId))
+      assertEquals(1.0, documentA.getState().pageCount, 0.0)
+      assertEquals(1.0, documentB.getState().pageCount, 0.0)
+      instrumentation.runOnMainSync {
+        val view = viewRef.get()
+        assertTrue("owner A result was published into viewer B", view.document === documentB)
+        assertEquals("owner-b", view.documentState.pageMetadata(0).tag)
       }
     } finally {
       releaseAnalysis.countDown()
-      instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
+      instrumentation.runOnMainSync {
+        viewRef.get()?.let { view ->
+          view.document = null
+          view.onDropView()
+        }
+      }
+      awaitClose(instrumentation, documentA)
+      awaitClose(instrumentation, documentB)
       sourceA.delete()
       sourceB.delete()
     }
@@ -355,20 +381,24 @@ internal class HybridInkSignViewTextKeyTest {
       BlockingAnalysisResource(PdfSessionInfo(path, List(2) { PdfPageDimensions(300.0, 300.0) }, generation),
         analysisStarted, releaseAnalysis, blockAnalysis)
     })
+    val document = HybridInkSignDocument(DocumentCore(
+      context, worker, recordHistory = true, exportOwnership = ExportOwnership.DOCUMENT,
+    ))
     val viewRef = AtomicReference<HybridInkSignView>()
     try {
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context, worker)
+        val view = HybridInkSignView(context).also { it.document = document }
         viewRef.set(view)
         val size = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         view.view.measure(size, size)
         view.view.layout(0, 0, 300, 300)
       }
       val view = viewRef.get()
-      awaitOpen(instrumentation, view, source.absolutePath, tag = "report")
-      val ordinary = awaitPreparedPage(view.getPage(null))
+      awaitOpen(instrumentation, document, source.absolutePath, tag = "report")
+      val ordinary = awaitPreparedPage(document.getPage(PageQuery.create(0.0)))
       val session = view.setMode(InputMode.INK, null)
-      val scoped = awaitPreparedPage(session.getPage(Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", null))))
+      val scoped = awaitPreparedPage(session.getPage(
+        Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", null))))
       val id = scoped.resolveInputTarget(InputTargetResolutionOptions(font = null,
         fieldName = null, bounds = TextAnnotationBounds(50.0, 60.0, 100.0, 30.0),
         occurrence = null, fontSize = null, color = null, direction = null,
@@ -377,13 +407,14 @@ internal class HybridInkSignViewTextKeyTest {
       scoped.setTextValue(id, "Ada", null)
       val before = view.getViewport()
       blockAnalysis.set(true)
-      val pending = session.getPage(Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", 1.0)))
+      val pending = session.getPage(
+        Variant_Double_TaggedPageQuery.create(TaggedPageQuery("report", 1.0)))
       assertTrue("analysis did not reach worker", analysisStarted.await(10, TimeUnit.SECONDS))
       val cancelled = CountDownLatch(2)
       val errors = java.util.concurrent.ConcurrentLinkedQueue<Throwable>()
       pending.then { throw AssertionError("Cancelled acquisition returned a page") }
         .catch { errors.add(it); cancelled.countDown() }
-      val focus = scoped.focusInputTarget(id, InputTargetFocusOptions(3.0, null, null))
+      val focus = session.focusInputTarget(scoped, id, InputTargetFocusOptions(3.0, null, null))
       focus.then { throw AssertionError("Cancelled focus completed") }
         .catch { errors.add(it); cancelled.countDown() }
       view.setMode(InputMode.INK, null) // A repeated request still creates a new session.
@@ -394,7 +425,7 @@ internal class HybridInkSignViewTextKeyTest {
       catch (error: PdfSessionException) { assertEquals("operation_cancelled", error.code) }
       assertEquals("Ada", ordinary.getTextValue(id))
       releaseAnalysis.countDown()
-      awaitPreparedPage(view.getPage(null)) // Drain the held worker and cancelled focus.
+      awaitPreparedPage(document.getPage(PageQuery.create(0.0))) // Drain the held worker and cancelled focus.
       val after = view.getViewport()
       assertEquals(before.zoom, after.zoom, 0.001)
       assertEquals(before.x, after.x, 0.001)
@@ -407,9 +438,9 @@ internal class HybridInkSignViewTextKeyTest {
     }
   }
 
-  private fun awaitPreparedPage(promise: Promise<HybridAnalyzedPageSpec>): HybridAnalyzedPageSpec {
+  private fun awaitPreparedPage(promise: Promise<HybridDocumentPageSpec>): HybridDocumentPageSpec {
     val settled = CountDownLatch(1)
-    val page = AtomicReference<HybridAnalyzedPageSpec>()
+    val page = AtomicReference<HybridDocumentPageSpec>()
     val failure = AtomicReference<Throwable>()
     promise.then { page.set(it); settled.countDown() }
       .catch { failure.set(it); settled.countDown() }
@@ -428,22 +459,37 @@ internal class HybridInkSignViewTextKeyTest {
 
   private fun awaitOpen(
     instrumentation: android.app.Instrumentation,
-    view: HybridInkSignView,
+    document: HybridInkSignDocument,
     sourcePath: String,
     expectedPageCount: Double = 2.0,
     tag: String? = null,
   ) {
     val settled = CountDownLatch(1)
-    val result = AtomicReference<PageInfo>()
+    val result = AtomicReference<HybridInkSignDocumentSpec>()
     val failure = AtomicReference<Throwable>()
-    val open = AtomicReference<Promise<PageInfo>>()
-    instrumentation.runOnMainSync { open.set(view.open(sourcePath,
-      tag?.let { ViewOpenOptions(tag = it, x = null, y = null, zoom = null) })) }
-    open.get().then { pageInfo -> result.set(pageInfo); settled.countDown() }
+    val open = AtomicReference<Promise<HybridInkSignDocumentSpec>>()
+    instrumentation.runOnMainSync {
+      open.set(document.open(sourcePath, DocumentOpenOptions(
+        recordHistory = null, tag = tag, imagePageSize = null, targetDpi = null,
+        jpegQuality = null, androidFallbackFont = null,
+      )))
+    }
+    open.get().then { opened -> result.set(opened); settled.countDown() }
       .catch { error -> failure.set(error); settled.countDown() }
     assertTrue("open did not settle", settled.await(10L, TimeUnit.SECONDS))
     failure.get()?.let { throw AssertionError("controlled document open failed", it) }
-    assertEquals(expectedPageCount, result.get().pageCount, 0.0)
+    assertEquals(expectedPageCount, document.getState().pageCount, 0.0)
+  }
+
+  private fun awaitClose(instrumentation: android.app.Instrumentation, document: HybridInkSignDocument) {
+    val settled = CountDownLatch(1)
+    val failure = AtomicReference<Throwable>()
+    instrumentation.runOnMainSync {
+      document.close().then { settled.countDown() }
+        .catch { error -> failure.set(error); settled.countDown() }
+    }
+    assertTrue("document close did not settle", settled.await(10L, TimeUnit.SECONDS))
+    failure.get()?.let { throw AssertionError("document close failed", it) }
   }
 
   private fun copyFixturePdf(context: android.content.Context, prefix: String): File {

@@ -34,7 +34,7 @@
   missing visible tiles remain eligible.
 - PDFium owns embedded fonts. An optional app fallback supplies immutable bytes
   for non-embedded requests; unsupported glyphs may remain missing. Otherwise,
-  use PDFium's default provider. See [font-file ownership](view-lifecycle.md#ownership).
+  use PDFium's default provider. See [font ownership](view-lifecycle.md#fonts).
 
 ## Ink front buffer
 

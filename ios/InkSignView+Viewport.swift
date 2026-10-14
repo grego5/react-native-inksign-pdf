@@ -110,63 +110,6 @@ extension InkSignView {
   }
 
   @discardableResult
-  func completeOpenIfReady() -> Bool {
-    guard let pending = pendingOpen,
-          isOpenPresentationCurrent(pending),
-          !disposed else {
-      return false
-    }
-
-    guard pending.phase == .awaitingReadiness,
-          let state = viewerDocument,
-          state.activePageIndex == 0,
-          documentView.document === state.document,
-          interaction.viewport.viewportReadiness().allowsCommand(fitToPage: pending.fitToPage) else {
-      return false
-    }
-    guard let target = openViewportTarget(for: pending) else { return false }
-    var completing = pending
-    completing.phase = .completing
-    pendingOpen = completing
-    do {
-      guard interaction.viewport.applyViewport(target: target),
-            attachedOverlayPage == state.activePage.id,
-            overlayTransformPage == state.activePage.id,
-            pageToOverlayTransform != nil else {
-        throw ViewportError.notReady
-      }
-      guard pendingOpen?.id == pending.id,
-            isOpenPresentationCurrent(pending), !disposed else { return true }
-      let pageInfo = toPublicPageInfo(try currentPageInfo())
-      let pageID = state.activePage.id
-      interaction.setBaseMode(ink: false, enabled: true, finish: false)
-      pendingOpen = nil
-      pending.settlement.resolve(pageInfo)
-      if !disposed, documentCoordinator.generation == pending.generation,
-         viewerDocument === state, state.activePage.id == pageID {
-        emitPageState()
-      }
-      emitChange(force: true)
-      return true
-    } catch {
-      failOpenAttempt(error: error, pending: completing)
-      return true
-    }
-  }
-
-  private func openViewportTarget(for pending: PendingOpen) -> ViewportTarget? {
-    guard let state = viewerDocument else { return nil }
-    let size = state.activePage.geometry.displaySize
-    let focus = pending.focus ?? CGPoint(x: size.width / 2, y: size.height / 2)
-    if pending.fitToPage {
-      guard let zoom = interaction.viewport.usableFitScale() else { return nil }
-      return ViewportTarget(
-        zoom: zoom,
-        focus: CGPoint(x: size.width / 2, y: size.height / 2))
-    }
-    return ViewportTarget(zoom: CGFloat(pending.zoom ?? 1), focus: focus)
-  }
-
   func configureDoubleTapGestureRecognition() {
     documentView.gestureRecognizers?.forEach { recognizer in
       guard let tap = recognizer as? UITapGestureRecognizer,
@@ -183,17 +126,6 @@ extension InkSignView {
       options.y.map { y in CGPoint(x: x, y: y) }
     }
     return .focus(focus, zoom: options.zoom)
-  }
-
-  static func parseOpenViewport(_ options: ViewportOptions?) -> (zoom: Double?, focus: CGPoint?, fitToPage: Bool) {
-    guard let options else { return (nil, nil, true) }
-    let focus = options.x.flatMap { x in
-      options.y.map { y in CGPoint(x: x, y: y) }
-    }
-    if options.x == nil && options.y == nil && options.zoom == nil {
-      return (nil, nil, true)
-    }
-    return (options.zoom, focus, false)
   }
 
 }

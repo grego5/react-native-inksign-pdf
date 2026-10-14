@@ -1,11 +1,13 @@
 # iOS rendering
 
-- `PDFView` presents pages and owns native zoom, scrolling, and PDF selection.
-- The page overlay provider supplies a transparent PencilKit surface per page.
-- Page overlays are temporary. Committed drawings live in page history; live
-  strokes and predictions are transient.
-
-- TextKit lays out live editing. Committed rendering and export use the same font
-  and paragraph style.
-- Text and ink use canonical top-left page coordinates. PDFKit converts between
-  page and view coordinates.
+- `PDFView` renders source pages and provides scrolling, paging, zoom, coordinate
+  conversion, and overlay hosts. `ViewerViewportController` owns programmatic
+  viewport motion and keyboard adjustments.
+- Page overlays present committed core content and transient PencilKit input.
+  Overlay lifetime is independent of content/history; presentation leases retain
+  the working PDF while PDFKit uses it.
+- TextKit lays out live editing; `TextRendering`/CoreText select committed lines
+  shared with export. Captured layout → canonical → display mapping preserves
+  annotation wrapping/orientation.
+- Input routing: [viewport/input](viewport-input.md). Snapshot/lease ownership:
+  [lifecycle](view-lifecycle.md). PDF content writing: [export](export.md).

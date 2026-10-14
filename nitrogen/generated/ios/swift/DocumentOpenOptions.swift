@@ -18,8 +18,14 @@ public extension DocumentOpenOptions {
   /**
    * Create a new instance of `DocumentOpenOptions`.
    */
-  init(tag: String?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?, androidFallbackFont: AndroidFallbackFont?) {
-    self.init({ () -> bridge.std__optional_std__string_ in
+  init(recordHistory: Bool?, tag: String?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?, androidFallbackFont: AndroidFallbackFont?) {
+    self.init({ () -> bridge.std__optional_bool_ in
+      if let __unwrappedValue = recordHistory {
+        return bridge.create_std__optional_bool_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_std__string_ in
       if let __unwrappedValue = tag {
         return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
       } else {
@@ -52,6 +58,18 @@ public extension DocumentOpenOptions {
     }())
   }
 
+  @inline(__always)
+  var recordHistory: Bool? {
+    return { () -> Bool? in
+      if bridge.has_value_std__optional_bool_(self.__recordHistory) {
+        let __unwrapped = bridge.get_std__optional_bool_(self.__recordHistory)
+        return __unwrapped
+      } else {
+        return nil
+      }
+    }()
+  }
+  
   @inline(__always)
   var tag: String? {
     return { () -> String? in

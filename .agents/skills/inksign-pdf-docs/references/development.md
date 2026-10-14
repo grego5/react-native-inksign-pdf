@@ -1,4 +1,4 @@
-## Development insructions
+## Development instructions
 
 - Change authoritative source files, do not edit `nitrogen/generated/**` by hand.
 - Public Nitro API source: `src/InkSignView.nitro.ts`, `src/index.ts`, and `nitro.json`.
@@ -45,8 +45,8 @@
 
 - Run the narrowest simulator focus for native behavior. Use a device archive
   for integration; visual fidelity and interaction still need runtime checks.
-- For PDF changes, fixture-check visible content and geometry, locked text and
-  vector signatures, write/reopen, and external-viewer interoperability.
+- For PDF changes, fixture-check source preservation, text/vector placement,
+  write/reopen, and external-viewer interoperability.
   Advanced source PDF semantics are outside the editing contract.
 
 ### Run iOS tests on local network Mac

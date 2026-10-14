@@ -50,8 +50,8 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Properties
-    std::optional<AndroidFallbackFont> getAndroidFallbackFont() override;
-    void setAndroidFallbackFont(const std::optional<AndroidFallbackFont>& androidFallbackFont) override;
+    std::optional<std::shared_ptr<HybridInkSignDocumentSpec>> getDocument() override;
+    void setDocument(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& document) override;
     std::optional<std::string> getStrokeColor() override;
     void setStrokeColor(const std::optional<std::string>& strokeColor) override;
     std::optional<double> getStrokeMinWidth() override;
@@ -78,6 +78,8 @@ namespace margelo::nitro::inksignpdf {
     void setKeyboardAvoidanceEnabled(std::optional<bool> keyboardAvoidanceEnabled) override;
     std::optional<PagerDirection> getPagerDirection() override;
     void setPagerDirection(std::optional<PagerDirection> pagerDirection) override;
+    std::optional<TextDirection> getTextDirection() override;
+    void setTextDirection(std::optional<TextDirection> textDirection) override;
     std::optional<std::function<void(const ViewerState& /* event */)>> getOnStateChange() override;
     void setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) override;
     std::optional<std::function<void(const PageChangeEvent& /* event */)>> getOnPageChange() override;
@@ -89,28 +91,13 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
-    std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) override;
-    std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewOpenOptions>& options) override;
-    std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) override;
-    std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) override;
-    std::shared_ptr<Promise<PageInfo>> removePage() override;
-    std::shared_ptr<Promise<PageInfo>> movePage(double pageIndex) override;
-    std::shared_ptr<Promise<PageInfo>> rotatePage(double degrees) override;
     void nextPage() override;
+    std::shared_ptr<Promise<void>> focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) override;
     void previousPage() override;
     Viewport getViewport() override;
     std::shared_ptr<Promise<PageCoords>> requestUserTap() override;
-    DocumentState getState() override;
     std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() override;
-    std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) override;
-    std::vector<std::string> getPageIdsByTag(const std::string& tag) override;
     std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) override;
-    void undo() override;
-    void redo() override;
-    void clear() override;
-    void clearInk() override;
-    void setTextDirection(TextDirection direction) override;
-    std::shared_ptr<Promise<std::string>> finalize() override;
     void startDebugRecording() override;
     void stopDebugRecording() override;
     std::shared_ptr<Promise<std::string>> exportDebugRecording() override;

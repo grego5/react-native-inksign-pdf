@@ -18,15 +18,20 @@ const nativeSession = {
   requestUserTap: async () => ({ pageId: 'page', pageIndex: 0, x: 10, y: 20 }),
   setViewport: async options => { calls.push(['viewport', options]); },
 };
-const native = {
+const nativeDocument = {
+  getState: () => ({ documentId: 'doc', pageCount: 1, isDirty: false }),
+  getPage: async query => { calls.push(['document-page', query]); return { getInputTargets: () => [] }; },
   getPageIdsByTag: tag => { calls.push(['tag-ids', tag]); return ['report-0', 'report-1']; },
+};
+const native = {
   getSelectedText: () => selectedText,
-  open: async path => { calls.push(path); return { pageIndex: 0 }; },
+  requestUserTap: async () => { calls.push('tap'); return { pageId: 'page', pageIndex: 0, x: 10, y: 20 }; },
   setMode: mode => { calls.push(mode); return nativeSession; },
-  getPage: async () => { calls.push('page'); return { getInputTargets: () => [] }; },
 };
 
-function NativeView({ hybridRef }) {
+const observedDocuments = [];
+function NativeView({ hybridRef, document }) {
+  observedDocuments.push(document);
   // Match Nitro: publish on creation/prop change, rather than layout reactivation.
   React.useEffect(() => {
     attachments++;
@@ -135,7 +140,7 @@ test('selected text commands use native selection without preparing a page', asy
   const edits = [];
   let root;
   try {
-    await act(async () => { root = create(React.createElement(InkSignView, { ref })); });
+    await act(async () => { root = create(React.createElement(InkSignView, { ref, document: nativeDocument })); });
     const callsBefore = calls.length;
     assert.equal(ref.current.getSelectedText(), null);
     let value = 'first';
@@ -164,8 +169,11 @@ test('selected text commands use native selection without preparing a page', asy
 test('native event subscriptions stay stable while forwarding to the latest committed callbacks', async () => {
   const names = ['onStateChange', 'onPageChange', 'onTextSelectionChange', 'onZoomChange'];
   const received = [];
-  const propsFor = version => Object.fromEntries(names.map(name =>
-    [name, value => received.push([version, name, value])]));
+  const propsFor = version => ({
+    document: nativeDocument,
+    ...Object.fromEntries(names.map(name =>
+      [name, value => received.push([version, name, value])])),
+  });
   let root;
   try {
     await act(async () => { root = create(React.createElement(InkSignView, propsFor('first'))); });
@@ -177,7 +185,7 @@ test('native event subscriptions stay stable while forwarding to the latest comm
       updated[name](name);
     }
     assert.deepEqual(received, names.map(name => ['latest', name, name]));
-    await act(async () => { root.update(React.createElement(InkSignView)); });
+    await act(async () => { root.update(React.createElement(InkSignView, { document: nativeDocument })); });
     for (const name of names) {
       assert.equal(root.root.findByType(NativeView).props[name], undefined);
       original[name]('late');
@@ -195,12 +203,11 @@ test('native event subscriptions stay stable while forwarding to the latest comm
   }
 });
 
-test('normal ref opens before attachment and keeps its handle through Suspense hide/reveal', async () => {
+test('normal ref keeps its handle through Suspense hide/reveal', async () => {
   calls.length = 0;
   attachments = 0;
   const ref = React.createRef();
   const blocker = new Promise(() => {});
-  let initialOpen;
   let root;
 
   function Gate({ blocked }) {
@@ -208,17 +215,15 @@ test('normal ref opens before attachment and keeps its handle through Suspense h
     return null;
   }
   function Screen({ blocked }) {
-    React.useLayoutEffect(() => {
-      initialOpen = ref.current.open('/initial.pdf');
-    }, []);
     return React.createElement(React.Suspense, { fallback: 'loading' },
-      React.createElement(InkSignView, { ref }), React.createElement(Gate, { blocked }));
+      React.createElement(InkSignView, { ref, document: nativeDocument }), React.createElement(Gate, { blocked }));
   }
 
   try {
     await act(async () => { root = create(React.createElement(Screen, { blocked: false })); });
-    assert.equal((await initialOpen).pageIndex, 0);
-    assert.deepEqual([...calls], ['/initial.pdf']);
+    const firstSession = ref.current.setMode('ink');
+    assert.deepEqual((await firstSession.getPage()).getInputTargets(), []);
+    assert.deepEqual([...calls], ['ink', 'session-page']);
     const handle = ref.current;
 
     await act(async () => { root.update(React.createElement(Screen, { blocked: true })); });
@@ -230,12 +235,11 @@ test('normal ref opens before attachment and keeps its handle through Suspense h
     assert.equal(ref.current, handle);
     assert.equal(attachments, 1);
 
-    const reopened = handle.open('/revealed.pdf');
-    reopened.catch(() => {});
-    assert.deepEqual([...calls], ['/initial.pdf', '/revealed.pdf']);
-    assert.equal((await reopened).pageIndex, 0);
+    const reopened = handle.setMode('ink').getPage();
+    assert.deepEqual([...calls], ['ink', 'session-page', 'ink', 'session-page']);
+    assert.deepEqual((await reopened).getInputTargets(), []);
     await act(async () => { root.unmount(); });
-    await assert.rejects(handle.open('/unmounted.pdf'), { message: /^operation_cancelled:/ });
+    assert.equal(ref.current, null);
   } finally {
     if (root) await act(async () => { root.unmount(); });
   }
@@ -243,14 +247,14 @@ test('normal ref opens before attachment and keeps its handle through Suspense h
 
 test('Strict Mode effect replay leaves the normal ref attached', async () => {
   const ref = React.createRef();
-  const opens = [];
+  const requests = [];
   function Screen() {
     React.useLayoutEffect(() => {
-      const request = ref.current.open('/strict.pdf');
+      const request = ref.current.requestUserTap();
       request.catch(() => {});
-      opens.push(request);
+      requests.push(request);
     }, []);
-    return React.createElement(InkSignView, { ref });
+    return React.createElement(InkSignView, { ref, document: nativeDocument });
   }
   let root;
   try {
@@ -258,39 +262,39 @@ test('Strict Mode effect replay leaves the normal ref attached', async () => {
       root = create(React.createElement(React.StrictMode, null, React.createElement(Screen)));
     });
     assert.ok(ref.current);
-    assert.equal((await opens.at(-1)).pageIndex, 0);
+    assert.deepEqual(await requests.at(-1), { pageId: 'page', pageIndex: 0, x: 10, y: 20 });
   } finally {
     if (root) await act(async () => { root.unmount(); });
   }
 });
 
-test('mode entry is synchronous and page acquisition can use either path', async () => {
+test('mode-session and document handles acquire pages independently', async () => {
   calls.length = 0;
   const ref = React.createRef();
   function Screen() {
     React.useLayoutEffect(() => {
       assert.throws(() => ref.current.setMode('ink'), /not attached/);
     }, []);
-    return React.createElement(InkSignView, { ref });
+    return React.createElement(InkSignView, { ref, document: nativeDocument });
   }
   let root;
   const originalSetMode = native.setMode;
-  const originalGetPage = native.getPage;
   const originalSessionGetPage = nativeSession.getPage;
   try {
     await act(async () => { root = create(React.createElement(Screen)); });
     const session = ref.current.setMode('ink');
     assert.deepEqual(calls, ['ink']);
     assert.deepEqual((await session.getPage()).getInputTargets(), []);
-    assert.deepEqual((await ref.current.getPage()).getInputTargets(), []);
+    assert.deepEqual((await nativeDocument.getPage()).getInputTargets(), []);
     await session.setViewport({ zoom: 3 });
-    assert.deepEqual(calls, ['ink', 'session-page', 'page', ['viewport', { zoom: 3 }]]);
-    assert.deepEqual(ref.current.getPageIdsByTag('report'), ['report-0', 'report-1']);
+    assert.deepEqual(calls, ['ink', 'session-page', ['document-page', undefined], ['viewport', { zoom: 3 }]]);
+    assert.deepEqual(nativeDocument.getPageIdsByTag('report'), ['report-0', 'report-1']);
     assert.deepEqual(calls.at(-1), ['tag-ids', 'report']);
     let receivedQuery;
-    native.getPage = async query => { receivedQuery = query; return originalGetPage(query); };
+    const originalDocumentGetPage = nativeDocument.getPage;
+    nativeDocument.getPage = async query => { receivedQuery = query; return originalDocumentGetPage(query); };
     const taggedQuery = { tag: 'report', index: 1 };
-    await ref.current.getPage(taggedQuery);
+    await nativeDocument.getPage(taggedQuery);
     assert.deepEqual(receivedQuery, taggedQuery);
     nativeSession.getPage = async query => { receivedQuery = query; return originalSessionGetPage(query); };
     await session.getPage({ tag: 'report' });
@@ -305,118 +309,31 @@ test('mode entry is synchronous and page acquisition can use either path', async
     assert.throws(() => ref.current.setMode('view'), error => error === failure);
   } finally {
     native.setMode = originalSetMode;
-    native.getPage = originalGetPage;
     nativeSession.getPage = originalSessionGetPage;
     if (root) await act(async () => { root.unmount(); });
   }
 });
 
-test('initialDocument opens before ref commands, ignores prop changes, and reloads on a new key', async () => {
-  calls.length = 0;
-  const ref = React.createRef();
-  const pages = [];
-  function Screen({ session, path }) {
-    React.useLayoutEffect(() => {
-      pages.push(ref.current.getPage());
-    }, [session]);
-    return React.createElement(InkSignView, { key: session, ref, initialDocument: path });
-  }
-  const render = (session, path) => React.createElement(React.StrictMode, null,
-    React.createElement(Screen, { session, path }));
+test('required document prop passes native ownership through updates and unmount without closing', async () => {
+  let closes = 0;
+  const source = { getState: () => ({ documentId: 'doc', pageCount: 1, isDirty: false }), close: async () => { closes++; } };
+  headlessFactory = { openDoc: async () => source };
+  const document = await openDoc('/document.pdf');
   let root;
   try {
-    await act(async () => { root = create(render('first', '/session.pdf')); });
-    for (const page of await Promise.all(pages)) assert.deepEqual(page.getInputTargets(), []);
-    assert.equal(calls[0], '/session.pdf');
-    assert.equal(calls.filter(value => value === '/session.pdf').length, 1);
-    const firstHandle = ref.current;
-
-    await act(async () => { root.update(render('first', '/ignored.pdf')); });
-    assert.equal(ref.current, firstHandle);
-    assert.ok(!calls.includes('/ignored.pdf'));
-
-    await act(async () => { root.update(render('second', '/session.pdf')); });
-    await Promise.all(pages);
-    assert.notEqual(ref.current, firstHandle);
-    assert.equal(calls.filter(value => value === '/session.pdf').length, 2);
-    assert.ok(calls.lastIndexOf('/session.pdf') < calls.lastIndexOf('page'));
-    await assert.rejects(firstHandle.getPage(), { message: /^operation_cancelled:/ });
-  } finally {
-    if (root) await act(async () => { root.unmount(); });
-  }
-});
-
-test('initial load errors use the current callback and ignore retired sessions', async () => {
-  const originalOpen = native.open;
-  const pending = new Map();
-  native.open = path => new Promise((resolve, reject) => pending.set(path, { resolve, reject }));
-  const retiredErrors = [];
-  const firstErrors = [];
-  const latestErrors = [];
-  let root;
-  try {
-    await act(async () => {
-      root = create(React.createElement(InkSignView, {
-        key: 'old', initialDocument: '/old.pdf', onStateChange: state => retiredErrors.push(state),
-      }));
-    });
-    await act(async () => {
-      root.update(React.createElement(InkSignView, {
-        key: 'new', initialDocument: '/new.pdf', onStateChange: state => firstErrors.push(state),
-      }));
-    });
-    await act(async () => {
-      root.update(React.createElement(InkSignView, {
-        key: 'new', initialDocument: '/new.pdf', onStateChange: state => latestErrors.push(state),
-      }));
-    });
-    const failure = new Error('pdf_load_failed: unreadable PDF');
-    const snapshot = {
-      documentId: null, pageCount: 0, pageIndex: null, mode: 'view', isDirty: false,
-      error: failure.message,
-    };
-    await act(async () => {
-      pending.get('/old.pdf').reject(new Error('operation_cancelled: Retired session'));
-      // Native publishes the load failure before rejecting the initial open.
-      root.root.findByType(NativeView).props.onStateChange(snapshot);
-      pending.get('/new.pdf').reject(failure);
-    });
-    assert.deepEqual(retiredErrors, []);
-    assert.deepEqual(firstErrors, []);
-    assert.deepEqual(latestErrors, [snapshot]);
-  } finally {
-    native.open = originalOpen;
-    if (root) await act(async () => { root.unmount(); });
-  }
-});
-
-test('cancelled initial loading does not synthesize a viewer error', async () => {
-  const originalOpen = native.open;
-  const originalClose = native.close;
-  let rejectOpen;
-  native.open = () => new Promise((resolve, reject) => { rejectOpen = reject; });
-  native.close = async cancelPending => {
-    assert.equal(cancelPending, true);
-    rejectOpen(new Error('operation_cancelled: Immediate close'));
-  };
-  const ref = React.createRef();
-  const states = [];
-  let root;
-  try {
-    await act(async () => {
-      root = create(React.createElement(InkSignView, {
-        ref, initialDocument: '/cancelled.pdf', onStateChange: state => states.push(state),
-      }));
-    });
-    await act(async () => {
-      await ref.current.close(true);
-    });
-    assert.deepEqual(states, []);
-  } finally {
-    native.open = originalOpen;
-    native.close = originalClose;
-    if (root) await act(async () => { root.unmount(); });
-  }
+    await act(async () => { root = create(React.createElement(InkSignView, { document })); });
+    assert.equal(observedDocuments.at(-1), source);
+    await act(async () => { root.update(React.createElement(InkSignView, { document, outlineColor: '#123456' })); });
+    assert.equal(observedDocuments.at(-1), source);
+    assert.equal(document.getState().documentId, 'doc');
+    await act(async () => { root.update(React.createElement(InkSignView, { document })); });
+    assert.equal(observedDocuments.at(-1), source);
+    await act(async () => { root.unmount(); });
+    root = undefined;
+    assert.equal(closes, 0);
+    await document.close();
+    assert.equal(closes, 1);
+  } finally { if (root) await act(async () => { root.unmount(); }); }
 });
 
 test('view mode dispatches while the coordinate request is still waiting', async () => {
@@ -443,7 +360,7 @@ test('view mode dispatches while the coordinate request is still waiting', async
         cancelled = assert.rejects(waiting, { message: /^operation_cancelled:/ });
         void ref.current.setMode('view');
       }, []);
-      return React.createElement(InkSignView, { ref });
+      return React.createElement(InkSignView, { ref, document: nativeDocument });
     }
     await act(async () => { root = create(React.createElement(Screen)); });
     await cancelled;

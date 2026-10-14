@@ -8,6 +8,7 @@ extension InkSignDocumentCore {
   }
 
   private func finalizeNow() throws -> Promise<String> {
+    endTextEdit()
     guard let operation = coordinator.admit(.finalize) else {
       return Promise.rejected(withError: InkSignPdfExportError.operationInProgress)
     }

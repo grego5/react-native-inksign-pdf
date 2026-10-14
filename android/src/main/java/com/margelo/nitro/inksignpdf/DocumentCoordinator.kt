@@ -378,7 +378,7 @@ internal class MutableDocumentCoordinator(
       PdfPageContentSnapshot(pageIndex, page.dimensions, page.history.contentSnapshot())
     }
 
-  fun captureExport(color: Int): PdfExportSnapshot {
+  fun captureExport(): PdfExportSnapshot {
     val document = snapshot()
     return PdfExportSnapshot(
       sourcePath = document.sourcePath,
@@ -392,7 +392,6 @@ internal class MutableDocumentCoordinator(
         )
       },
       generation = document.generation,
-      color = color,
     )
   }
 

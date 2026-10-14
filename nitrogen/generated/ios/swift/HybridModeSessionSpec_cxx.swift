@@ -125,7 +125,7 @@ open class HybridModeSessionSpec_cxx {
 
   // Methods
   @inline(__always)
-  public final func getPage(pageIndex: bridge.std__optional_std__variant_double__TaggedPageQuery__) -> bridge.Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____ {
+  public final func getPage(pageIndex: bridge.std__optional_std__variant_double__TaggedPageQuery__) -> bridge.Result_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec____ {
     do {
       let __result = try self.__implementation.getPage(pageIndex: { () -> Variant_Double_TaggedPageQuery? in
         if bridge.has_value_std__optional_std__variant_double__TaggedPageQuery__(pageIndex) {
@@ -147,21 +147,44 @@ open class HybridModeSessionSpec_cxx {
           return nil
         }
       }())
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec___ in
-        let __promise = bridge.create_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec___()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec___(__promise)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec___ in
+        let __promise = bridge.create_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec___()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec___(__promise)
         __result
-          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__shared_ptr_HybridAnalyzedPageSpec_ in
+          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__shared_ptr_HybridDocumentPageSpec_ in
               let __cxxWrapped = __result.getCxxWrapper()
               return __cxxWrapped.getCxxPart()
             }()) })
           .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
         return __promise
       }()
-      return bridge.create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____(__resultCpp)
+      return bridge.create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec____(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridAnalyzedPageSpec____(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridDocumentPageSpec____(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func focusInputTarget(page: bridge.std__shared_ptr_HybridDocumentPageSpec_, id: Double, options: bridge.std__optional_InputTargetFocusOptions_) -> bridge.Result_std__shared_ptr_Promise_void___ {
+    do {
+      let __result = try self.__implementation.focusInputTarget(page: { () -> any HybridDocumentPageSpec in
+        let __unsafePointer = bridge.get_std__shared_ptr_HybridDocumentPageSpec_(page)
+        let __instance = HybridDocumentPageSpec_cxx.fromUnsafe(__unsafePointer)
+        return __instance.getHybridDocumentPageSpec()
+      }(), id: id, options: options.value)
+      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_void__ in
+        let __promise = bridge.create_std__shared_ptr_Promise_void__()
+        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_void__(__promise)
+        __result
+          .then({ __result in __promiseHolder.resolve() })
+          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
+        return __promise
+      }()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__resultCpp)
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_std__shared_ptr_Promise_void___(__exceptionPtr)
     }
   }
   

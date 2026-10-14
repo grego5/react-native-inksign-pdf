@@ -17,18 +17,19 @@
 
 #include <string>
 
-#include "AndroidFallbackFont.hpp"
+#include <memory>
+#include "HybridInkSignDocumentSpec.hpp"
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
 #include "PagerDirection.hpp"
+#include "TextDirection.hpp"
 #include "ViewerState.hpp"
 #include <functional>
 #include "PageChangeEvent.hpp"
 #include <NitroModules/Null.hpp>
 #include "TextSelection.hpp"
 #include <variant>
-#include <memory>
 #include "HybridInkSignViewSpec.hpp"
 
 namespace margelo::nitro::inksignpdf::views {
@@ -51,7 +52,7 @@ namespace margelo::nitro::inksignpdf::views {
                            const react::RawProps& rawProps);
 
   public:
-    nitro::ReactProp<std::optional<AndroidFallbackFont>> androidFallbackFont;
+    nitro::ReactProp<std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>> document;
     nitro::ReactProp<std::optional<std::string>> strokeColor;
     nitro::ReactProp<std::optional<double>> strokeMinWidth;
     nitro::ReactProp<std::optional<double>> strokeMaxWidth;
@@ -65,6 +66,7 @@ namespace margelo::nitro::inksignpdf::views {
     nitro::ReactProp<std::optional<DoubleTapOptions>> doubleTap;
     nitro::ReactProp<std::optional<bool>> keyboardAvoidanceEnabled;
     nitro::ReactProp<std::optional<PagerDirection>> pagerDirection;
+    nitro::ReactProp<std::optional<TextDirection>> textDirection;
     nitro::ReactProp<std::optional<std::function<void(const ViewerState& /* event */)>>> onStateChange;
     nitro::ReactProp<std::optional<std::function<void(const PageChangeEvent& /* event */)>>> onPageChange;
     nitro::ReactProp<std::optional<std::function<void(double /* zoom */)>>> onZoomChange;
@@ -73,7 +75,7 @@ namespace margelo::nitro::inksignpdf::views {
 
     [[nodiscard]]
     bool hasSameProps(const HybridInkSignViewProps& other) const noexcept {
-      return androidFallbackFont.hasSameValue(other.androidFallbackFont) &&
+      return document.hasSameValue(other.document) &&
              strokeColor.hasSameValue(other.strokeColor) &&
              strokeMinWidth.hasSameValue(other.strokeMinWidth) &&
              strokeMaxWidth.hasSameValue(other.strokeMaxWidth) &&
@@ -87,6 +89,7 @@ namespace margelo::nitro::inksignpdf::views {
              doubleTap.hasSameValue(other.doubleTap) &&
              keyboardAvoidanceEnabled.hasSameValue(other.keyboardAvoidanceEnabled) &&
              pagerDirection.hasSameValue(other.pagerDirection) &&
+             textDirection.hasSameValue(other.textDirection) &&
              onStateChange.hasSameValue(other.onStateChange) &&
              onPageChange.hasSameValue(other.onPageChange) &&
              onZoomChange.hasSameValue(other.onZoomChange) &&
@@ -96,7 +99,7 @@ namespace margelo::nitro::inksignpdf::views {
 
     [[nodiscard]]
     bool hasAnyProvidedProps() const noexcept {
-      return androidFallbackFont.isProvided() ||
+      return document.isProvided() ||
              strokeColor.isProvided() ||
              strokeMinWidth.isProvided() ||
              strokeMaxWidth.isProvided() ||
@@ -110,6 +113,7 @@ namespace margelo::nitro::inksignpdf::views {
              doubleTap.isProvided() ||
              keyboardAvoidanceEnabled.isProvided() ||
              pagerDirection.isProvided() ||
+             textDirection.isProvided() ||
              onStateChange.isProvided() ||
              onPageChange.isProvided() ||
              onZoomChange.isProvided() ||

@@ -2,16 +2,16 @@
 
 ## Snapshot and output
 
-- `finalize()` returns the published output as a `file://` URI. The core retains
-  filesystem paths for cleanup: viewer output retires on disposal; successful
-  headless output transfers to the caller and survives document close.
+- Document `finalize()` returns the published output as a `file://` URI.
+  Successful output belongs to the caller and survives document close.
   Unpublished output remains core-owned until worker completion and retirement.
 - Export snapshots committed page content from the published working document.
-  Viewer finalize finishes text editing before capture; live ink is excluded.
+  The core ends its text transaction before capture; live ink is excluded.
   Snapshots read composed committed content; see
   [page history](view-lifecycle.md#page-history-and-disposal).
 - The PDFium worker preserves source pages and their order, adds ink as vector paths
   and text as positioned PDF text objects, then serializes a candidate.
+  Each ink path supplies its captured color; viewer pen changes do not recolor it.
 - JNI owns marshaling and output-file IO. The shared content writer owns PDF
   embedding/validation; Android's adapter supplies HarfBuzz-shaped clusters.
 - Reopen the candidate with PDFium and validate page metadata, object counts, path
@@ -19,12 +19,12 @@
 - Export leaves source files and the working document unchanged. Text shaping and
   line selection use saved local layout; positioned runs carry the annotation's
   layout-to-canonical transform. The PDFium adapter converts canonical content to
-  PDF coordinates, including the media-box origin, and persists captured page
+  PDF coordinates, including the visible-box origin, and persists captured page
   orientation once as page metadata. Ink keeps its canonical content mapping.
   See [text geometry](viewport-input.md#text).
 - Output publication checks document identity after worker completion.
-  Replacement and disposal follow the
-  [document operation contract](../architecture.md#document-operations).
+  Export admission, cancellation, and close follow
+  [core command lifetime](../architecture.md#commands-and-lifetime).
 
 ## Text and fonts
 

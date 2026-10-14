@@ -12,7 +12,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let view = fixture.view
     defer { view.dispose(); fixture.window.isHidden = true }
     let session = try view.setMode(mode: .view, options: nil)
-    _ = try awaitRotationOperation(session.setViewport(
+    _ = try awaitDocumentOperation(session.setViewport(
       options: ViewportOptions(x: 170, y: 120, zoom: 3)))
     XCTAssertFalse(view.interaction.viewport.motion.isRunning)
     let viewport = try view.getViewport()
@@ -89,7 +89,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     let bytes = try XCTUnwrap(image.jpegData(compressionQuality: 0.9))
     try bytes.write(to: source)
-    let info = try awaitRotationOperation(fixture.view.open(path: source.absoluteString, options: nil))
+    let info = try attachDocument(from: source, to: fixture.view)
     XCTAssertEqual(info.pageCount, 1)
     XCTAssertEqual(info.width, 595.28, accuracy: 0.01)
     XCTAssertEqual(info.height, 841.89, accuracy: 0.01)
@@ -103,7 +103,9 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
-    try awaitRotationOperation(view.rotatePage(degrees: 90))
+    let owner = try attachedDocument(view)
+    try awaitDocumentOperation(owner.rotatePage(index: 0, degrees: 90))
+    try awaitViewerPageReady(view)
     let session = try view.setMode(mode: .ink, options: nil)
     let request = try session.requestUserTap()
     var requestError: Error?
@@ -142,7 +144,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try view.setMode(mode: .view, options: nil)
     try view.setMode(mode: .view, options: nil)
     try view.requestUserTap().catch { errors.append($0) }
-    try awaitRotationOperation(view.close(cancelPending: false))
+    try awaitDocumentOperation((view.document as! HybridInkSignDocument).close())
     XCTAssertEqual(errors.count, 2)
     XCTAssertFalse(view.isPickingPageCoords)
     XCTAssertNil(view.interaction.coordinateRequest)
@@ -174,65 +176,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(errors[0].localizedDescription.hasPrefix("operation_cancelled:"))
     XCTAssertNil(view.interaction.coordinateRequest)
     XCTAssertTrue(view.interactionMode() == .ink)
-    let nextPage = try awaitRotationOperation(session.getPage(pageIndex: .first(1)))
+    let nextPage = try awaitDocumentOperation(session.getPage(pageIndex: .first(1)))
     XCTAssertNoThrow(try nextPage.getInputTargets())
-  }
-
-  func testImmediateCloseRejectsRunningAndQueuedViewerCommands() throws {
-    let fixture = makeFixture(pageCount: 1)
-    defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let neverFinishes = Promise<PageInfo>()
-    let running = fixture.view.enqueueViewerCommand { neverFinishes }
-    let queued = fixture.view.enqueueViewerCommand { Promise<PageInfo>.resolved(withResult:
-      PageInfo(tag: nil, hasInk: false, hasText: false, pageIndex: 0, pageCount: 1, isDirty: false, pageId: "queued",
-        width: 300, height: 400, rotation: 0, canUndo: false, canRedo: false)) }
-    let session = try fixture.view.setMode(mode: .ink, options: nil)
-    let queuedPage = try session.getPage(pageIndex: nil)
-    var cancellationCount = 0
-    running.catch { _ in cancellationCount += 1 }
-    queued.catch { _ in cancellationCount += 1 }
-    queuedPage.catch { _ in cancellationCount += 1 }
-    try awaitRotationOperation(fixture.view.close(cancelPending: true))
-    XCTAssertEqual(cancellationCount, 3)
-    XCTAssertNil(fixture.view.viewerDocument)
-    XCTAssertThrowsError(try fixture.view.setMode(mode: .ink, options: nil))
-    XCTAssertThrowsError(try fixture.view.setMode(mode: .text, options: nil))
-    XCTAssertNoThrow(try fixture.view.setMode(mode: .view, options: nil))
-    XCTAssertNil(fixture.view.viewerDocument)
-    XCTAssertFalse(fixture.view.interaction.isInk)
-    XCTAssertFalse(fixture.view.textInteractionOverlay.hasPendingPlacement())
-    // Late completion cannot revive the cancelled queue or current document.
-    neverFinishes.resolve(withResult: PageInfo(tag: nil, hasInk: false, hasText: false,
-      pageIndex: 0, pageCount: 1, isDirty: false, pageId: "pending", width: 300, height: 400, rotation: 0,
-      canUndo: false, canRedo: false))
-    XCTAssertNil(fixture.view.viewerDocument)
-  }
-
-  func testFifoCloseAndReplacementPreserveDocumentOrder() throws {
-    let fixture = makeFixture(pageCount: 1)
-    defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let source = try XCTUnwrap(fixture.view.viewerDocument?.workingURL)
-    let replacementSource = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".pdf")
-    try FileManager.default.copyItem(at: source, to: replacementSource)
-    defer { try? FileManager.default.removeItem(at: replacementSource) }
-    var identities: [String?] = []
-    fixture.view.onStateChange = { state in
-      identities.append(state.documentId?.asType(String.self))
-    }
-    let preparedRequest = try fixture.view.getPage(pageIndex: nil)
-    let closing = try fixture.view.close(cancelPending: false)
-    let opening = try fixture.view.open(path: replacementSource.path, options: nil)
-    let replacementAnalysis = try fixture.view.getPage(pageIndex: nil)
-    let prepared = try awaitRotationOperation(preparedRequest)
-    try awaitRotationOperation(closing)
-    _ = try awaitRotationOperation(opening)
-    _ = try awaitRotationOperation(replacementAnalysis)
-    XCTAssertThrowsError(try prepared.getInputTargets())
-    XCTAssertEqual(Set(identities.compactMap { $0 }).count, 2)
-    XCTAssertTrue(identities.contains(where: { $0 == nil }))
-    let output = try awaitRotationOperation(fixture.view.finalize())
-    XCTAssertTrue(output.hasPrefix("file://"))
-    XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(URL(string: output)).path))
   }
 
   func testPDFViewOwnsPresentationAndRequestsPageSpecificOverlays() throws {
@@ -300,10 +245,12 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(newCanvas.drawing.strokes.count, 1)
   }
 
-  func testCoordinatorUsesStablePageIdentityAndOwnsWorkingArtifact() throws {
+  func testDocumentUsesStablePageIdentityAndRetainsWorkingArtifactForReaders() throws {
     let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let workingURL = try XCTUnwrap(fixture.view.viewerDocument).workingURL
+    let owner = try XCTUnwrap(fixture.view.document as? HybridInkSignDocument)
+    let coordinator = owner.core.coordinator
     do {
     let document = try XCTUnwrap(fixture.view.viewerDocument)
     let activeID = document.activePageID
@@ -316,15 +263,37 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(fixture.view.viewerDocument!.selectPage(at: 1))
     XCTAssertTrue(FileManager.default.fileExists(atPath: workingURL.path))
 
-    fixture.view.documentCoordinator.clearDocument()
-    fixture.view.documentCoordinator.pdfQueue.sync {}
+    try awaitDocumentOperation(owner.close())
+    coordinator.pdfQueue.sync {}
 
     XCTAssertTrue(FileManager.default.fileExists(atPath: workingURL.path))
     XCTAssertEqual(document.pages.map(\.id), pageIDs)
     }
-    fixture.view.dispose()
-    fixture.view.documentCoordinator.pdfQueue.sync {}
+    coordinator.pdfQueue.sync {}
     XCTAssertFalse(FileManager.default.fileExists(atPath: workingURL.path))
+  }
+
+  func testPageHandleOutlivesDocumentWrapperUntilOwnerClose() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    var owner: HybridInkSignDocument? = try attachedDocument(fixture.view)
+    weak var weakOwner = owner
+    let core = try XCTUnwrap(owner?.core)
+    let page = try documentPage(fixture.view)
+
+    fixture.view.document = nil
+    owner = nil
+    XCTAssertNil(weakOwner)
+
+    let bounds = TextAnnotationBounds(x: 40, y: 50, width: 140, height: 50)
+    let targetID = try page.createInputArea(options: CreateInputAreaOptions(bounds: bounds,
+      font: nil, fontSize: 16, color: nil, direction: .ltr, maxLines: 1,
+      alignment: .start, verticalAnchor: .top))
+    try page.setTextValue(id: targetID, text: "retained page", options: nil)
+    XCTAssertEqual(try page.getTextValue(id: targetID), "retained page")
+
+    try awaitTestPromise(core.close())
+    XCTAssertThrowsError(try page.getTextValue(id: targetID))
   }
 
   func testCoordinatorAdmissionDirtyAggregationAndArtifactCleanup() throws {
@@ -442,36 +411,11 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     editor.text = "draft"
     overlay.textViewDidChange(editor)
     let generation = view.documentCoordinator.generation
+    let owner = try attachedDocument(view)
 
-    _ = try view.removePage()
-    _ = try view.movePage(pageIndex: 2)
-    _ = try view.movePage(pageIndex: 0)
-
-    XCTAssertTrue(textEditor(in: overlay) === editor)
-    XCTAssertTrue(view.viewerDocument?.activePage.history.content.isEmpty == true)
-    XCTAssertEqual(view.documentCoordinator.generation, generation)
-  }
-
-  func testCancelledPickerKeepsActiveTextDraft() throws {
-    let fixture = makeFixture(pageCount: 1)
-    defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let view = fixture.view
-    view.pageInputCoordinator = InkSignPdfPageInputCoordinator(
-      hostView: view.container,
-      artifactPolicy: view.artifactPolicy,
-      presenterProvider: { fixture.window.rootViewController },
-      controllerPresenter: { _, _ in },
-      sourceChooser: { _, _ in UIViewController() })
-    let overlay = view.textInteractionOverlay
-    try overlay.armPlacement(generation: view.documentCoordinator.generation)
-    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 100, y: 140)))
-    let editor = try XCTUnwrap(textEditor(in: overlay))
-    editor.text = "draft"
-    overlay.textViewDidChange(editor)
-    let generation = view.documentCoordinator.generation
-
-    _ = try view.addPages(options: nil)
-    view.pageInputCoordinator.cancelPending()
+    XCTAssertThrowsError(try awaitDocumentOperation(owner.removePage(index: 0)))
+    XCTAssertThrowsError(try awaitDocumentOperation(owner.movePage(fromIndex: 0, toIndex: 2)))
+    try awaitDocumentOperation(owner.movePage(fromIndex: 0, toIndex: 0))
 
     XCTAssertTrue(textEditor(in: overlay) === editor)
     XCTAssertTrue(view.viewerDocument?.activePage.history.content.isEmpty == true)
@@ -485,84 +429,15 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let coordinator = view.documentCoordinator
     let original = try XCTUnwrap(coordinator.document)
     let generation = coordinator.generation
-    let completed = expectation(description: "empty staging resolves")
-    var result: AddPagesResult?
-    var failure: Error?
-    let promise = try view.addPages(options: AddPagesOptions(tag: nil,
-      type: nil,
-      sources: [],
-      imagePageSize: nil,
-      targetDpi: nil,
-      jpegQuality: nil,
-      activePage: nil))
-    promise.then { result = $0; completed.fulfill() }
-    promise.catch { failure = $0; completed.fulfill() }
-    wait(for: [completed], timeout: 5)
+    let owner = try attachedDocument(view)
+    let result = try awaitTestPromise(owner.addPages(options: DocumentAddPagesOptions(
+      tag: nil, sources: [], imagePageSize: nil, targetDpi: nil, jpegQuality: nil)))
 
-    XCTAssertNil(failure)
-    XCTAssertEqual(result?.addedPageCount, 0)
-    XCTAssertEqual(try XCTUnwrap(result?.pageInfo).pageIndex, 1.0)
+    XCTAssertEqual(result.addedPageCount, 0)
+    XCTAssertEqual(result.pageCount, 2)
     XCTAssertTrue(coordinator.document === original)
     XCTAssertEqual(coordinator.generation, generation)
-  }
-
-  func testReplacementCancelsProductionPageInputStagingBeforePublication() throws {
-    let fixture = makeFixture(pageCount: 1)
-    let replacementFixture = makeFixture(pageCount: 1)
-    defer {
-      fixture.view.dispose(); fixture.window.isHidden = true
-      replacementFixture.view.dispose(); replacementFixture.window.isHidden = true
-    }
-    let view = fixture.view
-    let coordinator = view.documentCoordinator
-    let sourceURL = try XCTUnwrap(replacementFixture.view.viewerDocument?.workingURL)
-    let stagingStarted = DispatchSemaphore(value: 0)
-    let releaseStaging = DispatchSemaphore(value: 0)
-    defer { releaseStaging.signal() }
-    view.pageInputCoordinator = InkSignPdfPageInputCoordinator(
-      hostView: view.container,
-      artifactPolicy: view.artifactPolicy,
-      securityScope: { _, copy in
-        stagingStarted.signal()
-        _ = releaseStaging.wait(timeout: .now() + 5)
-        return try copy()
-      })
-
-    let addPages = try view.addPages(options: AddPagesOptions(tag: nil,
-      type: .pdf,
-      sources: [sourceURL.path],
-      imagePageSize: nil,
-      targetDpi: nil,
-      jpegQuality: nil,
-      activePage: nil))
-    let addPagesCancelled = expectation(description: "page input cancellation settles promptly")
-    var addPagesError: Error?
-    var addPagesRejectionCount = 0
-    addPages.catch { error in
-      addPagesError = error
-      addPagesRejectionCount += 1
-      addPagesCancelled.fulfill()
-    }
-    XCTAssertEqual(stagingStarted.wait(timeout: .now() + 2), .success)
-
-    let replacement = Promise<PageInfo>()
-    let replacementInstalled = expectation(description: "replacement installs after staged input cleanup")
-    replacement.then { _ in replacementInstalled.fulfill() }
-    replacement.catch { error in XCTFail("replacement failed: \(error)") }
-    view.beginLoad(sourceURL.path,
-                   zoom: nil,
-                   focus: nil,
-                   fitToPage: true,
-                   promise: replacement)
-
-    XCTAssertNil(coordinator.document)
-    wait(for: [addPagesCancelled], timeout: 2)
-    XCTAssertTrue(addPagesError?.localizedDescription.hasPrefix("operation_cancelled") == true)
-    XCTAssertEqual(addPagesRejectionCount, 1)
-    releaseStaging.signal()
-    wait(for: [replacementInstalled], timeout: 5)
-    XCTAssertEqual(addPagesRejectionCount, 1)
-    XCTAssertEqual(coordinator.document?.pages.count, 1)
+    XCTAssertEqual(view.viewerDocument?.activePageIndex, 1)
   }
 
   func testMixedAddPagesAppliesEncodingOptionsOnlyToImageInputs() throws {
@@ -594,24 +469,18 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     try XCTUnwrap(image.jpegData(compressionQuality: 1)).write(to: imageURL)
 
-    let options = AddPagesOptions(tag: nil,
-      type: nil,
+    let view = fixture.view
+    let owner = try attachedDocument(view)
+    let activePageID = try XCTUnwrap(view.viewerDocument?.activePageID)
+    let result = try awaitTestPromise(owner.addPages(options: DocumentAddPagesOptions(tag: nil,
       sources: [pdfURL.path, imageURL.path],
       imagePageSize: ImagePageSize(width: 144, height: 72),
-      targetDpi: 72,
-      jpegQuality: 0.1,
-      activePage: nil)
-    let completed = expectation(description: "mixed addPages")
-    var result: AddPagesResult?
-    var failure: Error?
-    let promise = try fixture.view.addPages(options: options)
-    promise.then { result = $0; completed.fulfill() }
-    promise.catch { failure = $0; completed.fulfill() }
-    wait(for: [completed], timeout: 30)
+      targetDpi: 72, jpegQuality: 0.1)))
 
-    if let failure { XCTFail("mixed addPages failed: \(failure)") }
-    XCTAssertEqual(result?.addedPageCount, 2.0)
-    let pages = try XCTUnwrap(fixture.view.viewerDocument?.pages)
+    XCTAssertEqual(result.addedPageCount, 2)
+    XCTAssertEqual(result.pageCount, 3)
+    try awaitViewerPageReady(view, pageID: activePageID)
+    let pages = try XCTUnwrap(view.documentCoordinator.document?.pages)
     XCTAssertEqual(pages.count, 3)
     XCTAssertEqual(pages[1].geometry.mediaBox.width, 90, accuracy: 0.01)
     XCTAssertEqual(pages[1].geometry.mediaBox.height, 45, accuracy: 0.01)
@@ -619,7 +488,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(pages[2].geometry.mediaBox.height, 72, accuracy: 0.01)
   }
 
-  func testAddPagesSelectsRequestedImportedPageAndReturnsIt() throws {
+  func testAddPagesPreservesActivePageIdentity() throws {
     let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
 
@@ -639,111 +508,19 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     XCTAssertTrue(source.write(to: sourceURL))
 
-    func append(_ activePage: AddPagesActivePage?) throws -> AddPagesResult {
-      let selection = activePage?.stringValue ?? "omitted"
-      let completed = expectation(description: "append pages selecting \(selection)")
-      var result: AddPagesResult?
-      var failure: Error?
-      let promise = try fixture.view.addPages(options: AddPagesOptions(tag: nil,
-        type: .pdf,
-        sources: [sourceURL.path],
-        imagePageSize: nil,
-        targetDpi: nil,
-        jpegQuality: nil,
-        activePage: activePage))
-      promise.then { result = $0; completed.fulfill() }
-      promise.catch { failure = $0; completed.fulfill() }
-      wait(for: [completed], timeout: 120)
-      if let failure { throw failure }
-      return try XCTUnwrap(result)
-    }
+    let view = fixture.view
+    let owner = try attachedDocument(view)
+    let originalActiveID = try XCTUnwrap(view.viewerDocument?.activePageID)
+    let result = try awaitTestPromise(owner.addPages(options: DocumentAddPagesOptions(
+      tag: nil, sources: [sourceURL.path], imagePageSize: nil,
+      targetDpi: nil, jpegQuality: nil)))
 
-    let originalActiveID = try XCTUnwrap(fixture.view.viewerDocument).activePageID
-    let omittedResult = try append(nil)
-    let afterCurrent = try XCTUnwrap(fixture.view.viewerDocument)
-    XCTAssertEqual(afterCurrent.activePageID, originalActiveID)
-    XCTAssertEqual(afterCurrent.activePageIndex, 1)
-    XCTAssertEqual(omittedResult.pageInfo?.pageIndex, 1)
-    XCTAssertEqual(omittedResult.pageInfo?.pageCount, 5)
-
-    let currentResult = try append(.current)
-    XCTAssertEqual(fixture.view.viewerDocument?.activePageID, originalActiveID)
-    XCTAssertEqual(currentResult.pageInfo?.pageIndex, 1)
-    XCTAssertEqual(currentResult.pageInfo?.pageCount, 7)
-
-    let firstResult = try append(.firstadded)
-    let afterFirst = try XCTUnwrap(fixture.view.viewerDocument)
-    let firstInfo = try XCTUnwrap(firstResult.pageInfo)
-    XCTAssertEqual(afterFirst.activePageIndex, 7)
-    XCTAssertEqual(firstInfo.pageIndex, 7)
-    XCTAssertEqual(firstInfo.width, 111, accuracy: 0.01)
-
-    let lastResult = try append(.lastadded)
-    let afterLast = try XCTUnwrap(fixture.view.viewerDocument)
-    let lastInfo = try XCTUnwrap(lastResult.pageInfo)
-    XCTAssertEqual(afterLast.activePageIndex, 10)
-    XCTAssertEqual(lastInfo.pageIndex, 10)
-    XCTAssertEqual(lastInfo.width, 222, accuracy: 0.01)
-    XCTAssertEqual(lastInfo.pageCount, 11)
-    XCTAssertTrue(fixture.view.documentView.currentPage === afterLast.activePDFPage)
-
-    let creationView = InkSignView()
-    let controller = UIViewController()
-    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
-    window.rootViewController = controller
-    controller.view.addSubview(creationView.view)
-    creationView.view.frame = controller.view.bounds
-    window.makeKeyAndVisible()
-    controller.view.layoutIfNeeded()
-    defer { creationView.dispose(); window.isHidden = true }
-    let created = expectation(description: "create document with current selection")
-    var createdResult: AddPagesResult?
-    var creationFailure: Error?
-    let createPromise = try creationView.addPages(options: AddPagesOptions(tag: nil,
-      type: .pdf,
-      sources: [sourceURL.path],
-      imagePageSize: nil,
-      targetDpi: nil,
-      jpegQuality: nil,
-      activePage: .current))
-    createPromise.then { createdResult = $0; created.fulfill() }
-    createPromise.catch { creationFailure = $0; created.fulfill() }
-    wait(for: [created], timeout: 30)
-    if let creationFailure { throw creationFailure }
-    let createdDocument = try XCTUnwrap(creationView.viewerDocument)
-    XCTAssertEqual(createdDocument.activePageIndex, 0)
-    XCTAssertEqual(createdResult?.pageInfo?.pageIndex, 0)
-    XCTAssertTrue(creationView.documentView.currentPage === createdDocument.activePDFPage)
-
-    let lastCreationView = InkSignView()
-    let lastCreationController = UIViewController()
-    let lastCreationWindow = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
-    lastCreationWindow.rootViewController = lastCreationController
-    lastCreationController.view.addSubview(lastCreationView.view)
-    lastCreationView.view.frame = lastCreationController.view.bounds
-    lastCreationWindow.makeKeyAndVisible()
-    lastCreationController.view.layoutIfNeeded()
-    defer { lastCreationView.dispose(); lastCreationWindow.isHidden = true }
-    let lastCreated = expectation(description: "create document selecting last added page")
-    var lastCreatedResult: AddPagesResult?
-    var lastCreationFailure: Error?
-    let lastCreatePromise = try lastCreationView.addPages(options: AddPagesOptions(tag: nil,
-      type: .pdf,
-      sources: [sourceURL.path],
-      imagePageSize: nil,
-      targetDpi: nil,
-      jpegQuality: nil,
-      activePage: .lastadded))
-    lastCreatePromise.then { lastCreatedResult = $0; lastCreated.fulfill() }
-    lastCreatePromise.catch { lastCreationFailure = $0; lastCreated.fulfill() }
-    wait(for: [lastCreated], timeout: 30)
-    if let lastCreationFailure { throw lastCreationFailure }
-    let lastCreatedDocument = try XCTUnwrap(lastCreationView.viewerDocument)
-    let lastCreationInfo = try XCTUnwrap(lastCreatedResult?.pageInfo)
-    XCTAssertEqual(lastCreatedDocument.activePageIndex, 1)
-    XCTAssertEqual(lastCreationInfo.pageIndex, 1)
-    XCTAssertEqual(lastCreationInfo.width, 222, accuracy: 0.01)
-    XCTAssertTrue(lastCreationView.documentView.currentPage === lastCreatedDocument.activePDFPage)
+    try awaitViewerPageReady(view, pageID: originalActiveID)
+    let document = try XCTUnwrap(view.viewerDocument)
+    XCTAssertEqual(result.addedPageCount, 2)
+    XCTAssertEqual(result.pageCount, 5)
+    XCTAssertEqual(document.activePageID, originalActiveID)
+    XCTAssertEqual(document.activePageIndex, 1)
   }
 
   func testMoveAndRemoveCommandsPublishFinalPageOrder() throws {
@@ -757,22 +534,18 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       pageSize: original.activePage.geometry.mediaBox.size)
     XCTAssertTrue(original.activePage.history.appendText(annotation))
 
-    let moved = expectation(description: "move page")
-    let move = try view.movePage(pageIndex: 0)
-    move.then { _ in moved.fulfill() }
-    move.catch { error in XCTFail("move failed: \(error)"); moved.fulfill() }
-    wait(for: [moved], timeout: 30)
+    let owner = try attachedDocument(view)
+    try awaitDocumentOperation(owner.movePage(fromIndex: 1, toIndex: 0))
+    try awaitViewerPageReady(view, pageID: movedID)
 
     let afterMove = try XCTUnwrap(view.viewerDocument)
     XCTAssertEqual(afterMove.pages.map(\.geometry.mediaBox.width), [400, 300, 500])
     XCTAssertEqual(afterMove.activePageID, movedID)
     XCTAssertEqual(afterMove.activePage.history.content.textAnnotations.first?.text, "kept")
 
-    let removed = expectation(description: "remove page")
-    let remove = try view.removePage()
-    remove.then { _ in removed.fulfill() }
-    remove.catch { error in XCTFail("remove failed: \(error)"); removed.fulfill() }
-    wait(for: [removed], timeout: 30)
+    let nextPageID = afterMove.pages[1].id
+    try awaitDocumentOperation(owner.removePage(index: 0))
+    try awaitViewerPageReady(view, pageID: nextPageID)
 
     let afterRemove = try XCTUnwrap(view.viewerDocument)
     XCTAssertEqual(afterRemove.pages.map(\.geometry.mediaBox.width), [300, 500])
@@ -793,7 +566,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
                    400, accuracy: 0.5)
 
     let exported = expectation(description: "export page order")
-    let output = try view.finalize()
+    let output = try owner.finalize()
     output.then { path in
       let outputURL = URL(string: path)!
       let pdf = PDFDocument(url: outputURL)
@@ -821,8 +594,10 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
     let document = try XCTUnwrap(view.viewerDocument)
+    let owner = try attachedDocument(view)
     let page = document.activePage
     let pageID = page.id
+    let pageHandle = try documentPage(view, at: 0)
 
     let point = PKStrokePoint(location: CGPoint(x: 35, y: 55),
                               timeOffset: 0,
@@ -854,18 +629,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let workingURLBefore = try XCTUnwrap(view.viewerDocument?.workingURL)
     let workingBytesBefore = try Data(contentsOf: workingURLBefore)
     try view.setMode(mode: .ink, options: nil)
-    let rotated = expectation(description: "rotate page")
-    var rotatedInfo: PageInfo?
-    var rotationError: Error?
-    let rotation = try view.rotatePage(degrees: 90)
-    rotation.then { rotatedInfo = $0; rotated.fulfill() }
-    rotation.catch { rotationError = $0; rotated.fulfill() }
-    wait(for: [rotated], timeout: 30)
-
-    XCTAssertNil(rotationError)
-    let pageInfo = try XCTUnwrap(rotatedInfo)
-    XCTAssertEqual(pageInfo.width, 400, accuracy: 0.01)
-    XCTAssertEqual(pageInfo.height, 300, accuracy: 0.01)
+    try awaitDocumentOperation(owner.rotatePage(index: 0, degrees: 90))
+    try awaitViewerPageReady(view, pageID: pageID)
     let afterRotation = try XCTUnwrap(view.viewerDocument)
     XCTAssertEqual(view.attachedOverlayPage, pageID)
     XCTAssertTrue(view.overlayProvider.isDisplaying(afterRotation.activePDFPage))
@@ -884,20 +649,21 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(afterRotation.activePage.history.content.equals(contentBefore))
 
     // Assembly reads the unchanged source, then rebinds pending orientation.
-    _ = try awaitRotationOperation(view.addPages(options: AddPagesOptions(tag: nil,
-      type: .pdf, sources: [workingURLBefore.path], imagePageSize: nil,
-      targetDpi: nil, jpegQuality: nil, activePage: nil)))
+    _ = try awaitDocumentOperation(owner.addPages(options: DocumentAddPagesOptions(tag: nil,
+      sources: [workingURLBefore.path], imagePageSize: nil, targetDpi: nil, jpegQuality: nil)))
+    try awaitViewerPageReady(view, pageID: pageID)
     XCTAssertEqual(view.viewerDocument?.activePageID, pageID)
     XCTAssertEqual(view.viewerDocument?.activePage.geometry.rotation, 90)
-    _ = try awaitRotationOperation(view.movePage(pageIndex: 1))
+    _ = try awaitDocumentOperation(owner.movePage(fromIndex: 0, toIndex: 1))
+    try awaitViewerPageReady(view, pageID: pageID)
     let afterMove = try XCTUnwrap(view.viewerDocument)
     XCTAssertEqual(afterMove.pages[1].id, pageID)
     XCTAssertTrue(afterMove.pages[1].history === page.history)
     XCTAssertTrue(afterMove.pages[1].history.content.equals(contentBefore))
     XCTAssertTrue(afterMove.pages[1].history.state.canRedo)
-    // Select the appended page for removal; the rotated page must survive.
-    XCTAssertTrue(view.viewerDocument!.selectPage(at: 0))
-    _ = try awaitRotationOperation(view.removePage())
+    // Remove the appended page while retaining the rotated page by identity.
+    _ = try awaitDocumentOperation(owner.removePage(index: 0))
+    try awaitViewerPageReady(view, pageID: pageID)
     let afterAssembly = try XCTUnwrap(view.viewerDocument)
     XCTAssertEqual(afterAssembly.pages.map(\.id), [pageID])
     XCTAssertEqual(afterAssembly.activePage.geometry.rotation, 90)
@@ -906,7 +672,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(afterAssembly.activePage.history.content.equals(contentBefore))
     XCTAssertTrue(afterAssembly.activePage.history.state.canRedo)
 
-    try view.redo()
+    try pageHandle.redo()
     view.defaultTextColor = "#D00000"
     drainMainQueue()
     try insertTextForTest("New text",
@@ -916,7 +682,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let exported = expectation(description: "export rotated PDF")
     var outputURL: URL?
     var exportError: Error?
-    let output = try view.finalize()
+    let output = try owner.finalize()
     output.then { path in outputURL = URL(string: path)!; exported.fulfill() }
     output.catch { error in exportError = error; exported.fulfill() }
     wait(for: [exported], timeout: 30)
@@ -948,10 +714,11 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertFalse(try XCTUnwrap(view.viewerDocument).activePage.history.content.drawing.strokes.isEmpty)
     for _ in 0..<3 {
       let completed = expectation(description: "compose quarter turn")
-      let next = try view.rotatePage(degrees: 90)
+      let next = try owner.rotatePage(index: 0, degrees: 90)
       next.then { _ in completed.fulfill() }
       next.catch { error in XCTFail("composed rotation failed: \(error)"); completed.fulfill() }
       wait(for: [completed], timeout: 30)
+      try awaitViewerPageReady(view, pageID: pageID)
     }
     let restored = try XCTUnwrap(view.viewerDocument)
     XCTAssertEqual(restored.activePage.geometry.rotation, 0)
@@ -979,17 +746,19 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
         renderer.cgContext.strokePath()
       }
     }
-    _ = try awaitRotationOperation(view.open(path: url.path, options: nil))
-    view.defaultTextColor = "#D00000"
-    drainMainQueue()
+    _ = try attachDocument(from: url, to: view)
+    let owner = try attachedDocument(view)
     for angle in [0, 90, 180, 270] {
-      if angle != 0 { _ = try awaitRotationOperation(view.rotatePage(degrees: 90)) }
+      if angle != 0 {
+        try awaitDocumentOperation(owner.rotatePage(index: 0, degrees: 90))
+        try awaitViewerPageReady(view)
+      }
       let state = try XCTUnwrap(view.viewerDocument)
       let historyBefore = state.activePage.history.content
       let modeBefore = view.interaction.isInk
-      let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
-      let textOptions = InputTargetResolutionOptions(fieldName: "Name", bounds: nil, occurrence: nil,
-        font: nil, fontSize: nil, color: nil, direction: .ltr, maxLines: 2,
+      let page = try documentPage(view)
+      let textOptions = ResolveInputUnderlineOptions(fieldName: "Name", bounds: nil, occurrence: nil,
+        font: nil, fontSize: nil, color: "#D00000", direction: .ltr, maxLines: 2,
         alignment: nil, verticalAnchor: .bottom)
       if angle == 90 || angle == 270 {
         do {
@@ -1010,7 +779,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       XCTAssertEqual(annotation.layoutRotation, angle)
       XCTAssertLessThanOrEqual(annotation.bounds.maxY, ruleY)
       for anchor in [FieldFocusVerticalAnchor.top, .bottom] {
-        _ = try awaitRotationOperation(page.focusInputTarget(id: textID,
+        _ = try awaitDocumentOperation(view.focusInputTarget(page: page, id: textID,
           options: InputTargetFocusOptions(zoom: 5,
                                      verticalAnchor: anchor, edgeOffset: 8)))
         view.documentView.layoutIfNeeded()
@@ -1047,21 +816,22 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
           "requestedCenter=\(clampedY), visibleTopLeft=\(displayedTopLeft), halfHeight=\(halfHeight), " +
           "destination=\(String(describing: view.documentView.currentDestination?.point))")
       }
-      let output = try awaitRotationOperation(view.finalize())
-      defer { try? FileManager.default.removeItem(atPath: output) }
-      let exported = try XCTUnwrap(PDFDocument(url: URL(string: output)!))
+      let output = try awaitDocumentOperation(owner.finalize())
+      let outputURL = try XCTUnwrap(URL(string: output))
+      defer { try? FileManager.default.removeItem(at: outputURL) }
+      let exported = try XCTUnwrap(PDFDocument(url: outputURL))
       let pixels = try rotationPixelBounds(in: XCTUnwrap(exported.page(at: 0))) { red, green, blue in
         Int(red) > Int(green) + 60 && Int(red) > Int(blue) + 60
       }
       // Only this insertion remains red in the following iteration.
       XCTAssertTrue(field.insetBy(dx: -2, dy: -2).contains(pixels))
       XCTAssertGreaterThan(pixels.width, pixels.height)
-      try view.clear()
+      try page.clear()
     }
   }
 
-  private func awaitRotationOperation<T>(_ promise: Promise<T>) throws -> T {
-    let completed = expectation(description: "rotation page assembly settles")
+  private func awaitDocumentOperation<T>(_ promise: Promise<T>) throws -> T {
+    let completed = expectation(description: "document operation settles")
     var result: T?
     var failure: Error?
     promise.then { result = $0; completed.fulfill() }
@@ -1168,28 +938,6 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     coordinator.settle(operation)
   }
 
-  func testOpenCancelsStructuralAdmissionAndDeletesPendingArtifacts() throws {
-    let fixture = makeFixture(pageCount: 2)
-    defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let coordinator = fixture.view.documentCoordinator
-    let structural = try XCTUnwrap(coordinator.admit(.structural))
-    let staged = try coordinator.artifactPolicy.allocateWorkingSource()
-    XCTAssertTrue(coordinator.registerPendingArtifact(staged, for: structural))
-
-    let open = try XCTUnwrap(coordinator.admit(.open))
-
-    XCTAssertFalse(coordinator.isCurrent(structural))
-    let artifactRemoved = XCTNSPredicateExpectation(
-      predicate: NSPredicate { _, _ in !FileManager.default.fileExists(atPath: staged.path) },
-      object: nil)
-    XCTAssertEqual(XCTWaiter.wait(for: [artifactRemoved], timeout: 5), .completed)
-    coordinator.settle(structural)
-    coordinator.settle(open)
-    XCTAssertNil(coordinator.document)
-  }
-
-
-
   func testProductionTextLookupCommitsToCapturedPageAfterNavigation() throws {
     let fixture = makeFixture(pageCount: 1)
     let keyPDFURL = FileManager.default.temporaryDirectory
@@ -1215,17 +963,8 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
 
     let view = fixture.view
+    try attachDocument(from: keyPDFURL, to: view)
     let coordinator = view.documentCoordinator
-    let opened = expectation(description: "two-page key fixture opens")
-    let openPromise = Promise<PageInfo>()
-    openPromise.then { _ in opened.fulfill() }
-    openPromise.catch { error in XCTFail("key fixture failed to open: \(error)") }
-    view.beginLoad(keyPDFURL.path,
-                   zoom: nil,
-                   focus: nil,
-                   fitToPage: true,
-                   promise: openPromise)
-    wait(for: [opened], timeout: 5)
     XCTAssertEqual(coordinator.document?.pages.count, 2)
     let keyPage = try XCTUnwrap(coordinator.document?.pages.first)
     let analysis = keyPage.sourceAnalysis
@@ -1240,10 +979,10 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       pageSize: keyPage.geometry.displaySize),
       "Fixture must contain a usable same-row rule; matches=\(displayed.matches), rules=\(displayed.rules)")
 
-    let page = try awaitRotationOperation(view.getPage(pageIndex: .first(0)))
+    let page = try documentPage(view, at: 0)
     XCTAssertEqual(try view.switchPage(to: 1).pageIndex, 1)
     XCTAssertEqual(view.viewerDocument?.activePageIndex, 1)
-    let textID = try resolveInputTarget(page, options: InputTargetResolutionOptions(
+    let textID = try resolveInputTarget(page, options: ResolveInputUnderlineOptions(
       fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil, color: nil,
       direction: nil, maxLines: nil, alignment: nil, verticalAnchor: nil))
     try page.setTextValue(id: textID, text: "filled", options: nil)
@@ -1273,20 +1012,15 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       }
 
     let view = fixture.view
-    let opened = expectation(description: "rotation lookup fixture opens")
-    var openError: Error?
-    let open = Promise<PageInfo>()
-    open.then { _ in opened.fulfill() }
-    open.catch { error in openError = error; opened.fulfill() }
-    view.beginLoad(keyPDFURL.path, zoom: nil, focus: nil, fitToPage: true, promise: open)
-    wait(for: [opened], timeout: 10)
-    XCTAssertNil(openError)
-    let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
-    _ = try awaitRotationOperation(view.rotatePage(degrees: 90))
+    try attachDocument(from: keyPDFURL, to: view)
+    let owner = try attachedDocument(view)
+    let page = try documentPage(view)
+    try awaitDocumentOperation(owner.rotatePage(index: 0, degrees: 90))
+    try awaitViewerPageReady(view)
     let document = try XCTUnwrap(view.viewerDocument)
     XCTAssertEqual(document.activePage.geometryRevision, 1)
     XCTAssertTrue(document.activePage.history.content.textAnnotations.isEmpty)
-    XCTAssertThrowsError(try resolveInputTarget(page, options: InputTargetResolutionOptions(
+    XCTAssertThrowsError(try resolveInputTarget(page, options: ResolveInputUnderlineOptions(
       fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil, color: nil,
       direction: .ltr, maxLines: nil, alignment: nil, verticalAnchor: .bottom))) {
       XCTAssertTrue($0.localizedDescription.hasPrefix("text_rule_not_found"))
@@ -1314,36 +1048,131 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       }
 
     let view = fixture.view
-    let opened = expectation(description: "rotation focus fixture opens")
-    var openError: Error?
-    let open = Promise<PageInfo>()
-    open.then { _ in opened.fulfill() }
-    open.catch { error in openError = error; opened.fulfill() }
-    view.beginLoad(keyPDFURL.path, zoom: nil, focus: nil, fitToPage: true, promise: open)
-    wait(for: [opened], timeout: 10)
-    XCTAssertNil(openError)
-    let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
-    let id = try resolveInputTarget(page, options: InputTargetResolutionOptions(
-      fieldName: "Name", direction: .ltr))
-    _ = try awaitRotationOperation(view.rotatePage(degrees: 90))
+    try attachDocument(from: keyPDFURL, to: view)
+    let owner = try attachedDocument(view)
+    let page = try documentPage(view)
+    let id = try resolveInputTarget(page, options: ResolveInputUnderlineOptions(
+      fieldName: "Name", bounds: nil, occurrence: nil, font: nil, fontSize: nil,
+      color: nil, direction: .ltr, maxLines: nil, alignment: nil, verticalAnchor: nil))
+    try awaitDocumentOperation(owner.rotatePage(index: 0, degrees: 90))
+    try awaitViewerPageReady(view)
     XCTAssertEqual(view.viewerDocument?.activePage.geometryRevision, 1)
     XCTAssertTrue(view.viewerDocument?.activePage.history.content.textAnnotations.isEmpty == true)
-    XCTAssertThrowsError(try awaitRotationOperation(page.focusInputTarget(id: id,
+    XCTAssertThrowsError(try awaitDocumentOperation(view.focusInputTarget(page: page, id: id,
       options: InputTargetFocusOptions(zoom: 3, verticalAnchor: .bottom, edgeOffset: 8)))) {
       XCTAssertTrue($0.localizedDescription.hasPrefix("text_rule_not_found"))
     }
+  }
+
+  func testFieldFocusWaitsForStructuralPresentationAfterMutation() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let owner = try attachedDocument(view)
+    let page = try documentPage(view)
+    let targetID = try createInputTarget(page, options: CreateInputAreaOptions(
+      bounds: TextAnnotationBounds(x: 40, y: 60, width: 120, height: 36),
+      font: nil, fontSize: 16, color: nil, direction: .ltr, maxLines: 1,
+      alignment: .start, verticalAnchor: .top))
+    try page.setTextValue(id: targetID, text: "Focus", options: nil)
+
+    try awaitTestPromise(owner.rotatePage(index: 0, degrees: 90))
+    try holdCurrentStructuralPresentation(view)
+    XCTAssertNotNil(view.interaction.presentation,
+                    "Focus should encounter the current structural presentation request")
+
+    var focusResult: Result<Void, Error>?
+    let focus = try view.focusInputTarget(page: page, id: targetID,
+      options: InputTargetFocusOptions(zoom: 3, verticalAnchor: .center, edgeOffset: 0))
+    focus.then { focusResult = .success(()) }
+    focus.catch { focusResult = .failure($0) }
+    XCTAssertNil(focusResult, "Focus must wait for the pending structural presentation")
+    XCTAssertFalse(view.interaction.viewport.motion.isRunning)
+
+    try completeCurrentPagePresentation(view)
+    try awaitDocumentOperation(focus)
+    XCTAssertEqual(view.viewerDocument?.activePage.geometryRevision, 1)
+    XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.02)
+    XCTAssertNil(view.interaction.presentation)
+  }
+
+  func testFieldFocusWaitingForPresentationCancelsOnDocumentReplacement() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let inactivePage = try documentPage(view, at: 1)
+    let oldPageID = try XCTUnwrap(UUID(uuidString: inactivePage.getState().pageId))
+    let targetID = try createInputTarget(inactivePage, options: CreateInputAreaOptions(
+      bounds: TextAnnotationBounds(x: 40, y: 60, width: 120, height: 36),
+      font: nil, fontSize: 16, color: nil, direction: .ltr, maxLines: 1,
+      alignment: .start, verticalAnchor: .top))
+    try inactivePage.setTextValue(id: targetID, text: "Do not navigate", options: nil)
+
+    try holdCurrentStructuralPresentation(view)
+    XCTAssertNotNil(view.interaction.presentation)
+
+    var focusSucceeded = false
+    var focusError: Error?
+    let focusSettled = expectation(description: "pending focus is cancelled by document replacement")
+    let focus = try view.focusInputTarget(page: inactivePage, id: targetID,
+      options: InputTargetFocusOptions(zoom: 4, verticalAnchor: .center, edgeOffset: 0))
+    focus.then { focusSucceeded = true; focusSettled.fulfill() }
+    focus.catch { focusError = $0; focusSettled.fulfill() }
+    XCTAssertFalse(focusSucceeded)
+
+    let replacementCore = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    let source = try XCTUnwrap(view.viewerDocument?.workingURL)
+    try awaitTestPromise(replacementCore.open(sourceURL: source))
+    let replacement = HybridInkSignDocument(core: replacementCore)
+    let replacementPageID = try XCTUnwrap(replacementCore.coordinator.document?.pages.first?.id)
+    view.document = replacement
+    wait(for: [focusSettled], timeout: 5)
+    XCTAssertFalse(focusSucceeded)
+    XCTAssertTrue(focusError?.localizedDescription.hasPrefix("operation_cancelled") == true)
+    XCTAssertNotEqual(replacementPageID, oldPageID)
+    XCTAssertEqual(view.viewerDocument?.activePage.id, replacementPageID)
+
+    try completeCurrentPagePresentation(view)
+    try awaitViewerPageReady(view, pageID: replacementPageID)
+    let replacementZoom = try view.getViewport().zoom
+    drainMainQueue()
+    XCTAssertEqual(view.viewerDocument?.activePage.id, replacementPageID)
+    XCTAssertEqual(try view.getViewport().zoom, replacementZoom, accuracy: 0.001,
+                   "Cancelled focus must not animate after replacement presentation completes")
+    XCTAssertFalse(view.interaction.viewport.motion.isRunning)
+  }
+
+  func testFieldFocusSucceedsImmediatelyAfterRotationMutation() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let owner = try attachedDocument(view)
+    let page = try documentPage(view)
+    let targetID = try createInputTarget(page, options: CreateInputAreaOptions(
+      bounds: TextAnnotationBounds(x: 40, y: 60, width: 120, height: 36),
+      font: nil, fontSize: 16, color: nil, direction: .ltr, maxLines: 1,
+      alignment: .start, verticalAnchor: .top))
+    try page.setTextValue(id: targetID, text: "Focus", options: nil)
+
+    try awaitTestPromise(owner.rotatePage(index: 0, degrees: 90))
+    let focus = try view.focusInputTarget(page: page, id: targetID,
+      options: InputTargetFocusOptions(zoom: 3, verticalAnchor: .center, edgeOffset: 0))
+    try awaitDocumentOperation(focus)
+
+    XCTAssertEqual(view.viewerDocument?.activePage.geometryRevision, 1)
+    XCTAssertEqual(try view.getViewport().zoom, 3, accuracy: 0.02)
   }
 
   func testModeSessionCancelsQueuedFocusAndRetainsCommittedText() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
-    let ordinaryPage = try awaitRotationOperation(view.getPage(pageIndex: nil))
+    let ordinaryPage = try documentPage(view)
     let session = try view.setMode(mode: .ink, options: nil)
-    let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
-    let textID = try resolveInputTarget(page, options: InputTargetResolutionOptions(
-      fieldName: nil, bounds: CGRect(x: 50, y: 60, width: 100, height: 30),
-      occurrence: nil, font: nil, fontSize: nil, color: nil, direction: nil, maxLines: nil,
+    let page = try awaitDocumentOperation(session.getPage(pageIndex: nil))
+    let textID = try createInputTarget(page, options: CreateInputAreaOptions(
+      bounds: TextAnnotationBounds(x: 50, y: 60, width: 100, height: 30),
+      font: nil, fontSize: nil, color: nil, direction: nil, maxLines: nil,
       alignment: nil, verticalAnchor: nil))
     var modes: [String] = []
     view.onStateChange = { modes.append($0.mode.stringValue) }
@@ -1351,7 +1180,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let beforeFocus = try view.interaction.viewport.currentViewportSnapshot().zoom
     let gate = Promise<Void>()
     let blocked = view.enqueueViewerCommand { gate }
-    let focus = try page.focusInputTarget(id: textID,
+    let focus = try session.focusInputTarget(page: page, id: textID,
       options: InputTargetFocusOptions(zoom: 3,
         verticalAnchor: nil, edgeOffset: nil))
     let cancelled = expectation(description: "queued session focus cancels promptly")
@@ -1395,10 +1224,11 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     try view.setMode(mode: .ink, options: nil) // The same mode still starts a new session.
     wait(for: [cancelled], timeout: 2)
-    let independent = try view.getPage(pageIndex: nil)
+    let owner = try attachedDocument(view)
+    let independent = try owner.getPage(index: .first(0))
     gate.resolve()
     try awaitModeChange(blocked)
-    let page = try awaitRotationOperation(independent)
+    let page = try awaitDocumentOperation(independent)
     XCTAssertEqual(rejectionCount, 1)
     XCTAssertNoThrow(try page.getInputTargets())
     XCTAssertThrowsError(try session.getPage(pageIndex: nil))
@@ -1417,19 +1247,21 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     }
     XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
 
-    let moving = try view.movePage(pageIndex: 1)
+    let owner = try attachedDocument(view)
+    let moving = try owner.movePage(fromIndex: 0, toIndex: 1)
     let session = try view.setMode(mode: .ink, options: nil)
     XCTAssertTrue(view.interaction.isInk)
     XCTAssertFalse(view.documentView.isUserInteractionEnabled)
     XCTAssertFalse(view.canvasView.drawingGestureRecognizer.isEnabled)
 
     releaseWorker.signal()
-    _ = try awaitRotationOperation(moving)
+    _ = try awaitDocumentOperation(moving)
+    try awaitViewerPageReady(view, pageID: pageID)
     XCTAssertEqual(view.viewerDocument?.activePageID, pageID)
     XCTAssertTrue(view.interaction.isInk)
     XCTAssertTrue(view.documentView.isUserInteractionEnabled)
     XCTAssertTrue(view.canvasView.drawingGestureRecognizer.isEnabled)
-    let page = try awaitRotationOperation(session.getPage(pageIndex: nil))
+    let page = try awaitDocumentOperation(session.getPage(pageIndex: nil))
     XCTAssertNoThrow(try page.getInputTargets())
     let canvas = view.canvasView
     let canvasPoint = CGPoint(x: canvas.bounds.midX, y: canvas.bounds.midY)
@@ -1439,378 +1271,6 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     _ = try view.setMode(mode: .view, options: nil)
     XCTAssertNil(canvas.hitTest(canvasPoint, with: nil))
   }
-
-  func testReplacementInvalidatesPreparedPage() throws {
-    let fixture = makeFixture(pageCount: 1)
-    let replacementFixture = makeFixture(pageCount: 1)
-    let keyPDFURL = FileManager.default.temporaryDirectory
-      .appendingPathComponent("InkSignKeyLookup-\(UUID().uuidString).pdf")
-    defer {
-      try? FileManager.default.removeItem(at: keyPDFURL)
-      fixture.view.dispose(); fixture.window.isHidden = true
-      replacementFixture.view.dispose(); replacementFixture.window.isHidden = true
-    }
-    let view = fixture.view
-    let coordinator = view.documentCoordinator
-    let pageBounds = CGRect(x: 0, y: 0, width: 300, height: 400)
-    let renderer = UIGraphicsPDFRenderer(bounds: pageBounds)
-    try renderer.writePDF(to: keyPDFURL) { context in
-      context.beginPage()
-      NSAttributedString(string: "Name",
-                         attributes: [.font: UIFont.systemFont(ofSize: 18)])
-        .draw(at: CGPoint(x: 70, y: 120))
-    }
-    let initialLoad = Promise<PageInfo>()
-    let initialLoadCompleted = expectation(description: "PDF-backed key fixture opens")
-    initialLoad.then { _ in initialLoadCompleted.fulfill() }
-    initialLoad.catch { error in XCTFail("key fixture failed to open: \(error)") }
-    view.beginLoad(keyPDFURL.path,
-                   zoom: nil,
-                   focus: nil,
-                   fitToPage: true,
-                   promise: initialLoad)
-    wait(for: [initialLoadCompleted], timeout: 5)
-    XCTAssertTrue(view.viewerDocument?.activePage.sourceAnalysis.lookup(key: "Name").hasLiteralMatch == true)
-    let page = try awaitRotationOperation(view.getPage(pageIndex: nil))
-
-    let workerEntered = DispatchSemaphore(value: 0)
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal() }
-    coordinator.pdfQueue.async {
-      workerEntered.signal()
-      _ = releaseWorker.wait(timeout: .now() + 5)
-    }
-    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
-
-    let replacement = Promise<PageInfo>()
-    let replacementInstalled = expectation(description: "replacement installs after worker release")
-    replacement.then { _ in replacementInstalled.fulfill() }
-    replacement.catch { error in XCTFail("replacement failed: \(error)") }
-    let replacementURL = try XCTUnwrap(replacementFixture.view.viewerDocument?.workingURL)
-    view.beginLoad(replacementURL.path,
-                   zoom: nil,
-                   focus: nil,
-                   fitToPage: true,
-                   promise: replacement)
-
-    XCTAssertNil(coordinator.document)
-    XCTAssertThrowsError(try page.getInputTargets()) {
-      XCTAssertTrue($0.localizedDescription.hasPrefix("operation_cancelled"))
-    }
-
-    releaseWorker.signal()
-    wait(for: [replacementInstalled], timeout: 5)
-    XCTAssertThrowsError(try page.getInputTargets())
-    XCTAssertTrue(view.viewerDocument?.activePage.history.content.textAnnotations.isEmpty == true)
-  }
-
-  func testImmediateCloseBeforeReplacementCancelsProductionFinalize() throws {
-    let fixture = makeFixture(pageCount: 1)
-    let replacementFixture = makeFixture(pageCount: 1)
-    defer {
-      fixture.view.dispose(); fixture.window.isHidden = true
-      replacementFixture.view.dispose(); replacementFixture.window.isHidden = true
-    }
-    let view = fixture.view
-    let coordinator = view.documentCoordinator
-    coordinator.pdfQueue.sync {}
-
-    let workerEntered = DispatchSemaphore(value: 0)
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal() }
-    coordinator.pdfQueue.async {
-      workerEntered.signal()
-      _ = releaseWorker.wait(timeout: .now() + 5)
-    }
-    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
-
-    let finalize = try view.finalize()
-    let finalizeCancelled = expectation(description: "finalize cancellation settles promptly")
-    var finalizeError: Error?
-    var finalizeRejectionCount = 0
-    finalize.catch { error in
-      finalizeError = error
-      finalizeRejectionCount += 1
-      finalizeCancelled.fulfill()
-    }
-
-    try awaitRotationOperation(view.close(cancelPending: true))
-
-    let replacement = Promise<PageInfo>()
-    let replacementInstalled = expectation(description: "replacement installs after export worker release")
-    replacement.then { _ in replacementInstalled.fulfill() }
-    replacement.catch { error in XCTFail("replacement failed: \(error)") }
-    let replacementURL = try XCTUnwrap(replacementFixture.view.viewerDocument?.workingURL)
-    view.beginLoad(replacementURL.path,
-                   zoom: nil,
-                   focus: nil,
-                   fitToPage: true,
-                   promise: replacement)
-
-    XCTAssertNil(coordinator.document)
-    wait(for: [finalizeCancelled], timeout: 2)
-    XCTAssertTrue(finalizeError?.localizedDescription.hasPrefix("operation_cancelled") == true)
-    XCTAssertEqual(finalizeRejectionCount, 1)
-
-    releaseWorker.signal()
-    wait(for: [replacementInstalled], timeout: 5)
-    coordinator.pdfQueue.sync {}
-    XCTAssertEqual(finalizeRejectionCount, 1)
-    XCTAssertNotNil(coordinator.document)
-  }
-
-  func testImmediateCloseBeforeReplacementCancelsProductionPageMutation() throws {
-    let fixture = makeFixture(pageCount: 2)
-    let replacementFixture = makeFixture(pageCount: 1)
-    defer {
-      fixture.view.dispose(); fixture.window.isHidden = true
-      replacementFixture.view.dispose(); replacementFixture.window.isHidden = true
-    }
-    let view = fixture.view
-    let coordinator = view.documentCoordinator
-    coordinator.pdfQueue.sync {}
-
-    let workerEntered = DispatchSemaphore(value: 0)
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal() }
-    coordinator.pdfQueue.async {
-      workerEntered.signal()
-      _ = releaseWorker.wait(timeout: .now() + 5)
-    }
-    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
-
-    let remove = try view.removePage()
-    let removeCancelled = expectation(description: "page mutation cancellation settles promptly")
-    var removeError: Error?
-    var removeRejectionCount = 0
-    remove.catch { error in
-      removeError = error
-      removeRejectionCount += 1
-      removeCancelled.fulfill()
-    }
-
-    try awaitRotationOperation(view.close(cancelPending: true))
-
-    let replacement = Promise<PageInfo>()
-    let replacementInstalled = expectation(description: "replacement installs after mutation worker release")
-    replacement.then { _ in replacementInstalled.fulfill() }
-    replacement.catch { error in XCTFail("replacement failed: \(error)") }
-    let replacementURL = try XCTUnwrap(replacementFixture.view.viewerDocument?.workingURL)
-    view.beginLoad(replacementURL.path,
-                   zoom: nil,
-                   focus: nil,
-                   fitToPage: true,
-                   promise: replacement)
-
-    XCTAssertNil(coordinator.document)
-    wait(for: [removeCancelled], timeout: 2)
-    XCTAssertTrue(removeError?.localizedDescription.hasPrefix("operation_cancelled") == true)
-    XCTAssertEqual(removeRejectionCount, 1)
-
-    releaseWorker.signal()
-    wait(for: [replacementInstalled], timeout: 5)
-    coordinator.pdfQueue.sync {}
-    XCTAssertEqual(removeRejectionCount, 1)
-    XCTAssertEqual(coordinator.document?.pages.count, 1)
-  }
-
-  func testImmediateCloseBeforeReplacementCancelsOnlyThatMountedView() throws {
-    let firstFixture = makeFixture(pageCount: 1)
-    let secondFixture = makeFixture(pageCount: 1)
-    defer {
-      firstFixture.view.dispose(); firstFixture.window.isHidden = true
-      secondFixture.view.dispose(); secondFixture.window.isHidden = true
-    }
-    let firstCoordinator = firstFixture.view.documentCoordinator
-    firstCoordinator.pdfQueue.sync {}
-    let workerEntered = DispatchSemaphore(value: 0)
-    let releaseWorker = DispatchSemaphore(value: 0)
-    defer { releaseWorker.signal() }
-    firstCoordinator.pdfQueue.async {
-      workerEntered.signal()
-      _ = releaseWorker.wait(timeout: .now() + 5)
-    }
-    XCTAssertEqual(workerEntered.wait(timeout: .now() + 2), .success)
-
-    let firstExport = try firstFixture.view.finalize()
-    let firstExportCancelled = expectation(description: "first view export is cancelled")
-    var firstExportError: Error?
-    firstExport.catch { error in
-      firstExportError = error
-      firstExportCancelled.fulfill()
-    }
-    let secondExport = try secondFixture.view.finalize()
-    let secondExportCompleted = expectation(description: "second view export remains active")
-    var secondOutput: String?
-    secondExport.then { path in
-      secondOutput = path
-      secondExportCompleted.fulfill()
-    }
-    secondExport.catch { error in XCTFail("second view export failed: \(error)") }
-
-    try awaitRotationOperation(firstFixture.view.close(cancelPending: true))
-
-    let replacement = Promise<PageInfo>()
-    let replacementInstalled = expectation(description: "first view replacement installs")
-    replacement.then { _ in replacementInstalled.fulfill() }
-    replacement.catch { error in XCTFail("replacement failed: \(error)") }
-    let replacementURL = try XCTUnwrap(secondFixture.view.viewerDocument?.workingURL)
-    firstFixture.view.beginLoad(replacementURL.path,
-                                zoom: nil,
-                                focus: nil,
-                                fitToPage: true,
-                                promise: replacement)
-
-    wait(for: [firstExportCancelled], timeout: 2)
-    XCTAssertTrue(firstExportError?.localizedDescription.hasPrefix("operation_cancelled") == true)
-    releaseWorker.signal()
-    wait(for: [replacementInstalled, secondExportCompleted], timeout: 60)
-    XCTAssertTrue(firstExportError?.localizedDescription.hasPrefix("operation_cancelled") == true)
-    XCTAssertTrue(FileManager.default.fileExists(atPath: try XCTUnwrap(URL(string: try XCTUnwrap(secondOutput))).path))
-  }
-
-  func testPreparationFailureClearsExistingDocumentBeforeRejectingOnce() throws {
-    let fixture = makeFixture()
-    defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let view = fixture.view
-    let rejected = expectation(description: "preparation failure rejects after clear")
-    let promise = Promise<PageInfo>()
-    var rejectionCount = 0
-    var documentWasClearedAtRejection = false
-    promise.catch { _ in
-      rejectionCount += 1
-      documentWasClearedAtRejection = view.viewerDocument == nil &&
-        view.documentView.document == nil
-      rejected.fulfill()
-    }
-
-    view.beginLoad("/missing/inksign-lifecycle-candidate.pdf",
-                   zoom: nil,
-                   focus: nil,
-                   fitToPage: true,
-                   promise: promise)
-    wait(for: [rejected], timeout: 5)
-
-    XCTAssertEqual(rejectionCount, 1)
-    XCTAssertTrue(documentWasClearedAtRejection)
-    XCTAssertNil(view.pendingOpen)
-    XCTAssertNil(view.attachedOverlayPage)
-  }
-
-
-
-
-
-  func testFailedReplacementClearsDocumentAndEditingMode() throws {
-    let fixture = makeFixture()
-    defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let view = fixture.view
-    let target = ViewportTarget(zoom: 3, focus: CGPoint(x: 140, y: 180))
-    XCTAssertTrue(view.interaction.viewport.applyViewport(target: target))
-    view.interaction.setBaseMode(ink: true)
-    let original = try XCTUnwrap(view.viewerDocument)
-    let rejected = expectation(description: "invalid replacement is rejected")
-    var rejection: Error?
-    let promise = Promise<PageInfo>()
-    promise.catch { error in
-      rejection = error
-      rejected.fulfill()
-    }
-
-    view.beginLoad("", zoom: nil, focus: nil, fitToPage: true,
-                   promise: promise)
-    XCTAssertNil(view.viewerDocument, "replacement clears the old document on admission")
-    XCTAssertNil(view.documentView.document)
-    XCTAssertNil(view.overlayProvider.canvasView(for: original.activePage.id))
-    XCTAssertFalse(view.interaction.isInk)
-    wait(for: [rejected], timeout: 5)
-
-    XCTAssertNotNil(rejection)
-    XCTAssertNil(view.viewerDocument)
-    XCTAssertNil(view.documentView.document)
-    XCTAssertNil(view.attachedOverlayPage)
-    XCTAssertFalse(view.interaction.isInk)
-    view.documentCoordinator.pdfQueue.sync {}
-    XCTAssertTrue(FileManager.default.fileExists(atPath: original.workingURL.path),
-      "The retained viewer reader keeps its retired working file alive")
-  }
-
-  func testUnreadableReplacementClearsViewModePresentation() throws {
-    let fixture = makeFixture()
-    defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    let view = fixture.view
-    let original = try XCTUnwrap(view.viewerDocument)
-    let source = FileManager.default.temporaryDirectory
-      .appendingPathComponent("invalid-\(UUID().uuidString).pdf")
-    try Data("not a PDF".utf8).write(to: source)
-    defer { try? FileManager.default.removeItem(at: source) }
-
-    let rejected = expectation(description: "unreadable replacement is rejected")
-    let promise = Promise<PageInfo>()
-    promise.catch { _ in rejected.fulfill() }
-    view.beginLoad(source.path, zoom: nil, focus: nil, fitToPage: true, promise: promise)
-    XCTAssertNil(view.viewerDocument, "replacement clears the old document on admission")
-    XCTAssertNil(view.documentView.document)
-    XCTAssertNil(view.overlayProvider.canvasView(for: original.activePage.id))
-    XCTAssertFalse(view.interaction.isInk)
-    wait(for: [rejected], timeout: 5)
-
-    XCTAssertNil(view.viewerDocument)
-    XCTAssertNil(view.documentView.document)
-    XCTAssertNil(view.attachedOverlayPage)
-    XCTAssertFalse(view.interaction.isInk)
-    view.documentCoordinator.pdfQueue.sync {}
-    XCTAssertTrue(FileManager.default.fileExists(atPath: original.workingURL.path),
-      "The retained viewer reader keeps its retired working file alive")
-    XCTAssertNil(view.overlayProvider.canvasView(for: original.activePage.id))
-  }
-
-
-
-  func testDisposeDuringOpenPreparationRejectsOnceAndIgnoresLateLoad() throws {
-    let fixture = makeFixture()
-    let promise = Promise<PageInfo>()
-    let reentrantPromise = Promise<PageInfo>()
-    var rejectionCount = 0
-    var reentrantRejectionCount = 0
-    let rejected = expectation(description: "disposed preparation rejects")
-    let reentrantRejected = expectation(description: "open from rejection callback is cancelled")
-    reentrantPromise.catch { error in
-      guard case InkSignView.LoadError.cancelled = error else {
-        XCTFail("open from a disposal callback was not cancelled: \(error)")
-        reentrantRejected.fulfill()
-        return
-      }
-      reentrantRejectionCount += 1
-      reentrantRejected.fulfill()
-    }
-    promise.catch { _ in
-      rejectionCount += 1
-      rejected.fulfill()
-      fixture.view.beginLoad("/missing/reentrant-inksign-replacement.pdf",
-                             zoom: nil,
-                             focus: nil,
-                             fitToPage: true,
-                             promise: reentrantPromise)
-    }
-
-    fixture.view.beginLoad("/missing/inksign-replacement.pdf",
-                           zoom: nil,
-                           focus: nil,
-                           fitToPage: true,
-                           promise: promise)
-    fixture.view.dispose()
-    wait(for: [rejected, reentrantRejected], timeout: 5)
-    drainMainQueue()
-
-    XCTAssertEqual(rejectionCount, 1)
-    XCTAssertEqual(reentrantRejectionCount, 1)
-    XCTAssertNil(fixture.view.viewerDocument)
-    XCTAssertNil(fixture.view.documentView.document)
-    fixture.window.isHidden = true
-  }
-
-
 
   func testStaleExportCannotPublishOutput() throws {
     let coordinator = InkSignPdfDocumentCoordinator()
@@ -1830,7 +1290,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     coordinator.discardArtifact(artifacts.source)
   }
 
-  func testOpenReadinessRequiresTheSameConditionsAsViewportCommands() {
+  func testAttachmentReadinessRequiresTheSameConditionsAsViewportCommands() {
     var readiness = ViewportReadiness(
       documentReady: true,
       viewInWindow: false,
@@ -1858,49 +1318,6 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
       fitScaleUsable: true)
 
     XCTAssertTrue(readiness.allowsCommand(fitToPage: true))
-  }
-
-  func testOpenCompletionResolvesOnceWithoutLayoutReentry() throws {
-    let fixture = makeFixture(applyInitialViewport: false)
-    defer { fixture.window.isHidden = true }
-
-    var resolutionCount = 0
-    var rejectionCount = 0
-    var stateEventCount = 0
-    let promise = Promise<PageInfo>()
-    promise.then { _ in resolutionCount += 1 }
-    promise.catch { _ in rejectionCount += 1 }
-    fixture.view.onStateChange = { _ in stateEventCount += 1 }
-    let initialStateEventCount = stateEventCount
-    fixture.view.pendingOpen = InkSignView.PendingOpen(
-      promise: promise,
-      zoom: 2,
-      focus: CGPoint(x: 150, y: 200),
-      fitToPage: false,
-      phase: .installing)
-    fixture.view.pendingOpen?.generation = fixture.view.documentCoordinator.generation
-
-    fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[0])
-
-    XCTAssertEqual(resolutionCount, 0)
-    XCTAssertEqual(rejectionCount, 0)
-    fixture.view.emitChange(force: true)
-    XCTAssertEqual(stateEventCount, initialStateEventCount)
-
-    fixture.view.pendingOpen?.phase = .awaitingReadiness
-    fixture.view.overlayDidDisplay(fixture.view.canvasView, for: fixture.pages[0])
-
-    XCTAssertEqual(fixture.view.documentView.scaleFactor, 2, accuracy: 0.0001)
-    XCTAssertEqual(resolutionCount, 1)
-    XCTAssertEqual(rejectionCount, 0)
-    XCTAssertEqual(stateEventCount, initialStateEventCount + 1)
-    XCTAssertNil(fixture.view.pendingOpen)
-
-    fixture.view.documentView.layoutIfNeeded()
-
-    XCTAssertEqual(fixture.view.documentView.scaleFactor, 2, accuracy: 0.0001)
-    XCTAssertEqual(resolutionCount, 1)
-    XCTAssertEqual(rejectionCount, 0)
   }
 
   func testExistingFocusRequestPreservesZoomWhenZoomIsOmitted() throws {

@@ -36,7 +36,6 @@ target_sources(
   ../nitrogen/generated/shared/c++/HybridDocumentPageSpec.cpp
   ../nitrogen/generated/shared/c++/HybridInkSignDocumentSpec.cpp
   ../nitrogen/generated/shared/c++/HybridInkSignDocumentFactorySpec.cpp
-  ../nitrogen/generated/shared/c++/HybridAnalyzedPageSpec.cpp
   ../nitrogen/generated/shared/c++/HybridTextHandleSpec.cpp
   ../nitrogen/generated/shared/c++/HybridModeSessionSpec.cpp
   ../nitrogen/generated/shared/c++/HybridInkSignViewSpec.cpp
@@ -47,7 +46,6 @@ target_sources(
   ../nitrogen/generated/android/c++/JHybridInkSignDocumentSpec.cpp
   ../nitrogen/generated/android/c++/JPageQuery.cpp
   ../nitrogen/generated/android/c++/JHybridInkSignDocumentFactorySpec.cpp
-  ../nitrogen/generated/android/c++/JHybridAnalyzedPageSpec.cpp
   ../nitrogen/generated/android/c++/JHybridTextHandleSpec.cpp
   ../nitrogen/generated/android/c++/JHybridModeSessionSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_Double_TaggedPageQuery.cpp

@@ -12,12 +12,14 @@
 // Forward declaration of `HybridInkSignViewSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 
-// Forward declaration of `AndroidFallbackFont` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
+// Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `ViewerState` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `InteractionMode` to properly resolve imports.
@@ -26,52 +28,36 @@ namespace margelo::nitro::inksignpdf { enum class InteractionMode; }
 namespace margelo::nitro::inksignpdf { struct PageChangeEvent; }
 // Forward declaration of `TextSelection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextSelection; }
-// Forward declaration of `NamedFontSource` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
-// Forward declaration of `PageInfo` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PageInfo; }
-// Forward declaration of `ViewOpenOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ViewOpenOptions; }
-// Forward declaration of `AddPagesResult` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
-// Forward declaration of `AddPagesOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
-// Forward declaration of `PageType` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class PageType; }
-// Forward declaration of `ImagePageSize` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
-// Forward declaration of `AddPagesActivePage` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class AddPagesActivePage; }
+// Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
+// Forward declaration of `InputTargetFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTargetFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
-// Forward declaration of `DocumentState` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `HybridTextHandleSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
-// Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
-// Forward declaration of `TaggedPageQuery` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
 // Forward declaration of `InputMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InputMode; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
-// Forward declaration of `TextDirection` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `TextAlignment` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextAlignment; }
 // Forward declaration of `TextVerticalAnchor` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 
-#include "AndroidFallbackFont.hpp"
+#include <memory>
+#include "HybridInkSignDocumentSpec.hpp"
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
 #include "PagerDirection.hpp"
+#include "TextDirection.hpp"
 #include "ViewerState.hpp"
 #include <functional>
 #include "InteractionMode.hpp"
@@ -80,26 +66,15 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "PageChangeEvent.hpp"
 #include "TextSelection.hpp"
 #include <NitroModules/Promise.hpp>
-#include "NamedFontSource.hpp"
-#include <vector>
-#include "PageInfo.hpp"
-#include "ViewOpenOptions.hpp"
-#include "AddPagesResult.hpp"
-#include "AddPagesOptions.hpp"
-#include "PageType.hpp"
-#include "ImagePageSize.hpp"
-#include "AddPagesActivePage.hpp"
+#include "HybridDocumentPageSpec.hpp"
+#include "InputTargetFocusOptions.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
 #include "Viewport.hpp"
 #include "PageCoords.hpp"
-#include "DocumentState.hpp"
-#include <memory>
 #include "HybridTextHandleSpec.hpp"
-#include "HybridAnalyzedPageSpec.hpp"
-#include "TaggedPageQuery.hpp"
 #include "HybridModeSessionSpec.hpp"
 #include "InputMode.hpp"
 #include "TextModeOptions.hpp"
-#include "TextDirection.hpp"
 #include "TextAlignment.hpp"
 #include "TextVerticalAnchor.hpp"
 
@@ -149,12 +124,12 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Properties
-    inline std::optional<AndroidFallbackFont> getAndroidFallbackFont() noexcept override {
-      auto __result = _swiftPart.getAndroidFallbackFont();
+    inline std::optional<std::shared_ptr<HybridInkSignDocumentSpec>> getDocument() noexcept override {
+      auto __result = _swiftPart.getDocument();
       return __result;
     }
-    inline void setAndroidFallbackFont(const std::optional<AndroidFallbackFont>& androidFallbackFont) noexcept override {
-      _swiftPart.setAndroidFallbackFont(androidFallbackFont);
+    inline void setDocument(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& document) noexcept override {
+      _swiftPart.setDocument(document);
     }
     inline std::optional<std::string> getStrokeColor() noexcept override {
       auto __result = _swiftPart.getStrokeColor();
@@ -247,6 +222,13 @@ namespace margelo::nitro::inksignpdf {
     inline void setPagerDirection(std::optional<PagerDirection> pagerDirection) noexcept override {
       _swiftPart.setPagerDirection(pagerDirection);
     }
+    inline std::optional<TextDirection> getTextDirection() noexcept override {
+      auto __result = _swiftPart.getTextDirection();
+      return __result;
+    }
+    inline void setTextDirection(std::optional<TextDirection> textDirection) noexcept override {
+      _swiftPart.setTextDirection(textDirection);
+    }
     inline std::optional<std::function<void(const ViewerState& /* event */)>> getOnStateChange() noexcept override {
       auto __result = _swiftPart.getOnStateChange();
       return __result;
@@ -278,67 +260,19 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
-    inline std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) override {
-      auto __result = _swiftPart.loadFonts(fonts);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewOpenOptions>& options) override {
-      auto __result = _swiftPart.open(path, options);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) override {
-      auto __result = _swiftPart.close(cancelPending);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) override {
-      auto __result = _swiftPart.addPages(options);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<PageInfo>> removePage() override {
-      auto __result = _swiftPart.removePage();
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<PageInfo>> movePage(double pageIndex) override {
-      auto __result = _swiftPart.movePage(std::forward<decltype(pageIndex)>(pageIndex));
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::shared_ptr<Promise<PageInfo>> rotatePage(double degrees) override {
-      auto __result = _swiftPart.rotatePage(std::forward<decltype(degrees)>(degrees));
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
     inline void nextPage() override {
       auto __result = _swiftPart.nextPage();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }
+    }
+    inline std::shared_ptr<Promise<void>> focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) override {
+      auto __result = _swiftPart.focusInputTarget(page, std::forward<decltype(id)>(id), options);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
     }
     inline void previousPage() override {
       auto __result = _swiftPart.previousPage();
@@ -362,14 +296,6 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline DocumentState getState() override {
-      auto __result = _swiftPart.getState();
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
     inline std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() override {
       auto __result = _swiftPart.getSelectedText();
       if (__result.hasError()) [[unlikely]] {
@@ -378,62 +304,8 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) override {
-      auto __result = _swiftPart.getPage(pageIndex);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline std::vector<std::string> getPageIdsByTag(const std::string& tag) override {
-      auto __result = _swiftPart.getPageIdsByTag(tag);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
     inline std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) override {
       auto __result = _swiftPart.setMode(static_cast<int>(mode), options);
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-      auto __value = std::move(__result.value());
-      return __value;
-    }
-    inline void undo() override {
-      auto __result = _swiftPart.undo();
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
-    inline void redo() override {
-      auto __result = _swiftPart.redo();
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
-    inline void clear() override {
-      auto __result = _swiftPart.clear();
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
-    inline void clearInk() override {
-      auto __result = _swiftPart.clearInk();
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
-    inline void setTextDirection(TextDirection direction) override {
-      auto __result = _swiftPart.setTextDirection(static_cast<int>(direction));
-      if (__result.hasError()) [[unlikely]] {
-        std::rethrow_exception(__result.error());
-      }
-    }
-    inline std::shared_ptr<Promise<std::string>> finalize() override {
-      auto __result = _swiftPart.finalize();
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

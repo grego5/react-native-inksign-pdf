@@ -18,6 +18,7 @@ import kotlin.math.floor
  */
 internal class InkDisplayBatch(
     private val name: String,
+    val color: Int = android.graphics.Color.BLACK,
 ) {
     private val sourcePaths = ArrayList<Path>()
     private val sourceBounds = RectF()
@@ -111,6 +112,7 @@ internal class InkDisplayBatch(
     }
 
     fun draw(canvas: Canvas, paint: Paint, hardware: Boolean) {
+        paint.color = color
         if (isEmpty) return
         if (!hardware) {
             sourcePaths.forEach { path -> canvas.drawPath(path, paint) }
@@ -202,12 +204,10 @@ internal class InkRenderer {
     private val pageMatrixValues = FloatArray(9).apply { this[8] = 1f }
     private val sealedCompletedBatches = ArrayList<InkDisplayBatch>()
     private var activeCompletedBatch: InkDisplayBatch? = null
-    private var lastColor: Int? = null
 
     fun draw(
         canvas: Canvas,
         pageToView: PageTransform,
-        currentColor: Int,
     ) {
         pageMatrixValues[0] = pageToView.a.toFloat()
         pageMatrixValues[1] = pageToView.c.toFloat()
@@ -218,11 +218,6 @@ internal class InkRenderer {
         pageMatrix.setValues(pageMatrixValues)
         canvas.save()
         canvas.concat(pageMatrix)
-        inkPaint.color = currentColor
-        if (lastColor != currentColor) {
-            markAllBatchesDirty()
-            lastColor = currentColor
-        }
         val hardware = canvas.isHardwareAccelerated
         sealedCompletedBatches.forEach { it.draw(canvas, inkPaint, hardware) }
         activeCompletedBatch?.draw(canvas, inkPaint, hardware)
@@ -243,12 +238,12 @@ internal class InkRenderer {
 
     private fun appendCompletedPath(data: InkPathData) {
         val segmentCount = data.commands.count { it.type == InkPathCommand.CUBIC }
-        var active = activeCompletedBatch ?: startCompletedBatch()
+        var active = activeCompletedBatch ?: startCompletedBatch(data.color)
         if (!active.isEmpty &&
-            active.sourceSegmentCount + segmentCount > COMPLETED_BATCH_SEGMENT_LIMIT
+            (active.color != data.color || active.sourceSegmentCount + segmentCount > COMPLETED_BATCH_SEGMENT_LIMIT)
         ) {
             sealActiveCompletedBatch()
-            active = startCompletedBatch()
+            active = startCompletedBatch(data.color)
         }
         active.appendPath(data.toPath(), segmentCount, data.commands.size)
         if (active.sourceSegmentCount >= COMPLETED_BATCH_SEGMENT_LIMIT) {
@@ -288,8 +283,8 @@ internal class InkRenderer {
 
     fun diagnostics(): InkRendererDiagnostics = diagnosticsSnapshot()
 
-    private fun startCompletedBatch(): InkDisplayBatch {
-        val batch = InkDisplayBatch("InkSign/completed-${sealedCompletedBatches.size}")
+    private fun startCompletedBatch(color: Int): InkDisplayBatch {
+        val batch = InkDisplayBatch("InkSign/completed-${sealedCompletedBatches.size}", color)
         activeCompletedBatch = batch
         return batch
     }
@@ -300,11 +295,6 @@ internal class InkRenderer {
         batch.seal()
         sealedCompletedBatches += batch
         activeCompletedBatch = null
-    }
-
-    private fun markAllBatchesDirty() {
-        sealedCompletedBatches.forEach(InkDisplayBatch::markDirty)
-        activeCompletedBatch?.markDirty()
     }
 
     private fun diagnosticsSnapshot(): InkRendererDiagnostics {

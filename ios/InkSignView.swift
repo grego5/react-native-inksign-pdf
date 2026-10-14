@@ -56,57 +56,84 @@ final class InkSignPdfViewGestureDelegate: NSObject, UIGestureRecognizerDelegate
 }
 
 final class InkSignView: HybridInkSignViewSpec {
-  struct PendingOpen {
-    enum Phase: Equatable {
-      case preparing
-      case installing
-      case awaitingReadiness
-      case completing
-      case clearing
-
-      var suppressesPresentationCallbacks: Bool {
-        self != .preparing
-      }
-    }
-
-    let id: UUID
-    var generation: UInt64?
-    let settlement: InkSignPdfOperationPromise<PageInfo>
-    let zoom: Double?
-    let focus: CGPoint?
-    let fitToPage: Bool
-    var phase: Phase = .preparing
-
-    init(id: UUID = UUID(),
-         promise: Promise<PageInfo>, zoom: Double?, focus: CGPoint?, fitToPage: Bool,
-         phase: Phase = .preparing) {
-      self.id = id
-      self.generation = nil
-      self.settlement = InkSignPdfOperationPromise(promise: promise)
-      self.zoom = zoom
-      self.focus = focus
-      self.fitToPage = fitToPage
-      self.phase = phase
-    }
-  }
-
   let container = UIView()
   let documentView = PDFView()
   let pdfViewInteractionOwnership = PDFViewInteractionOwnership()
   let overlayProvider = PageOverlayProvider()
   let artifactPolicy = InkSignPdfCacheArtifactPolicy.shared
-  lazy var pageInputCoordinator = InkSignPdfPageInputCoordinator(
-    hostView: container,
-    artifactPolicy: artifactPolicy)
   private lazy var canvasViewDelegate = InkSignPdfCanvasViewDelegate(owner: self)
-  let documentCore: InkSignDocumentCore
+  var attachedCore: InkSignDocumentCore? { attachedDocument?.core }
+  var documentCore: InkSignDocumentCore {
+    guard let core = attachedCore else {
+      preconditionFailure("Document commands require an attached document")
+    }
+    return core
+  }
+  func requireDocumentCore() throws -> InkSignDocumentCore {
+    guard !disposed, let core = attachedCore else { throw TextError.documentNotOpen }
+    return core
+  }
+  private var coreObserver: UUID?
+  private let attachmentID = UUID()
+  var textDirection: TextDirection? {
+    didSet { applyTextDirection() }
+  }
+  private var attachedDocument: HybridInkSignDocument?
+  var document: (any HybridInkSignDocumentSpec)? {
+    get { attachedDocument }
+    set {
+      performOnMain {
+        do { try self.attachDocument(newValue) }
+        catch { self.loadError = error.localizedDescription; self.emitChange(force: true) }
+      }
+    }
+  }
+
+  private func attachDocument(_ value: (any HybridInkSignDocumentSpec)?) throws {
+    guard !disposed else { throw OperationError.cancelled }
+    let next = value as? HybridInkSignDocument
+    guard value == nil || next != nil else { throw OperationError.cancelled }
+    if attachedDocument === next { return }
+    if let next { try next.core.claimViewer(attachmentID) }
+    releaseAttachment(notify: false)
+    loadError = nil
+    attachedDocument = next
+    guard next != nil else { emitChange(force: true); return }
+    textInteractionOverlay.setDefaultFontSize(defaultTextFontSize)
+    textInteractionOverlay.setDefaultTextColor(defaultTextColor)
+    applyTextDirection()
+    coreObserver = documentCore.observe { [weak self] change in self?.documentCoreDidChange(change) }
+    guard let state = documentCoordinator.document else { emitChange(force: true); return }
+    let expectedCore = documentCore
+    installStructuralPresentation(state, generation: documentCoordinator.generation,
+      viewport: nil, selectedPageID: state.pages.first?.id, fitPage: true) { [weak self] result in
+      guard let self, !self.disposed, self.document != nil, self.documentCore === expectedCore else { return }
+      if case .failure(let error) = result { self.loadError = error.localizedDescription }
+      self.emitChange(force: true)
+    }
+  }
+
+  func releaseAttachment(commitDraft: Bool = true, notify: Bool = true) {
+    let previousDocument = attachedDocument
+    let previousCore = attachedCore
+    defer { withExtendedLifetime(previousDocument) {} }
+    if commitDraft && previousCore?.coordinator.document != nil { interaction.finishInteraction() }
+    interaction.retireRequests()
+    cancelViewerCommands()
+    if let coreObserver { previousCore?.removeObserver(coreObserver) }
+    coreObserver = nil
+    previousCore?.releaseViewer(attachmentID)
+    clearPresentation()
+    attachedDocument = nil
+    loadError = nil
+    if notify { emitChange(force: true) }
+  }
   var documentCoordinator: InkSignPdfDocumentCoordinator { documentCore.coordinator }
   var viewerDocument: InkSignPdfViewerDocument?
   lazy var textInteractionOverlay = InkSignPdfTextInteractionOverlay(frame: .zero)
   private lazy var pdfViewGestureDelegate = InkSignPdfViewGestureDelegate(owner: self)
   private(set) lazy var interaction = ViewerInteractionCoordinator(host: self)
   var pageNavigationRequestID: UInt64 = 0
-  var pendingOpen: PendingOpen?
   var doubleTap: DoubleTapOptions?
   var currentPen = PenValue()
   var queuedPen: PenValue?
@@ -120,7 +147,7 @@ final class InkSignView: HybridInkSignViewSpec {
   var nextDrawingTransactionID: UInt64 = 0
   var lastChange: (Int, Bool, String, String?, String?, Int?)?
   var lastPublicPage: PageChangeEvent?
-  var documentID: String? { documentCoordinator.documentID }
+  var documentID: String? { attachedCore?.coordinator.documentID }
   var loadError: String?
   var isPickingPageCoords: Bool { interaction.isPickingCoordinates }
   func interactionMode() -> InteractionMode { interaction.mode }
@@ -129,7 +156,6 @@ final class InkSignView: HybridInkSignViewSpec {
 
   struct ViewerCommand {
     let id: UUID
-    let presentation: Bool
     let modeSession: InkSignPdfModeSessionToken?
     let start: () -> Void
     let cancel: () -> Void
@@ -143,10 +169,6 @@ final class InkSignView: HybridInkSignViewSpec {
   var overlayTransformVisibleBox = CGRect.zero
   var pageToOverlayTransform: CGAffineTransform?
   var disposed = false
-
-  var suppressesOpenPresentationCallbacks: Bool {
-    pendingOpen?.phase.suppressesPresentationCallbacks ?? false
-  }
 
   var view: UIView { container }
 
@@ -167,7 +189,6 @@ final class InkSignView: HybridInkSignViewSpec {
   }()
 
   // Shared Nitro property; Android PDFium consumes this font configuration.
-  var androidFallbackFont: AndroidFallbackFont?
   var strokeColor: String? {
     didSet { enqueueNativeConfiguration(.pen(color: strokeColor, maxWidth: strokeMaxWidth)) }
   }
@@ -219,10 +240,7 @@ final class InkSignView: HybridInkSignViewSpec {
   }
 
   override init() {
-    documentCore = InkSignDocumentCore(artifactPolicy: artifactPolicy,
-                                       recordHistory: true, exportOwnership: .document)
     super.init()
-    _ = documentCore.observe { [weak self] change in self?.documentCoreDidChange(change) }
     container.clipsToBounds = true
     documentView.backgroundColor = .white
     documentView.isOpaque = true
@@ -280,15 +298,15 @@ final class InkSignView: HybridInkSignViewSpec {
   }
 
   deinit {
+    if let coreObserver { attachedCore?.removeObserver(coreObserver) }
+    attachedCore?.releaseViewer(attachmentID)
     disposed = true
     interaction.dispose()
-    pendingOpen = nil
     pageNavigationRequestID &+= 1
     textInteractionOverlay.discardForDisposal()
     documentView.document = nil
     overlayProvider.dispose()
     viewerDocument = nil
-    documentCore.dispose()
     textInteractionOverlay.dispose()
     if let backgroundObserver {
       NotificationCenter.default.removeObserver(backgroundObserver)
@@ -300,21 +318,17 @@ final class InkSignView: HybridInkSignViewSpec {
   func dispose() {
     performOnMain {
       guard !self.disposed else { return }
+      self.releaseAttachment()
       self.disposed = true
       self.interaction.dispose()
       self.cancelViewerCommands()
-      self.pageInputCoordinator.cancelPending()
       self.textInteractionOverlay.discardForDisposal()
       self.cancelActiveStroke(clearLive: false)
-      let pendingOpen = self.pendingOpen
-      self.pendingOpen = nil
-      pendingOpen?.settlement.reject(LoadError.cancelled)
 
       self.pageNavigationRequestID &+= 1
       self.documentView.document = nil
       self.overlayProvider.dispose()
       self.viewerDocument = nil
-      self.documentCore.dispose()
       self.interaction.setBaseMode(ink: false, enabled: false, finish: false)
       self.attachedOverlayPage = nil
       self.invalidateOverlayTransformCache()
@@ -350,21 +364,18 @@ final class InkSignView: HybridInkSignViewSpec {
     dispose()
   }
 
-  enum LoadError: LocalizedError {
-    case invalidSourcePath
-    case pdfLoadFailed
-    case unsupportedPdf
+  // Stroke recording is Android-only; retain the shared Nitro interface.
+  func startDebugRecording() {}
+  func stopDebugRecording() {}
+  func exportDebugRecording() throws -> Promise<String> {
+    Promise.rejected(withError: InkSignPdfExportError.notReady)
+  }
+
+  enum OperationError: LocalizedError {
     case cancelled
-    case operationInProgress
 
     var errorDescription: String? {
-      switch self {
-      case .invalidSourcePath: return "invalid_source_path: Unable to read the PDF"
-      case .pdfLoadFailed: return "pdf_load_failed: Unable to load the PDF"
-      case .unsupportedPdf: return "unsupported_pdf: The PDF is not supported"
-      case .cancelled: return "operation_cancelled: PDF loading was cancelled"
-      case .operationInProgress: return "operation_in_progress: Another document operation is active"
-      }
+      "operation_cancelled: Viewer operation was cancelled"
     }
   }
 

@@ -54,9 +54,9 @@ void JHybridInkSignViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass>
 
   // Update only props that differ from the previous State snapshot.
   if (oldProps == nullptr
-        ? newProps->androidFallbackFont.isProvided()
-        : !newProps->androidFallbackFont.hasSameValue(oldProps->androidFallbackFont)) {
-    hybridView->setAndroidFallbackFont(newProps->androidFallbackFont.get());
+        ? newProps->document.isProvided()
+        : !newProps->document.hasSameValue(oldProps->document)) {
+    hybridView->setDocument(newProps->document.get());
   }
   if (oldProps == nullptr
         ? newProps->strokeColor.isProvided()
@@ -122,6 +122,11 @@ void JHybridInkSignViewStateUpdater::updateViewProps(jni::alias_ref<jni::JClass>
         ? newProps->pagerDirection.isProvided()
         : !newProps->pagerDirection.hasSameValue(oldProps->pagerDirection)) {
     hybridView->setPagerDirection(newProps->pagerDirection.get());
+  }
+  if (oldProps == nullptr
+        ? newProps->textDirection.isProvided()
+        : !newProps->textDirection.hasSameValue(oldProps->textDirection)) {
+    hybridView->setTextDirection(newProps->textDirection.get());
   }
   if (oldProps == nullptr
         ? newProps->onStateChange.isProvided()

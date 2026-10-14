@@ -7,29 +7,37 @@
 
 #include "JHybridModeSessionSpec.hpp"
 
-// Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
+// Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `TaggedPageQuery` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
+// Forward declaration of `InputTargetFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTargetFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 
 #include <memory>
-#include "HybridAnalyzedPageSpec.hpp"
+#include "HybridDocumentPageSpec.hpp"
 #include <NitroModules/Promise.hpp>
 #include <NitroModules/JPromise.hpp>
-#include "JHybridAnalyzedPageSpec.hpp"
+#include "JHybridDocumentPageSpec.hpp"
+#include <NitroModules/JUnit.hpp>
 #include "PageCoords.hpp"
 #include "JPageCoords.hpp"
 #include <string>
-#include <NitroModules/JUnit.hpp>
 #include "TaggedPageQuery.hpp"
 #include <variant>
 #include <optional>
 #include "JVariant_Double_TaggedPageQuery.hpp"
 #include "JTaggedPageQuery.hpp"
+#include "InputTargetFocusOptions.hpp"
+#include "JInputTargetFocusOptions.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
+#include "JFieldFocusVerticalAnchor.hpp"
 #include "ViewportOptions.hpp"
 #include "JViewportOptions.hpp"
 
@@ -66,14 +74,29 @@ namespace margelo::nitro::inksignpdf {
   
 
   // Methods
-  std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> JHybridModeSessionSpec::getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) {
+  std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> JHybridModeSessionSpec::getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JVariant_Double_TaggedPageQuery> /* pageIndex */)>("getPage");
     auto __result = method(_javaPart, pageIndex.has_value() ? JVariant_Double_TaggedPageQuery::fromCpp(pageIndex.value()) : nullptr);
     return [&]() {
-      auto __promise = Promise<std::shared_ptr<HybridAnalyzedPageSpec>>::create();
+      auto __promise = Promise<std::shared_ptr<HybridDocumentPageSpec>>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
-        auto __result = jni::static_ref_cast<JHybridAnalyzedPageSpec::JavaPart>(__boxedResult);
-        __promise->resolve(__result->getJHybridAnalyzedPageSpec());
+        auto __result = jni::static_ref_cast<JHybridDocumentPageSpec::JavaPart>(__boxedResult);
+        __promise->resolve(__result->getJHybridDocumentPageSpec());
+      });
+      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
+        jni::JniException __jniError(__throwable);
+        __promise->reject(std::make_exception_ptr(__jniError));
+      });
+      return __promise;
+    }();
+  }
+  std::shared_ptr<Promise<void>> JHybridModeSessionSpec::focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JHybridDocumentPageSpec::JavaPart> /* page */, double /* id */, jni::alias_ref<JInputTargetFocusOptions> /* options */)>("focusInputTarget");
+    auto __result = method(_javaPart, std::dynamic_pointer_cast<JHybridDocumentPageSpec>(page)->getJavaPart(), id, options.has_value() ? JInputTargetFocusOptions::fromCpp(options.value()) : nullptr);
+    return [&]() {
+      auto __promise = Promise<void>::create();
+      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& /* unit */) {
+        __promise->resolve();
       });
       __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
         jni::JniException __jniError(__throwable);

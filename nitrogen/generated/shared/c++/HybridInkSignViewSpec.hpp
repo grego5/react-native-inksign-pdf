@@ -13,54 +13,44 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
-// Forward declaration of `AndroidFallbackFont` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
+// Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
+// Forward declaration of `TextDirection` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 // Forward declaration of `ViewerState` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewerState; }
 // Forward declaration of `PageChangeEvent` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageChangeEvent; }
 // Forward declaration of `TextSelection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextSelection; }
-// Forward declaration of `NamedFontSource` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
-// Forward declaration of `PageInfo` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct PageInfo; }
-// Forward declaration of `ViewOpenOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct ViewOpenOptions; }
-// Forward declaration of `AddPagesResult` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct AddPagesResult; }
-// Forward declaration of `AddPagesOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct AddPagesOptions; }
+// Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
+// Forward declaration of `InputTargetFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTargetFocusOptions; }
 // Forward declaration of `Viewport` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct Viewport; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
-// Forward declaration of `DocumentState` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `HybridTextHandleSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridTextHandleSpec; }
-// Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
-// Forward declaration of `TaggedPageQuery` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 // Forward declaration of `HybridModeSessionSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridModeSessionSpec; }
 // Forward declaration of `InputMode` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class InputMode; }
 // Forward declaration of `TextModeOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
-// Forward declaration of `TextDirection` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 
-#include "AndroidFallbackFont.hpp"
+#include <memory>
+#include "HybridInkSignDocumentSpec.hpp"
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
 #include "PagerDirection.hpp"
+#include "TextDirection.hpp"
 #include "ViewerState.hpp"
 #include <functional>
 #include "PageChangeEvent.hpp"
@@ -68,23 +58,14 @@ namespace margelo::nitro::inksignpdf { enum class TextDirection; }
 #include "TextSelection.hpp"
 #include <variant>
 #include <NitroModules/Promise.hpp>
-#include "NamedFontSource.hpp"
-#include <vector>
-#include "PageInfo.hpp"
-#include "ViewOpenOptions.hpp"
-#include "AddPagesResult.hpp"
-#include "AddPagesOptions.hpp"
+#include "HybridDocumentPageSpec.hpp"
+#include "InputTargetFocusOptions.hpp"
 #include "Viewport.hpp"
 #include "PageCoords.hpp"
-#include "DocumentState.hpp"
-#include <memory>
 #include "HybridTextHandleSpec.hpp"
-#include "HybridAnalyzedPageSpec.hpp"
-#include "TaggedPageQuery.hpp"
 #include "HybridModeSessionSpec.hpp"
 #include "InputMode.hpp"
 #include "TextModeOptions.hpp"
-#include "TextDirection.hpp"
 
 namespace margelo::nitro::inksignpdf {
 
@@ -113,8 +94,8 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Properties
-      virtual std::optional<AndroidFallbackFont> getAndroidFallbackFont() = 0;
-      virtual void setAndroidFallbackFont(const std::optional<AndroidFallbackFont>& androidFallbackFont) = 0;
+      virtual std::optional<std::shared_ptr<HybridInkSignDocumentSpec>> getDocument() = 0;
+      virtual void setDocument(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& document) = 0;
       virtual std::optional<std::string> getStrokeColor() = 0;
       virtual void setStrokeColor(const std::optional<std::string>& strokeColor) = 0;
       virtual std::optional<double> getStrokeMinWidth() = 0;
@@ -141,6 +122,8 @@ namespace margelo::nitro::inksignpdf {
       virtual void setKeyboardAvoidanceEnabled(std::optional<bool> keyboardAvoidanceEnabled) = 0;
       virtual std::optional<PagerDirection> getPagerDirection() = 0;
       virtual void setPagerDirection(std::optional<PagerDirection> pagerDirection) = 0;
+      virtual std::optional<TextDirection> getTextDirection() = 0;
+      virtual void setTextDirection(std::optional<TextDirection> textDirection) = 0;
       virtual std::optional<std::function<void(const ViewerState& /* event */)>> getOnStateChange() = 0;
       virtual void setOnStateChange(const std::optional<std::function<void(const ViewerState& /* event */)>>& onStateChange) = 0;
       virtual std::optional<std::function<void(const PageChangeEvent& /* event */)>> getOnPageChange() = 0;
@@ -152,28 +135,13 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Methods
-      virtual std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) = 0;
-      virtual std::shared_ptr<Promise<PageInfo>> open(const std::string& path, const std::optional<ViewOpenOptions>& options) = 0;
-      virtual std::shared_ptr<Promise<void>> close(std::optional<bool> cancelPending) = 0;
-      virtual std::shared_ptr<Promise<AddPagesResult>> addPages(const std::optional<AddPagesOptions>& options) = 0;
-      virtual std::shared_ptr<Promise<PageInfo>> removePage() = 0;
-      virtual std::shared_ptr<Promise<PageInfo>> movePage(double pageIndex) = 0;
-      virtual std::shared_ptr<Promise<PageInfo>> rotatePage(double degrees) = 0;
       virtual void nextPage() = 0;
+      virtual std::shared_ptr<Promise<void>> focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) = 0;
       virtual void previousPage() = 0;
       virtual Viewport getViewport() = 0;
       virtual std::shared_ptr<Promise<PageCoords>> requestUserTap() = 0;
-      virtual DocumentState getState() = 0;
       virtual std::variant<std::shared_ptr<HybridTextHandleSpec>, nitro::NullType> getSelectedText() = 0;
-      virtual std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) = 0;
-      virtual std::vector<std::string> getPageIdsByTag(const std::string& tag) = 0;
       virtual std::shared_ptr<HybridModeSessionSpec> setMode(InputMode mode, const std::optional<TextModeOptions>& options) = 0;
-      virtual void undo() = 0;
-      virtual void redo() = 0;
-      virtual void clear() = 0;
-      virtual void clearInk() = 0;
-      virtual void setTextDirection(TextDirection direction) = 0;
-      virtual std::shared_ptr<Promise<std::string>> finalize() = 0;
       virtual void startDebugRecording() = 0;
       virtual void stopDebugRecording() = 0;
       virtual std::shared_ptr<Promise<std::string>> exportDebugRecording() = 0;

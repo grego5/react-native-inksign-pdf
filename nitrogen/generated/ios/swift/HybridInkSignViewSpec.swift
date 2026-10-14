@@ -10,7 +10,7 @@ import NitroModules
 /// See ``HybridInkSignViewSpec``
 public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   // Properties
-  var androidFallbackFont: AndroidFallbackFont? { get set }
+  var document: (any HybridInkSignDocumentSpec)? { get set }
   var strokeColor: String? { get set }
   var strokeMinWidth: Double? { get set }
   var strokeMaxWidth: Double? { get set }
@@ -24,34 +24,20 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   var doubleTap: DoubleTapOptions? { get set }
   var keyboardAvoidanceEnabled: Bool? { get set }
   var pagerDirection: PagerDirection? { get set }
+  var textDirection: TextDirection? { get set }
   var onStateChange: ((_ event: ViewerState) -> Void)? { get set }
   var onPageChange: ((_ event: PageChangeEvent) -> Void)? { get set }
   var onZoomChange: ((_ zoom: Double) -> Void)? { get set }
   var onTextSelectionChange: ((_ selection: Variant_NullType_TextSelection?) -> Void)? { get set }
 
   // Methods
-  func loadFonts(fonts: [NamedFontSource]) throws -> Promise<Void>
-  func open(path: String, options: ViewOpenOptions?) throws -> Promise<PageInfo>
-  func close(cancelPending: Bool?) throws -> Promise<Void>
-  func addPages(options: AddPagesOptions?) throws -> Promise<AddPagesResult>
-  func removePage() throws -> Promise<PageInfo>
-  func movePage(pageIndex: Double) throws -> Promise<PageInfo>
-  func rotatePage(degrees: Double) throws -> Promise<PageInfo>
   func nextPage() throws -> Void
+  func focusInputTarget(page: (any HybridDocumentPageSpec), id: Double, options: InputTargetFocusOptions?) throws -> Promise<Void>
   func previousPage() throws -> Void
   func getViewport() throws -> Viewport
   func requestUserTap() throws -> Promise<PageCoords>
-  func getState() throws -> DocumentState
   func getSelectedText() throws -> Variant__any_HybridTextHandleSpec__NullType
-  func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<(any HybridAnalyzedPageSpec)>
-  func getPageIdsByTag(tag: String) throws -> [String]
   func setMode(mode: InputMode, options: TextModeOptions?) throws -> (any HybridModeSessionSpec)
-  func undo() throws -> Void
-  func redo() throws -> Void
-  func clear() throws -> Void
-  func clearInk() throws -> Void
-  func setTextDirection(direction: TextDirection) throws -> Void
-  func finalize() throws -> Promise<String>
   func startDebugRecording() throws -> Void
   func stopDebugRecording() throws -> Void
   func exportDebugRecording() throws -> Promise<String>

@@ -25,8 +25,18 @@ final class HybridModeSession: HybridModeSessionSpec {
     super.init()
   }
 
-  func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<any HybridAnalyzedPageSpec> {
+  func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<any HybridDocumentPageSpec> {
     try withOwner { try $0.getSessionPage(token, pageIndex: pageIndex) }
+  }
+
+  func focusInputTarget(page: any HybridDocumentPageSpec, id: Double,
+                        options: InputTargetFocusOptions?) throws -> Promise<Void> {
+    try withOwner { owner in
+      guard let page = page as? HybridDocumentPage, page.core === owner.attachedCore else { throw TextError.cancelled }
+      return owner.enqueueViewerCommand(modeSession: self.token) {
+        try owner.performInputTargetFocus(page, id: id, options: options)
+      }
+    }
   }
 
   func requestUserTap() throws -> Promise<PageCoords> {
@@ -38,7 +48,7 @@ final class HybridModeSession: HybridModeSessionSpec {
   }
 
   private func withOwner<T>(_ action: (InkSignView) throws -> T) throws -> T {
-    guard let owner else { throw InkSignView.LoadError.cancelled }
+    guard let owner else { throw InkSignView.OperationError.cancelled }
     return try owner.performOnMainSync {
       try owner.interaction.requireSession(token)
       return try action(owner)
@@ -50,7 +60,7 @@ extension InkSignView {
 
   func setSessionViewport(_ token: InkSignPdfModeSessionToken,
                           options: ViewportOptions?) -> Promise<Void> {
-    enqueueViewerCommand(presentation: true, modeSession: token) {
+    enqueueViewerCommand(modeSession: token) {
       let request = Self.parseViewport(options)
       try self.interaction.viewport.requireViewportReady(request: request)
       self.interaction.viewport.supersede()

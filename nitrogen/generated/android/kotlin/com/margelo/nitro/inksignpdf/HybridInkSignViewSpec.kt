@@ -33,7 +33,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var androidFallbackFont: AndroidFallbackFont?
+  abstract var document: HybridInkSignDocumentSpec?
   
   @get:DoNotStrip
   @get:Keep
@@ -113,6 +113,12 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @set:Keep
   abstract var pagerDirection: PagerDirection?
   
+  @get:DoNotStrip
+  @get:Keep
+  @set:DoNotStrip
+  @set:Keep
+  abstract var textDirection: TextDirection?
+  
   abstract var onStateChange: ((event: ViewerState) -> Unit)?
   
   private var onStateChange_cxx: Func_void_ViewerState?
@@ -172,35 +178,11 @@ abstract class HybridInkSignViewSpec: HybridView() {
   // Methods
   @DoNotStrip
   @Keep
-  abstract fun loadFonts(fonts: Array<NamedFontSource>): Promise<Unit>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun open(path: String, options: ViewOpenOptions?): Promise<PageInfo>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun close(cancelPending: Boolean?): Promise<Unit>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun addPages(options: AddPagesOptions?): Promise<AddPagesResult>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun removePage(): Promise<PageInfo>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun movePage(pageIndex: Double): Promise<PageInfo>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun rotatePage(degrees: Double): Promise<PageInfo>
-  
-  @DoNotStrip
-  @Keep
   abstract fun nextPage(): Unit
+  
+  @DoNotStrip
+  @Keep
+  abstract fun focusInputTarget(page: HybridDocumentPageSpec, id: Double, options: InputTargetFocusOptions?): Promise<Unit>
   
   @DoNotStrip
   @Keep
@@ -216,47 +198,11 @@ abstract class HybridInkSignViewSpec: HybridView() {
   
   @DoNotStrip
   @Keep
-  abstract fun getState(): DocumentState
-  
-  @DoNotStrip
-  @Keep
   abstract fun getSelectedText(): Variant_HybridTextHandleSpec_NullType
   
   @DoNotStrip
   @Keep
-  abstract fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridAnalyzedPageSpec>
-  
-  @DoNotStrip
-  @Keep
-  abstract fun getPageIdsByTag(tag: String): Array<String>
-  
-  @DoNotStrip
-  @Keep
   abstract fun setMode(mode: InputMode, options: TextModeOptions?): HybridModeSessionSpec
-  
-  @DoNotStrip
-  @Keep
-  abstract fun undo(): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun redo(): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun clear(): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun clearInk(): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun setTextDirection(direction: TextDirection): Unit
-  
-  @DoNotStrip
-  @Keep
-  abstract fun finalize(): Promise<String>
   
   @DoNotStrip
   @Keep

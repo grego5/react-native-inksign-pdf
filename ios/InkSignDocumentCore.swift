@@ -16,9 +16,44 @@ final class InkSignDocumentCore {
   let recordHistory: Bool
   let fonts = InkSignPdfNamedFontRegistry()
   var appDirectionRTL = UIView.userInterfaceLayoutDirection(for: .unspecified) == .rightToLeft
-  var defaultDirectionRTL: Bool?
-  var defaultTextFontSize: Double = 16
-  var defaultTextColor = "#000000"
+  let defaultTextFontSize: Double = 16
+  let defaultTextColor = "#000000"
+  private(set) var activeTextEdit: InkSignPdfDocumentTextEdit?
+  private var structuralBusy = false
+  func requireContentMutationReady() throws {
+    if structuralBusy { throw MutablePageError.operationInProgress }
+  }
+
+  func beginTextEdit(_ context: InkSignPdfCorePageContext, id: UInt64) throws -> InkSignPdfDocumentTextEdit {
+    try requireContentMutationReady()
+    let page = try self.page(context)
+    endTextEdit()
+    let edit = InkSignPdfDocumentTextEdit(context: context, page: page, id: id)
+    activeTextEdit = edit
+    return edit
+  }
+
+  func updateTextEdit(_ edit: InkSignPdfDocumentTextEdit, annotation: InkSignPdfTextAnnotation?,
+                     options: TextAnnotationOptions? = nil) throws {
+    try requireContentMutationReady()
+    _ = try page(edit.context)
+    guard activeTextEdit === edit, edit.active else { throw TextError.cancelled }
+    if let options { try setTextOptions(edit.context, id: Double(edit.id), options: options,
+      applyToCommitted: false, endEditing: false) }
+    guard edit.current != annotation else { return }
+    edit.update(annotation)
+    changed(.page(edit.page.id))
+  }
+
+  func endTextEdit(id: UInt64? = nil) {
+    precondition(Thread.isMainThread)
+    guard let edit = activeTextEdit, id == nil || id == edit.id else { return }
+    activeTextEdit = nil
+    edit.end()
+    if let current = edit.current { coordinator.updateTextPlacement(current, page: edit.page) }
+    changed(.editEnded(edit))
+    changed(.page(edit.page.id))
+  }
   private var disposed = false
   private var closing = false
   private var closePromise: Promise<Void>?
@@ -29,7 +64,11 @@ final class InkSignDocumentCore {
   enum Change {
     case document
     case structure
+    case structuralWriteStarted
+    case willClose
     case page(UUID)
+    case editEnded(InkSignPdfDocumentTextEdit)
+    case inkCleared(UUID)
   }
 
   func observe(_ callback: @escaping (Change) -> Void) -> UUID {
@@ -40,15 +79,34 @@ final class InkSignDocumentCore {
   }
 
   func removeObserver(_ id: UUID) {
-    precondition(Thread.isMainThread)
-    observers.removeValue(forKey: id)
+    onOwner { self.observers.removeValue(forKey: id) }
   }
 
   func changed(_ change: Change) {
     precondition(Thread.isMainThread)
+    switch change {
+    case .structuralWriteStarted: structuralBusy = true
+    case .structure, .document: structuralBusy = false
+    default: break
+    }
     // Snapshot before callbacks so observers may subscribe/unsubscribe or reenter.
     let callbacks = Array(observers.values)
     callbacks.forEach { $0(change) }
+  }
+
+  private var attachedViewerID: UUID?
+
+  func claimViewer(_ id: UUID) throws {
+    try requireClientAccess()
+    guard attachedViewerID == nil || attachedViewerID == id else {
+      throw NSError(domain: "document_already_attached", code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "document_already_attached: Detach the existing viewer first"])
+    }
+    attachedViewerID = id
+  }
+
+  func releaseViewer(_ id: UUID) {
+    onOwner { if self.attachedViewerID == id { self.attachedViewerID = nil } }
   }
 
   private struct Command {
@@ -62,6 +120,15 @@ final class InkSignDocumentCore {
     self.recordHistory = recordHistory
     coordinator = InkSignPdfDocumentCoordinator(artifactPolicy: artifactPolicy,
       retainsSuccessfulOutputs: exportOwnership == .document)
+  }
+
+  deinit {
+    // Page and text handles retain the core independently of the document wrapper.
+    let coordinator = coordinator
+    let fonts = fonts
+    let cleanup = { coordinator.dispose(); fonts.clear() }
+    if Thread.isMainThread { cleanup() }
+    else { DispatchQueue.main.async(execute: cleanup) }
   }
 
   func submit<Value>(onDiscard: @escaping () -> Void = {},
@@ -119,8 +186,10 @@ final class InkSignDocumentCore {
   func close() -> Promise<Void> {
     precondition(Thread.isMainThread, "Core close must run on its owner executor")
     if let closePromise { return closePromise }
+    endTextEdit()
     let settlement = InkSignPdfOperationPromise<Void>()
     closePromise = settlement.promise
+    changed(.willClose)
     let result: Promise<Void> = submit {
       self.closing = true
       let cleanup = InkSignPdfOperationPromise<Void>()
@@ -147,30 +216,6 @@ final class InkSignDocumentCore {
   func requireAdmittedAccess() throws {
     precondition(Thread.isMainThread)
     guard !disposed else { throw Error.closed }
-  }
-
-  /// Viewer close clears a reusable core. Immediate close cancels clients while
-  /// retaining the running native slot until its work finishes.
-  func closeViewerDocument(cancelPending: Bool) -> Promise<Void> {
-    if !cancelPending {
-      return submit {
-        self.coordinator.closeDocument()
-        self.changed(.document)
-        return Promise<Void>.resolved()
-      }
-    }
-    let settlement = InkSignPdfOperationPromise<Void>()
-    onOwner {
-      guard !self.disposed else { settlement.reject(Error.closed); return }
-      let retired = self.pending
-      self.pending.removeAll()
-      retired.forEach { $0.cancel() }
-      self.running?.cancel()
-      self.coordinator.closeDocument()
-      self.changed(.document)
-      settlement.resolve(())
-    }
-    return settlement.promise
   }
 
   private func drain() {

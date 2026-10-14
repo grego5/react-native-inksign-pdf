@@ -197,8 +197,8 @@ final class ViewerViewportController {
     let isCurrent = { [weak self, weak scroll] in
       guard let self, self.hostReference != nil, let scroll else { return false }
       return !self.disposed && self.documentView.window != nil &&
-        self.documentCoordinator.generation == generation &&
         self.viewerDocument?.activePage.id == pageID &&
+        self.documentCoordinator.generation == generation &&
         self.viewerDocument?.activePage.geometryRevision == geometryRevision &&
         self.requestID == requestID && (modeSession.map(self.interaction.sessionIsCurrent) ?? true) &&
         self.pageViewportScrollView() === scroll

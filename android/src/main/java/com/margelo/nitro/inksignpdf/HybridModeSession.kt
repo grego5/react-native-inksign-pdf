@@ -17,8 +17,11 @@ internal class ModeSessionToken(
 internal class HybridModeSession(owner: HybridInkSignView, private val token: ModeSessionToken) : HybridModeSessionSpec() {
   private val owner = WeakReference(owner)
 
-  override fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridAnalyzedPageSpec> =
+  override fun getPage(pageIndex: Variant_Double_TaggedPageQuery?): Promise<HybridDocumentPageSpec> =
     withOwner { it.getSessionPage(token, pageIndex) }
+
+  override fun focusInputTarget(page: HybridDocumentPageSpec, id: Double, options: InputTargetFocusOptions?): Promise<Unit> =
+    withOwner { it.focusPageInputTarget(page, id, options, token) }
 
   override fun requestUserTap(): Promise<PageCoords> =
     withOwner { it.requestSessionPageCoords(token) }

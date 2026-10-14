@@ -27,7 +27,11 @@ internal sealed interface DocumentChange {
   data object Opening : DocumentChange
   data object Opened : DocumentChange
   data object Pages : DocumentChange
-  data object WillChangePages : DocumentChange
+  data object StructuralWriteStarted : DocumentChange
+  data object WillClose : DocumentChange
+  data class EditEnded(val edit: DocumentTextEdit) : DocumentChange
+  data object StructuralReady : DocumentChange
+  data class InkCleared(val pageId: String) : DocumentChange
   data object Cleared : DocumentChange
   data class Text(val pageId: String) : DocumentChange
   data class Content(val generation: Long, val pageId: String, val mutation: InkHistoryMutation) : DocumentChange
@@ -48,6 +52,40 @@ internal class DocumentCore(
   val fonts = NamedFontRegistry(context)
   val text = DocumentTextCommands(this,
     appDirectionIsRtl = { com.facebook.react.modules.i18nmanager.I18nUtil.getInstance().isRTL(context) })
+  internal var activeTextEdit: DocumentTextEdit? = null
+    private set
+  private var structuralBusy = false
+  internal fun requireContentMutationReady() {
+    if (structuralBusy) throw PdfSessionException("operation_in_progress", "A structural write is active")
+  }
+
+  fun beginTextEdit(context: TextPageContext, id: Long): DocumentTextEdit = withMutablePage(context) { page ->
+    requireContentMutationReady()
+    endTextEdit()
+    DocumentTextEdit(context, page, id,
+      page.history.contentSnapshot().filterIsInstance<PageContent.Text>().firstOrNull { it.annotation.id == id }?.annotation
+    ).also { activeTextEdit = it }
+  }
+
+  fun updateTextEdit(edit: DocumentTextEdit, annotation: TextAnnotation?, options: TextAnnotationOptions? = null) = withMutablePage(edit.context) { page ->
+    requireContentMutationReady()
+    if (activeTextEdit !== edit || !edit.active) throw cancelled()
+    if (options != null) text.captureEditOptions(edit.context, edit.id, options)
+    if (edit.current == annotation) return@withMutablePage
+    edit.update(annotation)
+    changed(DocumentChange.Text(page.id))
+  }
+
+  fun endTextEdit(id: Long? = null) {
+    checkMainThread()
+    val edit = activeTextEdit ?: return
+    if (id != null && edit.id != id) return
+    activeTextEdit = null
+    edit.end()
+    if (edit.baseline != edit.current) text.applyEdit(edit.context, edit.baseline, edit.current)
+    changed(DocumentChange.EditEnded(edit))
+    changed(DocumentChange.Text(edit.context.pageId))
+  }
   private val inputs = PageInputCoordinator(context, artifacts)
   private val fallback = AndroidFallbackFontResolver(context)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -61,6 +99,19 @@ internal class DocumentCore(
   private enum class Lifecycle { ACTIVE, CLOSING, CLOSED }
   private var lifecycle = Lifecycle.ACTIVE
   private var closeResult: Deferred<Unit>? = null
+
+  private var attachedViewer: String? = null
+
+  fun claimViewer(id: String) = synchronized(admissions) {
+    if (lifecycle != Lifecycle.ACTIVE) throw cancelled()
+    if (attachedViewer != null && attachedViewer != id)
+      throw PdfSessionException("document_already_attached", "Detach the existing viewer first")
+    attachedViewer = id
+  }
+
+  fun releaseViewer(id: String) = synchronized(admissions) {
+    if (attachedViewer == id) attachedViewer = null
+  }
 
   /** The FIFO is shared by all clients. Cancellation retains an in-flight native queue slot. */
   fun <T> submit(operation: suspend () -> T): Deferred<T> = synchronized(admissions) {
@@ -84,6 +135,8 @@ internal class DocumentCore(
 
   internal fun changed(change: DocumentChange) {
     checkMainThread()
+    if (change == DocumentChange.StructuralWriteStarted) structuralBusy = true
+    if (change == DocumentChange.StructuralReady || change == DocumentChange.Pages) structuralBusy = false
     observers.toList().forEach { it(change) }
   }
 
@@ -129,11 +182,14 @@ internal class DocumentCore(
   }
 
   fun commitInk(context: TextPageContext, outline: StrokeOutline) = withMutablePage(context) { page ->
+    requireContentMutationReady()
     page.history.append(outline)
     changed(DocumentChange.Content(coordinator.generation, page.id, InkHistoryMutation.Appended(outline)))
   }
 
   private fun mutateHistory(pageId: String, operation: (InkPageState) -> InkHistoryMutation) = withDocument {
+    requireContentMutationReady()
+    endTextEdit()
     val page = coordinator.pageForId(pageId) ?: throw cancelled()
     val mutation = operation(page)
     if (mutation != InkHistoryMutation.NoOp) changed(DocumentChange.Content(coordinator.generation, pageId, mutation))
@@ -141,8 +197,14 @@ internal class DocumentCore(
 
   fun undo(pageId: String) = mutateHistory(pageId, coordinator::undoHistory)
   fun redo(pageId: String) = mutateHistory(pageId, coordinator::redoHistory)
-  fun clearContent(pageId: String) = mutateHistory(pageId, coordinator::clearHistory)
-  fun clearInk(pageId: String) = mutateHistory(pageId, coordinator::clearInk)
+  fun clearContent(pageId: String) = withDocument {
+    mutateHistory(pageId, coordinator::clearHistory)
+    changed(DocumentChange.InkCleared(pageId))
+  }
+  fun clearInk(pageId: String) = withDocument {
+    mutateHistory(pageId, coordinator::clearInk)
+    changed(DocumentChange.InkCleared(pageId))
+  }
 
   fun requestSnapCandidates(generation: Long, pageIndex: Int,
                             completion: (Result<List<PdfiumHorizontalSnapCandidate>>) -> Unit) {
@@ -203,19 +265,18 @@ internal class DocumentCore(
     return context
   }
 
-  suspend fun addPages(options: AddPagesOptions, imageDimensions: PdfPageDimensions,
-                       initialFallback: AndroidFallbackFont? = null): Int {
+  suspend fun addPages(options: DocumentAddPagesOptions, imageDimensions: PdfPageDimensions): Int {
     options.tag?.let(::validatePageTag)
     checkNotNull(options.sources) { "Document imports require explicit sources" }
-    val operation = coordinator.beginOperation(requireDocument = false)
+    val operation = coordinator.beginOperation()
     var staged = emptyList<StagedPageInput>()
     try {
       val generation = coordinator.generation
-      staged = inputs.stage(options)
+      staged = inputs.stage(options.sources)
       coordinator.ensureCurrent(generation)
       if (staged.isEmpty()) return 0
-      val font = if (coordinator.hasDocument) coordinator.fallbackFont else initialFallback?.let { fallback.resolve(it) }
-      changed(DocumentChange.WillChangePages)
+      endTextEdit()
+      changed(DocumentChange.StructuralWriteStarted)
       val requests = withContext(Dispatchers.IO) {
         staged.map { source -> when (source.type) {
           PageType.PDF -> PdfiumAppendRequest(PageType.PDF, sourcePath = source.file.path)
@@ -226,13 +287,13 @@ internal class DocumentCore(
       val count = coordinator.pageCount
       withContext(NonCancellable) {
         coordinator.executeStructuralMutation(generation,
-          PdfiumAssemblyRequest(if (count == 0) PdfiumAssemblyOperation.CREATE else PdfiumAssemblyOperation.APPEND,
+          PdfiumAssemblyRequest(PdfiumAssemblyOperation.APPEND,
             appendInputs = requests),
           candidateBuilder = { info -> coordinator.appendCandidate(info.pages.drop(count), options.tag) },
-          notifyPublished = ::pagesChanged, fontFallback = font)
+          notifyPublished = ::pagesChanged, fontFallback = coordinator.fallbackFont)
       }
       return coordinator.pageCount - count
-    } finally { withContext(NonCancellable) { inputs.release(staged) }; coordinator.endOperation(operation) }
+    } finally { withContext(NonCancellable) { inputs.release(staged) }; coordinator.endOperation(operation); if (structuralBusy) changed(DocumentChange.StructuralReady) }
   }
 
   suspend fun removePage(index: Double) {
@@ -254,13 +315,14 @@ internal class DocumentCore(
     val operation = coordinator.beginOperation()
     try {
       val generation = coordinator.generation
-      changed(DocumentChange.WillChangePages)
+      endTextEdit()
+      changed(DocumentChange.StructuralWriteStarted)
       coordinator.ensureCurrent(generation)
       withContext(NonCancellable) {
         coordinator.executeStructuralMutation(generation, request, candidateBuilder = { candidate() },
           notifyPublished = ::pagesChanged)
       }
-    } finally { coordinator.endOperation(operation) }
+    } finally { coordinator.endOperation(operation); if (structuralBusy) changed(DocumentChange.StructuralReady) }
   }
 
   fun rotatePage(index: Double, degrees: Double) {
@@ -270,13 +332,14 @@ internal class DocumentCore(
     val operation = coordinator.beginOperation()
     try {
       val generation = coordinator.generation
-      changed(DocumentChange.WillChangePages)
+      endTextEdit()
+      changed(DocumentChange.StructuralWriteStarted)
       coordinator.ensureCurrent(generation)
       val dimensions = PageCoordinates(page.dimensions).withRotation((page.dimensions.rotation + degrees.toInt() / 90) % 4)
       val candidate = coordinator.rotatePageCandidate(page.id, dimensions)
       coordinator.installCandidate(coordinator.sourcePath, candidate.pages)
       pagesChanged()
-    } finally { coordinator.endOperation(operation) }
+    } finally { coordinator.endOperation(operation); if (structuralBusy) changed(DocumentChange.StructuralReady) }
   }
 
   private fun pagesChanged() {
@@ -284,11 +347,12 @@ internal class DocumentCore(
     changed(DocumentChange.Pages)
   }
 
-  suspend fun finalize(color: Int = Color.BLACK): String {
+  suspend fun finalize(): String {
+    endTextEdit()
     val operation = coordinator.beginOperation()
     var output: File? = null
     try {
-      val snapshot = coordinator.captureExport(color)
+      val snapshot = coordinator.captureExport()
       output = File(snapshot.outputPath)
       val result = awaitWorker<String> { coordinator.exportSession(snapshot, it) }
       coordinator.ensureCurrent(snapshot.generation)
@@ -297,7 +361,7 @@ internal class DocumentCore(
     } catch (error: Throwable) {
       output?.let { withContext(NonCancellable + Dispatchers.IO) { artifacts.deleteExact(it) } }
       throw error
-    } finally { coordinator.endOperation(operation) }
+    } finally { coordinator.endOperation(operation); if (structuralBusy) changed(DocumentChange.StructuralReady) }
   }
 
   /** Reusable client reset. The viewer can open another document after this completes. */
@@ -330,6 +394,8 @@ internal class DocumentCore(
   fun close(cancelPending: Boolean = false): Deferred<Unit> = onMain {
     synchronized(admissions) {
       closeResult?.let { return@synchronized it }
+      endTextEdit()
+      changed(DocumentChange.WillClose)
       lifecycle = Lifecycle.CLOSING
       if (cancelPending) {
         retiringFiles += coordinator.workingFiles() + listOfNotNull(coordinator.currentWorkingFile())
@@ -339,6 +405,7 @@ internal class DocumentCore(
       enqueue {
         val files = coordinator.workingFiles() + listOfNotNull(coordinator.currentWorkingFile()) + outputs + retiringFiles
         prepared.clear()
+        changed(DocumentChange.Cleared)
         observers.clear()
         inputs.close()
         coordinator.dispose()

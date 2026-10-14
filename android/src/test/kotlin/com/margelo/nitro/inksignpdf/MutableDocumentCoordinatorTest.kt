@@ -100,16 +100,14 @@ class MutableDocumentCoordinatorTest {
   }
 
   @Test
-  fun viewerSelectsCurrentAndAddedPageIdentitiesAfterPublication() {
+  fun viewerPreservesActivePageIdentityWhenPagesAreAppended() {
     val coordinator = coordinator()
     val existingPages = coordinator.pages.toList()
     val dimensions = listOf(
       PdfPageDimensions(400.0, 500.0),
       PdfPageDimensions(600.0, 700.0),
     )
-    val viewers = AddPagesActivePage.entries.associateWith {
-      ViewerDocumentState(coordinator).apply { activatePage(1) }
-    }
+    val viewer = ViewerDocumentState(coordinator).apply { activatePage(1) }
     val current = coordinator.appendCandidate(dimensions)
 
     assertEquals(existingPages.map { it.id }, coordinator.pages.map { it.id })
@@ -117,10 +115,8 @@ class MutableDocumentCoordinatorTest {
     assertTrue(existingPages.indices.all { current.pages[it] === existingPages[it] })
     assertTrue(!coordinator.structuralDirty)
     coordinator.installCandidate("appended.pdf", current.pages)
-    viewers.forEach { (selection, viewer) -> viewer.pagesPublished(selection) }
-    assertEquals(existingPages[1].id, viewers.getValue(AddPagesActivePage.CURRENT).activePageId())
-    assertEquals(current.pages[3].id, viewers.getValue(AddPagesActivePage.FIRSTADDED).activePageId())
-    assertEquals(current.pages[4].id, viewers.getValue(AddPagesActivePage.LASTADDED).activePageId())
+    viewer.pagesPublished()
+    assertEquals(existingPages[1].id, viewer.activePageId())
   }
 
   @Test

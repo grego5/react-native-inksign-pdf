@@ -7,15 +7,30 @@ struct InkSignPdfCorePageContext {
 }
 
 extension InkSignDocumentCore {
+  func buildEditorAnnotation(id: UInt64, text: String, bounds: CGRect,
+    fontSize: CGFloat, textColor: String, isRTL: Bool, flowBounds: CGRect?,
+    maxLines: Int, verticalAnchor: InkSignPdfTextVerticalAnchor,
+    alignment: InkSignPdfTextAlignment, layoutRotation: Int,
+    font: InkSignPdfNamedFont?) -> InkSignPdfTextAnnotation {
+    let visible = flowBounds.map {
+      InkSignPdfTextRenderer.visibleBounds(for: text, fontSize: fontSize, isRTL: isRTL,
+        flowBounds: $0, maxLines: maxLines, verticalAnchor: verticalAnchor, alignment: alignment, font: font)
+    } ?? bounds
+    return InkSignPdfTextAnnotation(id: id, text: text, bounds: visible,
+      fontSize: fontSize, textColor: textColor, isRTL: isRTL, flowBounds: flowBounds,
+      maxLines: maxLines, verticalAnchor: verticalAnchor, alignment: alignment,
+      layoutRotation: layoutRotation, font: font)
+  }
   func inputTarget(_ context: InkSignPdfCorePageContext, id: Double) throws -> InputTarget {
     let (page, target) = try self.target(context, id: id)
     let annotation = page.history.text(for: target.id)
+    let edit = activeTextEdit.flatMap { $0.page.id == page.id && $0.id == target.id ? $0 : nil }
     let bounds = displayedTargetBounds(target, page: page)
-    return InputTarget(id: Double(target.id), value: annotation?.text ?? target.embeddedValue,
+    return InputTarget(id: Double(target.id), value: edit.map { $0.current?.text ?? "" } ?? annotation?.text ?? target.embeddedValue,
       fieldName: target.fieldName,
       bounds: TextAnnotationBounds(x: Double(bounds.minX), y: Double(bounds.minY),
         width: Double(bounds.width), height: Double(bounds.height)),
-      valueSource: annotation != nil ? .annotation : target.embeddedValue.isEmpty ? .empty : .embedded)
+      valueSource: edit != nil || annotation != nil ? .annotation : target.embeddedValue.isEmpty ? .empty : .embedded)
   }
 
   func inputTargets(_ context: InkSignPdfCorePageContext) throws -> [InputTarget] {
@@ -44,15 +59,20 @@ extension InkSignDocumentCore {
 
   func textValue(_ context: InkSignPdfCorePageContext, id: Double) throws -> String {
     let (page, target) = try self.target(context, id: id)
+    if let edit = activeTextEdit, edit.page.id == page.id, edit.id == target.id {
+      return edit.current?.text ?? ""
+    }
     return page.history.text(for: target.id)?.text ?? target.embeddedValue
   }
 
   func setTextValue(_ context: InkSignPdfCorePageContext, id: Double, text: String,
                     options: TextAnnotationOptions? = nil) throws {
+    try requireContentMutationReady()
     guard text.isEmpty || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
       throw TextError.invalidText
     }
     let (page, target) = try self.target(context, id: id)
+    endTextEdit(id: target.id)
     if let options { try setTextOptions(context, id: id, options: options, applyToCommitted: false) }
     let untracked = options?.untracked == true
     let current = page.history.text(for: target.id)
@@ -98,8 +118,11 @@ extension InkSignDocumentCore {
   }
 
   func setTextOptions(_ context: InkSignPdfCorePageContext, id: Double,
-                      options: TextAnnotationOptions, applyToCommitted: Bool = true) throws {
+                      options: TextAnnotationOptions, applyToCommitted: Bool = true,
+                      endEditing: Bool = true) throws {
+    try requireContentMutationReady()
     let (page, target) = try self.target(context, id: id)
+    if endEditing { endTextEdit(id: target.id) }
     let selectedFont = try fonts.resolve(options.font, previous: target.options.font)
     try coordinator.updateTextTarget(target.id, pageID: page.id) {
       $0.options.font = selectedFont
@@ -145,11 +168,12 @@ extension InkSignDocumentCore {
     case .ltr?: return false
     case .rtl?: return true
     case .auto?: return appDirectionRTL
-    case nil: return defaultDirectionRTL ?? appDirectionRTL
+    case nil: return appDirectionRTL
     }
   }
 
   func resolveText(_ context: InkSignPdfCorePageContext, options: InputTargetResolutionOptions) throws -> Double {
+    try requireContentMutationReady()
     let selectedFont = try fonts.resolveSelection(options.font)
     let page = try self.page(context)
     let geometry = page.geometry

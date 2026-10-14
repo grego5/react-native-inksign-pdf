@@ -33,8 +33,8 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `AndroidFallbackFont` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 
-#include <string>
 #include <optional>
+#include <string>
 #include "ImagePageSize.hpp"
 #include "AndroidFallbackFont.hpp"
 
@@ -45,6 +45,7 @@ namespace margelo::nitro::inksignpdf {
    */
   struct DocumentOpenOptions final {
   public:
+    std::optional<bool> recordHistory     SWIFT_PRIVATE;
     std::optional<std::string> tag     SWIFT_PRIVATE;
     std::optional<ImagePageSize> imagePageSize     SWIFT_PRIVATE;
     std::optional<double> targetDpi     SWIFT_PRIVATE;
@@ -53,7 +54,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     DocumentOpenOptions() = default;
-    explicit DocumentOpenOptions(std::optional<std::string> tag, std::optional<ImagePageSize> imagePageSize, std::optional<double> targetDpi, std::optional<double> jpegQuality, std::optional<AndroidFallbackFont> androidFallbackFont): tag(tag), imagePageSize(imagePageSize), targetDpi(targetDpi), jpegQuality(jpegQuality), androidFallbackFont(androidFallbackFont) {}
+    explicit DocumentOpenOptions(std::optional<bool> recordHistory, std::optional<std::string> tag, std::optional<ImagePageSize> imagePageSize, std::optional<double> targetDpi, std::optional<double> jpegQuality, std::optional<AndroidFallbackFont> androidFallbackFont): recordHistory(recordHistory), tag(tag), imagePageSize(imagePageSize), targetDpi(targetDpi), jpegQuality(jpegQuality), androidFallbackFont(androidFallbackFont) {}
 
   public:
     friend bool operator==(const DocumentOpenOptions& lhs, const DocumentOpenOptions& rhs) = default;
@@ -69,6 +70,7 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::DocumentOpenOptions fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::DocumentOpenOptions(
+        JSIConverter<std::optional<bool>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "recordHistory"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "tag"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "targetDpi"))),
@@ -78,6 +80,7 @@ namespace margelo::nitro {
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::DocumentOpenOptions& arg) {
       jsi::Object obj(runtime);
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "recordHistory"), JSIConverter<std::optional<bool>>::toJSI(runtime, arg.recordHistory));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "tag"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.tag));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize"), JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::toJSI(runtime, arg.imagePageSize));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "targetDpi"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.targetDpi));
@@ -93,6 +96,7 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
+      if (!JSIConverter<std::optional<bool>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "recordHistory")))) return false;
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "tag")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "targetDpi")))) return false;

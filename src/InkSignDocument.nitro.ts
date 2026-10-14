@@ -7,6 +7,8 @@ export interface NamedFontSource {
 }
 
 export interface DocumentOpenOptions {
+  /** Record tracked edits for undo/redo, independent of viewer attachment. Defaults to true. */
+  recordHistory?: boolean
   /** Session-only tag assigned to every opened page. */
   tag?: string
   imagePageSize?: ImagePageSize
@@ -31,6 +33,10 @@ export interface DocumentAddPagesResult {
 
 export interface DocumentPage extends HybridObject<{ ios: 'swift'; android: 'kotlin' }>, PageTextMethods {
   getState(): PageInfo
+  undo(): void
+  redo(): void
+  clear(): void
+  clearInk(): void
 }
 
 export interface InkSignDocument extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {

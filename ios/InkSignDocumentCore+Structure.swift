@@ -8,38 +8,6 @@ struct InkSignPdfStructuralCommit {
 }
 
 extension InkSignDocumentCore {
-  func commitStagedPages(_ staged: [InkSignPdfStagedPageInput],
-                        command: InkSignPdfDocumentCoordinator.StructuralCommand,
-                        generation: UInt64, targetPageID: UUID?,
-                        imageGeometry: PageGeometry, targetDpi: Double?,
-                        jpegQuality: Double?, tag: String?) -> Promise<InkSignPdfStructuralCommit> {
-    submit(onDiscard: {
-      self.coordinator.pdfQueue.async { self.coordinator.releaseStagedInputs(staged) }
-    }) {
-      if let tag, tag.isEmpty {
-        self.coordinator.pdfQueue.async { self.coordinator.releaseStagedInputs(staged) }
-        return .rejected(withError: TextError.invalidPageTag)
-      }
-      guard self.coordinator.generation == generation,
-            targetPageID == nil || self.coordinator.document?.index(of: targetPageID!) != nil else {
-        self.coordinator.pdfQueue.async { self.coordinator.releaseStagedInputs(staged) }
-        return .rejected(withError: MutablePageError.operationCancelled)
-      }
-      guard let operation = self.coordinator.admit(.structural) else {
-        self.coordinator.pdfQueue.async { self.coordinator.releaseStagedInputs(staged) }
-        return .rejected(withError: MutablePageError.operationInProgress)
-      }
-      let state = self.coordinator.document
-      let index = targetPageID.flatMap { state?.index(of: $0) } ?? 0
-      let input = InkSignPdfDocumentCoordinator.StructuralInput(operation: operation,
-        document: state, pages: state?.pages ?? [], targetPageID: targetPageID ?? UUID(),
-        targetPageIndex: index, imageGeometry: imageGeometry,
-        imageTargetDpi: targetDpi, imageJpegQuality: jpegQuality,
-        recordHistory: self.recordHistory, tag: tag)
-      return self.commitStructureNow(input, staged: staged, command: command)
-    }
-  }
-
   func commitStructureNow(_ input: InkSignPdfDocumentCoordinator.StructuralInput,
                           staged: [InkSignPdfStagedPageInput],
                           command: InkSignPdfDocumentCoordinator.StructuralCommand) -> Promise<InkSignPdfStructuralCommit> {
@@ -54,6 +22,7 @@ extension InkSignDocumentCore {
           switch candidate {
           case .failure(let error):
             coordinator.settle(input.operation)
+            self.changed(.structure)
             settlement.reject(error)
           case .success(let document):
             let previous: InkSignPdfDocumentState?

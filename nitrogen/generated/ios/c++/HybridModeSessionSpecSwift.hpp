@@ -12,22 +12,28 @@
 // Forward declaration of `HybridModeSessionSpec_cxx` to properly resolve imports.
 namespace ReactNativeInkSignPdf { class HybridModeSessionSpec_cxx; }
 
-// Forward declaration of `HybridAnalyzedPageSpec` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { class HybridAnalyzedPageSpec; }
+// Forward declaration of `HybridDocumentPageSpec` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { class HybridDocumentPageSpec; }
 // Forward declaration of `TaggedPageQuery` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
+// Forward declaration of `InputTargetFocusOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct InputTargetFocusOptions; }
+// Forward declaration of `FieldFocusVerticalAnchor` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class FieldFocusVerticalAnchor; }
 // Forward declaration of `PageCoords` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `ViewportOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ViewportOptions; }
 
 #include <memory>
-#include "HybridAnalyzedPageSpec.hpp"
+#include "HybridDocumentPageSpec.hpp"
 #include <NitroModules/Promise.hpp>
 #include "TaggedPageQuery.hpp"
 #include <variant>
 #include <optional>
 #include <string>
+#include "InputTargetFocusOptions.hpp"
+#include "FieldFocusVerticalAnchor.hpp"
 #include "PageCoords.hpp"
 #include "ViewportOptions.hpp"
 
@@ -81,8 +87,16 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
-    inline std::shared_ptr<Promise<std::shared_ptr<HybridAnalyzedPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) override {
+    inline std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> getPage(const std::optional<std::variant<double, TaggedPageQuery>>& pageIndex) override {
       auto __result = _swiftPart.getPage(pageIndex);
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<void>> focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) override {
+      auto __result = _swiftPart.focusInputTarget(page, std::forward<decltype(id)>(id), options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

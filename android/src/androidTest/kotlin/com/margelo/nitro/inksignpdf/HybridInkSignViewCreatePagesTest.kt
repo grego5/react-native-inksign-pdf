@@ -1,9 +1,9 @@
 package com.margelo.nitro.inksignpdf
 
-import android.graphics.Bitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.margelo.nitro.core.Promise
+import android.graphics.Bitmap
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
@@ -37,93 +37,33 @@ class HybridInkSignViewCreatePagesTest {
     )
     assertEquals(1, seedPages.size)
 
-    val viewRef = AtomicReference<HybridInkSignView>()
-    val promiseRef = AtomicReference<Promise<AddPagesResult>>()
-    instrumentation.runOnMainSync {
-      viewRef.set(HybridInkSignView(context))
-      promiseRef.set(
-        viewRef.get().addPages(
-          AddPagesOptions(null,
-            type = null,
-            sources = arrayOf(pdf.absolutePath, image.absolutePath),
-            imagePageSize = ImagePageSize(width = 144.0, height = 72.0),
-            targetDpi = 72.0,
-            jpegQuality = 0.1,
-            activePage = null,
-          ),
-        ),
-      )
-    }
-
-    val completed = CountDownLatch(1)
-    val result = AtomicReference<AddPagesResult>()
-    val failure = AtomicReference<Throwable>()
-    promiseRef.get()
-      .then { result.set(it); completed.countDown() }
-      .catch { failure.set(it); completed.countDown() }
+    val document = HybridInkSignDocument(context)
 
     try {
-      assertTrue("mixed addPages did not settle", completed.await(10L, TimeUnit.SECONDS))
-      failure.get()?.let { throw AssertionError("mixed addPages failed", it) }
-      assertEquals(2.0, result.get().addedPageCount, 0.0)
-      assertEquals(2.0, result.get().pageInfo!!.pageCount, 0.0)
-      assertEquals(80.0, result.get().pageInfo!!.width, 0.0001)
-      assertEquals(40.0, result.get().pageInfo!!.height, 0.0001)
+      await(instrumentation) {
+        document.open(pdf.absolutePath, DocumentOpenOptions(null, null, null, null, null, null))
+      }
+      val result = await(instrumentation) {
+        document.addPages(DocumentAddPagesOptions(
+          tag = null,
+          sources = arrayOf(pdf.absolutePath, image.absolutePath),
+          imagePageSize = ImagePageSize(width = 144.0, height = 72.0),
+          targetDpi = 72.0,
+          jpegQuality = 0.1,
+        ))
+      }
+      assertEquals(2.0, result.addedPageCount, 0.0)
+      assertEquals(3.0, result.pageCount, 0.0)
+      val pdfPage = await(instrumentation) { document.getPage(PageQuery.create(1.0)) }
+      val imagePage = await(instrumentation) { document.getPage(PageQuery.create(2.0)) }
+      assertEquals(80.0, pdfPage.getState().width, 0.0001)
+      assertEquals(40.0, pdfPage.getState().height, 0.0001)
+      assertEquals(144.0, imagePage.getState().width, 0.0001)
+      assertEquals(72.0, imagePage.getState().height, 0.0001)
     } finally {
-      instrumentation.runOnMainSync { viewRef.get().onDropView() }
+      await(instrumentation) { document.close() }
       image.delete()
       pdf.delete()
-    }
-  }
-
-  @Test
-  fun addPagesCreatesDocumentOnAnEmptyView() {
-    val instrumentation = InstrumentationRegistry.getInstrumentation()
-    val context = instrumentation.targetContext
-    val image = File.createTempFile("first-page-", ".jpg", context.cacheDir)
-    val secondImage = File.createTempFile("second-page-", ".jpg", context.cacheDir)
-    image.writeBytes(testJpeg())
-    secondImage.writeBytes(testJpeg())
-    val viewRef = AtomicReference<HybridInkSignView>()
-    val promiseRef = AtomicReference<Promise<AddPagesResult>>()
-    instrumentation.runOnMainSync {
-      viewRef.set(HybridInkSignView(context))
-      promiseRef.set(
-        viewRef.get().addPages(
-          AddPagesOptions(null,
-            PageType.IMAGE,
-            arrayOf(image.absolutePath, secondImage.absolutePath),
-            ImagePageSize(width = 595.28, height = 841.89),
-            null,
-            null,
-            AddPagesActivePage.CURRENT,
-          ),
-        ),
-      )
-    }
-
-    val completed = CountDownLatch(1)
-    val result = AtomicReference<AddPagesResult>()
-    val failure = AtomicReference<Throwable>()
-    promiseRef.get()
-      .then { result.set(it); completed.countDown() }
-      .catch { failure.set(it); completed.countDown() }
-
-    try {
-      assertTrue("addPages did not settle", completed.await(10L, TimeUnit.SECONDS))
-      failure.get()?.let { throw AssertionError("addPages rejected on an empty view", it) }
-      val added = result.get()
-      assertNotNull(added)
-      assertEquals(2.0, added.addedPageCount, 0.0)
-      assertNotNull(added.pageInfo)
-      assertEquals(2.0, added.pageInfo!!.pageCount, 0.0)
-      assertEquals(0.0, added.pageInfo!!.pageIndex, 0.0)
-      assertEquals(595.28, added.pageInfo!!.width, 0.0001)
-      assertEquals(841.89, added.pageInfo!!.height, 0.0001)
-    } finally {
-      instrumentation.runOnMainSync { viewRef.get().onDropView() }
-      image.delete()
-      secondImage.delete()
     }
   }
 
@@ -136,6 +76,19 @@ class HybridInkSignViewCreatePagesTest {
       bitmap.recycle()
     }
     output.toByteArray()
+  }
+
+  private fun <T> await(instrumentation: android.app.Instrumentation, request: () -> Promise<T>): T {
+    val completed = CountDownLatch(1)
+    val result = AtomicReference<T>()
+    val failure = AtomicReference<Throwable>()
+    instrumentation.runOnMainSync {
+      request().then { result.set(it); completed.countDown() }
+        .catch { failure.set(it); completed.countDown() }
+    }
+    assertTrue("Document command did not settle", completed.await(20L, TimeUnit.SECONDS))
+    failure.get()?.let { throw AssertionError("Document command failed", it) }
+    return checkNotNull(result.get())
   }
 
   companion object {

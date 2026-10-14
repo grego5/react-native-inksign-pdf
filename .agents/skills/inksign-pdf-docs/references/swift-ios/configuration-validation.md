@@ -1,7 +1,7 @@
 # iOS configuration and validation boundary
 
 - Public props are defined in
-  [`src/InkSignView.nitro.ts`](../../../../src/InkSignView.nitro.ts).
+  [`src/InkSignView.nitro.ts`](../../../../../src/InkSignView.nitro.ts).
 - Nitro configuration setters capture incoming values and apply UIKit-backed
   changes on the main thread. Pen changes wait for an active drawing transaction
   to finish.
@@ -11,8 +11,8 @@
   canvas zoom. Viewport/layout updates refresh the tool before drawing;
   the tool stays fixed during a drawing transaction.
   Committed page-space ink scales with the viewport.
-- The module owns temporary artifacts; the host app can configure their cache
-  directory.
+- Working artifacts belong to the core; successful exports belong to the caller.
+  See [export](export.md).
 
 - Run XCTest and simulator validation on macOS with Xcode.
 - Review visual fidelity, gesture feel, haptics, and device performance on

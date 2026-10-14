@@ -174,7 +174,7 @@ private fun SurfaceView.endStroke(event: MotionEvent) {
   val handoffSequence = presentationSequence
   var finalSnapshot: LowLatencyInkFinalSnapshot? = null
   if (frame.contours.isNotEmpty()) {
-    val outline = StrokeOutline.copyOf(frame.contours)
+    val outline = StrokeOutline.copyOf(frame.contours).withColor(strokeColor())
     // Final geometry becomes durable presentation/history state before the
     // replaceable front-buffer composition is discarded below.
     core.commitInk(DocumentPageContext(documentState.generation, documentState.activePageId()), outline)

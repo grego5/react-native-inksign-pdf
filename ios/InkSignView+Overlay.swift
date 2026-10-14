@@ -46,7 +46,6 @@ extension InkSignView {
     refreshOverlayTransform(overlay, for: pageID)
     textInteractionOverlay.syncContent()
     finishPagePresentationIfReady()
-    _ = completeOpenIfReady()
   }
 
   func overlayDidEndDisplaying(_ overlay: InkCanvasView, for pageID: UUID) {
@@ -64,7 +63,6 @@ extension InkSignView {
           attachedOverlayPage == pageID, isSupportedPage(pageID) else { return }
     refreshOverlayTransform(overlay, for: pageID)
     finishPagePresentationIfReady()
-    _ = completeOpenIfReady()
     interaction.synchronizePolicy()
   }
 

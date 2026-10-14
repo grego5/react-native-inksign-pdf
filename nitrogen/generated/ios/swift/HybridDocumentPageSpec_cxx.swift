@@ -137,6 +137,50 @@ open class HybridDocumentPageSpec_cxx {
   }
   
   @inline(__always)
+  public final func undo() -> bridge.Result_void_ {
+    do {
+      try self.__implementation.undo()
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func redo() -> bridge.Result_void_ {
+    do {
+      try self.__implementation.redo()
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func clear() -> bridge.Result_void_ {
+    do {
+      try self.__implementation.clear()
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
+  public final func clearInk() -> bridge.Result_void_ {
+    do {
+      try self.__implementation.clearInk()
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func resolveInputUnderline(options: ResolveInputUnderlineOptions) -> bridge.Result_double_ {
     do {
       let __result = try self.__implementation.resolveInputUnderline(options: options)

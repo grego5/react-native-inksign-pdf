@@ -18,7 +18,6 @@
 #include "JHybridDocumentPageSpec.hpp"
 #include "JHybridInkSignDocumentSpec.hpp"
 #include "JHybridInkSignDocumentFactorySpec.hpp"
-#include "JHybridAnalyzedPageSpec.hpp"
 #include "JHybridTextHandleSpec.hpp"
 #include "JHybridModeSessionSpec.hpp"
 #include "JHybridInkSignViewSpec.hpp"
@@ -62,7 +61,6 @@ void registerAllNatives() {
   margelo::nitro::inksignpdf::JHybridDocumentPageSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridInkSignDocumentSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridInkSignDocumentFactorySpec::CxxPart::registerNatives();
-  margelo::nitro::inksignpdf::JHybridAnalyzedPageSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridTextHandleSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridModeSessionSpec::CxxPart::registerNatives();
   margelo::nitro::inksignpdf::JHybridInkSignViewSpec::CxxPart::registerNatives();

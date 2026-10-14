@@ -2,8 +2,8 @@
 
 - `finalize()` exports an immutable snapshot of committed page content and
   returns the published output as a `file://` URI. Artifact ownership uses URLs.
-- Live strokes, predictions, drafts, selection, and viewport state are not
-  included.
+- The core ends its admitted text transaction before capture. Live ink,
+  selection, and viewport state are excluded.
 - Export writes a separate output; source and working documents retain their
   current state.
 - Export applies pending page rotation to a detached PDF after verifying source
@@ -34,10 +34,10 @@
 - Unsupported PencilKit ink fails export. Signature output is not pixel-identical
   PencilKit rendering and does not support general brushes.
 - Advanced source-PDF semantics follow the scope in
-  [architecture.md](../architecture.md#scope).
+  [architecture.md](../architecture.md#scope-and-validation).
 
 - The common writer reopens output to check geometry, vector counts, and composed
   text placement. PDFKit reopening verifies viewer interoperability, page boxes,
   and source annotation identity before publication.
-- Replacement and disposal cancel pending export through the
-  [document operation contract](../architecture.md#document-operations).
+- Export admission, cancellation, and close follow
+  [core command lifetime](../architecture.md#commands-and-lifetime).

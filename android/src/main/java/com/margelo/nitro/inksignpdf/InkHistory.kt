@@ -6,6 +6,8 @@ import android.graphics.Color
 internal class StrokeOutline private constructor(
   val contourPathData: List<InkPathData>,
 ) {
+  val color: Int get() = contourPathData.first().color
+  fun withColor(color: Int): StrokeOutline = StrokeOutline(contourPathData.map { it.copy(color = color) })
   val cubicSegmentCount: Int
     get() = contourPathData.sumOf { data ->
       data.commands.count { it.type == InkPathCommand.CUBIC }
@@ -121,6 +123,9 @@ internal sealed interface InkHistoryMutation {
 
 /** UI-thread-owned permanent base and ordered, undoable overrides. */
 internal class InkHistory(private val recordHistory: Boolean = true) {
+  internal data class TextPreview(val id: Long, val annotation: TextAnnotation?, val changed: Boolean)
+  internal var textPreview: TextPreview? = null
+    set(value) { field = value; revision += 1L }
   private sealed interface Key {
     data class Ink(val outline: StrokeOutline) : Key
     data class Text(val id: Long) : Key
@@ -149,13 +154,16 @@ internal class InkHistory(private val recordHistory: Boolean = true) {
   val canUndo: Boolean get() = undoStack.isNotEmpty()
   val canRedo: Boolean get() = redoStack.isNotEmpty()
 
-  fun state() = InkState(canUndo, canRedo, isDirty = canUndo)
+  fun state() = InkState(canUndo, canRedo, isDirty = canUndo || (recordHistory && textPreview?.changed == true))
 
   /** Base first, then tracked content; overrides suppress the matching base identity. */
   fun contentSnapshot(): List<PageContent> {
     val overridden = tracked.mapTo(HashSet()) { it.key }
-    return base.filterNot { it.key in overridden }.mapNotNull { it.content } +
+    val content = base.filterNot { it.key in overridden }.mapNotNull { it.content } +
       tracked.mapNotNull { it.content }
+    val preview = textPreview ?: return content
+    val replacement = preview.annotation?.let { listOf(PageContent.Text(it)) } ?: emptyList()
+    return content.filterNot { it is PageContent.Text && it.annotation.id == preview.id } + replacement
   }
   fun snapshot(): List<StrokeOutline> = contentSnapshot().inkOutlines()
   fun hasInk(): Boolean = contentSnapshot().any { it is PageContent.Ink }

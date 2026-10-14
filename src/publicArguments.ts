@@ -12,13 +12,6 @@ export function validateAddPagesOptions(value: unknown): void {
     throw argumentError('invalid_page_options', 'Page options must be an object');
   }
   if (value.tag !== undefined) validatePageTag(value.tag);
-  if (value.type !== undefined && value.type !== 'pdf' && value.type !== 'image') {
-    throw argumentError('invalid_page_type', 'Page type must be pdf or image');
-  }
-  if (value.activePage !== undefined && value.activePage !== 'current' &&
-    value.activePage !== 'firstAdded' && value.activePage !== 'lastAdded') {
-    throw argumentError('invalid_active_page', 'Active page must be current, firstAdded, or lastAdded');
-  }
   const sources = value.sources;
   if (sources !== undefined && (!Array.isArray(sources) ||
     !sources.every((source) => typeof source === 'string' && source.trim() !== ''))) {
@@ -104,11 +97,6 @@ export function validatePageQuery(value: unknown, required = false): void {
   } else {
     validatePageIndex(value);
   }
-}
-
-export function validateViewOpenOptions(value: unknown): void {
-  validateViewportOptions(value);
-  if (isRecord(value) && value.tag !== undefined) validatePageTag(value.tag);
 }
 
 export function validateInputTargetId(value: unknown): void {

@@ -329,7 +329,10 @@ internal class LowLatencyInkDrawCallback(
         setPageMatrix(snapshot.pageToView)
         sourcePaint.color = snapshot.color
         canvas.concat(pageMatrix)
-        snapshot.paths.forEach { path -> canvas.drawPath(path.toPath(), sourcePaint) }
+        snapshot.paths.forEach { path ->
+          sourcePaint.color = path.color
+          canvas.drawPath(path.toPath(), sourcePaint)
+        }
         finalSnapshotDrawCount += 1L
         drawn = true
         InkPerfetto.counter("InkSign final multi-buffer snapshots drawn", finalSnapshotDrawCount)
