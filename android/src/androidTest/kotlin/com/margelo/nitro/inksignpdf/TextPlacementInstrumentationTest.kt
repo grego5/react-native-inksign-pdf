@@ -140,6 +140,74 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
+  fun rejectedSameTargetWritesPreserveTheActiveDraftAndHistory() {
+    harness.runOnMain {
+      val page = harness.core.state.pageMetadata(0)
+      val context = DocumentPageContext(harness.core.state.generation, page.id)
+      val baseline = harness.core.text.insert(
+        context, TextAnnotationBounds(20.0, 30.0, 200.0, 60.0), "before", null,
+      )
+      val edit = harness.core.beginTextEdit(context, baseline.id)
+      harness.core.updateTextEdit(edit, baseline.copy(text = "draft"))
+      val revision = harness.coordinator.pageHistoryRevision(0)
+      val history = harness.coordinator.pageHistoryState(0)
+      var ended = 0
+      val subscription = harness.core.observe { if (it is DocumentChange.EditEnded) ended += 1 }
+      try {
+        val invalid = TextAnnotationOptions(
+          untracked = null, font = Variant_NullType_String.create("not-loaded"),
+          fontSize = null, color = null, direction = null, maxLines = null,
+          alignment = null, verticalAnchor = null,
+        )
+        val writes = listOf<() -> Unit>(
+          { harness.core.text.setValue(context, baseline.id.toDouble(), "replacement", invalid) },
+          { harness.core.text.setOptions(context, baseline.id.toDouble(), invalid) },
+        )
+        for (write in writes) {
+          val error = assertThrows(PdfSessionException::class.java) { write() }
+          assertEquals("font_not_loaded", error.code)
+          assertTrue(harness.core.activeTextEdit === edit)
+          assertTrue(edit.active)
+          assertEquals("draft", harness.core.text.getValue(context, baseline.id.toDouble()))
+          assertEquals(revision, harness.coordinator.pageHistoryRevision(0))
+          assertEquals(history, harness.coordinator.pageHistoryState(0))
+          assertEquals(0, ended)
+        }
+        harness.core.text.setValue(context, baseline.id.toDouble(), "accepted", null)
+        assertFalse(edit.active)
+        assertEquals(1, ended)
+        harness.core.undo(page.id)
+        assertEquals("draft", harness.core.text.getValue(context, baseline.id.toDouble()))
+        harness.core.undo(page.id)
+        assertEquals("before", harness.core.text.getValue(context, baseline.id.toDouble()))
+      } finally { subscription.close() }
+    }
+  }
+
+  @Test
+  fun emptyEditorRetainsItsColorWhenTheTargetIsRepopulated() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        overlay.setDefaultTextColor("#123456")
+        overlay.armPlacement(harness.core.state.generation)
+        val tap = checkNotNull(harness.surface.textPresentationSnapshot()).transform.map(PagePoint(150.0, 150.0))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_100L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_110L))
+        val edit = checkNotNull(harness.core.activeTextEdit)
+        editorView(overlay).setText("colored")
+        editorView(overlay).setText("")
+        overlay.finishForLifecycle()
+
+        harness.core.text.setValue(edit.context, edit.id.toDouble(), "replacement", null)
+        val annotation = checkNotNull(harness.coordinator.pageSnapshot(0).content.single().textAnnotationOrNull())
+        assertEquals(android.graphics.Color.rgb(0x12, 0x34, 0x56), annotation.textColor)
+      } finally { overlay.dispose() }
+    }
+  }
+
+  @Test
   fun physicalRectangleAndAlignmentStayDirectionIndependent() {
     harness.runOnMain {
       harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)

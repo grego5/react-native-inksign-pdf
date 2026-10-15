@@ -1,5 +1,9 @@
 # Android native artifacts
 
+- The Android module requires API 29 or newer for its RenderNode/front-buffer
+  renderer. Gradle enforces this floor; consuming apps must also set their
+  minimum SDK to at least 29.
+
 - PDFium source, ABI archives, and checksums are pinned in
   `core/third_party/pdfium/manifest.json`. Gradle verifies the release assets and
   each extracted library, caching them under `android/build/pdfium`. A changed

@@ -7,6 +7,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.RenderNode
 import android.os.SystemClock
+import android.os.Trace
 import kotlin.math.ceil
 import kotlin.math.floor
 
@@ -337,6 +338,7 @@ internal class InkRenderer {
     }
 
     private fun reportDiagnostics() {
+        if (!Trace.isEnabled()) return
         val snapshot = diagnosticsSnapshot()
         InkPerfetto.counter("InkSign completed sealed batch count", snapshot.sealedBatchCount)
         InkPerfetto.counter("InkSign completed active batch count", snapshot.activeBatchCount)

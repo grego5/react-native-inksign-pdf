@@ -22,6 +22,7 @@ const config: ExpoConfig = {
       'expo-build-properties',
       {
         android: {
+          minSdkVersion: 29,
           cmakeVersion: '4.1.2',
           buildArchs: ['arm64-v8a'],
         },

@@ -5,6 +5,8 @@
 - Diagnostics observe native state; they do not own stroke or presentation
   state. Perfetto covers input, JNI/C++, geometry, frame transport, prediction,
   front-buffer work, lifecycle, and FrameTimeline data.
+- Completed-ink drawing aggregates diagnostic counters only while tracing is
+  enabled. Explicit diagnostic reads remain available independently of tracing.
 - JVM tests cover Android composition, viewport, history, export, and
   diagnostics. Connected tests cover lifecycle, callbacks, prediction, and
   device rendering. Use `tools\test-android.ps1 -Mode connected`.

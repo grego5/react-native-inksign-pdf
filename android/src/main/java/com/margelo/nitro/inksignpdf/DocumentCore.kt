@@ -6,7 +6,6 @@ import android.os.Handler
 import android.os.Looper
 import java.io.File
 import java.util.concurrent.CountDownLatch
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
@@ -362,33 +361,6 @@ internal class DocumentCore(
       output?.let { withContext(NonCancellable + Dispatchers.IO) { artifacts.deleteExact(it) } }
       throw error
     } finally { coordinator.endOperation(operation); if (structuralBusy) changed(DocumentChange.StructuralReady) }
-  }
-
-  /** Reusable client reset. The viewer can open another document after this completes. */
-  suspend fun clearDocument() {
-    prepared.clear()
-    awaitWorker<Unit> { completion ->
-      coordinator.closeDocument(completion)
-      changed(DocumentChange.Cleared)
-    }
-    fonts.close()
-  }
-
-  /** Invalidate now, then serialize cleanup behind native work before admitting replacement. */
-  fun clearImmediately(): Deferred<Unit> = onMain {
-    synchronized(admissions) {
-      if (lifecycle != Lifecycle.ACTIVE) throw cancelled()
-      jobs.toList().forEach { it.cancel() }
-    }
-    prepared.clear()
-    inputs.cancelPending()
-    val cleared = CompletableDeferred<Unit>()
-    coordinator.closeDocument { result -> result.fold({ cleared.complete(Unit) }, { cleared.completeExceptionally(it) }) }
-    changed(DocumentChange.Cleared)
-    synchronized(admissions) { enqueue {
-      withContext(NonCancellable) { cleared.await() }
-      fonts.close()
-    } }
   }
 
   fun close(cancelPending: Boolean = false): Deferred<Unit> = onMain {

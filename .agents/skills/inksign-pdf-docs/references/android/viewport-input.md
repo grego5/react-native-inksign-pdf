@@ -34,6 +34,9 @@
 - Final annotation construction uses the core text service with explicit
   layout/flow bounds and optional editor-measured intrinsic size. The core owns
   admitted text; editor state remains local. Publications refresh presentation.
+- Same-target programmatic writes validate fonts and layout before ending the
+  active editor transaction. Rejected writes preserve the draft and history.
+  Captured editor formatting uses the shared opaque RGB color contract.
 - Shared [bounds/line limits](../architecture.md#layout-and-editing) apply.
   Alignment and `verticalAnchor` position text inside fixed edges.
 - `setMode('text')` arms placement and reports `textAdd`. A valid tap opens

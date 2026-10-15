@@ -50,7 +50,7 @@
   text extraction when subsetting is used. It saves full font programs when font
   rights or glyph mappings require them, and retries with full fonts if subset
   serialization fails. Font collections use the first face for export.
-- On API 24–30, selected system font bytes are unavailable; system-only text uses
+- On API 29–30, selected system font bytes are unavailable; system-only text uses
   PDFium's standard-font fallback. Named fonts embed when permitted; unsupported
   glyphs use their missing-glyph appearance, which can differ from Android preview.
   Missing glyph coverage or embedding rights alone do not reject finalize;

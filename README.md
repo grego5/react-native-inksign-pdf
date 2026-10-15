@@ -13,7 +13,7 @@
 ## Requirements
 
 - Node.js 20
-- Android 7.0/API 24 or newer
+- Android 10/API 29 or newer
 - iOS 16.0
 - A native iOS or Android project
 
@@ -75,9 +75,12 @@ export function SigningView({ document }: { document: InkSignDocument }) {
       )}
       <Button title="Draw" onPress={() => pdf.current?.setMode('ink')} />
       <Button title="Place text" onPress={() => pdf.current?.setMode('text')} />
-      <Button title="Undo" onPress={async () => {
-        if (state?.pageIndex != null) (await document.getPage(state.pageIndex)).undo();
-      }} />
+      <Button
+        title="Undo"
+        onPress={async () => {
+          if (state?.pageIndex != null) (await document.getPage(state.pageIndex)).undo();
+        }}
+      />
       <Button title="Save PDF" onPress={() => void savePdf()} />
       {savedPath !== '' && <Text>Saved to {savedPath}</Text>}
     </View>
@@ -260,3 +263,4 @@ try {
 Load a static `.ttf` from a local or bundled asset URI, then pass its name as
 `font` when resolving or formatting text. Omit `font` to keep the
 current selection; use `font: null` to restore the system font.
+

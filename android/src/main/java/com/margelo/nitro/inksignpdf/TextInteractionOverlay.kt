@@ -1419,7 +1419,7 @@ internal class TextInteractionOverlay(
 
   private fun editingOptions(state: InteractionState.Editing) = TextAnnotationOptions(
     untracked = null, font = null, fontSize = state.fontSize,
-    color = String.format(java.util.Locale.ROOT, "#%08X", state.textColor),
+    color = String.format(java.util.Locale.ROOT, "#%06X", state.textColor and 0xffffff),
     direction = if (state.directionRtl) TextDirection.RTL else TextDirection.LTR,
     maxLines = state.maxLines.toDouble(), alignment = state.alignment, verticalAnchor = state.verticalAnchor,
   )

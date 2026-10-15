@@ -143,14 +143,15 @@ internal class DocumentTextCommands(
                         options: TextAnnotationOptions? = null) = core.withMutablePage(context) { page ->
     core.requireContentMutationReady()
     val slot = target(context, rawId)
-    core.endTextEdit(slot.id)
     val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
     val proposed = merged(if (current == null) slot.options else null, options)
     // Resolve font and compute layout before publishing target or content changes.
     fonts.resolve(proposed.font, current?.font)
     val updated = if (text.isEmpty()) null else annotation(page, slot, current, text, proposed)
-    slot.options = if (text.isEmpty() && current != null) merged(emptyTargetOptions(current), options)
+    val capturedOptions = if (text.isEmpty() && current != null) merged(emptyTargetOptions(current), options)
       else merged(slot.options, options)
+    core.endTextEdit(slot.id)
+    slot.options = capturedOptions
     commit(page, current, updated, untracked = options?.untracked == true)
   }
 
@@ -166,11 +167,11 @@ internal class DocumentTextCommands(
                           options: TextAnnotationOptions) = core.withMutablePage(context) { page ->
     core.requireContentMutationReady()
     val slot = target(context, rawId)
-    core.endTextEdit(slot.id)
     val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
     val proposed = merged(if (current == null) slot.options else null, options)
     fonts.resolve(proposed.font, current?.font)
     val updated = current?.let { annotation(page, slot, it, it.text, proposed) }
+    core.endTextEdit(slot.id)
     slot.options = merged(slot.options, options)
     commit(page, current, updated, untracked = options.untracked == true)
   }

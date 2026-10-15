@@ -463,7 +463,7 @@ android {
   }
 
   defaultConfig {
-    minSdkVersion getExtOrIntegerDefault('minSdkVersion')
+    minSdkVersion Math.max(29, getExtOrIntegerDefault('minSdkVersion'))
     targetSdkVersion getExtOrIntegerDefault('targetSdkVersion')
     testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     ndk {

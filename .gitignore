@@ -1,4 +1,5 @@
 .vscode/
+/.clangd
 node_modules/
 lib/
 build/
