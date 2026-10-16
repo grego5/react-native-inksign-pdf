@@ -46,7 +46,7 @@ internal class DocumentCore(
   private val exportOwnership: ExportOwnership,
 ) {
   val artifacts = CacheArtifactPolicy.initialize(context)
-  internal val coordinator = MutableDocumentCoordinator(sessionWorker = sessionWorker, artifactPolicy = artifacts, recordHistory = recordHistory)
+  internal val coordinator = DocumentCoordinator(sessionWorker = sessionWorker, artifactPolicy = artifacts, recordHistory = recordHistory)
   val state: DocumentReadState = coordinator
   val fonts = NamedFontRegistry(context)
   val text = DocumentTextCommands(this,
@@ -92,7 +92,7 @@ internal class DocumentCore(
   private val admissions = Any()
   private val jobs = LinkedHashSet<Job>()
   private val observers = LinkedHashSet<(DocumentChange) -> Unit>()
-  private val prepared = LinkedHashMap<String, PreparedPageContext>()
+  private val prepared = LinkedHashMap<String, PreparedPage>()
   private val outputs = LinkedHashSet<File>()
   private val retiringFiles = LinkedHashSet<File>()
   private enum class Lifecycle { ACTIVE, CLOSING, CLOSED }
@@ -172,7 +172,7 @@ internal class DocumentCore(
     if (tag.isEmpty()) throw PdfSessionException("invalid_page_tag", "Page tags must be nonempty strings")
   }
 
-  suspend fun getPage(query: TaggedPageQuery): PreparedPageContext {
+  suspend fun getPage(query: TaggedPageQuery): PreparedPage {
     validatePageTag(query.tag)
     val occurrence = query.index ?: 0.0
     validatePageIndex(occurrence)
@@ -216,7 +216,7 @@ internal class DocumentCore(
     try { return commitOpen(pending) } finally { finishOpen(pending) }
   }
 
-  suspend fun prepareOpen(uri: String, options: DocumentOpenOptions? = null): MutableDocumentCoordinator.PendingOpen {
+  suspend fun prepareOpen(uri: String, options: DocumentOpenOptions? = null): DocumentCoordinator.PendingOpen {
     options?.tag?.let(::validatePageTag)
     prepared.clear()
     return coordinator.prepareOpen(
@@ -240,16 +240,16 @@ internal class DocumentCore(
   }
 
   suspend fun <T> awaitOpen(
-    pending: MutableDocumentCoordinator.PendingOpen,
+    pending: DocumentCoordinator.PendingOpen,
     action: suspend () -> T,
   ): T = coordinator.awaitOpen(pending, action)
 
-  suspend fun commitOpen(pending: MutableDocumentCoordinator.PendingOpen): PdfSessionInfo =
+  suspend fun commitOpen(pending: DocumentCoordinator.PendingOpen): PdfSessionInfo =
     coordinator.commitOpen(pending) { changed(DocumentChange.Opened) }
 
-  suspend fun finishOpen(pending: MutableDocumentCoordinator.PendingOpen) = coordinator.finishOpen(pending)
+  suspend fun finishOpen(pending: DocumentCoordinator.PendingOpen) = coordinator.finishOpen(pending)
 
-  suspend fun getPage(index: Double): PreparedPageContext {
+  suspend fun getPage(index: Double): PreparedPage {
     val position = pageIndex(index)
     val page = coordinator.page(position)
     val generation = coordinator.generation
@@ -258,7 +258,7 @@ internal class DocumentCore(
       coordinator.preparePageAnalysis(generation, position, it)
     }
     coordinator.ensureCurrent(generation)
-    val context = PreparedPageContext(generation, page.id, analysis)
+    val context = PreparedPage(generation, page.id, analysis)
     coordinator.retainTextSourceGlyphs(page.id, context.analysis.glyphs)
     prepared[page.id] = context
     return context
@@ -310,7 +310,7 @@ internal class DocumentCore(
     }
   }
 
-  private suspend fun structural(request: PdfiumAssemblyRequest, candidate: () -> MutableDocumentCoordinator.StructuralCandidate) {
+  private suspend fun structural(request: PdfiumAssemblyRequest, candidate: () -> DocumentCoordinator.StructuralCandidate) {
     val operation = coordinator.beginOperation()
     try {
       val generation = coordinator.generation

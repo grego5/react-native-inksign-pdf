@@ -30,7 +30,7 @@ internal data class TextTargetSlot(
 )
 
 /** UI-thread-owned coordinator for one published mutable PDF document. */
-internal class MutableDocumentCoordinator(
+internal class DocumentCoordinator(
   sourcePath: String = "",
   generation: Long = 0L,
   pages: List<PdfPageDimensions> = emptyList(),
@@ -39,7 +39,7 @@ internal class MutableDocumentCoordinator(
   private val recordHistory: Boolean = true,
 ) : DocumentReadState {
   private var mutablePages: MutableList<InkPageState> = pages.map { dimensions ->
-    InkPageState(PageRecord.newId(), dimensions, history = InkHistory(recordHistory))
+    InkPageState(PageRecord.newId(), dimensions, history = PageContentHistory(recordHistory))
   }.toMutableList()
   private var generationValue = generation
   private var activeOpenRequest: OpenRequest? = null
@@ -138,7 +138,7 @@ internal class MutableDocumentCoordinator(
     tag: String? = null,
   ): StructuralCandidate {
     require(dimensions.isNotEmpty())
-    val appended = dimensions.map { InkPageState(PageRecord.newId(), it, history = InkHistory(recordHistory), tag = tag) }
+    val appended = dimensions.map { InkPageState(PageRecord.newId(), it, history = PageContentHistory(recordHistory), tag = tag) }
     val candidatePages = mutablePages.toList() + appended
     return StructuralCandidate(candidatePages)
   }
@@ -563,7 +563,7 @@ internal class MutableDocumentCoordinator(
     tag: String?,
   ): PreparedOpenCandidate {
     val pages = info.pages.map { dimensions ->
-      InkPageState(PageRecord.newId(), dimensions, history = InkHistory(recordHistory), tag = tag)
+      InkPageState(PageRecord.newId(), dimensions, history = PageContentHistory(recordHistory), tag = tag)
     }.toMutableList()
     return PreparedOpenCandidate(
       pages = pages,

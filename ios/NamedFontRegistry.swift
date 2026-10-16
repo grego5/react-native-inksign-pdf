@@ -122,7 +122,7 @@ final class InkSignPdfNamedFontRegistry {
   func clear() { names.removeAll(); sources.removeAll() }
 }
 
-extension InkSignDocumentCore {
+extension DocumentCore {
   func loadFonts(_ fonts: [NamedFontSource]) -> Promise<Void> {
     loadFontSources(fonts.map { InkSignPdfNamedFontRegistry.Source(name: $0.name, uri: $0.uri) })
   }

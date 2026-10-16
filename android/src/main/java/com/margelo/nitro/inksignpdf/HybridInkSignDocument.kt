@@ -60,12 +60,12 @@ internal class HybridInkSignDocument(internal val core: DocumentCore) : HybridIn
 }
 
 @DoNotStrip
-internal class HybridDocumentPage(internal val core: DocumentCore, context: PreparedPageContext,
+internal class HybridDocumentPage(internal val core: DocumentCore, context: PreparedPage,
   owner: HybridInkSignView? = null, internal val modeSession: ModeSessionToken? = null,
 ) : HybridDocumentPageSpec() {
   private val authorizationOwner = owner?.let(::WeakReference)
   private val prepared = WeakReference(context)
-  internal val context: PreparedPageContext get() = prepared.get()
+  internal val context: PreparedPage get() = prepared.get()
     ?: throw PdfSessionException("operation_cancelled", "The prepared page was released")
   private fun <T> withPageAccess(action: (DocumentCore) -> T): T = core.withDocument {
     modeSession?.let { token ->

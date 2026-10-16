@@ -17,7 +17,7 @@ internal class ViewerDocumentState(private val document: DocumentReadState) : Do
   fun activePageId(): String = checkNotNull(selectedPageId)
   fun activeHistoryState(): InkState = document.pageHistoryState(activePageIndex)
 
-  fun activatePage(index: Int): MutableDocumentCoordinator.PageSnapshot {
+  fun activatePage(index: Int): DocumentCoordinator.PageSnapshot {
     val page = document.pageSnapshot(index)
     selectedPageId = page.id
     selectedIndex = index

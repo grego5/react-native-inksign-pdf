@@ -50,7 +50,7 @@ class HybridInkSignView internal constructor(
       detachDocument()
       attachedDocument = next
       loadError = null
-      surface.bindCore(next?.core)
+      viewerCanvas.bindCore(next?.core)
       textOverlay.bindCore(next?.core)
       textOverlay.setTextDirection(textDirection ?: TextDirection.AUTO)
       defaultTextFontSize?.let(textOverlay::setDefaultFontSize)
@@ -59,7 +59,7 @@ class HybridInkSignView internal constructor(
       documentSubscription = next?.core?.observe(::documentChanged)
       lastPublicPage = null
       lastPublicState = null
-      if (documentState.hasDocument) surface.installDocumentPresentation(notifyState = true)
+      if (documentState.hasDocument) viewerCanvas.installDocumentPresentation(notifyState = true)
       emitState()
     }
 
@@ -74,7 +74,7 @@ class HybridInkSignView internal constructor(
     documentSubscription = null
     attachedCore?.releaseViewer(attachmentId)
     attachedDocument = null
-    surface.bindCore(null)
+    viewerCanvas.bindCore(null)
     textOverlay.bindCore(null)
   }
   private val artifactPolicy = CacheArtifactPolicy.initialize(context)
@@ -83,7 +83,7 @@ class HybridInkSignView internal constructor(
       if (event.actionMasked == MotionEvent.ACTION_DOWN) coordinateTouchActive = isPickingPageCoords
       if (!coordinateTouchActive) return super.dispatchTouchEvent(event)
       // The whole stream stays with the picker, including cancellation or resolution at UP.
-      surface.handleViewportTouch(event)
+      viewerCanvas.handleViewportTouch(event)
       coordinateTapDetector.onTouchEvent(event)
       if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
         coordinateTouchActive = false
@@ -92,21 +92,21 @@ class HybridInkSignView internal constructor(
     }
   }
   internal fun isAttachedTo(capturedCore: DocumentCore): Boolean = !disposed && attachedCore === capturedCore
-  internal val documentState: ViewerDocumentState get() = surface.documentState
+  internal val documentState: ViewerDocumentState get() = viewerCanvas.documentState
   private val inkEngine = InkEngine()
   private val lowLatencyPresenter = LowLatencyInkPresenter(
     context,
     mainView = container,
   )
   private val traceRecorder = createStrokeTraceRecorder()
-  private val surface = SurfaceView(
+  private val viewerCanvas = ViewerCanvas(
     context,
     inkEngine,
     traceRecorder,
     lowLatencyInk = lowLatencyPresenter,
     core = null,
   )
-  private val textOverlay = TextInteractionOverlay(context, surface)
+  private val textOverlay = TextInteractionOverlay(context, viewerCanvas)
   private val mainHandler = Handler(Looper.getMainLooper())
   @Volatile private var viewportRequestID = 0L
   private var pageNavigationRequestID = 0L
@@ -128,9 +128,9 @@ class HybridInkSignView internal constructor(
         cancelCoordinateRequest()
         return false
       }
-      val coordinates = surface.pageCoordinatesAt(event.x.toDouble(), event.y.toDouble()) ?: return false
+      val coordinates = viewerCanvas.pageCoordinatesAt(event.x.toDouble(), event.y.toDouble()) ?: return false
       pendingPageCoords = null
-      surface.setCoordinatePicking(false)
+      viewerCanvas.setCoordinatePicking(false)
       restoreCoordinateMode(pending)
       emitState()
       if (!coordinateTargetIsCurrent(target) || (pending.session != null && !modeSessionIsCurrent(pending.session))) {
@@ -206,18 +206,18 @@ class HybridInkSignView internal constructor(
   override var doubleTap: DoubleTapOptions? = null
     set(value) {
       field = value
-      surface.setDoubleTapConfiguration(value)
+      viewerCanvas.setDoubleTapConfiguration(value)
     }
   override var keyboardAvoidanceEnabled: Boolean? = null
     set(value) {
       field = value
-      surface.setKeyboardAvoidanceEnabled(value != false)
+      viewerCanvas.setKeyboardAvoidanceEnabled(value != false)
       textOverlay.refreshKeyboardAvoidance()
     }
   override var pagerDirection: PagerDirection? = null
     set(value) {
       field = value
-      surface.setPagerDirection(value)
+      viewerCanvas.setPagerDirection(value)
     }
   override var onStateChange: ((ViewerState) -> Unit)? = null
     set(value) {
@@ -240,7 +240,7 @@ class HybridInkSignView internal constructor(
     }
     container.setBackgroundColor(Color.TRANSPARENT)
     container.addView(
-      surface,
+      viewerCanvas,
       FrameLayout.LayoutParams(
         FrameLayout.LayoutParams.MATCH_PARENT,
         FrameLayout.LayoutParams.MATCH_PARENT,
@@ -272,28 +272,28 @@ class HybridInkSignView internal constructor(
     })
     lowLatencyPresenter.synchronizeLifecycleFromFramework()
     updatePenConfiguration()
-    surface.textAnnotationBeingEdited = textOverlay::editingAnnotationId
-    surface.onTextContentChanged = { textOverlay.syncContent() }
-    surface.onTextTransformChanged = { textOverlay.syncTransform() }
-    surface.onModeChanged = {
+    viewerCanvas.textAnnotationBeingEdited = textOverlay::editingAnnotationId
+    viewerCanvas.onTextContentChanged = { textOverlay.syncContent() }
+    viewerCanvas.onTextTransformChanged = { textOverlay.syncTransform() }
+    viewerCanvas.onModeChanged = {
       textOverlay.cancelPendingPlacement()
-      if (surface.isEditMode) textOverlay.clearSelectionForHostMode()
+      if (viewerCanvas.isEditMode) textOverlay.clearSelectionForHostMode()
     }
-    surface.onWindowFocusLost = textOverlay::finishForLifecycle
+    viewerCanvas.onWindowFocusLost = textOverlay::finishForLifecycle
     textOverlay.onInteractionModeChanged = {
       emitState()
     }
     textOverlay.setDefaultFontSize(defaultTextFontSize)
-    surface.onStateChange = {
+    viewerCanvas.onStateChange = {
       if (!disposed) {
         emitState()
       }
     }
-    surface.onPageChange = { page ->
+    viewerCanvas.onPageChange = { page ->
       pendingPageCoords?.target?.let { if (!coordinateTargetIsCurrent(it)) cancelCoordinateRequest() }
       if (!disposed) emitState()
     }
-    surface.onZoomChange = { zoom -> if (!disposed) onZoomChange?.invoke(zoom) }
+    viewerCanvas.onZoomChange = { zoom -> if (!disposed) onZoomChange?.invoke(zoom) }
   }
 
   private var loadError: String? = null
@@ -308,11 +308,11 @@ class HybridInkSignView internal constructor(
       is DocumentChange.EditEnded -> textOverlay.endEditorTransaction(change.edit)
       is DocumentChange.InkCleared -> {
         if (documentState.hasDocument && documentState.activePageId() == change.pageId)
-          surface.cancelInputGesture(cancelEngineWhenIdle = true)
+          viewerCanvas.cancelInputGesture(cancelEngineWhenIdle = true)
       }
       DocumentChange.StructuralReady -> {
-        surface.setStructuralWriteActive(false)
-        if (documentState.hasDocument) surface.installStructuralPresentation()
+        viewerCanvas.setStructuralWriteActive(false)
+        if (documentState.hasDocument) viewerCanvas.installStructuralPresentation()
       }
       DocumentChange.WillClose -> {
         if (attachedDocument != null) {
@@ -324,25 +324,25 @@ class HybridInkSignView internal constructor(
         viewportRequestID += 1L
         pageNavigationRequestID += 1L
         textOverlay.cancelForDocumentReplacement()
-        surface.clearDocument()
+        viewerCanvas.clearDocument()
         editMode = false
         emitState()
       }
       DocumentChange.Opened -> {
-        surface.installDocumentPresentation(notifyState = true)
+        viewerCanvas.installDocumentPresentation(notifyState = true)
         editMode = false
         emitState()
       }
       DocumentChange.StructuralWriteStarted -> {
-        surface.setStructuralWriteActive(true)
+        viewerCanvas.setStructuralWriteActive(true)
       }
       DocumentChange.Pages -> {
-        surface.setStructuralWriteActive(false)
+        viewerCanvas.setStructuralWriteActive(false)
         viewportRequestID += 1L
-        surface.installStructuralPresentation()
+        viewerCanvas.installStructuralPresentation()
       }
-      is DocumentChange.Text -> surface.refreshCommittedText(change.pageId)
-      is DocumentChange.Content -> surface.presentContentChange(change)
+      is DocumentChange.Text -> viewerCanvas.refreshCommittedText(change.pageId)
+      is DocumentChange.Content -> viewerCanvas.presentContentChange(change)
     }
     emitPageState()
   }
@@ -358,7 +358,7 @@ class HybridInkSignView internal constructor(
   override fun getViewport(): Viewport {
     return runOnMainSync {
       checkMainThread()
-      val state = surface.currentViewportState()
+      val state = viewerCanvas.currentViewportState()
       Viewport(
         x = state.focus.x,
         y = state.focus.y,
@@ -405,7 +405,7 @@ class HybridInkSignView internal constructor(
       if (pendingPageCoords !== request) throw operationCancelled()
       val page = documentState.pageMetadata(documentState.activePageIndex)
       request.target = CoordinateTarget(documentState.generation, page.id, page.geometryRevision)
-      surface.setCoordinatePicking(true)
+      viewerCanvas.setCoordinatePicking(true)
       emitState()
     }.catch { error ->
       runOnMainSync {
@@ -420,7 +420,7 @@ class HybridInkSignView internal constructor(
   private fun cancelCoordinateRequest(error: Throwable = operationCancelled()) {
     val pending = pendingPageCoords
     pendingPageCoords = null
-    surface.setCoordinatePicking(false)
+    viewerCanvas.setCoordinatePicking(false)
     val time = android.os.SystemClock.uptimeMillis()
     val cancel = MotionEvent.obtain(time, time, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
     coordinateTapDetector.onTouchEvent(cancel)
@@ -433,8 +433,8 @@ class HybridInkSignView internal constructor(
   private fun restoreCoordinateMode(request: CoordinateRequest) {
     val session = request.session ?: return
     if (request.target == null || !modeSessionIsCurrent(session)) return
-    surface.withStateTransaction {
-      surface.setEditMode(session.mode == InputMode.INK, cancelNavigation = false)
+    viewerCanvas.withStateTransaction {
+      viewerCanvas.setEditMode(session.mode == InputMode.INK, cancelNavigation = false)
       if (session.mode == InputMode.TEXT && modeSessionIsCurrent(session)) {
         textOverlay.armPlacement(session.generation, session.textOptions)
       }
@@ -506,7 +506,7 @@ class HybridInkSignView internal constructor(
     session: ModeSessionToken? = null,
   ): Promise<Unit> = launchPromise(presentation = true, modeSession = session) {
     val target = core.text.focusTarget(context, rawId)
-    surface.requireModeTransitionReady()
+    viewerCanvas.requireModeTransitionReady()
     val rule = target.rule
     val bounds = target.bounds
     viewportRequestID += 1L
@@ -514,7 +514,7 @@ class HybridInkSignView internal constructor(
     finishInteractionForLifecycle()
     core.withPage(context) { }
     if (viewportRequestID != requestId) throw operationCancelled()
-    surface.switchPage(checkNotNull(documentState.pageIndexForId(context.pageId)))
+    viewerCanvas.switchPage(checkNotNull(documentState.pageIndexForId(context.pageId)))
     core.withPage(context) { }
     if (viewportRequestID != requestId) throw operationCancelled()
     val center = rule?.let { (it.left + it.right) / 2.0 } ?: (bounds.left + bounds.right) / 2.0
@@ -527,7 +527,7 @@ class HybridInkSignView internal constructor(
     )
     val capturedModeSession = session
     suspendCancellableCoroutine<Unit> { continuation ->
-      surface.focusField(request,
+      viewerCanvas.focusField(request,
         isCurrent = { !disposed && documentState.generation == context.generation &&
           documentState.pageIndexForId(context.pageId) != null && viewportRequestID == requestId &&
           (capturedModeSession == null || modeSessionIsCurrent(capturedModeSession)) },
@@ -547,13 +547,13 @@ class HybridInkSignView internal constructor(
   }
 
   private fun loadSnapCandidatesForTextPlacement(generation: Long, pageIndex: Int) {
-    if (surface.hasSnapCandidateMeasurement(generation, pageIndex)) return
-    val pageSwitchId = surface.currentPageSwitchId
+    if (viewerCanvas.hasSnapCandidateMeasurement(generation, pageIndex)) return
+    val pageSwitchId = viewerCanvas.currentPageSwitchId
     core.requestSnapCandidates(generation, pageIndex) { result ->
       val candidates = result.getOrNull() ?: return@requestSnapCandidates
       mainHandler.post {
         if (!disposed) {
-          surface.installSnapCandidateMeasurement(generation, pageIndex, pageSwitchId, candidates)
+          viewerCanvas.installSnapCandidateMeasurement(generation, pageIndex, pageSwitchId, candidates)
         }
       }
     }
@@ -568,7 +568,7 @@ class HybridInkSignView internal constructor(
   private fun startPageNavigation(delta: Int) {
     checkMainThread()
     if (disposed) throw operationCancelled()
-    val current = surface.currentPageInfo()
+    val current = viewerCanvas.currentPageInfo()
     val target = (current.pageIndex + delta).coerceIn(0, current.pageCount - 1)
     pageNavigationRequestID += 1L
     val requestID = pageNavigationRequestID
@@ -580,9 +580,9 @@ class HybridInkSignView internal constructor(
           pageNavigationRequestID != requestID
         ) return@post
         try {
-          surface.withStateTransaction {
+          viewerCanvas.withStateTransaction {
             finishInteractionForLifecycle()
-            surface.switchPage(target)
+            viewerCanvas.switchPage(target)
           }
         } catch (error: Throwable) {
           if (error !is PdfSessionException || error.code != "operation_cancelled") {
@@ -715,11 +715,11 @@ class HybridInkSignView internal constructor(
     if (disposed) throw operationCancelled()
     if (!documentState.hasDocument) return
     val request = ViewportRequestParser.parse(viewport)
-    surface.requireModeTransitionReady()
+    viewerCanvas.requireModeTransitionReady()
     viewportRequestID += 1L
-    surface.withStateTransaction {
+    viewerCanvas.withStateTransaction {
       finishInteractionForLifecycle()
-      surface.transitionToMode(edit, request)
+      viewerCanvas.transitionToMode(edit, request)
     }
   }
 
@@ -733,7 +733,7 @@ class HybridInkSignView internal constructor(
         token.cancelled = true
         return@runOnMainSync HybridModeSession(this, token)
       }
-      surface.requireModeTransitionReady()
+      viewerCanvas.requireModeTransitionReady()
       invalidateModeSession()
       val token = ModeSessionToken(documentState.generation, mode, options)
       currentModeSession = token
@@ -746,7 +746,7 @@ class HybridInkSignView internal constructor(
 
   private fun applySessionMode(token: ModeSessionToken) {
     requireModeSession(token)
-    surface.withStateTransaction {
+    viewerCanvas.withStateTransaction {
       enterMode(token.mode == InputMode.INK, null)
       requireModeSession(token)
       if (token.mode == InputMode.TEXT) {
@@ -782,14 +782,14 @@ class HybridInkSignView internal constructor(
 
   internal fun setSessionViewport(token: ModeSessionToken, options: ViewportOptions?): Promise<Unit> =
     launchPromise(presentation = true, modeSession = token) {
-      surface.requireModeTransitionReady()
+      viewerCanvas.requireModeTransitionReady()
       val request = ViewportRequestParser.parse(options)
       viewportRequestID += 1L
       val requestID = viewportRequestID
       finishInteractionForLifecycle()
       requireModeSession(token)
       suspendCancellableCoroutine<Unit> { continuation ->
-        surface.focusField(request,
+        viewerCanvas.focusField(request,
           isCurrent = { modeSessionIsCurrent(token) && viewportRequestID == requestID },
           completion = { if (continuation.isActive) continuation.resume(Unit) },
           cancelled = { if (continuation.isActive) continuation.resumeWithException(operationCancelled()) })
@@ -804,7 +804,7 @@ class HybridInkSignView internal constructor(
   }
 
   private fun updatePenConfiguration() {
-    surface.setPenConfiguration(
+    viewerCanvas.setPenConfiguration(
       color = strokeColor,
       minWidth = strokeMinWidth,
       maxWidth = strokeMaxWidth,
@@ -830,7 +830,7 @@ class HybridInkSignView internal constructor(
     lowLatencyPresenter.release()
     documentSubscription?.close()
     viewerScope.cancel()
-    surface.dispose()
+    viewerCanvas.dispose()
     inkEngine.close()
     onStateChange = null
     onPageChange = null
@@ -842,7 +842,7 @@ class HybridInkSignView internal constructor(
   private var lastPublicPage: PageChangeEvent? = null
 
   private fun emitPageState() {
-    if (disposed || surface.stateNotificationsSuspended > 0) return
+    if (disposed || viewerCanvas.stateNotificationsSuspended > 0) return
     if (!documentState.hasDocument) { lastPublicPage = null; return }
     val value = documentState.pageChangeEvent(documentState.activePageIndex)
     if (value == lastPublicPage) return
@@ -852,7 +852,7 @@ class HybridInkSignView internal constructor(
 
   private fun emitState() {
     if (disposed) return
-    if (surface.stateNotificationsSuspended > 0) return
+    if (viewerCanvas.stateNotificationsSuspended > 0) return
     emitPageState()
     val document = documentState.documentInfo()
     val value = ViewerState(

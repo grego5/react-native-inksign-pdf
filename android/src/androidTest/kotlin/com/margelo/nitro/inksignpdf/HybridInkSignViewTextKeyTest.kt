@@ -48,7 +48,7 @@ internal class HybridInkSignViewTextKeyTest {
       context, worker, recordHistory = true, exportOwnership = ExportOwnership.DOCUMENT,
     ))
     val viewRef = AtomicReference<HybridInkSignView>()
-    val surfaceRef = AtomicReference<SurfaceView>()
+    val surfaceRef = AtomicReference<ViewerCanvas>()
 
     try {
       instrumentation.runOnMainSync {
@@ -59,7 +59,7 @@ internal class HybridInkSignViewTextKeyTest {
         val exactSize = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         host.measure(exactSize, exactSize)
         host.layout(0, 0, 300, 300)
-        surfaceRef.set((host as FrameLayout).getChildAt(0) as SurfaceView)
+        surfaceRef.set((host as FrameLayout).getChildAt(0) as ViewerCanvas)
       }
       awaitOpen(instrumentation, document, source.absolutePath, expectedPageCount = 3.0, tag = "report")
       instrumentation.runOnMainSync {
@@ -200,7 +200,7 @@ internal class HybridInkSignViewTextKeyTest {
       val bounds = TextAnnotationBounds(40.0, 60.0, 160.0, 40.0)
       val textId = setPreparedText(page, bounds, "note")
       val host = view.view as FrameLayout
-      val surface = host.getChildAt(0) as SurfaceView
+      val surface = host.getChildAt(0) as ViewerCanvas
       val overlay = host.getChildAt(2) as TextInteractionOverlay
       assertTrue("an idle view must return null", view.getSelectedText().isSecond)
 

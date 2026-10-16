@@ -3,11 +3,11 @@
 ## Ownership
 
 - Shared ownership/queues: [architecture](../architecture.md#ownership-and-data-flow).
-  `InkSignDocumentCore` owns document work. Document/page/text handles retain it;
+  `DocumentCore` owns document work. Document/page/text handles retain it;
   releasing a wrapper preserves other handles. Final core release schedules
   coordinator/font cleanup on the main executor; explicit close is terminal.
 - Page records hold geometry, content/history, tags, and canonical analysis.
-  `InkSignPdfViewerDocument` owns PDFKit objects and active-page selection.
+  `InkSignPdfViewerDocumentState` owns PDFKit objects and active-page selection.
   Reader leases keep its working-file snapshot alive.
 - `ViewerInteractionCoordinator` owns modes, picking, and presentation requests.
   `ViewerViewportController` owns focus, motion, keyboard space, and settled zoom.

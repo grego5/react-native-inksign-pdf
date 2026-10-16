@@ -7,7 +7,7 @@ protocol ViewerViewportHost: AnyObject {
   var container: UIView { get }
   var documentView: PDFView { get }
   var documentCoordinator: InkSignPdfDocumentCoordinator { get }
-  var viewerDocument: InkSignPdfViewerDocument? { get }
+  var viewerDocument: InkSignPdfViewerDocumentState? { get }
   var overlayProvider: PageOverlayProvider { get }
   var attachedOverlayPage: UUID? { get }
   var overlayTransformPage: UUID? { get }
@@ -32,7 +32,7 @@ final class ViewerViewportController {
     guard let hostReference else { preconditionFailure("Viewport host must be alive during presentation") }
     return hostReference
   }
-  private typealias ViewportError = InkSignView.ViewportError
+  private typealias ViewportError = ViewerCanvas.ViewportError
   private unowned let interaction: ViewerInteractionCoordinator
   let motion = InkSignPdfViewportMotion()
   private(set) var requestID: UInt64 = 0
@@ -53,7 +53,7 @@ final class ViewerViewportController {
   private var container: UIView { host.container }
   private var documentView: PDFView { host.documentView }
   private var documentCoordinator: InkSignPdfDocumentCoordinator { host.documentCoordinator }
-  private var viewerDocument: InkSignPdfViewerDocument? { host.viewerDocument }
+  private var viewerDocument: InkSignPdfViewerDocumentState? { host.viewerDocument }
   private var overlayProvider: PageOverlayProvider { host.overlayProvider }
   private var disposed: Bool { host.disposed }
   private var pagerDirection: PagerDirection? { host.pagerDirection }
@@ -606,7 +606,7 @@ final class ViewerViewportController {
   }
 }
 
-extension InkSignView: ViewerViewportHost {
+extension ViewerCanvas: ViewerViewportHost {
   var isEditingText: Bool { textInteractionOverlay.hasActiveEditor }
   func cancelViewportInk() { cancelActiveStroke() }
   func refreshViewportOverlay(for pageID: UUID) { refreshOverlayTransform(canvasView, for: pageID) }

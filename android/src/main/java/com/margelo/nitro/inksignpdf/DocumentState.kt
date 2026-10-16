@@ -15,7 +15,7 @@ internal data class PageRecord(
 internal class InkPageState(
   val id: String,
   val dimensions: PdfPageDimensions,
-  val history: InkHistory = InkHistory(),
+  val history: PageContentHistory = PageContentHistory(),
   val geometryRevision: Long = 0L,
   /** Geometry of the working PDF bytes; presentation rotation is kept separately. */
   val sourceDimensions: PdfPageDimensions = dimensions,

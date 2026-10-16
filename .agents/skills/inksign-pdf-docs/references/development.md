@@ -1,7 +1,9 @@
 ## Development instructions
 
 - Change authoritative source files, do not edit `nitrogen/generated/**` by hand.
-- Public Nitro API source: `src/InkSignView.nitro.ts`, `src/index.ts`, and `nitro.json`.
+- Public contracts: `src/InkSignTypes.ts`; native specs:
+  `src/InkSignDocument.nitro.ts` and `src/InkSignView.nitro.ts`; React entry point:
+  `src/index.ts`; codegen configuration: `nitro.json`.
 - Android production source is under `android/src/main/java/...`.
 - Prioritize correct, streamlined architecture over narrow patches and defensive
   checks that conceal implementation mistakes; internal breaking changes are acceptable.
@@ -21,6 +23,24 @@
   on a better design.
 - For cross-language changes, report ownership, lifetime, threading, data
   representation, and error translation.
+
+## Source naming
+
+- Shared data contracts live in `InkSignTypes.ts`; Hybrid Object/View specs live
+  in the corresponding `.nitro.ts` files. Public exports come from `index.ts`.
+- `ViewerCanvas` owns presentation and input on both platforms. Android extension
+  files use `ViewerCanvas<Topic>.kt`. The low-latency renderer uses Android's framework
+  `SurfaceView` independently.
+- Both platforms use `DocumentCoordinator`, `PreparedPage`, `ProjectedPage`,
+  `PageContentHistory`, `ViewerDocumentState`, `ImagePageEncoder`, and
+  `PdfiumExporter` as role names; Swift types retain their `InkSignPdf` prefix.
+- Swift viewer extensions use `ViewerCanvas+<Topic>.swift`. Coordinator page
+  transactions live in `DocumentCoordinator+PageTransactions.swift`; committed
+  state, text targets, and page history have separate source files.
+- `CommittedDocumentState.swift` owns the internal committed document model;
+  Nitrogen's `DocumentState.swift` defines the public state snapshot.
+- Production C++ bridge files use PascalCase names matching their role, such as
+  `PdfiumRenderJni.cpp` and `NitroAdapter.cpp`. Shared C++ lives under `core/`.
 
 ## Implementation workflow
 

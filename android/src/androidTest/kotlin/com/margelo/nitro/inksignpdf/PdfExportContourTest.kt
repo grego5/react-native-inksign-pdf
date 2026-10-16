@@ -404,7 +404,7 @@ internal class PdfExportContourTest {
             assertEquals(1, resolved.runs.size)
             assertEquals(-1, resolved.runs.single().fontIndex)
             assertTrue("The saved annotation direction must reach the legacy run", resolved.runs.single().baseDirectionRtl)
-            PdfiumNativePdfExporter.export(snapshot, resolved, candidate)
+            PdfiumExporter.export(snapshot, resolved, candidate)
 
             val expectedActualTextHex = annotation.text
                 .map { it.code.toString(16).uppercase().padStart(4, '0') }
@@ -603,7 +603,7 @@ internal class PdfExportContourTest {
             val resolved = PdfExportTextResolver.resolve(snapshot)
             assumeTrue("The selected fonts must be embeddable and subsettable",
                 resolved.fonts.isNotEmpty() && resolved.fonts.all { it.fsType and 0x0100 == 0 })
-            PdfiumNativePdfExporter.export(snapshot, resolved, output)
+            PdfiumExporter.export(snapshot, resolved, output)
 
             val exportedText = extractTextWithPdfBox(output).replace("\uFEFF", "")
                 .filterNot(Char::isWhitespace)
@@ -631,7 +631,7 @@ internal class PdfExportContourTest {
             val noSubsetSnapshot = resolved.copy(
                 fonts = resolved.fonts.map { it.copy(fsType = it.fsType or 0x0100) },
             )
-            PdfiumNativePdfExporter.export(snapshot, noSubsetSnapshot, fullFontOutput)
+            PdfiumExporter.export(snapshot, noSubsetSnapshot, fullFontOutput)
             val fullFontEmbedded = embeddedFontProgramSizes(fullFontOutput)
             assertEquals("The no-subsetting path should retain every selected face",
                 resolved.fonts.size, fullFontEmbedded.size)
@@ -665,7 +665,7 @@ internal class PdfExportContourTest {
                 }
             }
 
-            PdfiumNativePdfExporter.exportForTesting(
+            PdfiumExporter.exportForTesting(
                 snapshot,
                 resolved,
                 subsetFailureOutput,
@@ -739,7 +739,7 @@ internal class PdfExportContourTest {
                     )
                 },
             )
-            PdfiumNativePdfExporter.export(snapshot, textSnapshot, output)
+            PdfiumExporter.export(snapshot, textSnapshot, output)
 
             val extracted = extractTextWithPdfBox(output).filterNot(Char::isWhitespace)
             assertTrue("PDFBox must preserve the accented text on both pages: $extracted",
@@ -800,7 +800,7 @@ internal class PdfExportContourTest {
                 resolved.fonts.isNotEmpty() && resolved.fonts.all {
                     it.collectionIndex == 0 && it.fsType and 0x000E == 0
                 })
-            PdfiumNativePdfExporter.export(snapshot, resolved, output)
+            PdfiumExporter.export(snapshot, resolved, output)
 
             val extracted = extractTextWithPdfBox(output).replace("\uFEFF", "")
             assertTrue("PDFBox must expose the emitted Arabic text: $extracted", extracted.isNotBlank())

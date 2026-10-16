@@ -119,7 +119,7 @@ class CubicStrokePathBitmapTest {
 
     @Test
     fun undoAndRedoRemoveAndRestoreAStrokeAcrossCompletedBatches() {
-        val history = InkHistory()
+        val history = PageContentHistory()
         val renderer = InkRenderer()
         val preceding = StrokeOutline.fromCommands(
             listOf(

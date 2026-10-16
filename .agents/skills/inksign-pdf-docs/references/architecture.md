@@ -11,8 +11,8 @@ flowchart LR
   Changes --> Viewer[Viewer presentation]
 ```
 
-- `openDoc()` creates an independent owner. Android `DocumentCore` and Swift
-  `InkSignDocumentCore` own FIFO commands, stable pages/targets, committed content,
+- `openDoc()` creates an independent owner. On both platforms, `DocumentCore`
+  owns FIFO commands, stable pages/targets, committed content,
   admitted text transactions, history, analysis, fonts, export, and cleanup.
   The backend owns PDF resources, not editing state.
 - Document/page/text handles retain the core. `InkSignView.document` attaches one
@@ -27,6 +27,7 @@ flowchart LR
   PDFKit pages, UITextView editing, and PencilKit ink. Both use PDFium for analysis,
   page manipulation, and export. Android shapes with HarfBuzz; iOS with CoreText.
 - Native interfaces: `src/InkSignDocument.nitro.ts`, `src/InkSignView.nitro.ts`.
+  Shared data contracts live in `src/InkSignTypes.ts`.
   `src/index.ts` validates public arguments and forwards callbacks. Native owners
   validate state-dependent commands; loaders validate external bytes.
 - The stable React ref buffers async calls until native attachment in call order.

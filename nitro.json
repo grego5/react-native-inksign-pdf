@@ -16,7 +16,7 @@
     "InkSignView": {
       "ios": {
         "language": "swift",
-        "implementationClassName": "InkSignView"
+        "implementationClassName": "ViewerCanvas"
       },
       "android": {
         "language": "kotlin",

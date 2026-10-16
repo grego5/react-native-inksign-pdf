@@ -2381,15 +2381,15 @@ internal class TextPlacementInstrumentationTest {
       surface.prepareContentMutation()
       core.undo(surface.documentState.activePageId())
     }
-    lateinit var surface: SurfaceView
+    lateinit var surface: ViewerCanvas
     var overlay: TextInteractionOverlay? = null
     val info: PdfSessionInfo
 
     init {
-      val created = java.util.concurrent.atomic.AtomicReference<SurfaceView>()
+      val created = java.util.concurrent.atomic.AtomicReference<ViewerCanvas>()
       instrumentation.runOnMainSync {
         created.set(
-          SurfaceView(
+          ViewerCanvas(
             instrumentation.targetContext,
             engine,
             core = core,

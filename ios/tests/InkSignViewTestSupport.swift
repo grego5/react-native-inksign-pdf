@@ -9,11 +9,11 @@ import XCTest
 protocol InkSignViewTestSupport {}
 
 extension InkSignViewTestSupport where Self: XCTestCase {
-  func attachedDocument(_ view: InkSignView) throws -> HybridInkSignDocument {
+  func attachedDocument(_ view: ViewerCanvas) throws -> HybridInkSignDocument {
     try XCTUnwrap(view.document as? HybridInkSignDocument)
   }
 
-  func documentPage(_ view: InkSignView, at pageIndex: Int? = nil) throws -> any HybridDocumentPageSpec {
+  func documentPage(_ view: ViewerCanvas, at pageIndex: Int? = nil) throws -> any HybridDocumentPageSpec {
     let owner = try attachedDocument(view)
     let index = pageIndex ?? view.viewerDocument?.activePageIndex ?? 0
     return try awaitTestPromise(owner.getPage(index: .first(Double(index))))
@@ -30,7 +30,7 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     return try XCTUnwrap(value)
   }
 
-  func awaitViewerPageReady(_ view: InkSignView, pageID: UUID? = nil,
+  func awaitViewerPageReady(_ view: ViewerCanvas, pageID: UUID? = nil,
                             timeout: TimeInterval = 30) throws {
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
@@ -49,7 +49,7 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     XCTFail("The active page presentation did not become ready")
   }
 
-  func holdCurrentStructuralPresentation(_ view: InkSignView) throws {
+  func holdCurrentStructuralPresentation(_ view: ViewerCanvas) throws {
     let page = try XCTUnwrap(view.viewerDocument?.activePage)
     let request = view.interaction.beginPresentation(page: page,
       structural: true, completion: nil)
@@ -58,7 +58,7 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     XCTAssertTrue(view.interaction.presentation === request)
   }
 
-  func completeCurrentPagePresentation(_ view: InkSignView) throws {
+  func completeCurrentPagePresentation(_ view: ViewerCanvas) throws {
     let pageID = try XCTUnwrap(view.viewerDocument?.activePage.id)
     let canvas = try XCTUnwrap(view.overlayProvider.canvasView(for: pageID))
     view.overlayDidDisplay(canvas, for: pageID)
@@ -66,8 +66,8 @@ extension InkSignViewTestSupport where Self: XCTestCase {
   }
 
   @discardableResult
-  func attachDocument(from source: URL, to view: InkSignView) throws -> PageInfo {
-    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+  func attachDocument(from source: URL, to view: ViewerCanvas) throws -> PageInfo {
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     let loaded = expectation(description: "document opens before attachment")
     var failure: Error?
     core.open(sourceURL: source).then { _ in loaded.fulfill() }
@@ -101,7 +101,7 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     pageCount: Int = 2,
     activePageIndex: Int = 0,
     applyInitialViewport: Bool = true
-  ) -> (view: InkSignView, window: UIWindow, pages: [UUID]) {
+  ) -> (view: ViewerCanvas, window: UIWindow, pages: [UUID]) {
     let document = PDFDocument()
     for index in 0..<pageCount {
       let size = CGSize(width: 300 + index * 100, height: 400)
@@ -117,7 +117,7 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     let workingURL = try! InkSignPdfCacheArtifactPolicy.shared.allocateWorkingSource()
     XCTAssertTrue(document.write(to: workingURL))
     defer { try? FileManager.default.removeItem(at: workingURL) }
-    let view = InkSignView()
+    let view = ViewerCanvas()
 
     let controller = UIViewController()
     let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
@@ -180,7 +180,7 @@ func makeCenteredTextAnnotation(
 
 func appendTextAnnotationForTest(
   _ annotation: InkSignPdfTextAnnotation,
-  in view: InkSignView,
+  in view: ViewerCanvas,
   pageIndex: Int
 ) throws -> InkSignPdfTextAnnotation {
   let page = try pageForTest(view, at: pageIndex)
@@ -211,7 +211,7 @@ func insertTextForTest(
   _ text: String,
   bounds: TextAnnotationBounds,
   options: TextAnnotationOptions?,
-  in view: InkSignView
+  in view: ViewerCanvas
 ) throws -> InkSignPdfTextAnnotation {
   let pageIndex = view.viewerDocument?.activePageIndex ?? 0
   let page = try pageForTest(view, at: pageIndex)
@@ -223,7 +223,7 @@ func insertTextForTest(
   return try committedTextForTest(id: id, page: page, in: view)
 }
 
-private func pageForTest(_ view: InkSignView, at pageIndex: Int) throws -> any HybridDocumentPageSpec {
+private func pageForTest(_ view: ViewerCanvas, at pageIndex: Int) throws -> any HybridDocumentPageSpec {
   let owner = try XCTUnwrap(view.document as? HybridInkSignDocument)
   let completed = XCTestExpectation(description: "test page handle is acquired")
   var page: (any HybridDocumentPageSpec)?
@@ -246,7 +246,7 @@ private func pageForTest(_ view: InkSignView, at pageIndex: Int) throws -> any H
 private func committedTextForTest(
   id: Double,
   page: any HybridDocumentPageSpec,
-  in view: InkSignView
+  in view: ViewerCanvas
 ) throws -> InkSignPdfTextAnnotation {
   let pageID = try XCTUnwrap(UUID(uuidString: page.getState().pageId))
   let state = try XCTUnwrap(view.viewerDocument?.pages.first { $0.id == pageID })

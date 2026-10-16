@@ -11,7 +11,7 @@ class PreparedTextResolverTest {
       "Name".mapIndexed { index, char -> glyph(char, 20.0 + index * 6.0, 10.0, 0) },
       listOf(PdfiumPreparedRule(PagePoint(80.0, 20.0), PagePoint(150.0, 20.0)),
         PdfiumPreparedRule(PagePoint(160.0, 20.0), PagePoint(160.0, 80.0))))
-    val context = PreparedPageContext(1L, "page", source)
+    val context = PreparedPage(1L, "page", source)
     val identity = context.labels.single().identity
     for (rotation in 0..3) {
       val dimensions = PageCoordinates(PdfPageDimensions(200.0, 100.0)).withRotation(rotation)

@@ -185,7 +185,7 @@ internal class DocumentTextCommands(
     adjusted
   }
 
-  internal fun resolve(context: PreparedPageContext, options: InputTargetResolutionOptions): Double =
+  internal fun resolve(context: PreparedPage, options: InputTargetResolutionOptions): Double =
     core.withMutablePage(context) { page ->
       core.requireContentMutationReady()
       fonts.resolve(options.font)

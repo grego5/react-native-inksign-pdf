@@ -3,8 +3,8 @@ import CoreGraphics
 import NitroModules
 
 final class HybridInkSignDocument: HybridInkSignDocumentSpec {
-  let core: InkSignDocumentCore
-  init(core: InkSignDocumentCore) { self.core = core; super.init() }
+  let core: DocumentCore
+  init(core: DocumentCore) { self.core = core; super.init() }
 
   var pageCount: Double {
     if Thread.isMainThread { return Double(core.coordinator.document?.pages.count ?? 0) }
@@ -65,9 +65,9 @@ final class HybridInkSignDocument: HybridInkSignDocumentSpec {
 
 final class HybridInkSignDocumentFactory: HybridInkSignDocumentFactorySpec {
   func openDoc(uri: String, options: DocumentOpenOptions?) throws -> Promise<any HybridInkSignDocumentSpec> {
-    let source = try InkSignDocumentCore.localSource(uri)
+    let source = try DocumentCore.localSource(uri)
     let geometry = try HybridInkSignDocument.imageGeometry(options?.imagePageSize)
-    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: options?.recordHistory ?? true)
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: options?.recordHistory ?? true)
     let result = InkSignPdfOperationPromise<any HybridInkSignDocumentSpec>()
     core.open(sourceURL: source, imageGeometry: geometry,
       targetDpi: options?.targetDpi, jpegQuality: options?.jpegQuality, tag: options?.tag).then { _ in

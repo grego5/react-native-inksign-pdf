@@ -21,14 +21,12 @@ import {
 import type {
   DocumentState,
   PageTextMethods,
-  ModeSession,
   InputMode,
   ResolveInputUnderlineOptions,
   CreateInputAreaOptions,
   InputTarget,
   InputTargetId,
   TextSelection,
-  TextHandle,
   TextValueSource,
   PagerDirection,
   InputTargetFocusOptions,
@@ -53,9 +51,13 @@ import type {
   Viewport,
   ViewportOptions,
   AndroidFallbackFont,
-  InkSignViewProps as InkSignViewNativeProps,
   ViewerState,
   InteractionMode,
+} from './InkSignTypes';
+import type {
+  ModeSession,
+  TextHandle,
+  InkSignViewProps as InkSignViewNativeProps,
   InkSignView as InkSignViewNativeHandle,
   InkSignViewMethods,
 } from './InkSignView.nitro';

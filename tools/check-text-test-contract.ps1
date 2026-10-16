@@ -111,6 +111,7 @@ function Assert-SourceAbsent {
 $androidOverlayPath = Join-Path $repositoryRoot "android\src\main\java\com\margelo\nitro\inksignpdf\TextInteractionOverlay.kt"
 $androidHybridPath = Join-Path $repositoryRoot "android\src\main\java\com\margelo\nitro\inksignpdf\HybridInkSignView.kt"
 $typescriptContractPath = Join-Path $repositoryRoot "src\InkSignView.nitro.ts"
+$typescriptTypesPath = Join-Path $repositoryRoot "src\InkSignTypes.ts"
 $examplePath = Join-Path $repositoryRoot "example\src\App.tsx"
 
 Assert-SourceContains $androidOverlayPath 'text_not_focused' 'Android missing-selection error'
@@ -128,8 +129,8 @@ Assert-SourceContains $typescriptContractPath 'getPage\(pageIndex\?: number\): P
 Assert-SourceContains $typescriptContractPath 'onTextSelectionChange\?: \(selection: TextSelection \| null\)' 'Nitro selection callback'
 Assert-SourceContains $typescriptContractPath 'setMode\(mode: InputMode, options\?: TextModeOptions\): ModeSession' 'Nitro setMode contract'
 Assert-SourceContains $typescriptContractPath 'requestUserTap\(\): Promise<PageCoords>' 'Nitro requestUserTap contract'
-Assert-SourceContains $typescriptContractPath 'export type InteractionMode' 'Nitro interaction mode union'
-Assert-SourceContains $typescriptContractPath 'mode: InteractionMode' 'Nitro mode snapshot field'
+Assert-SourceContains $typescriptTypesPath 'export type InteractionMode' 'Nitro interaction mode union'
+Assert-SourceContains $typescriptTypesPath 'mode: InteractionMode' 'Nitro mode snapshot field'
 Assert-SourceContains $typescriptContractPath 'keyboardAvoidanceEnabled\?: boolean' 'Nitro keyboard avoidance policy'
 Assert-SourceAbsent $typescriptContractPath 'insertTextAt|insertTextByFieldName|focusPageByFieldName|increaseTextSize|decreaseTextSize|removeTextAnnotation' 'replaced public text commands'
 

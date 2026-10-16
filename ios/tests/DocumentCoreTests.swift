@@ -12,7 +12,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   func testRejectedTextWritesPreserveDraftAndHistory() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
-    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     defer { core.dispose() }
     _ = try awaitValue(core.open(sourceURL: source))
     let page = try XCTUnwrap(core.coordinator.document?.pages.first)
@@ -54,7 +54,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   func testDeletedPageCommandsPreserveAnotherPagesDraft() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
-    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     defer { core.dispose() }
     _ = try awaitValue(core.open(sourceURL: source))
     _ = try awaitValue(core.addPages(sources: [source.absoluteString], imageGeometry: nil,
@@ -85,7 +85,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   func testHeadlessEditingExportAndCloseWithoutConstructingViewer() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
-    let core = InkSignDocumentCore(artifactPolicy: .shared)
+    let core = DocumentCore(artifactPolicy: .shared)
     defer { core.dispose() }
     _ = try awaitValue(core.open(sourceURL: source, tag: "report"))
     let state = try XCTUnwrap(core.coordinator.document)
@@ -113,7 +113,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   func testNormalCloseDrainsAdmittedOpenAndExportAndRejectsNewCommands() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
-    let core = InkSignDocumentCore(artifactPolicy: .shared)
+    let core = DocumentCore(artifactPolicy: .shared)
     defer { core.dispose() }
     let gate = DispatchSemaphore(value: 0)
     core.coordinator.pdfQueue.async { gate.wait() }
@@ -135,7 +135,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   func testPageIdentityTargetsAndTagsSurviveImportReorderAndRotation() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
-    let core = InkSignDocumentCore(artifactPolicy: .shared)
+    let core = DocumentCore(artifactPolicy: .shared)
     defer { core.dispose() }
     _ = try awaitValue(core.open(sourceURL: source, tag: " "))
     let original = try XCTUnwrap(core.coordinator.document?.pages.first)
@@ -163,7 +163,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(try core.pageIDs(tag: "attachment"), [importedIDs[1]])
     let output = try XCTUnwrap(URL(string: try awaitValue(core.finalize())))
     defer { try? FileManager.default.removeItem(at: output) }
-    let reopened = InkSignDocumentCore(artifactPolicy: .shared)
+    let reopened = DocumentCore(artifactPolicy: .shared)
     defer { reopened.dispose() }
     _ = try awaitValue(reopened.open(sourceURL: output))
     XCTAssertTrue(try reopened.pageIDs(tag: " ").isEmpty)
@@ -195,7 +195,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   }
 
   func testNamedFontBatchFailureDoesNotPublishEarlierCandidate() throws {
-    let core = InkSignDocumentCore(artifactPolicy: .shared)
+    let core = DocumentCore(artifactPolicy: .shared)
     defer { core.dispose() }
     let resources = InkSignPdfCoreTextExportResources()
     _ = try resources.prepare(text(id: 1, value: "Static face"), pageSize: CGSize(width: 300, height: 400))
@@ -227,7 +227,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     sourcePage.setBounds(crop, for: .cropBox)
     XCTAssertTrue(pdf.write(to: source))
     for rotation in [0, 90, 180, 270] {
-      let core = InkSignDocumentCore(artifactPolicy: .shared)
+      let core = DocumentCore(artifactPolicy: .shared)
       defer { core.dispose() }
       _ = try awaitValue(core.open(sourceURL: source))
       if rotation != 0 { _ = try awaitValue(core.rotatePage(index: 0, degrees: rotation)) }
@@ -259,7 +259,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   func testDocumentAttachmentDetachesWithoutEndingOwnerOrHistory() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
-    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     defer { core.dispose() }
     _ = try awaitValue(core.open(sourceURL: source))
     let document = HybridInkSignDocument(core: core)
@@ -292,7 +292,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
   func testDocumentRejectsSecondViewerUntilFirstDetaches() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
-    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     defer { core.dispose() }
     _ = try awaitValue(core.open(sourceURL: source))
     let document = HybridInkSignDocument(core: core)

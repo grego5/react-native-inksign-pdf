@@ -39,7 +39,7 @@ function Test-Plan([string]$Name, [string[]]$ChangedPaths, [string[]]$ExpectedCh
 
 Test-Plan "upstream" @("core/ink-engine/upstream/UpstreamStrokeGeometry.cpp") @("native_geometry", "geometry_contract", "diff_check")
 Test-Plan "Android" @("android/src/main/java/com/example/Ink.kt") @("android_jvm", "artifact_parity", "diff_check")
-Test-Plan "iOS" @("ios/InkSignView.swift") @("ios_lifecycle", "artifact_parity", "diff_check")
+Test-Plan "iOS" @("ios/ViewerCanvas.swift") @("ios_lifecycle", "artifact_parity", "diff_check")
 Test-Plan "tracing" @("tools/trace-analysis.sql") @("trace_analysis", "diff_check")
 Test-Plan "documentation" @("Tasks/06-changed-area-verification.md") @("documentation_paths", "diff_check")
 Test-Plan "mixed" @("android/src/main/java/com/example/Ink.kt", "core/ink-engine/upstream/UpstreamStrokeGeometry.cpp") @("native_geometry", "geometry_contract", "android_jvm", "artifact_parity", "diff_check")

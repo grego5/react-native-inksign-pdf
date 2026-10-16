@@ -9,15 +9,15 @@ protocol InkSignPdfTextPageContext {
 
 /// A page retains document identity, never a viewer or presentation lease.
 final class HybridDocumentPage: HybridDocumentPageSpec {
-  let core: InkSignDocumentCore
+  let core: DocumentCore
   let context: InkSignPdfCorePageContext
-  private weak var authorizationOwner: InkSignView?
+  private weak var authorizationOwner: ViewerCanvas?
   let modeSession: InkSignPdfModeSessionToken?
   var generation: UInt64 { context.generation }
   var pageID: UUID { context.pageID }
 
-  init(core: InkSignDocumentCore, context: InkSignPdfCorePageContext,
-       owner: InkSignView? = nil, modeSession: InkSignPdfModeSessionToken? = nil) {
+  init(core: DocumentCore, context: InkSignPdfCorePageContext,
+       owner: ViewerCanvas? = nil, modeSession: InkSignPdfModeSessionToken? = nil) {
     self.core = core
     self.context = context
     authorizationOwner = owner

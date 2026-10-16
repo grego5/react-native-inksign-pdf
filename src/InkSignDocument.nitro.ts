@@ -1,5 +1,5 @@
 import type { HybridObject } from 'react-native-nitro-modules'
-import type { AndroidFallbackFont, DocumentState, ImagePageSize, PageInfo, PageQuery, PageTextMethods } from './InkSignView.nitro'
+import type { AndroidFallbackFont, DocumentState, ImagePageSize, PageInfo, PageQuery, PageTextMethods } from './InkSignTypes'
 
 export interface NamedFontSource {
   name: string

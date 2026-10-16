@@ -2,13 +2,13 @@ import Foundation
 import PDFKit
 
 /// Presentation lease and selection. Committed content stays in `core`.
-final class InkSignPdfViewerDocument {
-  let core: InkSignPdfDocumentState
+final class InkSignPdfViewerDocumentState {
+  let core: CommittedDocumentState
   let document: PDFDocument
   private let workingLease: InkSignPdfWorkingLease
   private(set) var activePageID: UUID
 
-  init(core: InkSignPdfDocumentState, coordinator: InkSignPdfDocumentCoordinator,
+  init(core: CommittedDocumentState, coordinator: InkSignPdfDocumentCoordinator,
        activePageID: UUID? = nil) throws {
     let lease = coordinator.workingArtifacts.retain(core.workingURL)
     guard let document = PDFDocument(url: core.workingURL), document.pageCount == core.pages.count else {
