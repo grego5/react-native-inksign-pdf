@@ -10,7 +10,7 @@ import android.view.View
  * The transparent, non-interactive host for Android's front-buffer renderer.
  *
  * The z-order and holder format are configured before this view can create its
- * backing Surface. The regular [SurfaceView] remains the only input
+ * backing Surface. The regular [ViewerCanvas] remains the only input
  * receiver; this view deliberately returns false from [onTouchEvent].
  */
 internal class LowLatencyInkView(

@@ -11,8 +11,8 @@ internal interface DocumentReadState {
   fun pageChangeEvent(index: Int): PageChangeEvent
   fun documentInfo(): DocumentState
   fun pageIndexForId(pageId: String): Int?
-  fun pageSnapshot(index: Int): MutableDocumentCoordinator.PageSnapshot
-  fun presentationSnapshot(): MutableDocumentCoordinator.Snapshot
+  fun pageSnapshot(index: Int): DocumentCoordinator.PageSnapshot
+  fun presentationSnapshot(): DocumentCoordinator.Snapshot
   fun sessionInfo(): PdfSessionInfo
   fun pageHistoryRevision(index: Int): Long
   fun pageHistoryState(index: Int): InkState
@@ -40,8 +40,8 @@ internal object DetachedDocumentReadState : DocumentReadState {
   override fun pageChangeEvent(index: Int): PageChangeEvent = unavailable()
   override fun documentInfo() = DocumentState(null, 0.0, false)
   override fun pageIndexForId(pageId: String): Int? = null
-  override fun pageSnapshot(index: Int): MutableDocumentCoordinator.PageSnapshot = unavailable()
-  override fun presentationSnapshot(): MutableDocumentCoordinator.Snapshot = unavailable()
+  override fun pageSnapshot(index: Int): DocumentCoordinator.PageSnapshot = unavailable()
+  override fun presentationSnapshot(): DocumentCoordinator.Snapshot = unavailable()
   override fun sessionInfo(): PdfSessionInfo = unavailable()
   override fun pageHistoryRevision(index: Int): Long = unavailable()
   override fun pageHistoryState(index: Int): InkState = unavailable()

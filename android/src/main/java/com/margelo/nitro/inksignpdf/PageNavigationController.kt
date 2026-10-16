@@ -307,7 +307,7 @@ internal class PageNavigationController(
     if (current.documentGeneration != generation || current.targetPageIndex != pageIndex ||
       current.pageSwitchId != pageSwitchId
     ) return
-    // A failed/partial tile batch is not presentation readiness. SurfaceView
+    // A failed/partial tile batch is not presentation readiness. ViewerCanvas
     // retries it; retain the exact target preview until visible coverage arrives.
     requestInvalidate()
   }

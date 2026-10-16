@@ -118,7 +118,7 @@ jobs:
               test_args="-only-testing:__TEST_TARGET__/InkSignViewStabilizationTests"
               ;;
             native-pdfkit)
-              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/SignatureExportTests -only-testing:__TEST_TARGET__/SignatureVectorPathTests -only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnPreviewTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnNavigationTests -only-testing:__TEST_TARGET__/InkSignViewTextInteractionTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
+              test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/SignatureExportTests -only-testing:__TEST_TARGET__/SignatureVectorPathTests -only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnPreviewTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnNavigationTests -only-testing:__TEST_TARGET__/InkSignViewTextInteractionTests -only-testing:__TEST_TARGET__/ImagePageEncoderTests"
               ;;
             native-pdf-backend)
               test_args="-only-testing:__TEST_TARGET__/NativePDFBackendTests -only-testing:__TEST_TARGET__/SignatureExportTests -only-testing:__TEST_TARGET__/SignatureVectorPathTests"
@@ -127,7 +127,7 @@ jobs:
               test_args="-only-testing:__TEST_TARGET__/PageInputCoordinatorTests"
               ;;
             lifecycle)
-              test_args="-only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnPreviewTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnNavigationTests -only-testing:__TEST_TARGET__/InkSignViewTextInteractionTests -only-testing:__TEST_TARGET__/MutablePageImageEncoderTests"
+              test_args="-only-testing:__TEST_TARGET__/InkSignViewLifecycleTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnPreviewTests -only-testing:__TEST_TARGET__/InkSignViewPageTurnNavigationTests -only-testing:__TEST_TARGET__/InkSignViewTextInteractionTests -only-testing:__TEST_TARGET__/ImagePageEncoderTests"
               ;;
             all)
               test_args=""

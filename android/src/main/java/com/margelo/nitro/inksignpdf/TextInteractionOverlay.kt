@@ -253,7 +253,7 @@ internal fun localImeOverlapPx(
 
 internal class TextInteractionOverlay(
   context: Context,
-  private val surface: SurfaceView,
+  private val viewerCanvas: ViewerCanvas,
   core: DocumentCore? = null,
 ) : FrameLayout(context) {
   private var attachedCore = core
@@ -267,7 +267,7 @@ internal class TextInteractionOverlay(
   private val fonts get() = core.fonts
 
   private fun activeContext(generation: Long, pageIndex: Int): DocumentPageContext {
-    val presentation = surface.textPresentationSnapshot()
+    val presentation = viewerCanvas.textPresentationSnapshot()
     if (presentation == null || presentation.generation != generation || presentation.pageIndex != pageIndex) {
       throw PdfSessionException("operation_cancelled", "Text editing was superseded by a document or page change")
     }
@@ -450,7 +450,7 @@ internal class TextInteractionOverlay(
       } else {
         0.0
       }
-      surface.setKeyboardOcclusion(overlap)
+      viewerCanvas.setKeyboardOcclusion(overlap)
       insets
     }
   }
@@ -469,7 +469,7 @@ internal class TextInteractionOverlay(
 
   fun removeTextAnnotation() {
     val id = editingCommandAnnotationId() ?: throw textNotFocused()
-    val presentation = surface.textPresentationSnapshot()
+    val presentation = viewerCanvas.textPresentationSnapshot()
       ?: throw textNotFocused()
     val selectedState = interactionState as? InteractionState.Selected
     if (selectedState != null &&
@@ -485,7 +485,7 @@ internal class TextInteractionOverlay(
     if (annotation == null && !isEmptyDraft) {
       throw textNotFocused()
     }
-    surface.withStateTransaction {
+    viewerCanvas.withStateTransaction {
       try {
         if (annotation != null) {
           commitText(presentation.generation, presentation.pageIndex, annotation, null)
@@ -501,7 +501,7 @@ internal class TextInteractionOverlay(
 
   internal fun armPlacement(generation: Long, options: TextModeOptions? = null) {
     if (interactionState is InteractionState.Placing) return
-    val presentation = surface.textPresentationSnapshot() ?: throw PdfSessionException(
+    val presentation = viewerCanvas.textPresentationSnapshot() ?: throw PdfSessionException(
       "view_not_ready",
       "A laid-out PDF viewport is required before adding text",
     )
@@ -591,7 +591,7 @@ internal class TextInteractionOverlay(
   }
 
   private fun appLayoutIsRtl(): Boolean =
-    ViewCompat.getLayoutDirection(surface) == View.LAYOUT_DIRECTION_RTL
+    ViewCompat.getLayoutDirection(viewerCanvas) == View.LAYOUT_DIRECTION_RTL
 
   internal fun cancelPendingPlacement() {
     if (interactionState !is InteractionState.Placing) return
@@ -659,7 +659,7 @@ internal class TextInteractionOverlay(
     val entry = showEditor("")
     if (flowBounds != null) {
       reconcileEditorPresentation(entry, checkNotNull(lastPresentation))
-      surface.focusTextForPlacement(
+      viewerCanvas.focusTextForPlacement(
         editorFocusBounds(entry, state, presentation),
         activeEditorLineBounds(entry, state, presentation),
         dp(24).toDouble(),
@@ -698,7 +698,7 @@ internal class TextInteractionOverlay(
     state.positionY = position.y
     reconcileEditorPresentation(entry, presentation)
     val focusBounds = editorFocusBounds(entry, state, presentation)
-    surface.focusTextForPlacement(
+    viewerCanvas.focusTextForPlacement(
       focusBounds,
       activeEditorLineBounds(entry, state, presentation),
       dp(24).toDouble(),
@@ -748,7 +748,7 @@ internal class TextInteractionOverlay(
     interactionState is InteractionState.Editing -> InteractionMode.TEXTEDIT
     interactionState is InteractionState.Selected -> InteractionMode.VIEW
     interactionState is InteractionState.Dragging -> InteractionMode.VIEW
-    surface.isEditMode -> InteractionMode.INK
+    viewerCanvas.isEditMode -> InteractionMode.INK
     else -> InteractionMode.VIEW
   }
 
@@ -758,7 +758,7 @@ internal class TextInteractionOverlay(
 
   internal fun clearSelectionForHostMode() {
     if (interactionState !is InteractionState.Idle) {
-      surface.withStateTransaction {
+      viewerCanvas.withStateTransaction {
         finishEditing()
         clearSelection()
       }
@@ -766,7 +766,7 @@ internal class TextInteractionOverlay(
   }
 
   fun syncContent() {
-    val presentation = surface.textPresentationSnapshot()
+    val presentation = viewerCanvas.textPresentationSnapshot()
     viewportTouchPage?.let { (generation, pageIndex) ->
       if (presentation == null || presentation.generation != generation || presentation.pageIndex != pageIndex) {
         cancelViewportTouch()
@@ -779,7 +779,7 @@ internal class TextInteractionOverlay(
       editor?.let(::removeView)
       editor = null
       transitionTo(InteractionState.Idle)
-      surface.setKeyboardOcclusion(0.0)
+      viewerCanvas.setKeyboardOcclusion(0.0)
       ViewCompat.requestApplyInsets(this)
       emitInteractionModeChanged()
       return
@@ -828,12 +828,12 @@ internal class TextInteractionOverlay(
       reconcileEditorPresentation(entry, presentation)
     }
     emitInteractionModeChanged()
-    surface.invalidate()
+    viewerCanvas.invalidate()
     invalidate()
   }
 
   fun syncTransform() {
-    val transform = surface.textTransformSnapshot() ?: return
+    val transform = viewerCanvas.textTransformSnapshot() ?: return
     val presentation = lastPresentation
       ?.takeIf { it.generation == transform.generation && it.pageIndex == transform.pageIndex }
       ?.copy(page = transform.page, transform = transform.transform,
@@ -922,12 +922,12 @@ internal class TextInteractionOverlay(
   }
 
   private fun canFollowCaret(): Boolean =
-    !caretFollowPaused && touchOwner == TouchOwner.TEXT && !surface.isTextFocusAnimating()
+    !caretFollowPaused && touchOwner == TouchOwner.TEXT && !viewerCanvas.isTextFocusAnimating()
 
   private fun startViewportTouch(down: MotionEvent) {
     pauseCaretFollow()
     touchOwner = TouchOwner.VIEWPORT
-    surface.handleViewportTouch(down)
+    viewerCanvas.handleViewportTouch(down)
   }
 
   private fun finishViewportTouch() {
@@ -944,7 +944,7 @@ internal class TextInteractionOverlay(
     if (touchOwner == TouchOwner.VIEWPORT && down != null) {
       val cancel = MotionEvent.obtain(down)
       cancel.action = MotionEvent.ACTION_CANCEL
-      surface.handleViewportTouch(cancel)
+      viewerCanvas.handleViewportTouch(cancel)
       cancel.recycle()
     }
     finishViewportTouch()
@@ -956,7 +956,7 @@ internal class TextInteractionOverlay(
     if (event.actionMasked == MotionEvent.ACTION_DOWN) {
       finishViewportTouch()
       viewportTouchDown = MotionEvent.obtain(event)
-      viewportTouchPage = surface.textTransformSnapshot()?.let { it.generation to it.pageIndex }
+      viewportTouchPage = viewerCanvas.textTransformSnapshot()?.let { it.generation to it.pageIndex }
     }
     if (touchOwner == TouchOwner.DISCARD) {
       if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -979,7 +979,7 @@ internal class TextInteractionOverlay(
       startViewportTouch(down)
     }
     val handled = if (touchOwner == TouchOwner.VIEWPORT) {
-      surface.handleViewportTouch(event)
+      viewerCanvas.handleViewportTouch(event)
       true
     } else super.dispatchTouchEvent(event)
     if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -992,10 +992,10 @@ internal class TextInteractionOverlay(
     if (event.actionMasked == MotionEvent.ACTION_DOWN && viewportTouchDown == null) {
       finishViewportTouch()
       viewportTouchDown = MotionEvent.obtain(event)
-      viewportTouchPage = surface.textTransformSnapshot()?.let { it.generation to it.pageIndex }
+      viewportTouchPage = viewerCanvas.textTransformSnapshot()?.let { it.generation to it.pageIndex }
     }
     val handled = when (touchOwner) {
-      TouchOwner.VIEWPORT -> { surface.handleViewportTouch(event); true }
+      TouchOwner.VIEWPORT -> { viewerCanvas.handleViewportTouch(event); true }
       TouchOwner.DISCARD -> true
       TouchOwner.TEXT -> handleTextTouch(event)
     }
@@ -1013,7 +1013,7 @@ internal class TextInteractionOverlay(
       ) {
         pendingPlacementGesture = null
         startViewportTouch(down)
-        surface.handleViewportTouch(event)
+        viewerCanvas.handleViewportTouch(event)
         return true
       }
       when (event.actionMasked) {
@@ -1030,7 +1030,7 @@ internal class TextInteractionOverlay(
     if (pendingTouch != null) return handlePendingTouch(event)
     val placement = interactionState as? InteractionState.Placing
     if (event.actionMasked == MotionEvent.ACTION_DOWN && placement != null) {
-      val presentation = surface.textPresentationSnapshot()
+      val presentation = viewerCanvas.textPresentationSnapshot()
       if (presentation == null || presentation.generation != placement.generation ||
         presentation.pageIndex != placement.pageIndex
       ) {
@@ -1100,13 +1100,13 @@ internal class TextInteractionOverlay(
       annotationGesture.cancel()
       startViewportTouch(touch.down)
       finishPendingTouch(touch)
-      surface.handleViewportTouch(event)
+      viewerCanvas.handleViewportTouch(event)
       return true
     }
     if (annotation == null) {
       if (action == MotionEvent.ACTION_UP) {
         finishPendingTouch(touch)
-        surface.withStateTransaction {
+        viewerCanvas.withStateTransaction {
           finishEditing()
           clearSelection()
         }
@@ -1120,7 +1120,7 @@ internal class TextInteractionOverlay(
     if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
       finishPendingTouch(touch)
       when {
-        update.dragReleased -> surface.withStateTransaction { commitDrag() }
+        update.dragReleased -> viewerCanvas.withStateTransaction { commitDrag() }
         update.dragCancelled -> cancelDrag()
         update.tap -> beginEditing(annotation.id)
       }
@@ -1240,7 +1240,7 @@ internal class TextInteractionOverlay(
     entry.onCaretChanged = {
       if (editor === entry) {
         val state = interactionState as? InteractionState.Editing
-        val transform = surface.textTransformSnapshot()
+        val transform = viewerCanvas.textTransformSnapshot()
         val previousPresentation = lastPresentation
         if (state != null && transform != null && previousPresentation != null &&
           previousPresentation.generation == transform.generation &&
@@ -1256,7 +1256,7 @@ internal class TextInteractionOverlay(
           lastPresentation = presentation
           val layoutPresentation = checkNotNull(lastPresentation)
           val frame = editorFramePageBounds(entry, layoutPresentation.transform)
-          surface.ensureTextVisible(
+          viewerCanvas.ensureTextVisible(
             layoutPresentation.toDisplay(activeEditorLineBounds(entry, state, layoutPresentation, frame)),
             dp(24).toDouble(),
           )
@@ -1300,7 +1300,7 @@ internal class TextInteractionOverlay(
     )
     transitionTo(state)
     val entry = showEditor(annotation.text)
-    surface.focusTextForEditing(
+    viewerCanvas.focusTextForEditing(
       presentation.toDisplay(editorFocusBounds(entry, state, presentation)),
       presentation.toDisplay(activeEditorLineBounds(entry, state, presentation)),
       dp(24).toDouble(),
@@ -1321,7 +1321,7 @@ internal class TextInteractionOverlay(
     )
     transitionTo(state)
     performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-    surface.invalidate()
+    viewerCanvas.invalidate()
     invalidate()
   }
 
@@ -1353,7 +1353,7 @@ internal class TextInteractionOverlay(
     if (state.position == originalOrigin) {
       transitionTo(InteractionState.Selected(state.generation, state.pageIndex, original))
       emitInteractionModeChanged()
-      surface.invalidate()
+      viewerCanvas.invalidate()
       invalidate()
       return
     }
@@ -1382,7 +1382,7 @@ internal class TextInteractionOverlay(
     annotationGesture.cancel()
     transitionTo(InteractionState.Selected(state.generation, state.pageIndex, state.original))
     emitInteractionModeChanged()
-    surface.invalidate()
+    viewerCanvas.invalidate()
     invalidate()
   }
 
@@ -1446,7 +1446,7 @@ internal class TextInteractionOverlay(
     try {
       entry.cancelCaretFollow()
       entry.onCaretChanged = null
-      surface.setKeyboardOcclusion(0.0)
+      viewerCanvas.setKeyboardOcclusion(0.0)
       hideKeyboard()
       removeView(entry)
       editor = null
@@ -1497,7 +1497,7 @@ internal class TextInteractionOverlay(
         return fontSize
       }
       is InteractionState.Selected -> {
-        val presentation = surface.textPresentationSnapshot()
+        val presentation = viewerCanvas.textPresentationSnapshot()
           ?: throw textNotFocused()
         if (presentation.generation != state.generation ||
           presentation.pageIndex != state.pageIndex
@@ -1592,7 +1592,7 @@ internal class TextInteractionOverlay(
   }
 
   private fun currentAnnotations(): List<TextAnnotation> =
-    surface.textPresentationSnapshot()?.annotations ?: emptyList()
+    viewerCanvas.textPresentationSnapshot()?.annotations ?: emptyList()
 
   private fun editingCommandAnnotationId(): Long? = when (val state = interactionState) {
     is InteractionState.Editing -> state.id
@@ -1979,10 +1979,10 @@ internal class TextInteractionOverlay(
   internal fun selectedText(): TextSelection? = when (val state = interactionState) {
     is InteractionState.Editing -> TextSelection(state.id.toDouble(), state.pageId)
     is InteractionState.Selected -> TextSelection(
-      state.annotation.id.toDouble(), surface.documentState.pageMetadata(state.pageIndex).id,
+      state.annotation.id.toDouble(), viewerCanvas.documentState.pageMetadata(state.pageIndex).id,
     )
     is InteractionState.Dragging -> TextSelection(
-      state.original.id.toDouble(), surface.documentState.pageMetadata(state.pageIndex).id,
+      state.original.id.toDouble(), viewerCanvas.documentState.pageMetadata(state.pageIndex).id,
     )
     else -> null
   }

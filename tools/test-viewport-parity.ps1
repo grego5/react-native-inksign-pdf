@@ -6,13 +6,15 @@ $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 $specPath = Join-Path $root "src\InkSignView.nitro.ts"
+$typesPath = Join-Path $root "src\InkSignTypes.ts"
 $indexPath = Join-Path $root "src\index.ts"
 $androidSpecPath = Join-Path $root "nitrogen\generated\android\kotlin\com\margelo\nitro\inksignpdf\HybridInkSignViewSpec.kt"
 $iosSpecPath = Join-Path $root "nitrogen\generated\ios\swift\HybridInkSignViewSpec.swift"
 $androidViewPath = Join-Path $root "android\src\main\java\com\margelo\nitro\inksignpdf\HybridInkSignView.kt"
-$iosDocumentPath = Join-Path $root "ios\InkSignView+Document.swift"
+$iosDocumentPath = Join-Path $root "ios\ViewerCanvas+Document.swift"
 
 $spec = Get-Content -LiteralPath $specPath -Raw
+$types = Get-Content -LiteralPath $typesPath -Raw
 $index = Get-Content -LiteralPath $indexPath -Raw
 $androidSpec = Get-Content -LiteralPath $androidSpecPath -Raw
 $iosSpec = Get-Content -LiteralPath $iosSpecPath -Raw
@@ -40,8 +42,8 @@ function Get-NumericFields([string]$Text, [string]$InterfaceName) {
     )
 }
 
-$viewportFields = @(Get-NumericFields $spec 'Viewport')
-$optionFields = @(Get-NumericFields $spec 'ViewportOptions')
+$viewportFields = @(Get-NumericFields $types 'Viewport')
+$optionFields = @(Get-NumericFields $types 'ViewportOptions')
 if (($viewportFields -join ',') -ne 'x,y,zoom') { throw "FAIL viewport fields" }
 if (($optionFields -join ',') -ne 'x,y,zoom') { throw "FAIL viewport option fields" }
 
@@ -52,7 +54,7 @@ Assert-Contains $iosSpec 'func getViewport\(\) throws -> Viewport' 'generated iO
 Assert-Contains $androidView 'override fun getViewport\(\): Viewport' 'Android native getter'
 Assert-Contains $iosDocument 'func getViewport\(\) throws -> Viewport' 'iOS native getter'
 Assert-NotContains $iosDocument '(var|let) currentViewport\s*=' 'iOS has no duplicate viewport state'
-Assert-Contains $spec 'x\?: number\s*\r?\n\s*y\?: number\s*\r?\n\s*zoom\?: number' 'options structure'
-Assert-Contains $spec 'x: number\s*\r?\n\s*y: number\s*\r?\n\s*zoom: number' 'snapshot structure'
+Assert-Contains $types 'x\?: number\s*\r?\n\s*y\?: number\s*\r?\n\s*zoom\?: number' 'options structure'
+Assert-Contains $types 'x: number\s*\r?\n\s*y: number\s*\r?\n\s*zoom: number' 'snapshot structure'
 
 Write-Output "PASS viewport public/generated/native parity checks"

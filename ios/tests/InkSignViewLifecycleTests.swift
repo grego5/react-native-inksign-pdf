@@ -890,7 +890,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let candidatePages = try fixtureCandidate.pages.enumerated().map { index, old in
       InkSignPdfDocumentCandidateLoader.rebinding(old, to: loadedCandidate.pages[index])
     }
-    let candidate = InkSignPdfDocumentState(sourceURL: fixtureCandidate.sourceURL,
+    let candidate = CommittedDocumentState(sourceURL: fixtureCandidate.sourceURL,
                                             workingURL: candidateURL,
                                             pages: candidatePages)
     defer {
@@ -923,7 +923,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     defer { artifacts.deleteExact(candidateURL) }
     try data.write(to: candidateURL, options: .atomic)
     let loaded = try InkSignPdfDocumentCandidateLoader.load(url: candidateURL)
-    let candidate = InkSignPdfDocumentState(sourceURL: candidateURL,
+    let candidate = CommittedDocumentState(sourceURL: candidateURL,
                                             workingURL: candidateURL,
 
                                             pages: loaded.pages)
@@ -1120,7 +1120,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     focus.catch { focusError = $0; focusSettled.fulfill() }
     XCTAssertFalse(focusSucceeded)
 
-    let replacementCore = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    let replacementCore = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     let source = try XCTUnwrap(view.viewerDocument?.workingURL)
     try awaitTestPromise(replacementCore.open(sourceURL: source))
     let replacement = HybridInkSignDocument(core: replacementCore)
@@ -1332,10 +1332,10 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
 
   func testProgrammaticPageSwitchCompletionDoesNotRetainView() {
     var completion: ((Result<PageInfo, Error>) -> Void)?
-    weak var weakView: InkSignView?
+    weak var weakView: ViewerCanvas?
 
     autoreleasepool {
-      let view = InkSignView()
+      let view = ViewerCanvas()
       weakView = view
       completion = view.programmaticPageSwitchCompletion()
     }

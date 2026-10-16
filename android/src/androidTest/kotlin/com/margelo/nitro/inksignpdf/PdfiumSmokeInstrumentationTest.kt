@@ -176,8 +176,8 @@ class PdfiumSmokeInstrumentationTest {
           assertEquals(ordinary.horizontalSnapCandidates(0), cropped.horizontalSnapCandidates(0))
           val size = cropped.pageSize(0)
           val dimensions = PdfPageDimensions(size.width, size.height, size.rotation)
-          val expectedProjection = PreparedPageContext(1, "ordinary", expected).projected(dimensions)
-          val actualProjection = PreparedPageContext(1, "cropped", actual).projected(dimensions)
+          val expectedProjection = PreparedPage(1, "ordinary", expected).projected(dimensions)
+          val actualProjection = PreparedPage(1, "cropped", actual).projected(dimensions)
           assertEquals(expectedProjection.rules, actualProjection.rules)
         }
       }

@@ -3,7 +3,7 @@
 ## Ownership
 
 - Shared ownership and queues: [architecture](../architecture.md#ownership-and-data-flow).
-  `SurfaceView` owns presentation/input; `TextInteractionOverlay` owns native
+  `ViewerCanvas` owns presentation/input; `TextInteractionOverlay` owns native
   editor state. `PdfSessionWorker` serializes backend access and cleanup.
 - `ViewerDocumentState` owns active-page selection and borrows core reads.
   Attachment selects the first page; import/reorder/rotation preserve identity.
@@ -50,7 +50,7 @@
 
 ## Page history and disposal
 
-- `InkHistory` is keyed by stable page ID. Permanent base plus keyed tracked
+- `PageContentHistory` is keyed by stable page ID. Permanent base plus keyed tracked
   overrides supplies rendering, lookup, and export. Shared
   [history/state policy](../architecture.md#history) defines dirty and undo semantics.
 - Append new strokes/text directly. Retain inserted text identities through

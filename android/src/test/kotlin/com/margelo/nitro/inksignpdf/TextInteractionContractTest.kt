@@ -34,7 +34,7 @@ class TextInteractionContractTest {
 
   @Test
   fun dragOrEditReplacementIsOneUndoableHistoryAction() {
-    val history = InkHistory()
+    val history = PageContentHistory()
     val before = text(1L, "Hello", 24.0, 30.0)
     val after = text(1L, "Hello\nworld", 60.0, 48.0, 18.0)
 
@@ -49,7 +49,7 @@ class TextInteractionContractTest {
 
   @Test
   fun blankCommittedTextCannotSurviveDismissal() {
-    val history = InkHistory()
+    val history = PageContentHistory()
     val rejected = runCatching {
       history.appendText(text(1L, "", 0.0, 0.0))
     }
@@ -60,7 +60,7 @@ class TextInteractionContractTest {
 
   @Test
   fun unchangedExistingTextDismissalDoesNotCreateAHistoryMutation() {
-    val history = InkHistory()
+    val history = PageContentHistory()
     val annotation = text(1L, "Hello", 24.0, 30.0)
     history.appendText(annotation)
 

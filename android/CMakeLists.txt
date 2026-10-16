@@ -144,12 +144,12 @@ else()
 endif()
 
 add_library(ReactNativeInkSignPdf SHARED
-  src/main/cpp/cpp-adapter.cpp
-  src/main/cpp/pdfium_render_jni.cpp
-  src/main/cpp/pdfium_export_jni.cpp
-  src/main/cpp/pdfium_android_text_shaper.cpp
-  src/main/cpp/pdfium_smoke.cpp
-  src/main/cpp/pdfium_session_smoke.cpp
+  src/main/cpp/NitroAdapter.cpp
+  src/main/cpp/PdfiumRenderJni.cpp
+  src/main/cpp/PdfiumExportJni.cpp
+  src/main/cpp/PdfiumAndroidTextShaper.cpp
+  src/main/cpp/PdfiumSmoke.cpp
+  src/main/cpp/PdfiumSessionSmoke.cpp
   src/main/cpp/InkEngineJni.cpp
   ${INKSIGN_PDFIUM_ADAPTER_ROOT}/PdfiumDocumentSession.cpp
   ${INKSIGN_PDFIUM_ADAPTER_ROOT}/PdfiumPageAssembler.cpp

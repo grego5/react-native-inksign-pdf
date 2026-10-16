@@ -51,7 +51,7 @@ internal object PdfExporter {
       temporary = candidate
       val text = PdfExportTextResolver.resolve(snapshot)
       InkPerfetto.section("InkSign/export PDFium write and validate") {
-        PdfiumNativePdfExporter.export(snapshot, text, candidate)
+        PdfiumExporter.export(snapshot, text, candidate)
       }
       ensureExportFresh(isStale, snapshot.generation)
       moveAtomically(candidate, output)

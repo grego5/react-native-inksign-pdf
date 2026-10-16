@@ -3,8 +3,8 @@ import NitroModules
 
 /// Stable target identity retains its document core; draft presentation is optional.
 final class HybridTextHandle: HybridTextHandleSpec, InkSignPdfTextPageContext {
-  private weak var owner: InkSignView?
-  private let core: InkSignDocumentCore
+  private weak var owner: ViewerCanvas?
+  private let core: DocumentCore
   let generation: UInt64
   let pageID: UUID
   private let textID: Double
@@ -13,7 +13,7 @@ final class HybridTextHandle: HybridTextHandleSpec, InkSignPdfTextPageContext {
     InkSignPdfCorePageContext(generation: generation, pageID: pageID)
   }
 
-  init(owner: InkSignView, generation: UInt64, pageID: UUID, textID: Double) {
+  init(owner: ViewerCanvas, generation: UInt64, pageID: UUID, textID: Double) {
     self.owner = owner
     self.core = owner.documentCore
     self.generation = generation

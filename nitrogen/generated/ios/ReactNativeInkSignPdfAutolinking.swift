@@ -13,7 +13,7 @@ public final class ReactNativeInkSignPdfAutolinking {
   public typealias bridge = margelo.nitro.inksignpdf.bridge.swift
 
   public static func createInkSignView() -> bridge.std__shared_ptr_HybridInkSignViewSpec_ {
-    let hybridObject = InkSignView()
+    let hybridObject = ViewerCanvas()
     return { () -> bridge.std__shared_ptr_HybridInkSignViewSpec_ in
       let __cxxWrapped = hybridObject.getCxxWrapper()
       return __cxxWrapped.getCxxPart()
@@ -21,7 +21,7 @@ public final class ReactNativeInkSignPdfAutolinking {
   }
   
   public static func isInkSignViewRecyclable() -> Bool {
-    return InkSignView.self is any RecyclableView.Type
+    return ViewerCanvas.self is any RecyclableView.Type
   }
   
   public static func createInkSignDocumentFactory() -> bridge.std__shared_ptr_HybridInkSignDocumentFactorySpec_ {

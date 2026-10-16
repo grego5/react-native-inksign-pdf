@@ -24,7 +24,7 @@
   measured visible text may occupy less of that rectangle.
 - Text flow regions, line limits, and vertical anchors determine the same
   complete lines shown in the committed preview.
-- `TextRendering.positionedLines` owns committed line selection and baselines.
+- `InkSignPdfTextRenderer.positionedLines` owns committed line selection and baselines.
   CoreText resource preparation uses those lines and retains UTF-16 clusters,
   glyph positions, captured transforms, and local clips as owned values.
 - Logical start/end alignment resolves against the saved text direction and

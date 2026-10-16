@@ -30,7 +30,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
   }
 
   func testPageStateTracksActivePageCommittedInkHistory() throws {
-    let emptyView = InkSignView()
+    let emptyView = ViewerCanvas()
     XCTAssertNil(emptyView.viewerDocument)
     emptyView.dispose()
 
@@ -957,7 +957,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     defer { policy.deleteExact(output) }
 
     do {
-      try InkSignPdfNativeExporter.write(sourceURL: state.workingURL,
+      try InkSignPdfPdfiumExporter.write(sourceURL: state.workingURL,
                                          pages: [snapshot],
                                          outputURL: output,
                                          validatePDFKit: true)

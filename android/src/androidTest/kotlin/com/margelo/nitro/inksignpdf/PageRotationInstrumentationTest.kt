@@ -95,7 +95,7 @@ class PageRotationInstrumentationTest {
         assertEquals(workingPath.get(), view.documentState.sourcePath)
         assertEquals(PdfPageDimensions(320.0, 240.0, 0), view.documentState.pageMetadata(0).sourceDimensions)
         val container = view.view as FrameLayout
-        val surface = container.getChildAt(0) as SurfaceView
+        val surface = container.getChildAt(0) as ViewerCanvas
         val overlay = (0 until container.childCount).map(container::getChildAt)
           .filterIsInstance<TextInteractionOverlay>().single()
         overlay.syncContent()
@@ -256,7 +256,7 @@ class PageRotationInstrumentationTest {
           }
           instrumentation.runOnMainSync {
             assertTrue(view.documentState.pageSnapshot(0).content.isEmpty())
-            val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
+            val surface = (view.view as FrameLayout).getChildAt(0) as ViewerCanvas
             assertTrue(!surface.isEditMode)
           }
           continue
@@ -284,7 +284,7 @@ class PageRotationInstrumentationTest {
             edgeOffset = 8.0,
           )))
           instrumentation.runOnMainSync {
-            val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
+            val surface = (view.view as FrameLayout).getChildAt(0) as ViewerCanvas
             val state = surface.currentViewportState()
             val halfHeight = surface.height / (2.0 * state.zoom * context.resources.displayMetrics.density)
             val expected = if (anchor == FieldFocusVerticalAnchor.TOP) ruleY + halfHeight - 8 else ruleY - halfHeight + 8
@@ -389,7 +389,7 @@ class PageRotationInstrumentationTest {
       )))
       val otherPage = await(instrumentation, document.getPage(PageQuery.create(1.0)))
       instrumentation.runOnMainSync {
-        val surface = (view.get().view as FrameLayout).getChildAt(0) as SurfaceView
+        val surface = (view.get().view as FrameLayout).getChildAt(0) as ViewerCanvas
         surface.switchPage(1)
         assertTrue(!otherPage.getState().hasInk)
         assertTrue("Inspection must remain bound to the nonactive page", page.getState().hasInk)
@@ -502,7 +502,7 @@ class PageRotationInstrumentationTest {
           TextAnnotationOptions(untracked = null, font = null, fontSize = null, color = "#D00000",
             direction = null, maxLines = null, alignment = null, verticalAnchor = null))
         document.core.commitInk(DocumentPageContext(view.documentState.generation, view.documentState.activePageId()), originalInk)
-        val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
+        val surface = (view.view as FrameLayout).getChildAt(0) as ViewerCanvas
         preparedPage.undo()
         contentBeforeRotation.set(view.documentState.pageSnapshot(0).content)
         surface.activePointerId = 7
@@ -513,8 +513,8 @@ class PageRotationInstrumentationTest {
       await(instrumentation, document.rotatePage(0.0, 90.0))
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        val surface = (view.view as FrameLayout).getChildAt(0) as SurfaceView
-        assertEquals(SurfaceView.noPointer, surface.activePointerId)
+        val surface = (view.view as FrameLayout).getChildAt(0) as ViewerCanvas
+        assertEquals(ViewerCanvas.noPointer, surface.activePointerId)
         assertEquals(originalPageId.get(), view.documentState.pageMetadata(0).id)
         assertEquals(PdfPageDimensions(240.0, 320.0, rotation = 1), view.documentState.pageMetadata(0).dimensions)
         assertTrue(view.documentState.activeHistoryState().canUndo)
@@ -541,7 +541,7 @@ class PageRotationInstrumentationTest {
         assertEquals(originalPageId.get(), view.documentState.pageMetadata(1).id)
         assertEquals(contentBeforeRotation.get(), view.documentState.pageSnapshot(1).content)
         assertTrue(view.documentState.activeHistoryState().canRedo)
-        ((view.view as FrameLayout).getChildAt(0) as SurfaceView).switchPage(0)
+        ((view.view as FrameLayout).getChildAt(0) as ViewerCanvas).switchPage(0)
       }
       await(instrumentation, document.removePage(0.0))
       instrumentation.runOnMainSync {

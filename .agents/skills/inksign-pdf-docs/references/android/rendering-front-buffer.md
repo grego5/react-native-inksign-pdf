@@ -9,7 +9,7 @@
   parsed-page/decoded-image cache. Changing the source page releases it;
   session close releases it before the document under the PDFium mutex.
   This native cache is separate from Android bitmap budgets and diagnostics.
-- `SurfaceView` owns the full-page base cache, keyed by document generation,
+- `ViewerCanvas` owns the full-page base cache, keyed by document generation,
   stable page ID, and geometry/orientation. Viewport and history changes reuse
   source pixels. See [cache lifetime](view-lifecycle.md#ownership).
 - Base rasters preserve aspect ratio, capped at a 2048 px longest edge and 4 Mi pixels.

@@ -7,7 +7,7 @@ import UIKit
 /// the PencilKit lifecycle callbacks and waits for the final drawing-change
 /// delivery before storing a native snapshot.
 final class InkCanvasView: PKCanvasView {
-  weak var owner: InkSignView?
+  weak var owner: ViewerCanvas?
   private var activeTransactionID: UInt64?
   private var isResettingInteraction = false
   var isInstallingDrawing = false
@@ -91,7 +91,7 @@ final class InkCanvasView: PKCanvasView {
 
 /// PDFKit sizes and rotates this transparent layer with its page.
 final class InkSignPdfPageOverlayView: UIView {
-  weak var owner: InkSignView?
+  weak var owner: ViewerCanvas?
   let canvasView = InkCanvasView()
 
   override init(frame: CGRect) {
@@ -120,7 +120,7 @@ final class InkSignPdfPageOverlayView: UIView {
 /// Supplies one PencilKit surface per PDFPage while committed page content
 /// remains owned by the document coordinator.
 final class PageOverlayProvider: NSObject, PDFPageOverlayViewProvider {
-  weak var owner: InkSignView? {
+  weak var owner: ViewerCanvas? {
     didSet {
       fallbackOverlay.owner = owner
       if let owner {

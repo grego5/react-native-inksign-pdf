@@ -19,7 +19,7 @@ import kotlin.math.min
 
 /**
  * UI-thread-owned document, viewport, tile, and navigation state for
- * [SurfaceView]. The surface remains responsible for deciding when
+ * [ViewerCanvas]. The surface remains responsible for deciding when
  * navigation is allowed and for coordinating cancellation with active ink.
  */
 internal class InkDocumentController(
@@ -43,7 +43,7 @@ internal class InkDocumentController(
     val transitionPending: Boolean,
   )
 
-  /** UI-thread-owned result consumed immediately by [SurfaceView]. */
+  /** UI-thread-owned result consumed immediately by [ViewerCanvas]. */
   internal class DrawState {
     var viewScale: Double = 0.0
       private set

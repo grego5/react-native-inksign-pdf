@@ -87,7 +87,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
                                       drawingData: drawing.dataRepresentation(),
                                       textAnnotations: text)
     do {
-      try InkSignPdfNativeExporter.write(sourceURL: sourceURL,
+      try InkSignPdfPdfiumExporter.write(sourceURL: sourceURL,
                                          pages: [snapshot],
                                          outputURL: outputURL,
                                          validatePDFKit: true)
@@ -220,11 +220,11 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
                                       drawingData: PKDrawing(strokes: [stroke]).dataRepresentation(),
                                       textAnnotations: [])
 
-    XCTAssertThrowsError(try InkSignPdfNativeExporter.write(sourceURL: sourceURL,
+    XCTAssertThrowsError(try InkSignPdfPdfiumExporter.write(sourceURL: sourceURL,
                                                             pages: [snapshot],
                                                             outputURL: outputURL,
                                                             validatePDFKit: true)) { error in
-      guard case InkSignPdfNativeExporterError.unsupportedInk(let reason) = error else {
+      guard case InkSignPdfPdfiumExporterError.unsupportedInk(let reason) = error else {
         XCTFail("Unsupported ink must fail as an explicit export error: \(error)")
         return
       }
@@ -362,7 +362,7 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     }
     guard right >= left, bottom >= top else {
       XCTFail("Expected visible fixture color")
-      throw InkSignPdfNativeExporterError.invalidOutput("Missing rendered fixture color")
+      throw InkSignPdfPdfiumExporterError.invalidOutput("Missing rendered fixture color")
     }
     return CGRect(x: left, y: top, width: right - left + 1, height: bottom - top + 1)
   }

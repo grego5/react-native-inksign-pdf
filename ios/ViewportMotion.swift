@@ -32,7 +32,7 @@ final class InkSignPdfViewportMotion: NSObject {
     let transition = Transition(from: from, to: to, update: update, completion: completion)
     active = transition
     previous?.displayLink?.invalidate()
-    previous?.completion(.failure(InkSignView.ViewportError.cancelled))
+    previous?.completion(.failure(ViewerCanvas.ViewportError.cancelled))
     guard active === transition else { return }
     if from == to || UIAccessibility.isReduceMotionEnabled {
       apply(to, transition: transition, finished: true)
@@ -45,7 +45,7 @@ final class InkSignPdfViewportMotion: NSObject {
 
   func cancel() {
     guard let transition = active else { return }
-    finish(transition, result: .failure(InkSignView.ViewportError.cancelled))
+    finish(transition, result: .failure(ViewerCanvas.ViewportError.cancelled))
   }
 
   @objc private func tick(_ link: CADisplayLink) {

@@ -101,7 +101,7 @@ final class ViewerInteractionCoordinator {
   }
   func requireSession(_ token: InkSignPdfModeSessionToken) throws {
     precondition(Thread.isMainThread)
-    guard sessionIsCurrent(token) else { throw InkSignView.OperationError.cancelled }
+    guard sessionIsCurrent(token) else { throw ViewerCanvas.OperationError.cancelled }
   }
   private func retire(_ token: InkSignPdfModeSessionToken?) {
     guard let token else { return }
@@ -129,13 +129,13 @@ final class ViewerInteractionCoordinator {
     if availability == .navigation { availability = .ready }
     viewport.supersede()
     retire(token)
-    coordinates?.result.reject(InkSignView.OperationError.cancelled)
-    pagePresentation?.finish(.failure(InkSignView.ViewportError.cancelled))
+    coordinates?.result.reject(ViewerCanvas.OperationError.cancelled)
+    pagePresentation?.finish(.failure(ViewerCanvas.ViewportError.cancelled))
     synchronizePolicy()
   }
 
   func beginSession(_ mode: InputMode, options: TextModeOptions?) throws -> InkSignPdfModeSessionToken {
-    guard !host.disposed else { throw InkSignView.OperationError.cancelled }
+    guard !host.disposed else { throw ViewerCanvas.OperationError.cancelled }
     guard let generation = host.interactionGeneration else {
       guard mode == .view else { throw TextError.documentNotOpen }
       let token = InkSignPdfModeSessionToken(generation: 0, mode: .view)
@@ -155,7 +155,7 @@ final class ViewerInteractionCoordinator {
     retire(old)
     try requireSession(token)
     if !isStructurallySuspended { cancelPresentation() }
-    guard transitionID == requestID else { throw InkSignView.OperationError.cancelled }
+    guard transitionID == requestID else { throw ViewerCanvas.OperationError.cancelled }
     finishInteraction()
     try requireSession(token)
     if !isStructurallySuspended { availability = .ready }
@@ -216,17 +216,17 @@ final class ViewerInteractionCoordinator {
   func textActivityChanged() { synchronizePolicy(publish: true) }
 
   func requestCoordinates(modeSession: InkSignPdfModeSessionToken?) throws -> Promise<PageCoords> {
-    guard !host.disposed else { throw InkSignView.OperationError.cancelled }
+    guard !host.disposed else { throw ViewerCanvas.OperationError.cancelled }
     if let modeSession { try requireSession(modeSession) }
     else { invalidateSession() }
     let requestID = transitionID
     cancelCoordinates()
-    guard transitionID == requestID else { throw InkSignView.OperationError.cancelled }
+    guard transitionID == requestID else { throw ViewerCanvas.OperationError.cancelled }
     if let modeSession { try requireSession(modeSession) }
     let request = CoordinateRequest(modeSession: modeSession, transitionID: requestID)
     coordinateRequest = request
     host.enqueueCoordinatePicker(modeSession, start: { [weak self] in
-      guard let self, self.coordinateRequest === request else { throw InkSignView.OperationError.cancelled }
+      guard let self, self.coordinateRequest === request else { throw ViewerCanvas.OperationError.cancelled }
       try self.viewport.requireViewportReady(request: .preserve)
       guard let page = self.host.viewerDocument?.activePage else {
         throw TextError.documentNotOpen
@@ -235,11 +235,11 @@ final class ViewerInteractionCoordinator {
       let geometryRevision = page.geometryRevision
       self.viewport.supersede()
       guard self.coordinateRequest === request, self.coordinateRequestIsAuthorized(request) else {
-        throw InkSignView.OperationError.cancelled
+        throw ViewerCanvas.OperationError.cancelled
       }
       self.cancelPresentation()
       guard self.coordinateRequest === request, self.coordinateRequestIsAuthorized(request) else {
-        throw InkSignView.OperationError.cancelled
+        throw ViewerCanvas.OperationError.cancelled
       }
       self.host.cancelViewportInk()
       self.host.finishTextInteraction()
@@ -247,7 +247,7 @@ final class ViewerInteractionCoordinator {
             self.host.interactionGeneration == generation,
             self.host.viewerDocument?.activePage.id == page.id,
             page.geometryRevision == geometryRevision else {
-        throw InkSignView.OperationError.cancelled
+        throw ViewerCanvas.OperationError.cancelled
       }
       self.isInk = false
       request.target = CoordinateRequest.Target(generation: generation,
@@ -281,7 +281,7 @@ final class ViewerInteractionCoordinator {
     }
     synchronizePolicy(publish: true)
   }
-  func cancelCoordinates(error: Error = InkSignView.OperationError.cancelled, restoringMode: Bool = true) {
+  func cancelCoordinates(error: Error = ViewerCanvas.OperationError.cancelled, restoringMode: Bool = true) {
     guard let request = coordinateRequest else { return }
     coordinateRequest = nil
     host.enableCoordinateTap(false)
@@ -300,7 +300,7 @@ final class ViewerInteractionCoordinator {
     host.enableCoordinateTap(false)
     restoreCoordinateMode(request)
     guard coordinateRequestIsAuthorized(request), coordinateTargetIsCurrent(target) else {
-      request.result.reject(InkSignView.OperationError.cancelled); return
+      request.result.reject(ViewerCanvas.OperationError.cancelled); return
     }
     request.result.resolve(PageCoords(pageId: page.id.uuidString, pageIndex: Double(index),
       x: Double(point.x), y: Double(point.y)))
@@ -318,7 +318,7 @@ final class ViewerInteractionCoordinator {
     presentation = request
     availability = structural ? .structural : .navigation
     synchronizePolicy()
-    old?.finish(.failure(InkSignView.ViewportError.cancelled))
+    old?.finish(.failure(ViewerCanvas.ViewportError.cancelled))
     return request
   }
   func presentationIsCurrent(_ request: PresentationRequest) -> Bool {
@@ -340,17 +340,17 @@ final class ViewerInteractionCoordinator {
       availability = .ready
       synchronizePolicy()
     }
-    request?.finish(.failure(InkSignView.ViewportError.cancelled))
+    request?.finish(.failure(ViewerCanvas.ViewportError.cancelled))
   }
   func dispose() {
     guard hostReference != nil else {
       currentSession?.cancelled = true
       currentSession = nil
-      coordinateRequest?.result.reject(InkSignView.OperationError.cancelled)
+      coordinateRequest?.result.reject(ViewerCanvas.OperationError.cancelled)
       coordinateRequest = nil
       let request = presentation
       presentation = nil
-      request?.finish(.failure(InkSignView.ViewportError.cancelled))
+      request?.finish(.failure(ViewerCanvas.ViewportError.cancelled))
       viewport.dispose()
       return
     }
@@ -361,7 +361,7 @@ final class ViewerInteractionCoordinator {
   }
 }
 
-extension InkSignView: ViewerInteractionHost {
+extension ViewerCanvas: ViewerInteractionHost {
   var interactionGeneration: UInt64? { viewerDocument == nil ? nil : documentCoordinator.generation }
   var textActivity: InteractionMode { textInteractionOverlay.interactionMode() }
   func finishTextInteraction() { textInteractionOverlay.finishForLifecycle() }

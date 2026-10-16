@@ -8,7 +8,7 @@ $root = Split-Path -Parent $PSScriptRoot
 $androidPath = Join-Path $root "android\src\main\java\com\margelo\nitro\inksignpdf\HybridInkSignView.kt"
 $androidSessionPath = Join-Path $root "android\src\main\java\com\margelo\nitro\inksignpdf\PdfSession.kt"
 $androidPolicyPath = Join-Path $root "android\src\main\java\com\margelo\nitro\inksignpdf\CacheArtifactPolicy.kt"
-$iosPath = Join-Path $root "ios\InkSignView+Document.swift"
+$iosPath = Join-Path $root "ios\ViewerCanvas+Document.swift"
 
 $android = Get-Content -LiteralPath $androidPath -Raw
 $androidSession = Get-Content -LiteralPath $androidSessionPath -Raw

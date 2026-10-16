@@ -16,7 +16,7 @@ internal class DocumentTextEdit(
     check(active)
     check(annotation == null || annotation.id == id)
     current = annotation
-    page.history.textPreview = InkHistory.TextPreview(id, annotation, baseline != annotation)
+    page.history.textPreview = PageContentHistory.TextPreview(id, annotation, baseline != annotation)
   }
 
   fun end() {

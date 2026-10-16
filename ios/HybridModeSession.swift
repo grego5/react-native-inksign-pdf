@@ -16,10 +16,10 @@ final class InkSignPdfModeSessionToken {
 }
 
 final class HybridModeSession: HybridModeSessionSpec {
-  private weak var owner: InkSignView?
+  private weak var owner: ViewerCanvas?
   private let token: InkSignPdfModeSessionToken
 
-  init(owner: InkSignView, token: InkSignPdfModeSessionToken) {
+  init(owner: ViewerCanvas, token: InkSignPdfModeSessionToken) {
     self.owner = owner
     self.token = token
     super.init()
@@ -47,8 +47,8 @@ final class HybridModeSession: HybridModeSessionSpec {
     try withOwner { $0.setSessionViewport(token, options: options) }
   }
 
-  private func withOwner<T>(_ action: (InkSignView) throws -> T) throws -> T {
-    guard let owner else { throw InkSignView.OperationError.cancelled }
+  private func withOwner<T>(_ action: (ViewerCanvas) throws -> T) throws -> T {
+    guard let owner else { throw ViewerCanvas.OperationError.cancelled }
     return try owner.performOnMainSync {
       try owner.interaction.requireSession(token)
       return try action(owner)
@@ -56,7 +56,7 @@ final class HybridModeSession: HybridModeSessionSpec {
   }
 }
 
-extension InkSignView {
+extension ViewerCanvas {
 
   func setSessionViewport(_ token: InkSignPdfModeSessionToken,
                           options: ViewportOptions?) -> Promise<Void> {
