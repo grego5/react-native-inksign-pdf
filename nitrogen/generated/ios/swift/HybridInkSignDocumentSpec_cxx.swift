@@ -213,9 +213,9 @@ open class HybridInkSignDocumentSpec_cxx {
   }
   
   @inline(__always)
-  public final func addPages(options: DocumentAddPagesOptions) -> bridge.Result_std__shared_ptr_Promise_DocumentAddPagesResult___ {
+  public final func addPages(options: bridge.std__optional_DocumentAddPagesOptions_) -> bridge.Result_std__shared_ptr_Promise_DocumentAddPagesResult___ {
     do {
-      let __result = try self.__implementation.addPages(options: options)
+      let __result = try self.__implementation.addPages(options: options.value)
       let __resultCpp = { () -> bridge.std__shared_ptr_Promise_DocumentAddPagesResult__ in
         let __promise = bridge.create_std__shared_ptr_Promise_DocumentAddPagesResult__()
         let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_DocumentAddPagesResult__(__promise)

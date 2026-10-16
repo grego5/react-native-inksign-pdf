@@ -9,8 +9,10 @@
 
 // Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
-// Forward declaration of `DocumentOpenOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct DocumentOpenOptions; }
+// Forward declaration of `DocumentOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOptions; }
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `AndroidFallbackFont` to properly resolve imports.
@@ -18,17 +20,18 @@ namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 
 #include <memory>
 #include "HybridInkSignDocumentSpec.hpp"
-#include <NitroModules/Promise.hpp>
-#include <NitroModules/JPromise.hpp>
 #include "JHybridInkSignDocumentSpec.hpp"
-#include <string>
-#include "DocumentOpenOptions.hpp"
+#include "DocumentOptions.hpp"
 #include <optional>
-#include "JDocumentOpenOptions.hpp"
+#include "JDocumentOptions.hpp"
+#include "PageInputType.hpp"
+#include "JPageInputType.hpp"
+#include <string>
 #include "ImagePageSize.hpp"
 #include "JImagePageSize.hpp"
 #include "AndroidFallbackFont.hpp"
 #include "JAndroidFallbackFont.hpp"
+#include <vector>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -63,21 +66,10 @@ namespace margelo::nitro::inksignpdf {
   
 
   // Methods
-  std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>> JHybridInkSignDocumentFactorySpec::openDoc(const std::string& uri, const std::optional<DocumentOpenOptions>& options) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<jni::JString> /* uri */, jni::alias_ref<JDocumentOpenOptions> /* options */)>("openDoc");
-    auto __result = method(_javaPart, jni::make_jstring(uri), options.has_value() ? JDocumentOpenOptions::fromCpp(options.value()) : nullptr);
-    return [&]() {
-      auto __promise = Promise<std::shared_ptr<HybridInkSignDocumentSpec>>::create();
-      __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {
-        auto __result = jni::static_ref_cast<JHybridInkSignDocumentSpec::JavaPart>(__boxedResult);
-        __promise->resolve(__result->getJHybridInkSignDocumentSpec());
-      });
-      __result->cthis()->addOnRejectedListener([=](const jni::alias_ref<jni::JThrowable>& __throwable) {
-        jni::JniException __jniError(__throwable);
-        __promise->reject(std::make_exception_ptr(__jniError));
-      });
-      return __promise;
-    }();
+  std::shared_ptr<HybridInkSignDocumentSpec> JHybridInkSignDocumentFactorySpec::createDocument(const std::optional<DocumentOptions>& options) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JHybridInkSignDocumentSpec::JavaPart>(jni::alias_ref<JDocumentOptions> /* options */)>("createDocument");
+    auto __result = method(_javaPart, options.has_value() ? JDocumentOptions::fromCpp(options.value()) : nullptr);
+    return __result->getJHybridInkSignDocumentSpec();
   }
 
 } // namespace margelo::nitro::inksignpdf

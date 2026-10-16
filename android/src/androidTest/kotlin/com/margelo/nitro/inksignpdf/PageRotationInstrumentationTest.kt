@@ -33,7 +33,7 @@ class PageRotationInstrumentationTest {
       val source = File.createTempFile("canonical-rotation-", ".pdf", context.cacheDir).apply {
         writeBytes(sourcePdf(320, 400, fieldRules = true, savedRotation = saved, oneRule = true))
       }
-      val document = await(instrumentation, HybridInkSignDocument(context).open(source.absolutePath, null))
+      val document = await(instrumentation, HybridInkSignDocument(context).initializeSource(source.absolutePath))
       try {
         val page = await(instrumentation, document.getPage(PageQuery.create(0.0)))
         var originalId: Double? = null
@@ -78,7 +78,7 @@ class PageRotationInstrumentationTest {
         view.view.measure(size, size)
         view.view.layout(0, 0, 480, 480)
       }
-      await(instrumentation, document.open(source.absolutePath, null))
+      await(instrumentation, document.initializeSource(source.absolutePath))
       val initialPage = awaitPreparedPage(instrumentation, viewRef.get())
       val before = AtomicReference<TextAnnotation>()
       val workingPath = AtomicReference<String>()
@@ -186,7 +186,7 @@ class PageRotationInstrumentationTest {
         view.view.measure(size, size)
         view.view.layout(0, 0, 480, 480)
       }
-      await(instrumentation, document.open(source.absolutePath, null))
+      await(instrumentation, document.initializeSource(source.absolutePath))
       val capturedPage = awaitPreparedPage(instrumentation, viewRef.get())
       await(instrumentation, document.rotatePage(0.0, 90.0))
       await(instrumentation, document.rotatePage(0.0, 90.0))
@@ -230,7 +230,7 @@ class PageRotationInstrumentationTest {
         view.view.layout(0, 0, 480, 480)
         view.defaultTextColor = "#D00000"
       }
-      await(instrumentation, document.open(source.absolutePath, null))
+      await(instrumentation, document.initializeSource(source.absolutePath))
       var stableId: Double? = null
       for (rotationStep in listOf(0, 90, 180, 270, 360)) {
         val angle = rotationStep % 360
@@ -356,8 +356,8 @@ class PageRotationInstrumentationTest {
           it.view.layout(0, 0, 480, 480)
         })
       }
-      await(instrumentation, document.open(source.absolutePath,
-        DocumentOpenOptions(null, "report", null, null, null, null)))
+      await(instrumentation, document.initializeSource(source.absolutePath,
+        DocumentOptions(null, null, "report", null, null, null, null, null)))
       val page = awaitPreparedPage(instrumentation, view.get())
       instrumentation.runOnMainSync {
         assertTrue("Imported PDF Ink annotations are not session ink", !page.getState().hasInk)
@@ -384,7 +384,7 @@ class PageRotationInstrumentationTest {
         assertTrue(page.getState().hasInk)
       }
       await(instrumentation, document.addPages(DocumentAddPagesOptions(
-        tag = "report", sources = arrayOf(source.absolutePath), imagePageSize = null,
+        type = null, tag = "report", sources = arrayOf(source.absolutePath), imagePageSize = null,
         targetDpi = null, jpegQuality = null,
       )))
       val otherPage = await(instrumentation, document.getPage(PageQuery.create(1.0)))
@@ -415,9 +415,9 @@ class PageRotationInstrumentationTest {
       }
       val uri = await(instrumentation, document.finalize())
       outputs += File(java.net.URI(uri))
-      val reopenedDocument = await(instrumentation, HybridInkSignDocument(context, recordHistory = false).open(uri,
-        DocumentOpenOptions(recordHistory = null, tag = "reopened", imagePageSize = null, targetDpi = null, jpegQuality = null,
-          androidFallbackFont = null)))
+      val reopenedDocument = await(instrumentation, HybridInkSignDocument(context, recordHistory = false).initializeSource(uri,
+        DocumentOptions(type = null, recordHistory = null, tag = "reopened", imagePageSize = null, targetDpi = null, jpegQuality = null,
+          androidFallbackFont = null, sources = null)))
       reopened = reopenedDocument
       val reopenedPage = await(instrumentation, reopenedDocument.getPage(PageQuery.create(TaggedPageQuery("reopened", null))))
       val stampBounds = TextAnnotationBounds(30.0, 60.0, 160.0, 30.0)
@@ -485,7 +485,7 @@ class PageRotationInstrumentationTest {
         view.view.measure(exactSize, exactSize)
         view.view.layout(0, 0, 480, 480)
       }
-      await(instrumentation, document.open(source.absolutePath, null))
+      await(instrumentation, document.initializeSource(source.absolutePath))
       val preparedPage = awaitPreparedPage(instrumentation, viewRef.get())
 
       val originalPageId = AtomicReference<String>()
@@ -528,7 +528,7 @@ class PageRotationInstrumentationTest {
 
       // Reopening working bytes during assembly must retain pending orientation.
       await(instrumentation, document.addPages(DocumentAddPagesOptions(
-        tag = null, sources = arrayOf(source.absolutePath), imagePageSize = null,
+        type = null, tag = null, sources = arrayOf(source.absolutePath), imagePageSize = null,
         targetDpi = null, jpegQuality = null,
       )))
       instrumentation.runOnMainSync {

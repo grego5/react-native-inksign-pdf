@@ -15,14 +15,12 @@
 
 // Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
-// Forward declaration of `DocumentOpenOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct DocumentOpenOptions; }
+// Forward declaration of `DocumentOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOptions; }
 
 #include <memory>
 #include "HybridInkSignDocumentSpec.hpp"
-#include <NitroModules/Promise.hpp>
-#include <string>
-#include "DocumentOpenOptions.hpp"
+#include "DocumentOptions.hpp"
 #include <optional>
 
 namespace margelo::nitro::inksignpdf {
@@ -56,7 +54,7 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Methods
-      virtual std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>> openDoc(const std::string& uri, const std::optional<DocumentOpenOptions>& options) = 0;
+      virtual std::shared_ptr<HybridInkSignDocumentSpec> createDocument(const std::optional<DocumentOptions>& options) = 0;
 
     protected:
       // Hybrid Setup

@@ -49,7 +49,7 @@ class HybridInkSignView internal constructor(
       catch (error: Throwable) { loadError = error.message; emitState(); return@runOnMainSync }
       detachDocument()
       attachedDocument = next
-      loadError = null
+      loadError = next?.core?.initializationError?.message
       viewerCanvas.bindCore(next?.core)
       textOverlay.bindCore(next?.core)
       textOverlay.setTextDirection(textDirection ?: TextDirection.AUTO)
@@ -226,6 +226,13 @@ class HybridInkSignView internal constructor(
       runOnMainSync { emitState() }
     }
   override var onPageChange: ((PageChangeEvent) -> Unit)? = null
+    set(value) {
+      field = value
+      runOnMainSync {
+        lastPublicPage = null
+        emitPageState()
+      }
+    }
   override var onZoomChange: ((Double) -> Unit)? = null
   override var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Unit)? = null
     set(value) {
@@ -305,6 +312,10 @@ class HybridInkSignView internal constructor(
       return
     }
     when (change) {
+      is DocumentChange.LoadFailed -> {
+        loadError = change.error.message
+        emitState()
+      }
       is DocumentChange.EditEnded -> textOverlay.endEditorTransaction(change.edit)
       is DocumentChange.InkCleared -> {
         if (documentState.hasDocument && documentState.activePageId() == change.pageId)
@@ -320,16 +331,11 @@ class HybridInkSignView internal constructor(
           emitState()
         }
       }
-      DocumentChange.Opening, DocumentChange.Cleared -> {
+      DocumentChange.Cleared -> {
         viewportRequestID += 1L
         pageNavigationRequestID += 1L
         textOverlay.cancelForDocumentReplacement()
         viewerCanvas.clearDocument()
-        editMode = false
-        emitState()
-      }
-      DocumentChange.Opened -> {
-        viewerCanvas.installDocumentPresentation(notifyState = true)
         editMode = false
         emitState()
       }

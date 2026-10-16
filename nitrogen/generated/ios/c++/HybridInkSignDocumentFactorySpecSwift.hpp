@@ -14,8 +14,10 @@ namespace ReactNativeInkSignPdf { class HybridInkSignDocumentFactorySpec_cxx; }
 
 // Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
-// Forward declaration of `DocumentOpenOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct DocumentOpenOptions; }
+// Forward declaration of `DocumentOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOptions; }
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 // Forward declaration of `AndroidFallbackFont` to properly resolve imports.
@@ -23,12 +25,13 @@ namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 
 #include <memory>
 #include "HybridInkSignDocumentSpec.hpp"
-#include <NitroModules/Promise.hpp>
-#include <string>
-#include "DocumentOpenOptions.hpp"
+#include "DocumentOptions.hpp"
 #include <optional>
+#include "PageInputType.hpp"
+#include <string>
 #include "ImagePageSize.hpp"
 #include "AndroidFallbackFont.hpp"
+#include <vector>
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
 
@@ -80,8 +83,8 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
-    inline std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>> openDoc(const std::string& uri, const std::optional<DocumentOpenOptions>& options) override {
-      auto __result = _swiftPart.openDoc(uri, options);
+    inline std::shared_ptr<HybridInkSignDocumentSpec> createDocument(const std::optional<DocumentOptions>& options) override {
+      auto __result = _swiftPart.createDocument(options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

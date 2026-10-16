@@ -1,6 +1,8 @@
 package com.margelo.nitro.inksignpdf
 
 import android.content.Context
+import android.app.Activity
+import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
 import java.io.File
@@ -12,6 +14,27 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import androidx.activity.ComponentActivity
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.facebook.react.bridge.ReactContext
+import com.margelo.nitro.NitroModules
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import java.util.concurrent.atomic.AtomicLong
+
+internal interface PagePickerHandle {
+  fun launch(intent: Intent)
+  fun unregister()
+}
+
+internal fun interface PagePickerRegistrar {
+  fun register(token: Any, callback: (ActivityResult) -> Unit): PagePickerHandle
+}
 
 /** One staged source owned by the native page-input boundary. */
 internal data class StagedPageInput(
@@ -22,7 +45,7 @@ internal data class StagedPageInput(
 internal enum class PageType { PDF, IMAGE }
 
 /**
- * Owns explicit source staging for one document.
+ * Owns native selection and source staging for one document.
  *
  * The coordinator is main-thread-owned for request state.
  * File copying and image validation run on I/O, and all completed files are
@@ -32,18 +55,24 @@ internal class PageInputCoordinator(
   private val context: Context,
   private val artifactPolicy: CacheArtifactPolicy,
   private val sourceOpener: ((Uri) -> InputStream?)? = null,
+  private val pickerRegistrar: PagePickerRegistrar? = null,
 ) : AutoCloseable {
   private val resolver = context.contentResolver
   private var disposed = false
   private var activeRequest: Request? = null
+  private var selectionClosed = false
 
-  /** Writes a borrowed destination; its caller owns retention and retirement. */
-  suspend fun copyInto(source: String, destination: File): PageType = withRequest { request ->
-    withContext(Dispatchers.IO) { copySource(request, source, destination) }
-  }
-
-  suspend fun stage(sources: Array<String>): List<StagedPageInput> = withRequest { request ->
-    stageSources(request, sources.toList(), null)
+  suspend fun stage(sources: Array<String>?, type: PageInputType? = null): List<StagedPageInput> = withRequest { request ->
+    val requestedType = when (type) {
+      PageInputType.PDF -> PageType.PDF
+      PageInputType.IMAGE -> PageType.IMAGE
+      null -> null
+    }
+    val selected = sources?.toList() ?: run {
+      if (selectionClosed) throw cancelled()
+      awaitPicker(request, requestedType).map(Uri::toString)
+    }
+    stageSources(request, selected, requestedType)
   }
 
   private suspend fun <T> withRequest(action: suspend (Request) -> T): T {
@@ -58,7 +87,10 @@ internal class PageInputCoordinator(
       return action(request).also { completed = true }
     } finally {
       try { if (!completed) cleanup(request) }
-      finally { if (activeRequest === request) activeRequest = null }
+      finally {
+        finishPicker(request)
+        if (activeRequest === request) activeRequest = null
+      }
     }
   }
 
@@ -71,6 +103,98 @@ internal class PageInputCoordinator(
   fun cancelPending() {
     checkMainThread()
     activeRequest?.let { request -> synchronized(request) { request.cancelled = true } }
+    activeRequest?.let(::cancelWaiting)
+  }
+
+  /** Close admission cancels waiting UI, while selected/direct imports may drain. */
+  fun cancelSelection() {
+    checkMainThread()
+    selectionClosed = true
+    activeRequest?.let(::cancelWaiting)
+  }
+
+  private fun cancelWaiting(request: Request) {
+    val continuation = request.pickerContinuation ?: return
+    request.pickerContinuation = null
+    request.cancelled = true
+    finishPicker(request)
+    if (continuation.isActive) continuation.resumeWithException(cancelled())
+  }
+
+  private fun finishPicker(request: Request) {
+    request.picker?.unregister()
+    request.picker = null
+    if (pickerOwner === request) pickerOwner = null
+  }
+
+  private suspend fun awaitPicker(request: Request, type: PageType?): List<Uri> =
+    suspendCancellableCoroutine { continuation ->
+      if (pickerOwner != null) {
+        continuation.resumeWithException(inProgress())
+        return@suspendCancellableCoroutine
+      }
+      pickerOwner = request
+      request.pickerContinuation = continuation
+      continuation.invokeOnCancellation {
+        android.os.Handler(android.os.Looper.getMainLooper()).post { cancelWaiting(request) }
+      }
+      try {
+        val handle = pickerRegistrar?.register(request) { handlePickerResult(request, it) }
+          ?: registerPicker(request)
+        if (request.pickerContinuation == null) { handle.unregister(); return@suspendCancellableCoroutine }
+        request.picker = handle
+        handle.launch(buildPagePickerIntent(type))
+      } catch (error: Throwable) {
+        request.pickerContinuation = null
+        finishPicker(request)
+        if (continuation.isActive) continuation.resumeWithException(
+          if (error is PdfSessionException) error else PdfSessionException("picker_unavailable", "The system input picker could not be opened"))
+      }
+    }
+
+  private fun registerPicker(request: Request): PagePickerHandle {
+    val react = context as? ReactContext ?: NitroModules.applicationContext
+    val activity = react?.currentActivity as? ComponentActivity
+      ?: throw PdfSessionException("missing_presenter", "A foreground activity is required to choose inputs")
+    if (activity.isFinishing || activity.isDestroyed ||
+        !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+      throw PdfSessionException("missing_presenter", "A foreground activity is required to choose inputs")
+    }
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_DESTROY) cancelWaiting(request)
+    }
+    val launcher = activity.activityResultRegistry.register(
+      "inksignpdf.inputs.${launcherIds.incrementAndGet()}",
+      ActivityResultContracts.StartActivityForResult(),
+    ) { handlePickerResult(request, it) }
+    activity.lifecycle.addObserver(observer)
+    return object : PagePickerHandle {
+      override fun launch(intent: Intent) = launcher.launch(intent)
+      override fun unregister() {
+        launcher.unregister()
+        activity.lifecycle.removeObserver(observer)
+      }
+    }
+  }
+
+  private fun handlePickerResult(request: Request, result: ActivityResult) {
+    checkMainThread()
+    if (activeRequest !== request) return
+    val continuation = request.pickerContinuation ?: return
+    request.pickerContinuation = null
+    finishPicker(request)
+    if (!continuation.isActive) return
+    when (result.resultCode) {
+      Activity.RESULT_CANCELED -> continuation.resume(emptyList())
+      Activity.RESULT_OK -> {
+        val sources = extractOrderedUris(result.data)
+        if (sources == null) continuation.resumeWithException(
+          PdfSessionException("malformed_picker_result", "The native picker returned no sources"))
+        else continuation.resume(sources)
+      }
+      else -> continuation.resumeWithException(
+        PdfSessionException("malformed_picker_result", "The native picker returned an invalid result"))
+    }
   }
 
   override fun close() {
@@ -239,9 +363,25 @@ internal class PageInputCoordinator(
   private class Request {
     @Volatile var cancelled = false
     val staged = mutableListOf<File>()
+    var pickerContinuation: CancellableContinuation<List<Uri>>? = null
+    var picker: PagePickerHandle? = null
   }
 
   companion object {
+    private var pickerOwner: Any? = null
+    private val launcherIds = AtomicLong()
+    internal fun buildPagePickerIntent(type: PageType?): Intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+      addCategory(Intent.CATEGORY_OPENABLE)
+      putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+      this.type = when (type) { PageType.PDF -> "application/pdf"; PageType.IMAGE -> "image/*"; null -> "*/*" }
+      if (type == null) putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/pdf", "image/*"))
+    }
+    internal fun extractOrderedUris(intent: Intent?): List<Uri>? {
+      val uris = linkedSetOf<Uri>()
+      intent?.clipData?.let { clip -> for (index in 0 until clip.itemCount) uris += clip.getItemAt(index).uri }
+      intent?.data?.let(uris::add)
+      return uris.toList().takeIf { it.isNotEmpty() }
+    }
     private const val PDF_HEADER_BYTES = 8
     private const val COPY_BUFFER_BYTES = 64 * 1024
   }

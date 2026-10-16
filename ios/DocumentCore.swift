@@ -13,6 +13,7 @@ final class DocumentCore {
   }
 
   let coordinator: InkSignPdfDocumentCoordinator
+  let inputs: InkSignPdfPageInputCoordinator
   let recordHistory: Bool
   let fonts = InkSignPdfNamedFontRegistry()
   var appDirectionRTL = UIView.userInterfaceLayoutDirection(for: .unspecified) == .rightToLeft
@@ -60,9 +61,18 @@ final class DocumentCore {
   private var pending: [Command] = []
   private var running: Command?
   private var observers: [UUID: (Change) -> Void] = [:]
+  private(set) var initializationError: Swift.Error?
+
+  func failInitialization(_ error: Swift.Error) {
+    onOwner {
+      self.initializationError = error
+      self.changed(.loadFailed(error))
+    }
+  }
 
   enum Change {
     case document
+    case loadFailed(Swift.Error)
     case structure
     case structuralWriteStarted
     case willClose
@@ -116,22 +126,25 @@ final class DocumentCore {
   }
 
   init(artifactPolicy: InkSignPdfCacheArtifactPolicy,
-       recordHistory: Bool = false, exportOwnership: ExportOwnership = .caller) {
+       recordHistory: Bool = false, exportOwnership: ExportOwnership = .caller,
+       inputCoordinator: InkSignPdfPageInputCoordinator? = nil) {
     self.recordHistory = recordHistory
     coordinator = InkSignPdfDocumentCoordinator(artifactPolicy: artifactPolicy,
       retainsSuccessfulOutputs: exportOwnership == .document)
+    inputs = inputCoordinator ?? InkSignPdfPageInputCoordinator(artifactPolicy: artifactPolicy)
   }
 
   deinit {
     // Page and text handles retain the core independently of the document wrapper.
     let coordinator = coordinator
     let fonts = fonts
-    let cleanup = { coordinator.dispose(); fonts.clear() }
+    let inputs = inputs
+    let cleanup = { inputs.cancelPending(); coordinator.dispose(); fonts.clear() }
     if Thread.isMainThread { cleanup() }
     else { DispatchQueue.main.async(execute: cleanup) }
   }
 
-  func submit<Value>(onDiscard: @escaping () -> Void = {},
+  func submit<Value>(onDiscard: @escaping () -> Void = {}, allowInitializationFailure: Bool = false,
                      _ action: @escaping () throws -> Promise<Value>) -> Promise<Value> {
     let settlement = InkSignPdfOperationPromise<Value>()
     onOwner {
@@ -141,6 +154,7 @@ final class DocumentCore {
       let command = Command(id: id, start: {
         started = true
         do {
+          if !allowInitializationFailure, let error = self.initializationError { throw error }
           let operation = try action()
           operation.then { value in
             self.onOwner {
@@ -175,6 +189,7 @@ final class DocumentCore {
       // Keep the running slot until native work settles; cancellation must not
       // release resources underneath an admitted worker.
       self.running?.cancel()
+      self.inputs.cancelPending()
       self.coordinator.dispose()
       self.fonts.clear()
       self.observers.removeAll()
@@ -190,7 +205,7 @@ final class DocumentCore {
     let settlement = InkSignPdfOperationPromise<Void>()
     closePromise = settlement.promise
     changed(.willClose)
-    let result: Promise<Void> = submit {
+    let result: Promise<Void> = submit(allowInitializationFailure: true) {
       self.closing = true
       let cleanup = InkSignPdfOperationPromise<Void>()
       self.coordinator.dispose()
@@ -203,6 +218,7 @@ final class DocumentCore {
       return cleanup.promise
     }
     closing = true
+    inputs.cancelSelection()
     result.then { _ in settlement.resolve(()) }
       .catch { error in settlement.reject(error) }
     return settlement.promise

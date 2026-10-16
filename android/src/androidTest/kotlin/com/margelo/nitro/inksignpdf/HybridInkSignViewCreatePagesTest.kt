@@ -41,10 +41,11 @@ class HybridInkSignViewCreatePagesTest {
 
     try {
       await(instrumentation) {
-        document.open(pdf.absolutePath, DocumentOpenOptions(null, null, null, null, null, null))
+        document.initializeSource(pdf.absolutePath)
       }
       val result = await(instrumentation) {
         document.addPages(DocumentAddPagesOptions(
+          type = null,
           tag = null,
           sources = arrayOf(pdf.absolutePath, image.absolutePath),
           imagePageSize = ImagePageSize(width = 144.0, height = 72.0),

@@ -9,6 +9,12 @@ import XCTest
 protocol InkSignViewTestSupport {}
 
 extension InkSignViewTestSupport where Self: XCTestCase {
+  func initializeDocument(_ core: DocumentCore, from source: URL, tag: String? = nil) -> Promise<Int> {
+    core.initialize(options: DocumentOptions(type: nil, recordHistory: nil, tag: tag,
+      imagePageSize: nil, targetDpi: nil, jpegQuality: nil, androidFallbackFont: nil,
+      sources: [source.absoluteString]))
+  }
+
   func attachedDocument(_ view: ViewerCanvas) throws -> HybridInkSignDocument {
     try XCTUnwrap(view.document as? HybridInkSignDocument)
   }
@@ -70,16 +76,17 @@ extension InkSignViewTestSupport where Self: XCTestCase {
     let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     let loaded = expectation(description: "document opens before attachment")
     var failure: Error?
-    core.open(sourceURL: source).then { _ in loaded.fulfill() }
+    initializeDocument(core, from: source).then { _ in loaded.fulfill() }
       .catch { failure = $0; loaded.fulfill() }
     wait(for: [loaded], timeout: 120)
     if let failure { throw failure }
     let presented = expectation(description: "attached document presentation")
+    let targetPageID = try XCTUnwrap(core.coordinator.document?.pages.first?.id.uuidString)
     var info: PageInfo?
     let previous = view.onPageChange
     view.onPageChange = { event in
       previous?(event)
-      guard info == nil else { return }
+      guard event.pageId == targetPageID, info == nil else { return }
       info = try? view.toPublicPageInfo(view.currentPageInfo())
       presented.fulfill()
     }

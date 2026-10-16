@@ -27,11 +27,12 @@ final class HybridInkSignDocument: HybridInkSignDocumentSpec {
   }
   func getPageIdsByTag(tag: String) throws -> [String] { try core.onOwnerSync { try core.pageIDs(tag: tag) } }
   func loadFonts(fonts: [NamedFontSource]) throws -> Promise<Void> { core.loadFonts(fonts) }
-  func addPages(options: DocumentAddPagesOptions) throws -> Promise<DocumentAddPagesResult> {
-    let geometry = try options.imagePageSize.map { try Self.imageGeometry($0) }
+  func addPages(options: DocumentAddPagesOptions?) throws -> Promise<DocumentAddPagesResult> {
+    let geometry = try options?.imagePageSize.map { try Self.imageGeometry($0) }
     let result = InkSignPdfOperationPromise<DocumentAddPagesResult>()
-    core.addPages(sources: options.sources, imageGeometry: geometry,
-      targetDpi: options.targetDpi, jpegQuality: options.jpegQuality, tag: options.tag).then { added in
+    core.addPages(sources: options?.sources, imageGeometry: geometry,
+      targetDpi: options?.targetDpi, jpegQuality: options?.jpegQuality, tag: options?.tag,
+      type: options?.type.map { $0 == .pdf ? .pdf : .image }).then { added in
         result.resolve(DocumentAddPagesResult(addedPageCount: Double(added),
           pageCount: Double(self.core.coordinator.document?.pages.count ?? 0)))
       }.catch { error in result.reject(error) }
@@ -64,15 +65,9 @@ final class HybridInkSignDocument: HybridInkSignDocumentSpec {
 }
 
 final class HybridInkSignDocumentFactory: HybridInkSignDocumentFactorySpec {
-  func openDoc(uri: String, options: DocumentOpenOptions?) throws -> Promise<any HybridInkSignDocumentSpec> {
-    let source = try DocumentCore.localSource(uri)
-    let geometry = try HybridInkSignDocument.imageGeometry(options?.imagePageSize)
+  func createDocument(options: DocumentOptions?) throws -> any HybridInkSignDocumentSpec {
     let core = DocumentCore(artifactPolicy: .shared, recordHistory: options?.recordHistory ?? true)
-    let result = InkSignPdfOperationPromise<any HybridInkSignDocumentSpec>()
-    core.open(sourceURL: source, imageGeometry: geometry,
-      targetDpi: options?.targetDpi, jpegQuality: options?.jpegQuality, tag: options?.tag).then { _ in
-        result.resolve(HybridInkSignDocument(core: core))
-      }.catch { error in core.dispose(); result.reject(error) }
-    return result.promise
+    core.initialize(options: options)
+    return HybridInkSignDocument(core: core)
   }
 }

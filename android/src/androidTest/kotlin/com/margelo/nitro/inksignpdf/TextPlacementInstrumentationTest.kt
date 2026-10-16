@@ -2277,7 +2277,10 @@ internal class TextPlacementInstrumentationTest {
 
   private suspend fun openCandidate(source: java.io.File): PdfSessionInfo =
     withContext(Dispatchers.Main.immediate) {
-      val info = harness.core.open(source.absolutePath)
+      val pending = harness.coordinator.prepareOpen(null, { error("Unexpected fallback font") },
+        { source.copyTo(it, overwrite = true) })
+      val info = try { harness.coordinator.commitOpen(pending) }
+        finally { harness.coordinator.finishOpen(pending) }
       harness.surface.installDocumentPresentation(zoom = null, focus = null, fitToPage = true)
       info
     }

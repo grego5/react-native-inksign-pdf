@@ -42,7 +42,8 @@ function NativeView({ hybridRef, document }) {
 
 const originalLoad = Module._load;
 let InkSignView;
-let openDoc;
+let createDocument;
+let isOperationCancelled;
 try {
   Module._load = function(request, parent, isMain) {
     if (request === 'react-native') {
@@ -63,10 +64,45 @@ try {
     }
     return originalLoad.call(this, request, parent, isMain);
   };
-  ({ InkSignView, openDoc } = require('../lib/commonjs/index.js'));
+  ({ InkSignView, createDocument, isOperationCancelled } = require('../lib/commonjs/index.js'));
 } finally {
   Module._load = originalLoad;
 }
+
+test('empty document attaches after a viewer mounts and populates without replacing either', async () => {
+  let count = 0;
+  const source = {
+    getState: () => ({ documentId: count ? 'doc' : null, pageCount: count, isDirty: count > 0 }),
+    addPages: async () => ({ addedPageCount: 1, pageCount: ++count }),
+  };
+  const options = { recordHistory: true };
+  headlessFactory = { createDocument: received => {
+    assert.equal(received, options);
+    return source;
+  } };
+  const document = createDocument(options);
+  assert.equal(document.pageCount, 0);
+  const mountedBefore = attachments;
+  const ref = React.createRef();
+  let root;
+  try {
+    await act(async () => { root = create(React.createElement(InkSignView, { ref })); });
+    assert.equal(observedDocuments.at(-1), undefined);
+    const handle = ref.current;
+    await act(async () => { root.update(React.createElement(InkSignView, { ref, document })); });
+    assert.equal(observedDocuments.at(-1), source);
+    assert.equal(ref.current, handle);
+    assert.equal(attachments, mountedBefore + 1);
+    await document.addPages();
+    assert.equal(document.pageCount, 1);
+    await act(async () => { root.update(React.createElement(InkSignView, { ref })); });
+    assert.equal(observedDocuments.at(-1), undefined);
+    assert.equal(document.pageCount, 1);
+  } finally {
+    if (root) await act(async () => { root.unmount(); });
+    headlessFactory = undefined;
+  }
+});
 
 test('iOS headless wrapper dispatches document and text operations without mounting a view', async () => {
   const previousPlatform = platform.OS;
@@ -103,11 +139,11 @@ test('iOS headless wrapper dispatches document and text operations without mount
   };
   try {
     platform.OS = 'ios';
-    headlessFactory = { openDoc: async (uri, options) => {
-      operations.push(['open', uri, options.tag]);
+    headlessFactory = { createDocument: options => {
+      operations.push(['create', options.sources, options.tag]);
       return nativeDocument;
     } };
-    const document = await openDoc('file:///source.pdf', { tag: 'report' });
+    const document = createDocument({ sources: ['file:///source.pdf'], tag: 'report' });
     assert.equal(document.pageCount, 1);
     await document.loadFonts([{ name: 'form', uri: 'file:///font.ttf' }]);
     const page = await document.getPage({ tag: 'report' });
@@ -125,10 +161,59 @@ test('iOS headless wrapper dispatches document and text operations without mount
     assert.throws(() => document.getState(), /document_closed/);
     assert.equal(attachments, mountedBefore);
     assert.deepEqual(operations, [
-      ['open', 'file:///source.pdf', 'report'], ['fonts', 'form'],
+      ['create', ['file:///source.pdf'], 'report'], ['fonts', 'form'],
       ['page', { tag: 'report' }], ['resolve', 'Name'], ['write', 'Ada', 'form'],
       ['append', 'file:///attachment.pdf'],
     ]);
+  } finally {
+    platform.OS = previousPlatform;
+    headlessFactory = undefined;
+  }
+});
+
+test('headless imports preserve omitted and explicit selection arguments', async () => {
+  const previousPlatform = platform.OS;
+  const calls = [];
+  const nativeDocument = {
+    getState: () => ({ documentId: 'picked-document', pageCount: 2, isDirty: false }),
+    addPages: async options => {
+      calls.push(['append', options]);
+      return { addedPageCount: options?.sources?.length ?? 1, pageCount: 3 };
+    },
+    close: async () => {},
+  };
+  try {
+    platform.OS = 'ios';
+    headlessFactory = { createDocument: options => {
+      calls.push(['create', options]);
+      return nativeDocument;
+    } };
+
+    const picked = createDocument();
+    assert.equal((await picked.addPages()).addedPageCount, 1);
+    const explicit = createDocument({ type: 'image', sources: ['file:///image.jpg'] });
+    assert.equal((await explicit.addPages({ type: 'pdf', sources: ['file:///source.pdf'] })).addedPageCount, 1);
+
+    assert.deepEqual(calls, [
+      ['create', undefined],
+      ['append', undefined],
+      ['create', { type: 'image', sources: ['file:///image.jpg'] }],
+      ['append', { type: 'pdf', sources: ['file:///source.pdf'] }],
+    ]);
+  } finally {
+    platform.OS = previousPlatform;
+    headlessFactory = undefined;
+  }
+});
+
+test('native lifecycle cancellation remains recognizable through imports', async () => {
+  const previousPlatform = platform.OS;
+  try {
+    platform.OS = 'ios';
+    headlessFactory = { createDocument: () => ({
+      addPages: async () => { throw new Error('operation_cancelled: host destroyed'); },
+    }) };
+    await assert.rejects(createDocument().addPages(), error => isOperationCancelled(error));
   } finally {
     platform.OS = previousPlatform;
     headlessFactory = undefined;
@@ -317,8 +402,8 @@ test('mode-session and document handles acquire pages independently', async () =
 test('required document prop passes native ownership through updates and unmount without closing', async () => {
   let closes = 0;
   const source = { getState: () => ({ documentId: 'doc', pageCount: 1, isDirty: false }), close: async () => { closes++; } };
-  headlessFactory = { openDoc: async () => source };
-  const document = await openDoc('/document.pdf');
+  headlessFactory = { createDocument: () => source };
+  const document = createDocument({ sources: ['/document.pdf'] });
   let root;
   try {
     await act(async () => { root = create(React.createElement(InkSignView, { document })); });

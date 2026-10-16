@@ -10,10 +10,12 @@
 // Forward declarations of C++ defined types
 // Forward declaration of `AndroidFallbackFont` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
+// Forward declaration of `DocumentAddPagesOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
 // Forward declaration of `DocumentAddPagesResult` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentAddPagesResult; }
-// Forward declaration of `DocumentOpenOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct DocumentOpenOptions; }
+// Forward declaration of `DocumentOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOptions; }
 // Forward declaration of `DocumentState` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
@@ -48,6 +50,8 @@ namespace margelo::nitro::inksignpdf { struct PageChangeEvent; }
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
 // Forward declaration of `TaggedPageQuery` to properly resolve imports.
@@ -93,8 +97,9 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 
 // Include C++ defined types
 #include "AndroidFallbackFont.hpp"
+#include "DocumentAddPagesOptions.hpp"
 #include "DocumentAddPagesResult.hpp"
-#include "DocumentOpenOptions.hpp"
+#include "DocumentOptions.hpp"
 #include "DocumentState.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
@@ -112,6 +117,7 @@ namespace ReactNativeInkSignPdf { class HybridTextHandleSpec_cxx; }
 #include "PageChangeEvent.hpp"
 #include "PageCoords.hpp"
 #include "PageInfo.hpp"
+#include "PageInputType.hpp"
 #include "PagerDirection.hpp"
 #include "TaggedPageQuery.hpp"
 #include "TextAlignment.hpp"
@@ -575,6 +581,36 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Func_void_DocumentAddPagesResult_Wrapper(std::move(value));
   }
   
+  // pragma MARK: std::optional<PageInputType>
+  /**
+   * Specialized version of `std::optional<PageInputType>`.
+   */
+  using std__optional_PageInputType_ = std::optional<PageInputType>;
+  inline std::optional<PageInputType> create_std__optional_PageInputType_(const PageInputType& value) noexcept {
+    return std::optional<PageInputType>(value);
+  }
+  inline bool has_value_std__optional_PageInputType_(const std::optional<PageInputType>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline PageInputType get_std__optional_PageInputType_(const std::optional<PageInputType>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<std::vector<std::string>>
+  /**
+   * Specialized version of `std::optional<std::vector<std::string>>`.
+   */
+  using std__optional_std__vector_std__string__ = std::optional<std::vector<std::string>>;
+  inline std::optional<std::vector<std::string>> create_std__optional_std__vector_std__string__(const std::vector<std::string>& value) noexcept {
+    return std::optional<std::vector<std::string>>(value);
+  }
+  inline bool has_value_std__optional_std__vector_std__string__(const std::optional<std::vector<std::string>>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline std::vector<std::string> get_std__optional_std__vector_std__string__(const std::optional<std::vector<std::string>>& optional) noexcept {
+    return optional.value();
+  }
+  
   // pragma MARK: std::optional<ImagePageSize>
   /**
    * Specialized version of `std::optional<ImagePageSize>`.
@@ -587,6 +623,21 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.has_value();
   }
   inline ImagePageSize get_std__optional_ImagePageSize_(const std::optional<ImagePageSize>& optional) noexcept {
+    return optional.value();
+  }
+  
+  // pragma MARK: std::optional<DocumentAddPagesOptions>
+  /**
+   * Specialized version of `std::optional<DocumentAddPagesOptions>`.
+   */
+  using std__optional_DocumentAddPagesOptions_ = std::optional<DocumentAddPagesOptions>;
+  inline std::optional<DocumentAddPagesOptions> create_std__optional_DocumentAddPagesOptions_(const DocumentAddPagesOptions& value) noexcept {
+    return std::optional<DocumentAddPagesOptions>(value);
+  }
+  inline bool has_value_std__optional_DocumentAddPagesOptions_(const std::optional<DocumentAddPagesOptions>& optional) noexcept {
+    return optional.has_value();
+  }
+  inline DocumentAddPagesOptions get_std__optional_DocumentAddPagesOptions_(const std::optional<DocumentAddPagesOptions>& optional) noexcept {
     return optional.value();
   }
   
@@ -690,40 +741,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Result<std::shared_ptr<Promise<std::string>>>::withError(error);
   }
   
-  // pragma MARK: std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>
-  /**
-   * Specialized version of `std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>`.
-   */
-  using std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___ = std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>;
-  inline std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>> create_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___() noexcept {
-    return Promise<std::shared_ptr<HybridInkSignDocumentSpec>>::create();
-  }
-  inline PromiseHolder<std::shared_ptr<HybridInkSignDocumentSpec>> wrap_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___(std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>> promise) noexcept {
-    return PromiseHolder<std::shared_ptr<HybridInkSignDocumentSpec>>(std::move(promise));
-  }
-  
-  // pragma MARK: std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>
-  /**
-   * Specialized version of `std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>&)>`.
-   */
-  using Func_void_std__shared_ptr_HybridInkSignDocumentSpec_ = std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>;
-  /**
-   * Wrapper class for a `std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& / * result * /)>`, this can be used from Swift.
-   */
-  class Func_void_std__shared_ptr_HybridInkSignDocumentSpec__Wrapper final {
-  public:
-    explicit Func_void_std__shared_ptr_HybridInkSignDocumentSpec__Wrapper(std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>&& func): _function(std::make_unique<std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>>(std::move(func))) {}
-    inline void call(std::shared_ptr<HybridInkSignDocumentSpec> result) const noexcept {
-      _function->operator()(result);
-    }
-  private:
-    std::unique_ptr<std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>> _function;
-  } SWIFT_NONCOPYABLE;
-  Func_void_std__shared_ptr_HybridInkSignDocumentSpec_ create_Func_void_std__shared_ptr_HybridInkSignDocumentSpec_(void* NON_NULL swiftClosureWrapper) noexcept;
-  inline Func_void_std__shared_ptr_HybridInkSignDocumentSpec__Wrapper wrap_Func_void_std__shared_ptr_HybridInkSignDocumentSpec_(Func_void_std__shared_ptr_HybridInkSignDocumentSpec_ value) noexcept {
-    return Func_void_std__shared_ptr_HybridInkSignDocumentSpec__Wrapper(std::move(value));
-  }
-  
   // pragma MARK: std::optional<AndroidFallbackFont>
   /**
    * Specialized version of `std::optional<AndroidFallbackFont>`.
@@ -739,18 +756,18 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return optional.value();
   }
   
-  // pragma MARK: std::optional<DocumentOpenOptions>
+  // pragma MARK: std::optional<DocumentOptions>
   /**
-   * Specialized version of `std::optional<DocumentOpenOptions>`.
+   * Specialized version of `std::optional<DocumentOptions>`.
    */
-  using std__optional_DocumentOpenOptions_ = std::optional<DocumentOpenOptions>;
-  inline std::optional<DocumentOpenOptions> create_std__optional_DocumentOpenOptions_(const DocumentOpenOptions& value) noexcept {
-    return std::optional<DocumentOpenOptions>(value);
+  using std__optional_DocumentOptions_ = std::optional<DocumentOptions>;
+  inline std::optional<DocumentOptions> create_std__optional_DocumentOptions_(const DocumentOptions& value) noexcept {
+    return std::optional<DocumentOptions>(value);
   }
-  inline bool has_value_std__optional_DocumentOpenOptions_(const std::optional<DocumentOpenOptions>& optional) noexcept {
+  inline bool has_value_std__optional_DocumentOptions_(const std::optional<DocumentOptions>& optional) noexcept {
     return optional.has_value();
   }
-  inline DocumentOpenOptions get_std__optional_DocumentOpenOptions_(const std::optional<DocumentOpenOptions>& optional) noexcept {
+  inline DocumentOptions get_std__optional_DocumentOptions_(const std::optional<DocumentOptions>& optional) noexcept {
     return optional.value();
   }
   
@@ -766,13 +783,13 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
   using std__weak_ptr_HybridInkSignDocumentFactorySpec_ = std::weak_ptr<HybridInkSignDocumentFactorySpec>;
   inline std__weak_ptr_HybridInkSignDocumentFactorySpec_ weakify_std__shared_ptr_HybridInkSignDocumentFactorySpec_(const std::shared_ptr<HybridInkSignDocumentFactorySpec>& strong) noexcept { return strong; }
   
-  // pragma MARK: Result<std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>>
-  using Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____ = Result<std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>>;
-  inline Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____ create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____(const std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>& value) noexcept {
-    return Result<std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>>::withValue(value);
+  // pragma MARK: Result<std::shared_ptr<HybridInkSignDocumentSpec>>
+  using Result_std__shared_ptr_HybridInkSignDocumentSpec__ = Result<std::shared_ptr<HybridInkSignDocumentSpec>>;
+  inline Result_std__shared_ptr_HybridInkSignDocumentSpec__ create_Result_std__shared_ptr_HybridInkSignDocumentSpec__(const std::shared_ptr<HybridInkSignDocumentSpec>& value) noexcept {
+    return Result<std::shared_ptr<HybridInkSignDocumentSpec>>::withValue(value);
   }
-  inline Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____ create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____(const std::exception_ptr& error) noexcept {
-    return Result<std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>>>::withError(error);
+  inline Result_std__shared_ptr_HybridInkSignDocumentSpec__ create_Result_std__shared_ptr_HybridInkSignDocumentSpec__(const std::exception_ptr& error) noexcept {
+    return Result<std::shared_ptr<HybridInkSignDocumentSpec>>::withError(error);
   }
   
   // pragma MARK: std::shared_ptr<HybridTextHandleSpec>

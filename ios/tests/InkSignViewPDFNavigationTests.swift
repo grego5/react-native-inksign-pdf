@@ -32,7 +32,7 @@ final class InkSignViewPDFNavigationTests: XCTestCase, InkSignViewTestSupport {
                                          for: page)
 
     XCTAssertEqual(fixture.view.viewerDocument?.activePage.id, fixture.pages[1])
-    XCTAssertEqual(changes.map(\.pageId), [fixture.pages[1].uuidString])
+    XCTAssertEqual(changes.map(\.pageId), [fixture.pages[0].uuidString, fixture.pages[1].uuidString])
     XCTAssertNil(fixture.view.interaction.presentation)
   }
 

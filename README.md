@@ -41,12 +41,13 @@ import { useRef, useState } from 'react';
 import { Button, Text, View } from 'react-native';
 import {
   InkSignView,
-  type InkSignDocument,
+  createDocument,
   type InkSignViewHandle,
   type ViewerState,
 } from '@grego5/react-native-inksign-pdf';
 
-export function SigningView({ document }: { document: InkSignDocument }) {
+export function SigningView() {
+  const [document] = useState(() => createDocument());
   const pdf = useRef<InkSignViewHandle>(null);
   const [state, setState] = useState<ViewerState | null>(null);
   const [savedPath, setSavedPath] = useState('');
@@ -73,6 +74,7 @@ export function SigningView({ document }: { document: InkSignDocument }) {
           Page {state.pageIndex + 1} of {state.pageCount}
         </Text>
       )}
+      <Button title="Add pages" onPress={() => void document.addPages()} />
       <Button title="Draw" onPress={() => pdf.current?.setMode('ink')} />
       <Button title="Place text" onPress={() => pdf.current?.setMode('text')} />
       <Button
@@ -81,31 +83,43 @@ export function SigningView({ document }: { document: InkSignDocument }) {
           if (state?.pageIndex != null) (await document.getPage(state.pageIndex)).undo();
         }}
       />
-      <Button title="Save PDF" onPress={() => void savePdf()} />
+      <Button title="Save PDF" disabled={!state?.pageCount} onPress={() => void savePdf()} />
       {savedPath !== '' && <Text>Saved to {savedPath}</Text>}
     </View>
   );
 }
 ```
 
-Create it with `const document = await openDoc(pdfPath)` and pass it to `SigningView`.
-A PDF or JPEG local path/URI is supported; JPEG becomes one contain-fitted A4 page.
+`createDocument({ sources: [uri] })` returns immediately and loads in the background.
+Omit sources to start empty. `addPages()` selects PDFs/images
+natively; pass `sources` to bypass the picker. Images become contain-fitted A4 pages by default.
+The viewer can mount with an empty owner or with `document` omitted.
 Attach one viewer at a time. Unmounting keeps the document available for editing or another viewer.
 Call `await document.close()` when finished. Keep or delete exported files yourself.
 
 ## Methods
 
-Create a document with `await openDoc(uri, options?)`, then pass it to
-`<InkSignView document={document} />`. The document can be edited without a view.
+Documents can be populated and edited without a mounted viewer. Native selection
+requires a foreground presenter; explicit inputs do not.
 
 ### Document
 
+- `createDocument({ sources?, type?, tag?, imagePageSize?, targetDpi?, jpegQuality?, recordHistory?, androidFallbackFont? }?)` —
+  Return an owner immediately. Initial sources load before later asynchronous commands;
+  `await document.getPage(0)` waits for them. Omitted sources or `[]` starts empty.
+  Initial loading is clean; subsequent imports are structural edits. Load failures
+  reach viewer state and reject dependent commands; close the failed owner when finished.
 - `document.getState()` — Read document ID, page count, and dirty state.
 - `document.getPage(indexOrTagQuery)` — Prepare a stable page handle.
 - `document.getPageIdsByTag(tag)` — Read matching page IDs in document order.
 - `document.loadFonts([{ name, uri }])` — Preload named fonts.
-- `document.addPages({ sources, imagePageSize?, targetDpi?, jpegQuality?, tag? })` —
-  Import PDFs/images. Select files in your app; imports preserve viewer selection.
+- `document.addPages({ sources?, type?, imagePageSize?, targetDpi?, jpegQuality?, tag? }?)` —
+  Import PDFs/images in order. Omit sources to select natively; explicit sources
+  bypass UI, and `sources: []` is a no-op. The first import populates an empty owner;
+  later imports preserve viewer selection.
+  User cancellation returns zero added pages with the current page count;
+  lifecycle cancellation rejects `operation_cancelled`. Unsupported/type-mismatched
+  content rejects `unsupported_content`; the complete import leaves state unchanged.
 - `document.removePage(index)` — Remove a page, keeping at least one.
 - `document.movePage(from, to)` — Reorder pages.
 - `document.rotatePage(index, degrees)` — Rotate clockwise by 90, 180, or 270.
@@ -134,7 +148,7 @@ Create a document with `await openDoc(uri, options?)`, then pass it to
 Text options include direction, alignment, font, fontSize, color, maxLines and
 verticalAnchor. Bounds use `{ x, y, width, height }` in displayed page points.
 Bounds are hard limits; maxLines caps complete lines without forcing extra lines.
-History defaults to enabled. `openDoc(uri, { recordHistory: false })` disables it.
+History defaults to enabled. Set `recordHistory: false` when creating or opening the owner to disable it.
 Programmatic `untracked: true` skips history unless the target already has tracked edits.
 
 ### Viewer and mode sessions
@@ -200,6 +214,19 @@ try {
 }
 ```
 
+### Select native document inputs
+
+```ts
+const document = createDocument();
+const images = createDocument();
+await document.addPages();
+await images.addPages({ type: 'image' });
+await document.addPages({ sources: [pdfUri] }); // explicit source bypasses UI
+```
+
+Native pickers support ordered multiple selection. On iOS, PDF requests use
+Files; image/mixed requests offer Files or Photos. Close each owner when finished.
+
 ### Add image pages
 
 ```ts
@@ -223,12 +250,12 @@ Pass one source URI: HTTP(S), a local file, Android content/resource URI, or an
 Expo packaged asset. Android keeps the font in memory for the document session.
 
 ```tsx
-const document = await openDoc(pdfUri, { androidFallbackFont: { uri: fontUri } });
+const document = createDocument({ sources: [pdfUri], androidFallbackFont: { uri: fontUri } });
 ```
 
 ### Page tags
 
-Pass `tag` to `openDoc()` or `document.addPages()` to label imported pages.
+Pass `tag` to `createDocument()` or `document.addPages()` to label imported pages.
 Query matches in current page order; tags are not saved in exported PDFs.
 
 ```ts
@@ -242,9 +269,9 @@ if (ids.length > 0) {
 ### Headless editing with a named font
 
 ```ts
-import { openDoc } from '@grego5/react-native-inksign-pdf';
+import { createDocument } from '@grego5/react-native-inksign-pdf';
 
-const document = await openDoc(file.uri);
+const document = createDocument({ sources: [file.uri] });
 try {
   await document.loadFonts([{ name: 'template', uri: bundledFontUri }]);
   const page = await document.getPage(0);

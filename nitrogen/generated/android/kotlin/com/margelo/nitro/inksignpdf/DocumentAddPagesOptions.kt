@@ -20,10 +20,13 @@ import java.util.Objects
 data class DocumentAddPagesOptions(
   @DoNotStrip
   @Keep
+  val type: PageInputType?,
+  @DoNotStrip
+  @Keep
   val tag: String?,
   @DoNotStrip
   @Keep
-  val sources: Array<String>,
+  val sources: Array<String>?,
   @DoNotStrip
   @Keep
   val imagePageSize: ImagePageSize?,
@@ -39,7 +42,8 @@ data class DocumentAddPagesOptions(
   override fun equals(other: Any?): Boolean {
     if (this === other) return true
     if (other !is DocumentAddPagesOptions) return false
-    return Objects.deepEquals(this.tag, other.tag)
+    return Objects.deepEquals(this.type, other.type)
+      && Objects.deepEquals(this.tag, other.tag)
       && Objects.deepEquals(this.sources, other.sources)
       && Objects.deepEquals(this.imagePageSize, other.imagePageSize)
       && Objects.deepEquals(this.targetDpi, other.targetDpi)
@@ -48,6 +52,7 @@ data class DocumentAddPagesOptions(
 
   override fun hashCode(): Int {
     return arrayOf<Any?>(
+      type,
       tag,
       sources,
       imagePageSize,
@@ -64,8 +69,8 @@ data class DocumentAddPagesOptions(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(tag: String?, sources: Array<String>, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?): DocumentAddPagesOptions {
-      return DocumentAddPagesOptions(tag, sources, imagePageSize, targetDpi, jpegQuality)
+    private fun fromCpp(type: PageInputType?, tag: String?, sources: Array<String>?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?): DocumentAddPagesOptions {
+      return DocumentAddPagesOptions(type, tag, sources, imagePageSize, targetDpi, jpegQuality)
     }
   }
 }

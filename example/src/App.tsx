@@ -1,16 +1,13 @@
 import { useRef, useState } from 'react';
 import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
 import {
   Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { SafeAreaView, SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   InkSignView,
-  openDoc,
-  type InkSignDocument,
+  createDocument,
   isOperationCancelled,
-  type DocumentAddPagesOptions,
   type PageChangeEvent,
   type ViewerState,
   type ViewportOptions,
@@ -22,7 +19,7 @@ import { DebugRecorder } from './DebugRecorder';
 export default function App() {
   const debugRecorderEnabled =
     Platform.OS === 'android' && process.env.EXPO_PUBLIC_ENABLE_DEBUG_RECORDER === 'true';
-  const [document, setDocument] = useState<InkSignDocument>();
+  const [document] = useState(() => createDocument({ androidFallbackFont }));
   const inkSignViewRef = useRef<InkSignViewHandle>(null);
   const modeRef = useRef<ViewerState['mode']>('view');
   const zoomRef = useRef(1);
@@ -46,24 +43,11 @@ export default function App() {
     setState(nextState);
   }
 
-  async function addPages(options?: Partial<DocumentAddPagesOptions>) {
+  async function addPages() {
     try {
-      const picked = options?.sources ?? await (async () => {
-        const result = await DocumentPicker.getDocumentAsync({ type: ['application/pdf', document ? 'image/*' : 'image/jpeg'], multiple: true });
-        return result.canceled ? [] : result.assets.map(asset => asset.uri);
-      })();
-      if (picked.length === 0) return;
-      if (document) {
-        await document.addPages({ ...options, sources: picked });
-      } else {
-        const opened = await openDoc(picked[0]!, { androidFallbackFont });
-        try {
-          if (picked.length > 1) await opened.addPages({ ...options, sources: picked.slice(1) });
-          setDocument(opened);
-        } catch (error) { await opened.close(); throw error; }
-      }
+      await document.addPages();
     } catch (error) {
-      Alert.alert('Add pages failed', String(error));
+      if (!isOperationCancelled(error)) Alert.alert('Add pages failed', String(error));
     }
   }
 
@@ -173,7 +157,7 @@ export default function App() {
   }
 
   async function runHistory(action: 'undo' | 'redo') {
-    if (!document || state.pageIndex === null) return;
+    if (state.pageIndex === null) return;
     try { (await document.getPage(state.pageIndex))[action](); }
     catch (error) { Alert.alert('History action failed', String(error)); }
   }
@@ -218,7 +202,7 @@ export default function App() {
 
   async function finalizePdf() {
     try {
-      const signedPath = await document?.finalize();
+      const signedPath = await document.finalize();
       if (signedPath === undefined) {
         throw new Error('The InkSignView is not available');
       }
@@ -238,7 +222,7 @@ export default function App() {
     <SafeAreaProvider>
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.surfaceFrame}>
-          {document && <InkSignView
+          <InkSignView
             document={document}
             ref={inkSignViewRef}
             style={styles.surface}
@@ -252,7 +236,7 @@ export default function App() {
             onPageChange={handlePageChange}
             onZoomChange={zoom => { zoomRef.current = zoom; }}
             onTextSelectionChange={selection => setTextSelected(selection !== null)}
-          />}
+          />
           {state.mode === 'pageCoords' && (
             <View pointerEvents="none" style={styles.focusBanner}>
               <Text accessibilityRole="alert" style={styles.focusBannerText}>

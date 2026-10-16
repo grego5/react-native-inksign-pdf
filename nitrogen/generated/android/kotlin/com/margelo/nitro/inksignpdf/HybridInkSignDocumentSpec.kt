@@ -50,7 +50,7 @@ abstract class HybridInkSignDocumentSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
-  abstract fun addPages(options: DocumentAddPagesOptions): Promise<DocumentAddPagesResult>
+  abstract fun addPages(options: DocumentAddPagesOptions?): Promise<DocumentAddPagesResult>
   
   @DoNotStrip
   @Keep

@@ -23,7 +23,8 @@ extension InkSignPdfDocumentCoordinator {
 
   func assembleCandidate(_ input: StructuralInput,
                          staged: [InkSignPdfStagedPageInput],
-                         command: StructuralCommand) throws -> CommittedDocumentState {
+                         command: StructuralCommand,
+                         sourceURL: URL? = nil) throws -> CommittedDocumentState {
     guard isCurrent(input.operation) else { throw MutablePageError.operationCancelled }
     let allocated = try artifactPolicy.allocateWorkingSource()
     guard registerPendingArtifact(allocated, for: input.operation) else {
@@ -34,6 +35,7 @@ extension InkSignPdfDocumentCoordinator {
     do {
       let source = try input.document.map { try Data(contentsOf: $0.workingURL) }
       var nativeInputs: [InkSignPdfPdfiumInput] = []
+      var initialPDF: Data?
       let operation: InkSignPdfPdfiumAssemblyOperation
       let retained: [InkSignPdfPageState]
       var destination = 0
@@ -43,7 +45,9 @@ extension InkSignPdfDocumentCoordinator {
         retained = input.pages
         for stagedPage in staged {
           if stagedPage.type == .pdf {
-            nativeInputs.append(InkSignPdfPdfiumInput(pdfData: try Data(contentsOf: stagedPage.url)))
+            let bytes = try Data(contentsOf: stagedPage.url)
+            nativeInputs.append(InkSignPdfPdfiumInput(pdfData: bytes))
+            if input.document == nil && staged.count == 1 { initialPDF = bytes }
           } else {
             let image = try InkSignPdfImagePageEncoder.encode(
               stagedPage.url,
@@ -64,9 +68,15 @@ extension InkSignPdfDocumentCoordinator {
         retained = try Self.pageOrder(current: input.pages, activePageID: input.targetPageID,
                                         mutation: .moveActive(to: index)).pages
       }
-      let metadata = try InkSignPdfPdfiumBackend.assemble(data: source, operation: operation,
-        inputs: nativeInputs, pageIndex: input.targetPageIndex, destinationIndex: destination,
-        outputURL: allocated)
+      let metadata: [InkSignPdfPdfiumPageMetadata]
+      if let initialPDF {
+        try initialPDF.write(to: allocated, options: .atomic)
+        metadata = try InkSignPdfPdfiumBackend.inspect(data: initialPDF)
+      } else {
+        metadata = try InkSignPdfPdfiumBackend.assemble(data: source, operation: operation,
+          inputs: nativeInputs, pageIndex: input.targetPageIndex, destinationIndex: destination,
+          outputURL: allocated)
+      }
       let analysis = Dictionary(uniqueKeysWithValues: retained.enumerated().map { ($0.offset, $0.element.sourceAnalysis) })
       let reopened = try InkSignPdfDocumentCandidateLoader.load(url: allocated,
                                                                retainingAnalysis: analysis,
@@ -91,7 +101,7 @@ extension InkSignPdfDocumentCoordinator {
       }
       let replacement = CommittedDocumentState(
         id: input.document?.id ?? UUID(),
-        sourceURL: input.document?.sourceURL ?? allocated,
+        sourceURL: input.document?.sourceURL ?? sourceURL ?? allocated,
         workingURL: allocated,
         pages: pages)
       return replacement

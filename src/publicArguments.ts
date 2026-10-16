@@ -12,6 +12,9 @@ export function validateAddPagesOptions(value: unknown): void {
     throw argumentError('invalid_page_options', 'Page options must be an object');
   }
   if (value.tag !== undefined) validatePageTag(value.tag);
+  if (value.type !== undefined && value.type !== 'pdf' && value.type !== 'image') {
+    throw argumentError('invalid_page_type', 'Page input type must be pdf or image');
+  }
   const sources = value.sources;
   if (sources !== undefined && (!Array.isArray(sources) ||
     !sources.every((source) => typeof source === 'string' && source.trim() !== ''))) {

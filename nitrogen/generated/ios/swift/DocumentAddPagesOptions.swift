@@ -18,19 +18,31 @@ public extension DocumentAddPagesOptions {
   /**
    * Create a new instance of `DocumentAddPagesOptions`.
    */
-  init(tag: String?, sources: [String], imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?) {
-    self.init({ () -> bridge.std__optional_std__string_ in
+  init(type: PageInputType?, tag: String?, sources: [String]?, imagePageSize: ImagePageSize?, targetDpi: Double?, jpegQuality: Double?) {
+    self.init({ () -> bridge.std__optional_PageInputType_ in
+      if let __unwrappedValue = type {
+        return bridge.create_std__optional_PageInputType_(__unwrappedValue)
+      } else {
+        return .init()
+      }
+    }(), { () -> bridge.std__optional_std__string_ in
       if let __unwrappedValue = tag {
         return bridge.create_std__optional_std__string_(std.string(__unwrappedValue))
       } else {
         return .init()
       }
-    }(), { () -> bridge.std__vector_std__string_ in
-      var __vector = bridge.create_std__vector_std__string_(sources.count)
-      for __item in sources {
-        __vector.push_back(std.string(__item))
+    }(), { () -> bridge.std__optional_std__vector_std__string__ in
+      if let __unwrappedValue = sources {
+        return bridge.create_std__optional_std__vector_std__string__({ () -> bridge.std__vector_std__string_ in
+          var __vector = bridge.create_std__vector_std__string_(__unwrappedValue.count)
+          for __item in __unwrappedValue {
+            __vector.push_back(std.string(__item))
+          }
+          return __vector
+        }())
+      } else {
+        return .init()
       }
-      return __vector
     }(), { () -> bridge.std__optional_ImagePageSize_ in
       if let __unwrappedValue = imagePageSize {
         return bridge.create_std__optional_ImagePageSize_(__unwrappedValue)
@@ -53,6 +65,11 @@ public extension DocumentAddPagesOptions {
   }
 
   @inline(__always)
+  var type: PageInputType? {
+    return self.__type.value
+  }
+  
+  @inline(__always)
   var tag: String? {
     return { () -> String? in
       if bridge.has_value_std__optional_std__string_(self.__tag) {
@@ -65,8 +82,15 @@ public extension DocumentAddPagesOptions {
   }
   
   @inline(__always)
-  var sources: [String] {
-    return self.__sources.map({ __item in String(__item) })
+  var sources: [String]? {
+    return { () -> [String]? in
+      if bridge.has_value_std__optional_std__vector_std__string__(self.__sources) {
+        let __unwrapped = bridge.get_std__optional_std__vector_std__string__(self.__sources)
+        return __unwrapped.map({ __item in String(__item) })
+      } else {
+        return nil
+      }
+    }()
   }
   
   @inline(__always)

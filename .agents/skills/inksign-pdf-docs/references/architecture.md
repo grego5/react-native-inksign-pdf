@@ -11,12 +11,14 @@ flowchart LR
   Changes --> Viewer[Viewer presentation]
 ```
 
-- `openDoc()` creates an independent owner. On both platforms, `DocumentCore`
+- `createDocument(options?)` returns an owner synchronously. Optional initial sources
+  load first in the FIFO; omitted/empty sources leave it empty. `DocumentCore`
   owns FIFO commands, stable pages/targets, committed content,
   admitted text transactions, history, analysis, fonts, export, and cleanup.
   The backend owns PDF resources, not editing state.
 - Document/page/text handles retain the core. `InkSignView.document` attaches one
   viewer per owner; rejected attachment preserves the viewer's existing document.
+  The prop is optional and empty owners can attach.
   Detach/unmount settles interaction and releases presentation without closing
   the owner. Ordinary document handles remain usable headlessly.
 - Viewers own active-page selection, viewport, gestures, live ink, caret,
@@ -52,7 +54,8 @@ Resource contracts: [Android lifecycle](android/view-lifecycle.md),
   the document. Export preserves dirty/history state.
 - `onPageChange` reports installed page ID, geometry, rotation, undo/redo.
   Index/count, dirty, and content flags remain in state reads. Events deduplicate
-  reported fields and run on the UI thread.
+  reported fields and run on the UI thread. Registering a state/page callback
+  delivers its current available snapshot before subsequent deduplication.
 - `onTextSelectionChange` reports page/text identity or null, independently of mode
   (`view`, `ink`, `textAdd`, `textEdit`, `pageCoords`).
 - `onZoomChange` reports settled scale/fit, deduplicated per page, only with ready
@@ -127,6 +130,9 @@ Details: [Android history](android/view-lifecycle.md#page-history-and-disposal),
 - Async document commands run on the core FIFO. Implicit targets resolve at
   execution; bound handles retain captured identities. Sync content mutations
   reject `operation_in_progress` during structural writes.
+- Native selection/staging occupies its document's FIFO slot before structural
+  admission or text settlement. One platform picker lease owns presentation;
+  competing owners reject `operation_in_progress`. Viewer attachment is independent.
 - Open/import/structural changes prepare detached candidates and publish validated
   reader/model state together. Rejected mutations preserve published data.
   Caller source files are never overwritten.
@@ -145,14 +151,33 @@ Details: [Android history](android/view-lifecycle.md#page-history-and-disposal),
 - Terminal `close()` immediately stops admission and sync reads, drains admitted
   async work, invalidates handles, and resolves after cleanup. Handle disposal
   does not close the owner or end a mode session.
+- Close cancels waiting selection and prevents queued picker commands from
+  presenting. Already-selected and explicit-source imports drain normally.
 - Recheck identity before publication, async callbacks, and promise settlement.
   Superseded work rejects `operation_cancelled`; settle once. Completed edits
   remain committed; running resources retire after their users finish.
 
 ## Import and export
 
-- `addPages()` imports explicit sources and preserves viewer selection. Empty
-  imports leave state unchanged. Reorder/rotation preserve selection identity;
+- Initial `createDocument({ sources })` loading and `addPages(options?)` share native
+  input staging. Initial sources establish clean base content. `addPages()` creates
+  initial content or appends atomically; either dirties the owner.
+  Initial-load failure is retained by the core: dependent commands reject with it,
+  attached/newly attached viewers report it through state, and close remains valid.
+  Empty owners report null document ID, zero pages, and clean state until import.
+  Android creation stores fallback-font configuration; first import loads its bytes
+  asynchronously and retains them for subsequent backend sessions.
+  Omitted URI/sources presents ordered multiple selection; explicit inputs bypass
+  UI, and explicit empty source arrays are no-ops. `type` limits actual bytes to
+  PDF/image content; omission accepts both. A foreground presenter is needed for
+  selection independently of a mounted viewer. Opening creates one document from
+  the complete selection; append publishes the complete import atomically.
+- User-cancelled opening rejects `operation_cancelled`; cancelled append resolves
+  zero added/current count, preserving drafts, history, and publication events.
+  Lifecycle cancellation rejects. Unsupported/type-mismatched content rejects
+  `unsupported_content` before publication; native owns staged copies through
+  backend consumption and retires abandoned copies after producer callbacks finish.
+- Imports preserve viewer selection. Reorder/rotation preserve selection identity;
   deletion selects the page at the removed index or last survivor.
 - PDF inputs preserve pages. Images contain-fit to the page, defaulting to A4,
   200 DPI, JPEG quality 0.72. Explicit DPI enables the source-resolution cap;

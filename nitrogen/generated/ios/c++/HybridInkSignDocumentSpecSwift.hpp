@@ -24,6 +24,8 @@ namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 namespace margelo::nitro::inksignpdf { struct DocumentAddPagesResult; }
 // Forward declaration of `DocumentAddPagesOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 
@@ -40,6 +42,7 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 #include "NamedFontSource.hpp"
 #include "DocumentAddPagesResult.hpp"
 #include "DocumentAddPagesOptions.hpp"
+#include "PageInputType.hpp"
 #include "ImagePageSize.hpp"
 
 #include "ReactNativeInkSignPdf-Swift-Cxx-Umbrella.hpp"
@@ -126,8 +129,8 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
-    inline std::shared_ptr<Promise<DocumentAddPagesResult>> addPages(const DocumentAddPagesOptions& options) override {
-      auto __result = _swiftPart.addPages(std::forward<decltype(options)>(options));
+    inline std::shared_ptr<Promise<DocumentAddPagesResult>> addPages(const std::optional<DocumentAddPagesOptions>& options) override {
+      auto __result = _swiftPart.addPages(options);
       if (__result.hasError()) [[unlikely]] {
         std::rethrow_exception(__result.error());
       }

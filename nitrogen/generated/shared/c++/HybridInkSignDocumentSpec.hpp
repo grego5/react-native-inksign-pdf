@@ -37,6 +37,7 @@ namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
 #include "NamedFontSource.hpp"
 #include "DocumentAddPagesResult.hpp"
 #include "DocumentAddPagesOptions.hpp"
+#include <optional>
 
 namespace margelo::nitro::inksignpdf {
 
@@ -73,7 +74,7 @@ namespace margelo::nitro::inksignpdf {
       virtual std::shared_ptr<Promise<std::shared_ptr<HybridDocumentPageSpec>>> getPage(const std::variant<double, TaggedPageQuery>& index) = 0;
       virtual std::vector<std::string> getPageIdsByTag(const std::string& tag) = 0;
       virtual std::shared_ptr<Promise<void>> loadFonts(const std::vector<NamedFontSource>& fonts) = 0;
-      virtual std::shared_ptr<Promise<DocumentAddPagesResult>> addPages(const DocumentAddPagesOptions& options) = 0;
+      virtual std::shared_ptr<Promise<DocumentAddPagesResult>> addPages(const std::optional<DocumentAddPagesOptions>& options) = 0;
       virtual std::shared_ptr<Promise<void>> removePage(double index) = 0;
       virtual std::shared_ptr<Promise<void>> movePage(double fromIndex, double toIndex) = 0;
       virtual std::shared_ptr<Promise<void>> rotatePage(double index, double degrees) = 0;

@@ -7,6 +7,7 @@ import android.os.Looper
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -23,8 +24,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 internal sealed interface DocumentChange {
-  data object Opening : DocumentChange
-  data object Opened : DocumentChange
+  data class LoadFailed(val error: Throwable) : DocumentChange
   data object Pages : DocumentChange
   data object StructuralWriteStarted : DocumentChange
   data object WillClose : DocumentChange
@@ -44,13 +44,15 @@ internal class DocumentCore(
   val sessionWorker: PdfSessionWorker = PdfSessionWorker(),
   recordHistory: Boolean,
   private val exportOwnership: ExportOwnership,
+  inputCoordinator: PageInputCoordinator? = null,
+  private val fallbackFontSource: AndroidFallbackFont? = null,
 ) {
   val artifacts = CacheArtifactPolicy.initialize(context)
   internal val coordinator = DocumentCoordinator(sessionWorker = sessionWorker, artifactPolicy = artifacts, recordHistory = recordHistory)
   val state: DocumentReadState = coordinator
   val fonts = NamedFontRegistry(context)
   val text = DocumentTextCommands(this,
-    appDirectionIsRtl = { com.facebook.react.modules.i18nmanager.I18nUtil.getInstance().isRTL(context) })
+    appDirectionIsRtl = { com.facebook.react.modules.i18nmanager.I18nUtil.instance.isRTL(context) })
   internal var activeTextEdit: DocumentTextEdit? = null
     private set
   private var structuralBusy = false
@@ -85,7 +87,7 @@ internal class DocumentCore(
     changed(DocumentChange.EditEnded(edit))
     changed(DocumentChange.Text(edit.context.pageId))
   }
-  private val inputs = PageInputCoordinator(context, artifacts)
+  private val inputs = inputCoordinator ?: PageInputCoordinator(context, artifacts)
   private val fallback = AndroidFallbackFontResolver(context)
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private val queue = Mutex()
@@ -98,6 +100,24 @@ internal class DocumentCore(
   private enum class Lifecycle { ACTIVE, CLOSING, CLOSED }
   private var lifecycle = Lifecycle.ACTIVE
   private var closeResult: Deferred<Unit>? = null
+  var initializationError: Throwable? = null
+    private set
+
+  fun initialize(options: DocumentOptions?): Deferred<Int> {
+    if (options == null || options.sources.isNullOrEmpty()) return CompletableDeferred(0)
+    return submit {
+      try {
+        val dimensions = options.imagePageSize?.let { PdfPageDimensions(it.width, it.height) }
+          ?: PdfPageDimensions(595.28, 841.89)
+        addPages(DocumentAddPagesOptions(options.type, options.tag, options.sources,
+          options.imagePageSize, options.targetDpi, options.jpegQuality), dimensions, initialImport = true)
+      } catch (error: Throwable) {
+        initializationError = error
+        changed(DocumentChange.LoadFailed(error))
+        throw error
+      }
+    }
+  }
 
   private var attachedViewer: String? = null
 
@@ -115,7 +135,10 @@ internal class DocumentCore(
   /** The FIFO is shared by all clients. Cancellation retains an in-flight native queue slot. */
   fun <T> submit(operation: suspend () -> T): Deferred<T> = synchronized(admissions) {
     if (lifecycle != Lifecycle.ACTIVE) throw cancelled()
-    enqueue(operation)
+    enqueue {
+      initializationError?.let { throw it }
+      operation()
+    }
   }
 
   private fun <T> enqueue(operation: suspend () -> T): Deferred<T> {
@@ -211,44 +234,6 @@ internal class DocumentCore(
     coordinator.horizontalSnapCandidates(generation, pageIndex, completion)
   }
 
-  suspend fun open(uri: String, options: DocumentOpenOptions? = null): PdfSessionInfo {
-    val pending = prepareOpen(uri, options)
-    try { return commitOpen(pending) } finally { finishOpen(pending) }
-  }
-
-  suspend fun prepareOpen(uri: String, options: DocumentOpenOptions? = null): DocumentCoordinator.PendingOpen {
-    options?.tag?.let(::validatePageTag)
-    prepared.clear()
-    return coordinator.prepareOpen(
-      fallbackFont = options?.androidFallbackFont,
-      resolveFallbackFont = fallback::resolve,
-      invalidatePrevious = { changed(DocumentChange.Opening) },
-      tag = options?.tag,
-      prepareSource = { destination ->
-        val type = inputs.copyInto(uri, destination)
-        if (type == PageType.IMAGE) {
-          withContext(Dispatchers.IO) {
-            val dimensions = options?.imagePageSize?.let { PdfPageDimensions(it.width, it.height) }
-              ?: PdfPageDimensions(595.28, 841.89)
-            val image = ImagePageEncoder.encode(destination, dimensions, options?.targetDpi, options?.jpegQuality)
-            PdfiumPageAssembler.assemble(null,
-              PdfiumAssemblyRequest(PdfiumAssemblyOperation.CREATE, appendInputs = listOf(image)), destination)
-          }
-        }
-      },
-    )
-  }
-
-  suspend fun <T> awaitOpen(
-    pending: DocumentCoordinator.PendingOpen,
-    action: suspend () -> T,
-  ): T = coordinator.awaitOpen(pending, action)
-
-  suspend fun commitOpen(pending: DocumentCoordinator.PendingOpen): PdfSessionInfo =
-    coordinator.commitOpen(pending) { changed(DocumentChange.Opened) }
-
-  suspend fun finishOpen(pending: DocumentCoordinator.PendingOpen) = coordinator.finishOpen(pending)
-
   suspend fun getPage(index: Double): PreparedPage {
     val position = pageIndex(index)
     val page = coordinator.page(position)
@@ -264,35 +249,41 @@ internal class DocumentCore(
     return context
   }
 
-  suspend fun addPages(options: DocumentAddPagesOptions, imageDimensions: PdfPageDimensions): Int {
-    options.tag?.let(::validatePageTag)
-    checkNotNull(options.sources) { "Document imports require explicit sources" }
-    val operation = coordinator.beginOperation()
+  suspend fun addPages(options: DocumentAddPagesOptions?, imageDimensions: PdfPageDimensions,
+    initialImport: Boolean = false): Int {
+    options?.tag?.let(::validatePageTag)
+    var operation: Long? = null
     var staged = emptyList<StagedPageInput>()
     try {
       val generation = coordinator.generation
-      staged = inputs.stage(options.sources)
+      staged = inputs.stage(options?.sources, options?.type)
       coordinator.ensureCurrent(generation)
       if (staged.isEmpty()) return 0
+      operation = coordinator.beginOperation(requireDocument = false)
       endTextEdit()
       changed(DocumentChange.StructuralWriteStarted)
       val requests = withContext(Dispatchers.IO) {
         staged.map { source -> when (source.type) {
           PageType.PDF -> PdfiumAppendRequest(PageType.PDF, sourcePath = source.file.path)
-          PageType.IMAGE -> ImagePageEncoder.encode(source.file, imageDimensions, options.targetDpi, options.jpegQuality)
+          PageType.IMAGE -> ImagePageEncoder.encode(source.file, imageDimensions, options?.targetDpi, options?.jpegQuality)
         } }
       }
       coordinator.ensureCurrent(generation)
       val count = coordinator.pageCount
+      val fontFallback = coordinator.fallbackFont
+        ?: if (count == 0) fallbackFontSource?.let { fallback.resolve(it) } else null
       withContext(NonCancellable) {
         coordinator.executeStructuralMutation(generation,
-          PdfiumAssemblyRequest(PdfiumAssemblyOperation.APPEND,
+          PdfiumAssemblyRequest(if (count == 0) PdfiumAssemblyOperation.CREATE else PdfiumAssemblyOperation.APPEND,
             appendInputs = requests),
-          candidateBuilder = { info -> coordinator.appendCandidate(info.pages.drop(count), options.tag) },
-          notifyPublished = ::pagesChanged, fontFallback = coordinator.fallbackFont)
+          candidateBuilder = { info -> coordinator.appendCandidate(info.pages.drop(count), options?.tag) },
+          notifyPublished = {
+            if (initialImport) coordinator.markStructuralClean()
+            pagesChanged()
+          }, fontFallback = fontFallback)
       }
       return coordinator.pageCount - count
-    } finally { withContext(NonCancellable) { inputs.release(staged) }; coordinator.endOperation(operation); if (structuralBusy) changed(DocumentChange.StructuralReady) }
+    } finally { withContext(NonCancellable) { inputs.release(staged) }; operation?.let(coordinator::endOperation); if (structuralBusy) changed(DocumentChange.StructuralReady) }
   }
 
   suspend fun removePage(index: Double) {
@@ -366,9 +357,10 @@ internal class DocumentCore(
   fun close(cancelPending: Boolean = false): Deferred<Unit> = onMain {
     synchronized(admissions) {
       closeResult?.let { return@synchronized it }
+      lifecycle = Lifecycle.CLOSING
+      inputs.cancelSelection()
       endTextEdit()
       changed(DocumentChange.WillClose)
-      lifecycle = Lifecycle.CLOSING
       if (cancelPending) {
         retiringFiles += coordinator.workingFiles() + listOfNotNull(coordinator.currentWorkingFile())
         jobs.toList().forEach { it.cancel() }

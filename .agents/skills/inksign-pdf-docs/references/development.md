@@ -69,28 +69,32 @@
   write/reopen, and external-viewer interoperability.
   Advanced source PDF semantics are outside the editing contract.
 
-### Run iOS tests on local network Mac
+### Run iOS tests
 
-- From Windows, connect with `ssh mac-vm`. The SSH alias uses the host's key; do not copy credentials into the repository.
-- Select a Mac source directory matching the current Windows checkout. Compare
-  SHA-256 hashes of changed files before validation. Use a live shared folder,
-  or transfer source, generated bindings, and required fixtures to a staging
-  directory. Run the repository runner from that verified directory:
+The external `vmac` adapter owns Mac orchestration and the `inksignpdf` profile.
+The profile contains its test/build scripts, Podfile helper, and log/publish tools;
+these scripts are maintained outside this source repository.
 
-  ```sh
-  cd /path/to/current/react-native-inksign-pdf
-  bash ./tools/test-ios-mac-vm.sh
-  ```
+```powershell
+vmac test inksignpdf DocumentCoreTests
+vmac test inksignpdf DocumentCoreTests/testEmptyDocumentPopulatesAnAttachedViewerAndSurvivesDetach
+vmac test inksignpdf --build-only
+vmac log inksignpdf
+```
 
-- Set `IOS_TEST_ONLY` to a test selector, such as `InkSignViewLifecycleTests/testFailedReplacementClearsDocumentAndEditingMode()`,
-  to run one test. Set `IOS_RESULT_NAME` to name its `.xcresult` bundle.
-  The script resolves the source root relative to its own path, so running it from another shared worktree tests that worktree.
-- The runner keeps its Mac-local checkout and validation state under `~/projects/react-native-inksign-pdf`:
-- Source is synced to `checkout`, with tooling, build cache, logs, and result bundles alongside it.
-- It reuses installed Node, CocoaPods, and simulator build products; set `IOS_NPM_INSTALL=1`, `IOS_POD_INSTALL=1`, or `IOS_PREBUILD=1` only when those
-  inputs need refreshing.
-- The script prints concise stage updates and test totals. On failure it prints parser-filtered diagnostics and leaves the complete log and `.xcresult`
-  bundle under the project directory for inspection.
+Omit selectors to run the configured test scheme. `--build-only` invokes Xcode
+`build-for-testing`, producing test artifacts without an IPA. Runs snapshot tracked
+and nonignored untracked source into a Git bundle, verify the Mac checkout, and
+hold one checkout lock through execution and cleanup. Global machine environment
+settings use manually installed tooling; project setup is owned by the profile.
+
+The MCP exposes `run_tests({project: 'inksignpdf', tests: ['DocumentCoreTests']})`,
+`status`, `logs`, and `cancel`. `buildOnly: true` builds test artifacts. IPA archive,
+export, and publishing are CLI-only and are not exposed as MCP actions.
+
+Record snapshot ID, test counts, `testOutcome`, and `runnerTermination` separately.
+Xcode can report results before its process exits. A zero-test result or successful
+build alone does not establish behavior.
 
 ### Fallback: run iOS tests on GitHub Actions
 
@@ -99,11 +103,20 @@
 
 ### Publish an iOS ad hoc IPA
 
-Run `tools/publish-ios-adhoc.ps1` from Windows PowerShell. Pass `-IpaPath` for
-an IPA on the host, or `-RemoteHost` and `-RemoteIpaPath` to retrieve one over
-SSH. The publisher requires GitHub CLI authenticated with repository write
-access. Keep machine-specific paths in command arguments, not repository
-scripts.
+Use the external adapter from Windows:
+
+```powershell
+vmac build inksignpdf
+vmac build inksignpdf --publish
+vmac publish inksignpdf --run <successful-build-run-id>
+vmac publish inksignpdf --ipa C:\path\app.ipa
+```
+
+Builds archive and export using manually configured signing certificates, an
+unlocked keychain, and a matching provisioning profile on the Mac. `--publish`
+runs the profile's local publisher only after a successful IPA build. Publishing
+requires GitHub CLI authenticated with repository write access. Machine paths and
+profile scripts are configured outside this repository.
 
 ## Run Android tests and builds locally
 
@@ -120,7 +133,6 @@ tools\test-android.ps1 -Mode connected -Test <fully.qualified.TestClass>
 tools\test-native.ps1 -Suite geometry
 tools\test-native.ps1 -Suite lifecycle
 tools\test-native.ps1 -Suite all
-tools\test-ios-lifecycle.ps1
 git diff --check -- ':!nitrogen/generated/**'
 ```
 

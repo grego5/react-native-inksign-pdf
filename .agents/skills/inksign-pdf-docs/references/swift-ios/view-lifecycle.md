@@ -22,6 +22,17 @@
 
 ## Publication
 
+- `PageInputCoordinator` resolves a foreground scene presenter independently of
+  the viewer. PDF-only selection uses Files; mixed/image selection offers Files
+  or ordered Photos. Picker popovers anchor to that presenter. Scene disconnect
+  cancels waiting selection; ordinary backgrounding preserves it.
+  Selection settles and releases its platform lease after controller dismissal;
+  queued input requests therefore begin after the previous picker disappears.
+- Files and explicit sources use coordinated, security-scoped copies; Photos
+  copies temporary provider URLs before callbacks return and retains selection
+  order. The core's FIFO waits before text settlement or structural admission.
+  Open and append share PDFium assembly and candidate analysis; a single PDF
+  opening retains the copy path. Shared [input contract](../architecture.md#import-and-export).
 - Detached PDFium candidates validate before publication. Assembly failure
   preserves published data; presentation failure reports an error without
   rolling back valid core data.
@@ -38,6 +49,9 @@
 
 ## Retirement
 
+- Close cancels waiting selection and blocks queued picker presentation while
+  selected/direct imports drain. Provider callbacks retain their request-owned
+  resources through completion; cancelled late copies retire without publication.
 - Core text transactions end before structural/export snapshots; live ink is
   excluded. Close/admission rules: [commands](../architecture.md#commands-and-lifetime).
 - Replaced working files retire after all PDFKit reader leases release them.

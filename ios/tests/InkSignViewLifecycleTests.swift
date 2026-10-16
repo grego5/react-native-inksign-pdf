@@ -431,7 +431,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let generation = coordinator.generation
     let owner = try attachedDocument(view)
     let result = try awaitTestPromise(owner.addPages(options: DocumentAddPagesOptions(
-      tag: nil, sources: [], imagePageSize: nil, targetDpi: nil, jpegQuality: nil)))
+      type: nil, tag: nil, sources: [], imagePageSize: nil, targetDpi: nil, jpegQuality: nil)))
 
     XCTAssertEqual(result.addedPageCount, 0)
     XCTAssertEqual(result.pageCount, 2)
@@ -472,7 +472,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let view = fixture.view
     let owner = try attachedDocument(view)
     let activePageID = try XCTUnwrap(view.viewerDocument?.activePageID)
-    let result = try awaitTestPromise(owner.addPages(options: DocumentAddPagesOptions(tag: nil,
+    let result = try awaitTestPromise(owner.addPages(options: DocumentAddPagesOptions(type: nil, tag: nil,
       sources: [pdfURL.path, imageURL.path],
       imagePageSize: ImagePageSize(width: 144, height: 72),
       targetDpi: 72, jpegQuality: 0.1)))
@@ -512,7 +512,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let owner = try attachedDocument(view)
     let originalActiveID = try XCTUnwrap(view.viewerDocument?.activePageID)
     let result = try awaitTestPromise(owner.addPages(options: DocumentAddPagesOptions(
-      tag: nil, sources: [sourceURL.path], imagePageSize: nil,
+      type: nil, tag: nil, sources: [sourceURL.path], imagePageSize: nil,
       targetDpi: nil, jpegQuality: nil)))
 
     try awaitViewerPageReady(view, pageID: originalActiveID)
@@ -649,7 +649,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(afterRotation.activePage.history.content.equals(contentBefore))
 
     // Assembly reads the unchanged source, then rebinds pending orientation.
-    _ = try awaitDocumentOperation(owner.addPages(options: DocumentAddPagesOptions(tag: nil,
+    _ = try awaitDocumentOperation(owner.addPages(options: DocumentAddPagesOptions(type: nil, tag: nil,
       sources: [workingURLBefore.path], imagePageSize: nil, targetDpi: nil, jpegQuality: nil)))
     try awaitViewerPageReady(view, pageID: pageID)
     XCTAssertEqual(view.viewerDocument?.activePageID, pageID)
@@ -1122,7 +1122,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
 
     let replacementCore = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     let source = try XCTUnwrap(view.viewerDocument?.workingURL)
-    try awaitTestPromise(replacementCore.open(sourceURL: source))
+    try awaitTestPromise(initializeDocument(replacementCore, from: source))
     let replacement = HybridInkSignDocument(core: replacementCore)
     let replacementPageID = try XCTUnwrap(replacementCore.coordinator.document?.pages.first?.id)
     view.document = replacement

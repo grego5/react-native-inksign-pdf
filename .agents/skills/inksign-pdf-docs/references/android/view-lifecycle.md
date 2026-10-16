@@ -25,9 +25,17 @@
 
 - Local files and Android content/resource URIs pass through the document loader;
   streams close after staging. Images use the shared image encoder.
+- `PageInputCoordinator` owns ordered ActivityResult selection and staging on
+  behalf of each core. It resolves the current React activity independently of
+  the viewer; its main-thread platform lease and lifecycle observer release on
+  selection/cancellation/failure. Source streams copy on IO before PDFium consumes
+  owned files. Host destruction cancels waiting UI; ordinary pause preserves it.
+- Selection, FIFO cancellation, filters, and empty inputs follow the shared
+  [import contract](../architecture.md#import-and-export). Close blocks queued
+  selection without cancelling direct or already-selected imports.
 - Each open owns an operation ID and private working file. Detached reader/model
   candidates publish together; abandoned candidates retire after backend use.
-- `openDoc()` completes at publication. Attachment installs presentation afterward.
+- Initial import publishes before presentation installation; creation returns immediately.
   Failed opening releases its candidate without affecting another owner.
 - Structural candidates validate page count/order/source geometry before
   publication. Image geometry uses reopened PDFium precision. Rotation changes

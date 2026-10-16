@@ -14,65 +14,79 @@ extension DocumentCore {
     return URL(fileURLWithPath: source).standardizedFileURL.resolvingSymlinksInPath()
   }
 
-  func addPages(sources: [String], imageGeometry: PageGeometry?,
-                targetDpi: Double?, jpegQuality: Double?, tag: String?) -> Promise<Int> {
-    submit {
-      try Self.validateTag(tag)
-      guard !sources.isEmpty else { return .resolved(withResult: 0) }
-      guard let document = self.coordinator.document else { throw TextError.documentNotOpen }
-      let pageSize = document.pages[0].geometry.displaySize
-      let geometry = imageGeometry ?? PageGeometry(mediaBox: CGRect(origin: .zero, size: pageSize), rotation: 0)
-      guard let operation = self.coordinator.admit(.structural) else {
-        return .rejected(withError: MutablePageError.operationInProgress)
+  func stageInputs(sources: [String]?, type: InkSignPdfPageInputType?) -> Promise<[InkSignPdfStagedPageInput]> {
+    let settlement = InkSignPdfOperationPromise<[InkSignPdfStagedPageInput]>()
+    inputs.stage(options: InkSignPdfPageInputOptions(type: type, sources: sources)) { result in
+      switch result {
+      case .success(let staged): settlement.resolve(staged)
+      case .failure(let error): settlement.reject(error)
       }
+    }
+    return settlement.promise
+  }
+
+  func addPages(sources: [String]? = nil, imageGeometry: PageGeometry?,
+                targetDpi: Double?, jpegQuality: Double?, tag: String?,
+                type: InkSignPdfPageInputType? = nil) -> Promise<Int> {
+    submit {
+      try self.addPagesNow(sources: sources, imageGeometry: imageGeometry,
+        targetDpi: targetDpi, jpegQuality: jpegQuality, tag: tag, type: type)
+    }
+  }
+
+  @discardableResult
+  func initialize(options: DocumentOptions?) -> Promise<Int> {
+    guard let options, let sources = options.sources, !sources.isEmpty else { return .resolved(withResult: 0) }
+    return submit {
       let result = InkSignPdfOperationPromise<Int>()
-      let coordinator = self.coordinator
-      coordinator.pdfQueue.async {
-        var staged: [InkSignPdfStagedPageInput] = []
-        let staging: Result<[InkSignPdfStagedPageInput], Swift.Error>
-        do {
-          for source in sources {
-            guard coordinator.isCurrent(operation) else { throw MutablePageError.operationCancelled }
-            let url = try Self.localSource(source)
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-            let bytes = try Data(contentsOf: url)
-            let destination = try coordinator.artifactPolicy.allocateStagedInput()
-            do { try bytes.write(to: destination, options: .atomic) }
-            catch { coordinator.artifactPolicy.deleteExact(destination); throw error }
-            staged.append(InkSignPdfStagedPageInput(url: destination,
-              type: bytes.starts(with: [0x25, 0x50, 0x44, 0x46, 0x2d]) ? .pdf : .image))
-          }
-          staging = .success(staged)
-        } catch {
-          coordinator.releaseStagedInputs(staged)
-          staging = .failure(error)
+      do {
+        let geometry = try options.imagePageSize.map { size in
+          let geometry = PageGeometry(mediaBox: CGRect(x: 0, y: 0, width: size.width, height: size.height), rotation: 0)
+          guard geometry.isValid else { throw MutablePageError.assemblyFailed }
+          return geometry
         }
-        DispatchQueue.main.async {
-          do {
-            let inputs = try staging.get()
-            guard coordinator.isCurrent(operation) else {
-              coordinator.pdfQueue.async { coordinator.releaseStagedInputs(inputs) }
-              throw MutablePageError.operationCancelled
-            }
-            self.endTextEdit()
-            self.changed(.structuralWriteStarted)
-            guard let state = coordinator.document else { throw TextError.documentNotOpen }
-            let input = InkSignPdfDocumentCoordinator.StructuralInput(operation: operation,
-              document: state, pages: state.pages, targetPageID: state.pages[0].id,
-              targetPageIndex: 0, imageGeometry: geometry, imageTargetDpi: targetDpi,
-              imageJpegQuality: jpegQuality, recordHistory: self.recordHistory, tag: tag)
-            self.commitStructureNow(input, staged: inputs, command: .append).then { commit in
-              result.resolve(commit.addedCount)
-            }.catch { error in result.reject(error) }
-          } catch {
-            coordinator.settle(operation)
-            result.reject(error)
-          }
-        }
+        try self.addPagesNow(sources: sources, imageGeometry: geometry,
+          targetDpi: options.targetDpi, jpegQuality: options.jpegQuality, tag: options.tag,
+          type: options.type.map { $0 == .pdf ? .pdf : .image }, initialImport: true)
+          .then { result.resolve($0) }
+          .catch { error in self.failInitialization(error); result.reject(error) }
+      } catch {
+        self.failInitialization(error)
+        throw error
       }
       return result.promise
     }
+  }
+
+  private func addPagesNow(sources: [String]?, imageGeometry: PageGeometry?,
+                           targetDpi: Double?, jpegQuality: Double?, tag: String?,
+                           type: InkSignPdfPageInputType?, initialImport: Bool = false) throws -> Promise<Int> {
+      try Self.validateTag(tag)
+      if sources?.isEmpty == true { return .resolved(withResult: 0) }
+      let pageSize = self.coordinator.document?.pages.first?.geometry.displaySize
+        ?? CGSize(width: 595.28, height: 841.89)
+      let geometry = imageGeometry ?? PageGeometry(mediaBox: CGRect(origin: .zero, size: pageSize), rotation: 0)
+      let result = InkSignPdfOperationPromise<Int>()
+      let coordinator = self.coordinator
+      self.stageInputs(sources: sources, type: type).then { staged in
+        guard !staged.isEmpty else { result.resolve(0); return }
+        guard let operation = coordinator.admit(.structural) else {
+          coordinator.pdfQueue.async { coordinator.releaseStagedInputs(staged) }
+          result.reject(MutablePageError.operationCancelled)
+          return
+        }
+        self.endTextEdit()
+        self.changed(.structuralWriteStarted)
+        let state = coordinator.document
+        let input = InkSignPdfDocumentCoordinator.StructuralInput(operation: operation,
+          document: state, pages: state?.pages ?? [], targetPageID: state?.pages.first?.id ?? UUID(),
+          targetPageIndex: 0, imageGeometry: geometry, imageTargetDpi: targetDpi,
+          imageJpegQuality: jpegQuality, recordHistory: self.recordHistory, tag: tag)
+        self.commitStructureNow(input, staged: staged, command: .append, initialImport: initialImport).then { commit in
+          result.resolve(commit.addedCount)
+        }.catch { error in result.reject(error) }
+      }.catch { error in result.reject(error) }
+      return result.promise
   }
 
   enum PageMutationPreflight {

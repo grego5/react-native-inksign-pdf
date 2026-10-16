@@ -5,6 +5,9 @@ extension ViewerCanvas {
   func documentCoreDidChange(_ change: DocumentCore.Change) {
     guard !disposed else { return }
     switch change {
+    case .loadFailed(let error):
+      loadError = error.localizedDescription
+      emitChange(force: true)
     case .editEnded(let edit): textInteractionOverlay.endEditorTransaction(edit)
     case .inkCleared(let id):
       if viewerDocument?.activePageID == id { cancelActiveStroke(clearLive: true) }
@@ -25,7 +28,7 @@ extension ViewerCanvas {
     case .document, .structure:
       if document != nil {
         guard let state = documentCoordinator.document else {
-          releaseAttachment(commitDraft: false)
+          interaction.resetAvailability()
           emitChange(force: true)
           return
         }

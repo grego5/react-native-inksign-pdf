@@ -10,7 +10,8 @@ struct InkSignPdfStructuralCommit {
 extension DocumentCore {
   func commitStructureNow(_ input: InkSignPdfDocumentCoordinator.StructuralInput,
                           staged: [InkSignPdfStagedPageInput],
-                          command: InkSignPdfDocumentCoordinator.StructuralCommand) -> Promise<InkSignPdfStructuralCommit> {
+                          command: InkSignPdfDocumentCoordinator.StructuralCommand,
+                          initialImport: Bool = false) -> Promise<InkSignPdfStructuralCommit> {
       let settlement = InkSignPdfOperationPromise<InkSignPdfStructuralCommit>()
       let coordinator = self.coordinator
       coordinator.pdfQueue.async {
@@ -41,6 +42,7 @@ extension DocumentCore {
               return
             }
             // Presentation does not own mutation success or the core FIFO slot.
+            if initialImport { coordinator.setStructuralDirty(false) }
             if let previous { coordinator.workingArtifacts.retire(previous.workingURL) }
             coordinator.settle(input.operation)
             self.changed(.structure)

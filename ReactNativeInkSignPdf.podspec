@@ -37,7 +37,7 @@ Pod::Spec.new do |s|
   }
   s.requires_arc = true
   s.libraries    = ['c++']
-  s.frameworks   = ['UIKit', 'PencilKit', 'QuartzCore', 'CoreGraphics', 'CoreText', 'PDFKit', 'ImageIO', 'UniformTypeIdentifiers']
+  s.frameworks   = ['UIKit', 'PencilKit', 'QuartzCore', 'CoreGraphics', 'CoreText', 'PDFKit', 'ImageIO', 'UniformTypeIdentifiers', 'PhotosUI']
   s.dependency 'React-Core'
   s.dependency 'React-Fabric/components/view'
   s.dependency 'NitroModules'

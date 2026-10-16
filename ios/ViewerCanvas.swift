@@ -96,7 +96,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     if attachedDocument === next { return }
     if let next { try next.core.claimViewer(attachmentID) }
     releaseAttachment(notify: false)
-    loadError = nil
+    loadError = next?.core.initializationError?.localizedDescription
     attachedDocument = next
     guard next != nil else { emitChange(force: true); return }
     textInteractionOverlay.setDefaultFontSize(defaultTextFontSize)
@@ -225,7 +225,14 @@ final class ViewerCanvas: HybridInkSignViewSpec {
   var onStateChange: ((ViewerState) -> Void)? {
     didSet { performOnMain { self.emitChange(force: true) } }
   }
-  var onPageChange: ((PageChangeEvent) -> Void)?
+  var onPageChange: ((PageChangeEvent) -> Void)? {
+    didSet {
+      performOnMain {
+        self.lastPublicPage = nil
+        self.emitPageState()
+      }
+    }
+  }
   var onZoomChange: ((Double) -> Void)?
 
   var onTextSelectionChange: ((Variant_NullType_TextSelection?) -> Void)?

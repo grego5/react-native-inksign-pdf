@@ -61,7 +61,7 @@ internal class HybridInkSignViewTextKeyTest {
         host.layout(0, 0, 300, 300)
         surfaceRef.set((host as FrameLayout).getChildAt(0) as ViewerCanvas)
       }
-      awaitOpen(instrumentation, document, source.absolutePath, expectedPageCount = 3.0, tag = "report")
+      awaitInitialSources(instrumentation, document, source.absolutePath, expectedPageCount = 3.0, tag = "report")
       instrumentation.runOnMainSync {
         val view = viewRef.get()
         val ids = document.getPageIdsByTag("report").toList()
@@ -159,12 +159,13 @@ internal class HybridInkSignViewTextKeyTest {
   }
 
   @Test
-  fun selectedTextHandleSurvivesDeselectionAndNavigationAndRejectsReplacement() {
+  fun selectedTextHandleSurvivesDeselectionNavigationAndDetachUntilOwnerCloses() {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()
     val context = instrumentation.targetContext
     val sourceA = copyFixturePdf(context, "selected-text-handle-a-")
     val sourceB = copyFixturePdf(context, "selected-text-handle-b-")
+    val replacementDocument = HybridInkSignDocument(context)
     val analysisStarted = CountDownLatch(1)
     val releaseAnalysis = CountDownLatch(1)
     val blockAnalysis = AtomicBoolean(false)
@@ -195,7 +196,7 @@ internal class HybridInkSignViewTextKeyTest {
         view.view.layout(0, 0, 300, 300)
       }
       val view = viewRef.get()
-      awaitOpen(instrumentation, document, sourceA.absolutePath)
+      awaitInitialSources(instrumentation, document, sourceA.absolutePath)
       val page = awaitPreparedPage(document.getPage(PageQuery.create(0.0)))
       val bounds = TextAnnotationBounds(40.0, 60.0, 160.0, 40.0)
       val textId = setPreparedText(page, bounds, "note")
@@ -247,19 +248,26 @@ internal class HybridInkSignViewTextKeyTest {
       handle.setValue("", null)
       assertEquals("", handle.getValue())
 
-      awaitOpen(instrumentation, document, sourceB.absolutePath)
+      awaitInitialSources(instrumentation, replacementDocument, sourceB.absolutePath, expectedPageCount = 1.0)
+      instrumentation.runOnMainSync { view.document = replacementDocument }
+      assertEquals("Detached text handles retain their document", "", handle.getValue())
+      handle.setValue("detached", null)
+      assertEquals("detached", page.getTextValue(textId))
+      awaitClose(instrumentation, document)
       try {
         handle.getValue()
-        throw AssertionError("replacement must invalidate the old handle")
+        throw AssertionError("Closing the owner must invalidate the old handle")
       } catch (error: PdfSessionException) {
         assertEquals("operation_cancelled", error.code)
       }
       assertTrue("replacement must clear selection", view.getSelectedText().isSecond)
       assertTrue("replacement must not inherit old text targets",
-        awaitPreparedPage(document.getPage(PageQuery.create(0.0))).getInputTargets().isEmpty())
+        awaitPreparedPage(replacementDocument.getPage(PageQuery.create(0.0))).getInputTargets().isEmpty())
     } finally {
       releaseAnalysis.countDown()
       instrumentation.runOnMainSync { viewRef.get()?.onDropView() }
+      awaitClose(instrumentation, document)
+      awaitClose(instrumentation, replacementDocument)
       sourceA.delete()
       sourceB.delete()
     }
@@ -312,8 +320,8 @@ internal class HybridInkSignViewTextKeyTest {
         view.view.measure(exactSize, exactSize)
         view.view.layout(0, 0, 300, 300)
       }
-      awaitOpen(instrumentation, documentA, sourceA.absolutePath, expectedPageCount = 1.0, tag = "owner-a")
-      awaitOpen(instrumentation, documentB, sourceB.absolutePath, expectedPageCount = 1.0, tag = "owner-b")
+      awaitInitialSources(instrumentation, documentA, sourceA.absolutePath, expectedPageCount = 1.0, tag = "owner-a")
+      awaitInitialSources(instrumentation, documentB, sourceB.absolutePath, expectedPageCount = 1.0, tag = "owner-b")
 
       val lookupSettled = CountDownLatch(1)
       val rejectionCount = AtomicInteger()
@@ -394,7 +402,7 @@ internal class HybridInkSignViewTextKeyTest {
         view.view.layout(0, 0, 300, 300)
       }
       val view = viewRef.get()
-      awaitOpen(instrumentation, document, source.absolutePath, tag = "report")
+      awaitInitialSources(instrumentation, document, source.absolutePath, tag = "report")
       val ordinary = awaitPreparedPage(document.getPage(PageQuery.create(0.0)))
       val session = view.setMode(InputMode.INK, null)
       val scoped = awaitPreparedPage(session.getPage(
@@ -457,7 +465,7 @@ internal class HybridInkSignViewTextKeyTest {
       )
     }
 
-  private fun awaitOpen(
+  private fun awaitInitialSources(
     instrumentation: android.app.Instrumentation,
     document: HybridInkSignDocument,
     sourcePath: String,
@@ -469,9 +477,9 @@ internal class HybridInkSignViewTextKeyTest {
     val failure = AtomicReference<Throwable>()
     val open = AtomicReference<Promise<HybridInkSignDocumentSpec>>()
     instrumentation.runOnMainSync {
-      open.set(document.open(sourcePath, DocumentOpenOptions(
-        recordHistory = null, tag = tag, imagePageSize = null, targetDpi = null,
-        jpegQuality = null, androidFallbackFont = null,
+      open.set(document.initializeSource(sourcePath, DocumentOptions(
+        type = null, recordHistory = null, tag = tag, imagePageSize = null, targetDpi = null,
+        jpegQuality = null, androidFallbackFont = null, sources = null,
       )))
     }
     open.get().then { opened -> result.set(opened); settled.countDown() }

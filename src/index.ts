@@ -32,6 +32,7 @@ import type {
   InputTargetFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
+  PageInputType,
   PageQuery,
   TaggedPageQuery,
   PageChangeEvent,
@@ -61,8 +62,8 @@ import type {
   InkSignView as InkSignViewNativeHandle,
   InkSignViewMethods,
 } from './InkSignView.nitro';
-import type { NamedFontSource, DocumentOpenOptions, DocumentAddPagesOptions, DocumentAddPagesResult, DocumentPage, InkSignDocument, InkSignDocumentFactory } from './InkSignDocument.nitro';
-export type { NamedFontSource, DocumentOpenOptions, DocumentAddPagesOptions, DocumentAddPagesResult, DocumentPage, InkSignDocument } from './InkSignDocument.nitro';
+import type { NamedFontSource, DocumentOptions, DocumentAddPagesOptions, DocumentAddPagesResult, DocumentPage, InkSignDocument, InkSignDocumentFactory } from './InkSignDocument.nitro';
+export type { NamedFontSource, DocumentOptions, DocumentAddPagesOptions, DocumentAddPagesResult, DocumentPage, InkSignDocument } from './InkSignDocument.nitro';
 
 export type {
   DocumentState,
@@ -71,6 +72,7 @@ export type {
   InputTargetFocusOptions,
   FieldFocusVerticalAnchor,
   PageInfo,
+  PageInputType,
   PageQuery,
   TaggedPageQuery,
   PageChangeEvent,
@@ -119,8 +121,8 @@ export type InkSignViewProps = Omit<
   NativeInkSignViewProps,
   'document' | 'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomChange'
 > & {
-  /** Initialized document owner; render the viewer after openDoc resolves. */
-  document: InkSignDocument;
+  /** Optional owner, which may be empty. Unmounting detaches without closing it. */
+  document?: InkSignDocument;
   onStateChange?: InkSignViewNativeProps['onStateChange'];
   onPageChange?: InkSignViewNativeProps['onPageChange'];
   onZoomChange?: InkSignViewNativeProps['onZoomChange'];
@@ -336,7 +338,7 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
 
     return React.createElement(NativeInkSignView, {
       ...nativeProps,
-      document: nativeDocuments.get(document) ?? document,
+      document: document === undefined ? undefined : nativeDocuments.get(document) ?? document,
       hybridRef: wrappedHybridRef,
       onStateChange: onStateChange ? nativeCallbacks.onStateChange : undefined,
       onPageChange: onPageChange ? nativeCallbacks.onPageChange : undefined,
@@ -391,10 +393,7 @@ function createValidatedDocument(native: InkSignDocument): InkSignDocument {
     },
     loadFonts(fonts) { return callAsync(() => validateNamedFonts(fonts), () => native.loadFonts(fonts)); },
     addPages(options) {
-      return callAsync(() => {
-        validateAddPagesOptions(options);
-        if (!options || !Array.isArray(options.sources)) throw argumentError('invalid_page_sources', 'Headless imports require explicit sources');
-      }, () => native.addPages(options));
+      return callAsync(() => validateAddPagesOptions(options), () => native.addPages(options));
     },
     removePage(index) { return callAsync(() => validateRequiredPageIndex(index), () => native.removePage(index)); },
     movePage(fromIndex, toIndex) {
@@ -413,21 +412,23 @@ function createValidatedDocument(native: InkSignDocument): InkSignDocument {
   return handle;
 }
 
-/** Loads a PDF or image into an independent native session without mounting a view. */
-export function openDoc(uri: string, options?: DocumentOpenOptions): Promise<InkSignDocument> {
-  return callAsync(() => {
-    validateDocumentPath(uri);
-    validateAddPagesOptions(options);
-    if (options?.recordHistory !== undefined && typeof options.recordHistory !== 'boolean') {
-      throw argumentError('invalid_document_options', 'recordHistory must be a boolean');
-    }
-    if (options?.androidFallbackFont !== undefined) {
-      validateDocumentPath(options.androidFallbackFont.uri);
-      const index = options.androidFallbackFont.collectionIndex;
-      if (index !== undefined && (!Number.isInteger(index) || index < 0)) throw argumentError('invalid_fallback_font', 'A font face index must be a nonnegative integer');
-    }
-  }, async () => {
-    const factory = NitroModules.createHybridObject<InkSignDocumentFactory>('InkSignDocumentFactory');
-    return createValidatedDocument(await factory.openDoc(uri, options));
-  });
+function validateDocumentOptions(options?: DocumentOptions): void {
+  validateAddPagesOptions(options);
+  if (options?.recordHistory !== undefined && typeof options.recordHistory !== 'boolean') {
+    throw argumentError('invalid_document_options', 'recordHistory must be a boolean');
+  }
+  if (options?.androidFallbackFont !== undefined) {
+    validateDocumentPath(options.androidFallbackFont.uri);
+    const index = options.androidFallbackFont.collectionIndex;
+    if (index !== undefined && (!Number.isInteger(index) || index < 0)) throw argumentError('invalid_fallback_font', 'A font face index must be a nonnegative integer');
+  }
+}
+
+/** Returns an independent owner immediately. Initial sources load before later commands;
+ * omitted sources create an empty owner. Detaching a viewer does not close the owner.
+ */
+export function createDocument(options?: DocumentOptions): InkSignDocument {
+  validateDocumentOptions(options);
+  const factory = NitroModules.createHybridObject<InkSignDocumentFactory>('InkSignDocumentFactory');
+  return createValidatedDocument(factory.createDocument(options));
 }

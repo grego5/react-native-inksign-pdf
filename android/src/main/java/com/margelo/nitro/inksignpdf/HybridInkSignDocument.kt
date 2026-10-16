@@ -11,9 +11,12 @@ internal fun <T> Deferred<T>.asNitroPromise(): Promise<T> = Promise.async { awai
 
 @DoNotStrip
 class HybridInkSignDocumentFactory : HybridInkSignDocumentFactorySpec() {
-  override fun openDoc(uri: String, options: DocumentOpenOptions?): Promise<HybridInkSignDocumentSpec> {
+  override fun createDocument(options: DocumentOptions?): HybridInkSignDocumentSpec {
     val context = checkNotNull(NitroModules.applicationContext) { "React Native context is unavailable" }
-    return HybridInkSignDocument(context, options?.recordHistory ?: true).open(uri, options)
+    val core = DocumentCore(context, recordHistory = options?.recordHistory ?: true,
+      exportOwnership = ExportOwnership.CALLER, fallbackFontSource = options?.androidFallbackFont)
+    core.initialize(options)
+    return HybridInkSignDocument(core)
   }
 }
 
@@ -24,27 +27,19 @@ internal class HybridInkSignDocument(internal val core: DocumentCore) : HybridIn
     DocumentCore(context, recordHistory = recordHistory, exportOwnership = ExportOwnership.CALLER))
   private var closePromise: Promise<Unit>? = null
 
-  internal fun open(uri: String, options: DocumentOpenOptions?): Promise<HybridInkSignDocumentSpec> {
-    val opening = core.submit { core.open(uri, options); this@HybridInkSignDocument }
-    return Promise.async {
-      try { opening.await() }
-      catch (error: Throwable) { core.close(cancelPending = true).await(); throw error }
-    }
-  }
-
   private fun <T> command(work: suspend () -> T): Promise<T> =
     try { core.submit(work).asNitroPromise() }
     catch (error: Throwable) { Promise<T>().also { it.reject(error) } }
 
-  override val pageCount: Double get() = core.withDocument { core.state.pageCount.toDouble() }
+  override val pageCount: Double get() = core.documentInfo().pageCount
   override fun getState(): DocumentState = core.documentInfo()
   override fun getPage(index: PageQuery): Promise<HybridDocumentPageSpec> = command {
     HybridDocumentPage(core, index.match({ core.getPage(it) }, { core.getPage(it) }))
   }
   override fun getPageIdsByTag(tag: String): Array<String> = core.getPageIdsByTag(tag)
   override fun loadFonts(fonts: Array<NamedFontSource>): Promise<Unit> = command { core.fonts.load(fonts) }
-  override fun addPages(options: DocumentAddPagesOptions): Promise<DocumentAddPagesResult> = command {
-    val dimensions = options.imagePageSize?.let { PdfPageDimensions(it.width, it.height) }
+  override fun addPages(options: DocumentAddPagesOptions?): Promise<DocumentAddPagesResult> = command {
+    val dimensions = options?.imagePageSize?.let { PdfPageDimensions(it.width, it.height) }
       ?: (if (core.state.hasDocument) core.state.pageMetadata(0).dimensions else null) ?: PdfPageDimensions(595.28, 841.89)
     val added = core.addPages(options, dimensions)
     DocumentAddPagesResult(added.toDouble(), core.state.pageCount.toDouble())

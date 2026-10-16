@@ -125,24 +125,17 @@ open class HybridInkSignDocumentFactorySpec_cxx {
 
   // Methods
   @inline(__always)
-  public final func openDoc(uri: std.string, options: bridge.std__optional_DocumentOpenOptions_) -> bridge.Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____ {
+  public final func createDocument(options: bridge.std__optional_DocumentOptions_) -> bridge.Result_std__shared_ptr_HybridInkSignDocumentSpec__ {
     do {
-      let __result = try self.__implementation.openDoc(uri: String(uri), options: options.value)
-      let __resultCpp = { () -> bridge.std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___ in
-        let __promise = bridge.create_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___()
-        let __promiseHolder = bridge.wrap_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec___(__promise)
-        __result
-          .then({ __result in __promiseHolder.resolve({ () -> bridge.std__shared_ptr_HybridInkSignDocumentSpec_ in
-              let __cxxWrapped = __result.getCxxWrapper()
-              return __cxxWrapped.getCxxPart()
-            }()) })
-          .catch({ __error in __promiseHolder.reject(__error.toCpp()) })
-        return __promise
+      let __result = try self.__implementation.createDocument(options: options.value)
+      let __resultCpp = { () -> bridge.std__shared_ptr_HybridInkSignDocumentSpec_ in
+        let __cxxWrapped = __result.getCxxWrapper()
+        return __cxxWrapped.getCxxPart()
       }()
-      return bridge.create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____(__resultCpp)
+      return bridge.create_Result_std__shared_ptr_HybridInkSignDocumentSpec__(__resultCpp)
     } catch (let __error) {
       let __exceptionPtr = __error.toCpp()
-      return bridge.create_Result_std__shared_ptr_Promise_std__shared_ptr_HybridInkSignDocumentSpec____(__exceptionPtr)
+      return bridge.create_Result_std__shared_ptr_HybridInkSignDocumentSpec__(__exceptionPtr)
     }
   }
 }

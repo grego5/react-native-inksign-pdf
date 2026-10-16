@@ -19,6 +19,8 @@ namespace margelo::nitro::inksignpdf { struct TaggedPageQuery; }
 namespace margelo::nitro::inksignpdf { struct NamedFontSource; }
 // Forward declaration of `DocumentAddPagesOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 
@@ -46,6 +48,8 @@ namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 #include "JNamedFontSource.hpp"
 #include "DocumentAddPagesOptions.hpp"
 #include "JDocumentAddPagesOptions.hpp"
+#include "PageInputType.hpp"
+#include "JPageInputType.hpp"
 #include "ImagePageSize.hpp"
 #include "JImagePageSize.hpp"
 
@@ -145,9 +149,9 @@ namespace margelo::nitro::inksignpdf {
       return __promise;
     }();
   }
-  std::shared_ptr<Promise<DocumentAddPagesResult>> JHybridInkSignDocumentSpec::addPages(const DocumentAddPagesOptions& options) {
+  std::shared_ptr<Promise<DocumentAddPagesResult>> JHybridInkSignDocumentSpec::addPages(const std::optional<DocumentAddPagesOptions>& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JDocumentAddPagesOptions> /* options */)>("addPages");
-    auto __result = method(_javaPart, JDocumentAddPagesOptions::fromCpp(options));
+    auto __result = method(_javaPart, options.has_value() ? JDocumentAddPagesOptions::fromCpp(options.value()) : nullptr);
     return [&]() {
       auto __promise = Promise<DocumentAddPagesResult>::create();
       __result->cthis()->addOnResolvedListener([=](const jni::alias_ref<jni::JObject>& __boxedResult) {

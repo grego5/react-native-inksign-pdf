@@ -3,6 +3,7 @@ import CoreText
 import Foundation
 import PDFKit
 import PencilKit
+import PhotosUI
 import NitroModules
 import UIKit
 import XCTest
@@ -14,7 +15,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     defer { try? FileManager.default.removeItem(at: source) }
     let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     defer { core.dispose() }
-    _ = try awaitValue(core.open(sourceURL: source))
+    _ = try awaitValue(initializeDocument(core, from: source))
     let page = try XCTUnwrap(core.coordinator.document?.pages.first)
     let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
     let id = try core.resolveText(context, options: InputTargetResolutionOptions(
@@ -56,7 +57,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     defer { try? FileManager.default.removeItem(at: source) }
     let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     defer { core.dispose() }
-    _ = try awaitValue(core.open(sourceURL: source))
+    _ = try awaitValue(initializeDocument(core, from: source))
     _ = try awaitValue(core.addPages(sources: [source.absoluteString], imageGeometry: nil,
       targetDpi: nil, jpegQuality: nil, tag: nil))
     let state = try XCTUnwrap(core.coordinator.document)
@@ -87,7 +88,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     defer { try? FileManager.default.removeItem(at: source) }
     let core = DocumentCore(artifactPolicy: .shared)
     defer { core.dispose() }
-    _ = try awaitValue(core.open(sourceURL: source, tag: "report"))
+    _ = try awaitValue(initializeDocument(core, from: source, tag: "report"))
     let state = try XCTUnwrap(core.coordinator.document)
     let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: state.pages[0].id)
     let id = try core.resolveText(context, options: InputTargetResolutionOptions(
@@ -110,18 +111,18 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     _ = try awaitValue(core.close())
   }
 
-  func testNormalCloseDrainsAdmittedOpenAndExportAndRejectsNewCommands() throws {
+  func testNormalCloseDrainsInitialLoadAndExportAndRejectsNewCommands() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
     let core = DocumentCore(artifactPolicy: .shared)
     defer { core.dispose() }
     let gate = DispatchSemaphore(value: 0)
     core.coordinator.pdfQueue.async { gate.wait() }
-    let opening = core.open(sourceURL: source)
+    let opening = initializeDocument(core, from: source)
     let exporting = core.finalize()
     let closing = core.close()
     XCTAssertThrowsError(try core.state())
-    let rejected = core.open(sourceURL: source)
+    let rejected = initializeDocument(core, from: source)
     gate.signal()
     _ = try awaitValue(opening)
     let uri = try awaitValue(exporting)
@@ -132,12 +133,209 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(FileManager.default.fileExists(atPath: output.path))
   }
 
+  func testPickerCancellationPreservesTextDraftHistoryAndEvents() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    var actions: InkSignPdfPageInputCoordinator.SourceChoiceActions?
+    let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
+      presenterProvider: { UIViewController() },
+      controllerPresenter: { _, _ in },
+      controllerDismisser: { _, _, completion in completion?() },
+      sourceChooser: { _, value in actions = value; return UIViewController() },
+      securityScope: { _, copy in try copy() })
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true, inputCoordinator: inputs)
+    defer { core.dispose() }
+    _ = try awaitValue(initializeDocument(core, from: source))
+    let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+    let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+    let id = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 80, width: 200, height: 60)))
+    try core.setTextValue(context, id: id, text: "committed")
+    let committed = try XCTUnwrap(page.history.text(for: UInt64(id)))
+    let edit = try core.beginTextEdit(context, id: UInt64(id))
+    try core.updateTextEdit(edit, annotation: committed.replacingText("draft", pageSize: page.geometry.displaySize))
+    let revision = page.history.revision
+    var events: [DocumentCore.Change] = []
+    let observer = core.observe { events.append($0) }
+    defer { core.removeObserver(observer) }
+
+    let add = core.addPages(sources: nil, imageGeometry: nil, targetDpi: nil,
+      jpegQuality: nil, tag: nil, type: nil)
+    XCTAssertNotNil(actions)
+    actions?.cancel()
+    XCTAssertEqual(try awaitValue(add), 0)
+
+    XCTAssertTrue(edit.active)
+    XCTAssertTrue(core.activeTextEdit === edit)
+    XCTAssertEqual(try core.textValue(context, id: id), "draft")
+    XCTAssertEqual(page.history.text(for: UInt64(id))?.text, "committed")
+    XCTAssertEqual(page.history.revision, revision)
+    XCTAssertEqual(core.coordinator.document?.pages.count, 1)
+    XCTAssertFalse(events.contains { if case .structuralWriteStarted = $0 { return true }; return false })
+    XCTAssertFalse(events.contains { if case .structure = $0 { return true }; return false })
+    XCTAssertFalse(events.contains { if case .page = $0 { return true }; return false })
+  }
+
+  func testPickerSelectionKeepsQueuedRotationBehindImport() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    var actions: InkSignPdfPageInputCoordinator.SourceChoiceActions?
+    var picker: UIDocumentPickerViewController?
+    let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
+      presenterProvider: { UIViewController() },
+      documentPickerFactory: { UIDocumentPickerViewController(forOpeningContentTypes: $0, asCopy: false) },
+      controllerPresenter: { _, controller in picker = controller as? UIDocumentPickerViewController },
+      controllerDismisser: { _, _, completion in completion?() },
+      sourceChooser: { _, value in actions = value; return UIViewController() },
+      securityScope: { _, copy in try copy() })
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true, inputCoordinator: inputs)
+    defer { core.dispose() }
+    _ = try awaitValue(initializeDocument(core, from: source))
+    var events: [DocumentCore.Change] = []
+    let observer = core.observe { events.append($0) }
+    defer { core.removeObserver(observer) }
+
+    let adding = core.addPages(sources: nil, imageGeometry: nil, targetDpi: nil,
+      jpegQuality: nil, tag: "selected", type: nil)
+    let rotating = core.rotatePage(index: 0, degrees: 90)
+    XCTAssertNotNil(actions)
+    XCTAssertEqual(core.coordinator.document?.pages.first?.geometry.rotation, 0)
+    XCTAssertFalse(events.contains { if case .structuralWriteStarted = $0 { return true }; return false })
+
+    onMain { actions?.chooseFiles() }
+    let selectedPicker = try XCTUnwrap(picker)
+    onMain { inputs.documentPicker(selectedPicker, didPickDocumentsAt: [source]) }
+    XCTAssertEqual(try awaitValue(adding), 1)
+    try awaitValue(rotating)
+    XCTAssertEqual(core.coordinator.document?.pages.count, 2)
+    XCTAssertEqual(core.coordinator.document?.pages.first?.geometry.rotation, 1)
+    XCTAssertTrue(core.coordinator.document?.pages.last?.tag == "selected")
+  }
+
+  func testQueuedPickerStartsOnlyAfterPreviousPickerDismisses() async throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    var actions: InkSignPdfPageInputCoordinator.SourceChoiceActions?
+    var pickers: [PHPickerViewController] = []
+    var pendingDismissals: [() -> Void] = []
+    var presentations = 0
+    let secondPresentation = InkSignPdfOperationPromise<Void>()
+    let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
+      presenterProvider: { UIViewController() },
+      controllerPresenter: { _, controller in
+        if let picker = controller as? PHPickerViewController { pickers.append(picker) }
+      },
+      controllerDismisser: { controller, _, completion in
+        if controller is PHPickerViewController, let completion {
+          pendingDismissals.append(completion)
+        } else { completion?() }
+      },
+      sourceChooser: { _, value in
+        actions = value
+        presentations += 1
+        if presentations == 2 { secondPresentation.resolve(()) }
+        return UIViewController()
+      })
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true, inputCoordinator: inputs)
+    defer {
+      core.dispose()
+      while !pendingDismissals.isEmpty { pendingDismissals.removeFirst()() }
+    }
+    _ = try await awaitValueAsync(initializeDocument(core, from: source))
+    let first = core.addPages(sources: nil, imageGeometry: nil, targetDpi: nil,
+      jpegQuality: nil, tag: nil, type: .image)
+    let second = core.addPages(sources: nil, imageGeometry: nil, targetDpi: nil,
+      jpegQuality: nil, tag: nil, type: .image)
+    var firstResult: Int?
+    first.then { firstResult = $0 }
+
+    onMain { actions?.choosePhotos() }
+    let firstPicker = try XCTUnwrap(pickers.first)
+    onMain { inputs.finishPhotoPicking(itemProviders: [], from: firstPicker) }
+    XCTAssertNil(firstResult, "Cancellation waits for actual picker dismissal")
+    XCTAssertEqual(presentations, 1, "The FIFO still belongs to the dismissing picker")
+    XCTAssertEqual(pendingDismissals.count, 1, "Selection and settlement share one dismissal")
+
+    onMain { pendingDismissals.removeFirst()() }
+    let firstResultValue = try await awaitValueAsync(first)
+    XCTAssertEqual(firstResultValue, 0)
+    try await awaitValueAsync(secondPresentation.promise)
+    XCTAssertEqual(presentations, 2)
+    onMain { actions?.choosePhotos() }
+    let secondPicker = try XCTUnwrap(pickers.last)
+    XCTAssertFalse(firstPicker === secondPicker)
+    onMain { inputs.finishPhotoPicking(itemProviders: [], from: secondPicker) }
+    XCTAssertEqual(pendingDismissals.count, 1)
+    onMain { pendingDismissals.removeFirst()() }
+    let secondResultValue = try await awaitValueAsync(second)
+    XCTAssertEqual(secondResultValue, 0)
+    XCTAssertEqual(core.coordinator.document?.pages.count, 1)
+  }
+
+  func testCloseCancelsWaitingAndQueuedPickerWithoutLaunchingSecondSelection() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    var presentations = 0
+    let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
+      presenterProvider: { UIViewController() },
+      controllerPresenter: { _, _ in },
+      controllerDismisser: { _, _, completion in completion?() },
+      sourceChooser: { _, _ in presentations += 1; return UIViewController() },
+      securityScope: { _, copy in try copy() })
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true, inputCoordinator: inputs)
+    _ = try awaitValue(initializeDocument(core, from: source))
+    let waiting = core.addPages(sources: nil, imageGeometry: nil, targetDpi: nil,
+      jpegQuality: nil, tag: nil, type: nil)
+    let queued = core.addPages(sources: nil, imageGeometry: nil, targetDpi: nil,
+      jpegQuality: nil, tag: nil, type: nil)
+    let closing = core.close()
+
+    XCTAssertThrowsError(try awaitValue(waiting)) { error in
+      XCTAssertTrue(String(describing: error).contains("operation_cancelled"))
+    }
+    XCTAssertThrowsError(try awaitValue(queued)) { error in
+      XCTAssertTrue(String(describing: error).contains("operation_cancelled"))
+    }
+    try awaitValue(closing)
+    XCTAssertEqual(presentations, 1)
+  }
+
+  func testCloseWaitsForDirectSourceCopyAndPublishesWithoutViewer() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let entered = DispatchSemaphore(value: 0)
+    let release = DispatchSemaphore(value: 0)
+    let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
+      presenterProvider: { nil },
+      securityScope: { _, copy in
+        entered.signal()
+        guard release.wait(timeout: .now() + 10) == .success else {
+          throw InkSignPdfPageInputCoordinator.PageInputError.operationCancelled
+        }
+        return try copy()
+      })
+    let core = DocumentCore(artifactPolicy: .shared, inputCoordinator: inputs)
+    defer { release.signal(); core.dispose() }
+
+    let opening = initializeDocument(core, from: source)
+    XCTAssertEqual(entered.wait(timeout: .now() + 10), .success)
+    var closed = false
+    let closing = core.close()
+    closing.then { closed = true }
+    XCTAssertFalse(closed, "Close waits for an admitted direct-source copy")
+    release.signal()
+    let state = try awaitValue(opening)
+    XCTAssertEqual(state, 1)
+    try awaitValue(closing)
+    XCTAssertTrue(closed)
+  }
+
   func testPageIdentityTargetsAndTagsSurviveImportReorderAndRotation() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
     let core = DocumentCore(artifactPolicy: .shared)
     defer { core.dispose() }
-    _ = try awaitValue(core.open(sourceURL: source, tag: " "))
+    _ = try awaitValue(initializeDocument(core, from: source, tag: " "))
     let original = try XCTUnwrap(core.coordinator.document?.pages.first)
     let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: original.id)
     let id = try core.resolveText(context, options: InputTargetResolutionOptions(
@@ -165,7 +363,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     defer { try? FileManager.default.removeItem(at: output) }
     let reopened = DocumentCore(artifactPolicy: .shared)
     defer { reopened.dispose() }
-    _ = try awaitValue(reopened.open(sourceURL: output))
+    _ = try awaitValue(initializeDocument(reopened, from: output))
     XCTAssertTrue(try reopened.pageIDs(tag: " ").isEmpty)
     XCTAssertTrue(try reopened.pageIDs(tag: "attachment").isEmpty)
   }
@@ -229,7 +427,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     for rotation in [0, 90, 180, 270] {
       let core = DocumentCore(artifactPolicy: .shared)
       defer { core.dispose() }
-      _ = try awaitValue(core.open(sourceURL: source))
+      _ = try awaitValue(initializeDocument(core, from: source))
       if rotation != 0 { _ = try awaitValue(core.rotatePage(index: 0, degrees: rotation)) }
       let page = try XCTUnwrap(core.coordinator.document?.pages.first)
       let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
@@ -256,12 +454,96 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     }
   }
 
+  func testInitialSourcesLoadBeforePageCommandsAndRemainClean() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let document = try HybridInkSignDocumentFactory().createDocument(options: DocumentOptions(
+      type: nil, recordHistory: nil, tag: "initial", imagePageSize: nil, targetDpi: nil,
+      jpegQuality: nil, androidFallbackFont: nil, sources: [source.path]))
+    defer { if let document = document as? HybridInkSignDocument { document.core.dispose() } }
+    let page = try awaitValue(document.getPage(index: .first(0)))
+    XCTAssertEqual(try page.getState().tag, "initial")
+    XCTAssertEqual(try document.getState().pageCount, 1)
+    XCTAssertFalse(try document.getState().isDirty)
+    _ = try awaitValue(document.close())
+  }
+
+  func testInitialSourceFailureReachesViewerAndQueuedReadWhileCloseStillWorks() throws {
+    let path = FileManager.default.temporaryDirectory.appendingPathComponent("missing-\(UUID().uuidString).pdf").path
+    let document = try XCTUnwrap(try HybridInkSignDocumentFactory().createDocument(options: DocumentOptions(
+      type: nil, recordHistory: nil, tag: nil, imagePageSize: nil, targetDpi: nil,
+      jpegQuality: nil, androidFallbackFont: nil, sources: [path])) as? HybridInkSignDocument)
+    defer { document.core.dispose() }
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    fixture.view.document = document
+    XCTAssertThrowsError(try awaitValue(document.getPage(index: .first(0)))) { error in
+      XCTAssertEqual(error.localizedDescription, document.core.initializationError?.localizedDescription)
+      XCTAssertEqual(error.localizedDescription, fixture.view.loadError)
+    }
+    XCTAssertTrue(fixture.view.document as? HybridInkSignDocument === document)
+    _ = try awaitValue(document.close())
+  }
+
+  func testEmptyDocumentPopulatesAnAttachedViewerAndSurvivesDetach() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let document = try XCTUnwrap(try HybridInkSignDocumentFactory().createDocument(options: nil)
+      as? HybridInkSignDocument)
+    defer { document.core.dispose() }
+    let view = ViewerCanvas()
+    let controller = UIViewController()
+    let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
+    window.rootViewController = controller
+    controller.view.addSubview(view.view)
+    view.view.frame = controller.view.bounds
+    window.makeKeyAndVisible()
+    controller.view.layoutIfNeeded()
+    defer { view.dispose(); window.isHidden = true }
+    view.document = document
+    XCTAssertNil(view.viewerDocument)
+    XCTAssertEqual(try document.getState().pageCount, 0)
+    var events: [PageChangeEvent] = []
+    view.onPageChange = { events.append($0) }
+    let unchanged = try awaitValue(document.addPages(options: DocumentAddPagesOptions(
+      type: nil, tag: nil, sources: [], imagePageSize: nil, targetDpi: nil, jpegQuality: nil)))
+    XCTAssertEqual(unchanged.addedPageCount, 0)
+    XCTAssertTrue(events.isEmpty)
+    let added = try awaitValue(document.addPages(options: DocumentAddPagesOptions(
+      type: nil, tag: "first", sources: [source.path], imagePageSize: nil, targetDpi: nil, jpegQuality: nil)))
+    XCTAssertEqual(added.pageCount, 1)
+    let page = try XCTUnwrap(document.core.coordinator.document?.pages.first)
+    try awaitViewerPageReady(view, pageID: page.id, timeout: 120)
+    XCTAssertEqual(events.last?.pageId, page.id.uuidString)
+    XCTAssertTrue(try document.getState().isDirty)
+    view.document = nil
+    XCTAssertEqual(document.pageCount, 1)
+    _ = try awaitValue(document.close())
+  }
+
+  func testPageCallbackRegisteredAfterAttachmentReceivesCurrentSnapshot() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let page = try XCTUnwrap(fixture.view.viewerDocument?.activePage)
+    fixture.view.emitChange(force: true)
+    var events: [PageChangeEvent] = []
+    fixture.view.onPageChange = { events.append($0) }
+    XCTAssertEqual(events.count, 1)
+    XCTAssertEqual(events.first?.pageId, page.id.uuidString)
+    fixture.view.emitChange(force: true)
+    XCTAssertEqual(events.count, 1, "Unchanged snapshots remain suppressed")
+    var replacementEvents: [PageChangeEvent] = []
+    fixture.view.onPageChange = { replacementEvents.append($0) }
+    XCTAssertEqual(replacementEvents.count, 1)
+    XCTAssertEqual(replacementEvents.first?.pageId, page.id.uuidString)
+  }
+
   func testDocumentAttachmentDetachesWithoutEndingOwnerOrHistory() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
     let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     defer { core.dispose() }
-    _ = try awaitValue(core.open(sourceURL: source))
+    _ = try awaitValue(initializeDocument(core, from: source))
     let document = HybridInkSignDocument(core: core)
     let page = try XCTUnwrap(core.coordinator.document?.pages.first)
     let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
@@ -294,7 +576,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     defer { try? FileManager.default.removeItem(at: source) }
     let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
     defer { core.dispose() }
-    _ = try awaitValue(core.open(sourceURL: source))
+    _ = try awaitValue(initializeDocument(core, from: source))
     let document = HybridInkSignDocument(core: core)
     let first = makeFixture(pageCount: 1)
     let second = makeFixture(pageCount: 1)
@@ -337,5 +619,14 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     // Hang watchdog, not a performance assertion; the Mac VM can stall scheduling.
     wait(for: [completed], timeout: 120)
     return try XCTUnwrap(result).get()
+  }
+  private func awaitValueAsync<Value>(_ promise: Promise<Value>) async throws -> Value {
+    try await withCheckedThrowingContinuation { continuation in
+      promise.then { continuation.resume(returning: $0) }
+      promise.catch { continuation.resume(throwing: $0) }
+    }
+  }
+  private func onMain(_ action: () -> Void) {
+    if Thread.isMainThread { action() } else { DispatchQueue.main.sync(execute: action) }
   }
 }

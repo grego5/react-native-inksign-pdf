@@ -10,6 +10,8 @@ example/android/.gradle/
 example/android/build/
 example/android/**/build/
 example/android/**/.cxx/
+/ios/buildServer.json
+/ios/.compile
 ios/Pods/
 ios/build/
 *.xcuserstate

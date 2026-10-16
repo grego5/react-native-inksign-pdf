@@ -91,14 +91,6 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return swiftPart.toUnsafe();
   }
   
-  // pragma MARK: std::function<void(const std::shared_ptr<HybridInkSignDocumentSpec>& /* result */)>
-  Func_void_std__shared_ptr_HybridInkSignDocumentSpec_ create_Func_void_std__shared_ptr_HybridInkSignDocumentSpec_(void* NON_NULL swiftClosureWrapper) noexcept {
-    auto swiftClosure = ReactNativeInkSignPdf::Func_void_std__shared_ptr_HybridInkSignDocumentSpec_::fromUnsafe(swiftClosureWrapper);
-    return [swiftClosure = std::move(swiftClosure)](const std::shared_ptr<HybridInkSignDocumentSpec>& result) mutable -> void {
-      swiftClosure.call(result);
-    };
-  }
-  
   // pragma MARK: std::shared_ptr<HybridInkSignDocumentFactorySpec>
   std::shared_ptr<HybridInkSignDocumentFactorySpec> create_std__shared_ptr_HybridInkSignDocumentFactorySpec_(void* NON_NULL swiftUnsafePointer) noexcept {
     ReactNativeInkSignPdf::HybridInkSignDocumentFactorySpec_cxx swiftPart = ReactNativeInkSignPdf::HybridInkSignDocumentFactorySpec_cxx::fromUnsafe(swiftUnsafePointer);

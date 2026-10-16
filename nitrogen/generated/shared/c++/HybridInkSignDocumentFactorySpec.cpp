@@ -14,7 +14,7 @@ namespace margelo::nitro::inksignpdf {
     HybridObject::loadHybridMethods();
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
-      prototype.registerHybridMethod("openDoc", &HybridInkSignDocumentFactorySpec::openDoc);
+      prototype.registerHybridMethod("createDocument", &HybridInkSignDocumentFactorySpec::createDocument);
     });
   }
 

@@ -18,7 +18,7 @@ Read the reference matching the task:
 
 ## Android
 
-- View ownership, document replacement, reset, and disposal:
+- View ownership, native input selection, document replacement, reset, and disposal:
   [android/view-lifecycle.md](references/android/view-lifecycle.md)
 - Viewport transforms, tile navigation, touch input, and scale conversion:
   [android/viewport-input.md](references/android/viewport-input.md)
@@ -50,7 +50,7 @@ Read the reference matching the task:
 
 ## Swift / iOS
 
-- View ownership and document lifecycle:
+- View ownership, native Files/Photos selection, and document lifecycle:
   [swift-ios/view-lifecycle.md](references/swift-ios/view-lifecycle.md)
 - Viewport, mode transitions, and touch conversion:
   [swift-ios/viewport-input.md](references/swift-ios/viewport-input.md)

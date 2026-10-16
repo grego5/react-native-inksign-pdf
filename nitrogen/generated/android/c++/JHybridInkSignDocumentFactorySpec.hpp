@@ -54,7 +54,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
-    std::shared_ptr<Promise<std::shared_ptr<HybridInkSignDocumentSpec>>> openDoc(const std::string& uri, const std::optional<DocumentOpenOptions>& options) override;
+    std::shared_ptr<HybridInkSignDocumentSpec> createDocument(const std::optional<DocumentOptions>& options) override;
 
   private:
     jni::global_ref<JHybridInkSignDocumentFactorySpec::JavaPart> _javaPart;

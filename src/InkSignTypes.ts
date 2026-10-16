@@ -189,6 +189,9 @@ export interface TaggedPageQuery {
 
 export type PageQuery = number | TaggedPageQuery
 
+/** Accepted input content, checked natively for explicit and selected sources. */
+export type PageInputType = 'pdf' | 'image'
+
 /** Image page dimensions in PDF points. */
 export interface ImagePageSize {
   width: number

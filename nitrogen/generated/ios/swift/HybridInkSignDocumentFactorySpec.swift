@@ -13,7 +13,7 @@ public protocol HybridInkSignDocumentFactorySpec_protocol: HybridObject {
   
 
   // Methods
-  func openDoc(uri: String, options: DocumentOpenOptions?) throws -> Promise<(any HybridInkSignDocumentSpec)>
+  func createDocument(options: DocumentOptions?) throws -> (any HybridInkSignDocumentSpec)
 }
 
 public extension HybridInkSignDocumentFactorySpec_protocol {

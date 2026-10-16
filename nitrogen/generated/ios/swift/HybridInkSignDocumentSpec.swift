@@ -17,7 +17,7 @@ public protocol HybridInkSignDocumentSpec_protocol: HybridObject {
   func getPage(index: PageQuery) throws -> Promise<(any HybridDocumentPageSpec)>
   func getPageIdsByTag(tag: String) throws -> [String]
   func loadFonts(fonts: [NamedFontSource]) throws -> Promise<Void>
-  func addPages(options: DocumentAddPagesOptions) throws -> Promise<DocumentAddPagesResult>
+  func addPages(options: DocumentAddPagesOptions?) throws -> Promise<DocumentAddPagesResult>
   func removePage(index: Double) throws -> Promise<Void>
   func movePage(fromIndex: Double, toIndex: Double) throws -> Promise<Void>
   func rotatePage(index: Double, degrees: Double) throws -> Promise<Void>

@@ -16,8 +16,8 @@ namespace margelo::nitro::inksignpdf { struct CreateInputAreaOptions; }
 namespace margelo::nitro::inksignpdf { struct DocumentAddPagesOptions; }
 // Forward declaration of `DocumentAddPagesResult` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentAddPagesResult; }
-// Forward declaration of `DocumentOpenOptions` to properly resolve imports.
-namespace margelo::nitro::inksignpdf { struct DocumentOpenOptions; }
+// Forward declaration of `DocumentOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOptions; }
 // Forward declaration of `DocumentState` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DocumentState; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
@@ -54,6 +54,8 @@ namespace margelo::nitro::inksignpdf { struct PageChangeEvent; }
 namespace margelo::nitro::inksignpdf { struct PageCoords; }
 // Forward declaration of `PageInfo` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct PageInfo; }
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { enum class PagerDirection; }
 // Forward declaration of `ResolveInputUnderlineOptions` to properly resolve imports.
@@ -90,7 +92,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "CreateInputAreaOptions.hpp"
 #include "DocumentAddPagesOptions.hpp"
 #include "DocumentAddPagesResult.hpp"
-#include "DocumentOpenOptions.hpp"
+#include "DocumentOptions.hpp"
 #include "DocumentState.hpp"
 #include "DoubleTapOptions.hpp"
 #include "FieldFocusVerticalAnchor.hpp"
@@ -109,6 +111,7 @@ namespace margelo::nitro::inksignpdf { struct Viewport; }
 #include "PageChangeEvent.hpp"
 #include "PageCoords.hpp"
 #include "PageInfo.hpp"
+#include "PageInputType.hpp"
 #include "PagerDirection.hpp"
 #include "ResolveInputUnderlineOptions.hpp"
 #include "TaggedPageQuery.hpp"

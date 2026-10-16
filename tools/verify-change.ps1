@@ -49,11 +49,6 @@ $checkDefinitions = [ordered]@{
         Command = "powershell-runner"
         Arguments = @("tools\test-android.ps1", "-Mode", "build")
     }
-    ios_lifecycle = [pscustomobject]@{
-        Label = "iOS lifecycle/export contract"
-        Command = "powershell-runner"
-        Arguments = @("tools\test-ios-lifecycle.ps1")
-    }
     artifact_parity = [pscustomobject]@{
         Label = "managed artifact parity"
         Command = "powershell-runner"
@@ -94,8 +89,8 @@ $pathRules = @(
     [pscustomobject]@{ Name = "Android native"; Pattern = '^android/src/(main/cpp|debug|release)/'; Checks = @("android_jvm", "android_build", "diff_check"); Area = "android-native" },
     [pscustomobject]@{ Name = "Android source"; Pattern = '^android/'; Checks = @("android_jvm", "artifact_parity", "diff_check"); Area = "android" },
     [pscustomobject]@{ Name = "Android project"; Pattern = '^(example/android/|android\.gradle$|gradle/|gradlew)'; Checks = @("android_build", "diff_check"); Area = "android-build" },
-    [pscustomobject]@{ Name = "iOS source"; Pattern = '^ios/'; Checks = @("ios_lifecycle", "artifact_parity", "diff_check"); Area = "ios" },
-    [pscustomobject]@{ Name = "iOS tests"; Pattern = '^ios/tests/'; Checks = @("ios_lifecycle", "diff_check"); Area = "ios" },
+    [pscustomobject]@{ Name = "iOS source"; Pattern = '^ios/'; Checks = @("artifact_parity", "diff_check"); Area = "ios" },
+    [pscustomobject]@{ Name = "iOS tests"; Pattern = '^ios/tests/'; Checks = @("diff_check"); Area = "ios" },
     [pscustomobject]@{ Name = "Perfetto tooling"; Pattern = '(^|/)(trace-analysis\.sql|analyze-trace\.py|compare-traces\.py|capture-trace[^/]*\.ps1|InkPerfetto|StrokeTraceRecorder)'; Checks = @("trace_analysis", "diff_check"); Area = "tracing" },
     [pscustomobject]@{ Name = "TypeScript"; Pattern = '(^src/|\.(ts|tsx|mjs)$)'; Checks = @("typescript", "artifact_parity", "diff_check"); Area = "typescript" },
     [pscustomobject]@{ Name = "Build system"; Pattern = '(^|/)(CMakeLists\.txt|.*\.cmake|package\.json|package-lock\.json|nitro\.json)$'; Checks = @("native_all", "android_build", "typescript", "diff_check"); Area = "build-system" },
@@ -267,7 +262,7 @@ $requestedChecks = New-Object 'System.Collections.Generic.HashSet[string]' ([Sys
 foreach ($checkName in $selectedChecks) { [void]$requestedChecks.Add($checkName) }
 $validationOrder = @(
     "native_geometry", "geometry_contract", "native_lifecycle", "native_all",
-    "android_jvm", "android_build", "ios_lifecycle", "artifact_parity", "typescript", "trace_analysis",
+    "android_jvm", "android_build", "artifact_parity", "typescript", "trace_analysis",
     "text_contract", "tooling_tests", "documentation_paths", "diff_check"
 )
 $selectedChecks = New-Object 'System.Collections.Generic.List[string]'

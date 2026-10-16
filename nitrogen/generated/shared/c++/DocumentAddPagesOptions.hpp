@@ -28,11 +28,14 @@
 #error NitroModules cannot be found! Are you sure you installed NitroModules properly?
 #endif
 
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
 // Forward declaration of `ImagePageSize` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
 
-#include <string>
+#include "PageInputType.hpp"
 #include <optional>
+#include <string>
 #include <vector>
 #include "ImagePageSize.hpp"
 
@@ -43,15 +46,16 @@ namespace margelo::nitro::inksignpdf {
    */
   struct DocumentAddPagesOptions final {
   public:
+    std::optional<PageInputType> type     SWIFT_PRIVATE;
     std::optional<std::string> tag     SWIFT_PRIVATE;
-    std::vector<std::string> sources     SWIFT_PRIVATE;
+    std::optional<std::vector<std::string>> sources     SWIFT_PRIVATE;
     std::optional<ImagePageSize> imagePageSize     SWIFT_PRIVATE;
     std::optional<double> targetDpi     SWIFT_PRIVATE;
     std::optional<double> jpegQuality     SWIFT_PRIVATE;
 
   public:
     DocumentAddPagesOptions() = default;
-    explicit DocumentAddPagesOptions(std::optional<std::string> tag, std::vector<std::string> sources, std::optional<ImagePageSize> imagePageSize, std::optional<double> targetDpi, std::optional<double> jpegQuality): tag(tag), sources(sources), imagePageSize(imagePageSize), targetDpi(targetDpi), jpegQuality(jpegQuality) {}
+    explicit DocumentAddPagesOptions(std::optional<PageInputType> type, std::optional<std::string> tag, std::optional<std::vector<std::string>> sources, std::optional<ImagePageSize> imagePageSize, std::optional<double> targetDpi, std::optional<double> jpegQuality): type(type), tag(tag), sources(sources), imagePageSize(imagePageSize), targetDpi(targetDpi), jpegQuality(jpegQuality) {}
 
   public:
     friend bool operator==(const DocumentAddPagesOptions& lhs, const DocumentAddPagesOptions& rhs) = default;
@@ -67,8 +71,9 @@ namespace margelo::nitro {
     static inline margelo::nitro::inksignpdf::DocumentAddPagesOptions fromJSI(jsi::Runtime& runtime, const jsi::Value& arg) {
       jsi::Object obj = arg.asObject(runtime);
       return margelo::nitro::inksignpdf::DocumentAddPagesOptions(
+        JSIConverter<std::optional<margelo::nitro::inksignpdf::PageInputType>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "type"))),
         JSIConverter<std::optional<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "tag"))),
-        JSIConverter<std::vector<std::string>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources"))),
+        JSIConverter<std::optional<std::vector<std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources"))),
         JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "targetDpi"))),
         JSIConverter<std::optional<double>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "jpegQuality")))
@@ -76,8 +81,9 @@ namespace margelo::nitro {
     }
     static inline jsi::Value toJSI(jsi::Runtime& runtime, const margelo::nitro::inksignpdf::DocumentAddPagesOptions& arg) {
       jsi::Object obj(runtime);
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "type"), JSIConverter<std::optional<margelo::nitro::inksignpdf::PageInputType>>::toJSI(runtime, arg.type));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "tag"), JSIConverter<std::optional<std::string>>::toJSI(runtime, arg.tag));
-      obj.setProperty(runtime, PropNameIDCache::get(runtime, "sources"), JSIConverter<std::vector<std::string>>::toJSI(runtime, arg.sources));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "sources"), JSIConverter<std::optional<std::vector<std::string>>>::toJSI(runtime, arg.sources));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize"), JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::toJSI(runtime, arg.imagePageSize));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "targetDpi"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.targetDpi));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "jpegQuality"), JSIConverter<std::optional<double>>::toJSI(runtime, arg.jpegQuality));
@@ -91,8 +97,9 @@ namespace margelo::nitro {
       if (!nitro::isPlainObject(runtime, obj)) {
         return false;
       }
+      if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::PageInputType>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "type")))) return false;
       if (!JSIConverter<std::optional<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "tag")))) return false;
-      if (!JSIConverter<std::vector<std::string>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources")))) return false;
+      if (!JSIConverter<std::optional<std::vector<std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "sources")))) return false;
       if (!JSIConverter<std::optional<margelo::nitro::inksignpdf::ImagePageSize>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "imagePageSize")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "targetDpi")))) return false;
       if (!JSIConverter<std::optional<double>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "jpegQuality")))) return false;
