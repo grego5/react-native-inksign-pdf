@@ -52,8 +52,11 @@ export interface InkSignViewProps extends HybridViewProps {
   document?: InkSignDocument
 
   strokeColor?: StrokeColor
+  /** Android brush minimum in logical display points; PencilKit controls iOS dynamics. */
   strokeMinWidth?: number
+  /** Logical display-point width for new strokes (default 4). iOS uses PencilKit's nominal width, not a pressure cap. */
   strokeMaxWidth?: number
+  /** Android brush smoothing; iOS uses PencilKit smoothing. */
   strokeSmoothing?: number
   /** Default canonical page-unit font size for new text. Invalid values use 16; valid values are clamped to 8...72. */
   defaultTextFontSize?: number

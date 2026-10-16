@@ -18,7 +18,7 @@ struct InkSignPdfPageInputOptions {
 /// module-owned, ordered files that can outlive a picker callback.
 final class InkSignPdfPageInputCoordinator: NSObject {
   typealias Completion = (Result<[InkSignPdfStagedPageInput], Error>) -> Void
-  typealias PresenterProvider = () -> UIViewController?
+  typealias PresenterProvider = () -> [UIViewController]
   typealias DocumentPickerFactory = ([UTType]) -> UIDocumentPickerViewController
   typealias PhotoPickerFactory = (PHPickerConfiguration) -> PHPickerViewController
   typealias ControllerPresenter = (UIViewController, UIViewController) -> Void
@@ -137,6 +137,8 @@ final class InkSignPdfPageInputCoordinator: NSObject {
       request.sceneObserver = nil
     }
     dismissController(request, animated: false, using: dismisser) {
+      request.presenter = nil
+      request.presentationScene = nil
       if Self.pickerLease === request { Self.pickerLease = nil }
       completion()
     }
@@ -180,6 +182,7 @@ final class InkSignPdfPageInputCoordinator: NSObject {
 
   enum PageInputError: LocalizedError, Equatable {
     case missingPresenter
+    case ambiguousPresenter
     case operationInProgress
     case operationCancelled
     case staleCallback
@@ -191,6 +194,8 @@ final class InkSignPdfPageInputCoordinator: NSObject {
       switch self {
       case .missingPresenter:
         return "missing_presenter: Unable to present the page picker"
+      case .ambiguousPresenter:
+        return "ambiguous_presenter: Multiple foreground presenters can present the page picker"
       case .operationInProgress:
         return "operation_in_progress: Another page input operation is active"
       case .operationCancelled:
@@ -219,6 +224,8 @@ final class InkSignPdfPageInputCoordinator: NSObject {
     var controller: UIViewController?
     var awaitingSelection = false
     var sceneObserver: NSObjectProtocol?
+    var presenter: UIViewController?
+    var presentationScene: UIWindowScene?
     var dismissal: Dismissal = .pending
 
     private let lock = NSLock()
@@ -281,12 +288,18 @@ final class InkSignPdfPageInputCoordinator: NSObject {
     }
   }
 
-  private func presenter() -> UIViewController? {
-    if let presenterProvider { return presenterProvider().map { topPresenter(from: $0) } }
-    let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-      .filter { $0.activationState == .foregroundActive }
-    guard let root = scenes.flatMap(\.windows).first(where: { $0.isKeyWindow })?.rootViewController else { return nil }
-    return topPresenter(from: root)
+  private func presenter() throws -> UIViewController? {
+    let roots: [UIViewController]
+    if let presenterProvider {
+      roots = presenterProvider()
+    } else {
+      let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        .filter { $0.activationState == .foregroundActive }
+      roots = scenes.flatMap(\.windows).filter { $0.isKeyWindow && !$0.isHidden }
+        .compactMap(\.rootViewController)
+    }
+    guard roots.count <= 1 else { throw PageInputError.ambiguousPresenter }
+    return roots.first.map { topPresenter(from: $0) }
   }
 
   private func topPresenter(from root: UIViewController) -> UIViewController {
@@ -306,11 +319,17 @@ final class InkSignPdfPageInputCoordinator: NSObject {
   }
 
   private func presentPicker(for request: Request) {
-    guard let presenter = presenter() else {
-      complete(request, with: .failure(PageInputError.missingPresenter))
+    let presenter: UIViewController
+    do {
+      guard let resolved = try self.presenter() else { throw PageInputError.missingPresenter }
+      presenter = resolved
+    } catch {
+      complete(request, with: .failure(error))
       return
     }
-    if let scene = presenter.viewIfLoaded?.window?.windowScene {
+    request.presenter = presenter
+    request.presentationScene = presenter.viewIfLoaded?.window?.windowScene
+    if let scene = request.presentationScene {
       request.sceneObserver = NotificationCenter.default.addObserver(
         forName: UIScene.didDisconnectNotification, object: scene, queue: .main) { [weak self] _ in
           guard let self, self.activeRequest === request else { return }

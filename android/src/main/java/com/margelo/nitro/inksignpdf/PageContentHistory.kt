@@ -51,13 +51,23 @@ internal data class TextAnnotation(
   /** Page orientation in which layout coordinates were captured; null means raw content space. */
   val layoutPage: PdfPageDimensions? = null,
   val font: NamedFontResource? = null,
+  val autoWidth: Boolean = false,
+  val autoHeight: Boolean = false,
 ) {
   val layoutToCanonical: PageTransform
     get() = layoutPage?.let { PageCoordinates(it).displayToRawTransform() }
       ?: PageTransform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
 
+  val placementBounds: PageRect
+    get() {
+      val flow = flowBounds ?: bounds
+      return PageRect(
+        if (autoWidth) bounds.left else flow.left, if (autoHeight) bounds.top else flow.top,
+        if (autoWidth) bounds.right else flow.right, if (autoHeight) bounds.bottom else flow.bottom)
+    }
+
   val canonicalPlacementBounds: PageRect
-    get() = textAnnotationOuterBounds(flowBounds ?: bounds, layoutToCanonical, 0.0, 0.0)
+    get() = textAnnotationOuterBounds(placementBounds, layoutToCanonical, 0.0, 0.0)
 
   fun layoutToDisplay(page: PdfPageDimensions): PageTransform =
     layoutToCanonical.then(PageCoordinates(page).canonicalToDisplayTransform())

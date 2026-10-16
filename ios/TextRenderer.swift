@@ -338,6 +338,14 @@ enum InkSignPdfTextRenderer {
                                     rect: usedRect,
                                     lineBounds: lineRect))
     }
+    if text.last?.isNewline == true {
+      let height = InkSignPdfTextStyle.font(size: fontSize, resource: font).lineHeight
+      let y = fragments.last?.lineBounds.maxY ?? 0
+      let right = (alignment == .start && isRTL) || (alignment == .end && !isRTL)
+      let x = alignment == .center ? contentWidth / 2 : right ? contentWidth : 0
+      fragments.append(LineFragment(text: "", rect: CGRect(x: x, y: y, width: 0, height: height),
+        lineBounds: CGRect(x: 0, y: y, width: contentWidth, height: height)))
+    }
     return fragments
   }
 

@@ -148,6 +148,9 @@ requires a foreground presenter; explicit inputs do not.
 Text options include direction, alignment, font, fontSize, color, maxLines and
 verticalAnchor. Bounds use `{ x, y, width, height }` in displayed page points.
 Bounds are hard limits; maxLines caps complete lines without forcing extra lines.
+Manual placement accepts width and height independently: `{ width: 180 }` wraps
+and grows vertically; `{ height: 60 }` grows horizontally within the page.
+Text grows from logical start and top by default; snapped text grows above its rule.
 History defaults to enabled. Set `recordHistory: false` when creating or opening the owner to disable it.
 Programmatic `untracked: true` skips history unless the target already has tracked edits.
 
@@ -185,6 +188,8 @@ Android debug builds expose `startDebugRecording()`, `stopDebugRecording()`, and
 - `textDirection="rtl"` — Default editor direction; omission/auto follows app layout.
   Per-operation direction overrides it.
 - `pagerDirection="rtl"` — Paging direction independent of text direction.
+- `strokeMaxWidth` — New-stroke width in screen points (default 4); nominal on iOS.
+  `strokeMinWidth` and `strokeSmoothing` apply only to Android.
 
 Viewer defaults apply to interactive edits. Document reads include active text;
 finishing an edit records one undo action.

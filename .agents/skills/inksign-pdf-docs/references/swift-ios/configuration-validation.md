@@ -7,10 +7,11 @@
   to finish.
 - iOS maps supported stroke settings to PencilKit. PencilKit owns pressure,
   smoothing, caps, joins, and prediction.
-- Pen width is in screen points, converted by the canvas-to-window scale and
-  canvas zoom. Viewport/layout updates refresh the tool before drawing;
-  the tool stays fixed during a drawing transaction.
-  Committed page-space ink scales with the viewport.
+- `strokeMaxWidth` is PencilKit's nominal width in screen points (default 4).
+  `strokeMinWidth` and `strokeSmoothing` apply only to Android.
+- Tool width divides configured width by canvas-to-window scale and canvas zoom.
+  It refreshes before drawing and stays fixed during the stroke; committed ink
+  scales with the viewport.
 - Working artifacts belong to the core; successful exports belong to the caller.
   See [export](export.md).
 

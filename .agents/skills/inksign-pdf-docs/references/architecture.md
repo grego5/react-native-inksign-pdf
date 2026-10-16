@@ -100,9 +100,14 @@ Resource contracts: [Android lifecycle](android/view-lifecycle.md),
 - Dimensions are hard limits; `maxLines` caps complete lines without forcing a
   count. Preview/export share retained lines. Programmatic values clip overflow;
   bounded editors admit fitting input and allow deletion after reflow.
-- Omitting both dimensions auto-sizes the editor, including new lines. Direction
-  controls contents/alignment inside physical bounds. Direction/font changes
-  preserve entered text; `verticalAnchor` controls vertical placement.
+- Manual width and height are independently optional. Supplied dimensions fix
+  physical intervals at the tap; omitted dimensions grow within page capacity.
+  Horizontal growth anchors to logical start/end or center. Vertical growth
+  defaults to top, or bottom when snapped; explicit `verticalAnchor` wins.
+- Core text retains flow capacity and auto-axis intent across reopening. Target
+  bounds use visible layout on auto axes. Formatting preserves fixed intervals;
+  direction/alignment changes reanchor auto growth at the current bounds. Moving
+  text recalculates page capacity at the translated anchor.
 - The core owns effective text; overlays own native editor state. Ending a changed
   transaction records one history action; unchanged/new blank text adds none.
   Same-target writes end editing first. Structural/export snapshots end the

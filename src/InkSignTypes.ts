@@ -82,15 +82,15 @@ export interface TextModeOptions extends ViewportOptions {
   font?: string | null
   /** Defaults to `auto`, following the app's resolved layout direction. */
   direction?: TextDirection
-  /** Supply both dimensions for a fixed hard-bounded box; omit both to auto-size as text grows. */
+  /** Hard width in page points, fixing [tap.x, tap.x + width]; omission auto-sizes horizontally. */
   width?: number
-  /** Supply both dimensions for a fixed hard-bounded box; omit both to auto-size as text grows. */
+  /** Hard height in page points, fixing [tap.y, tap.y + height]; omission auto-sizes vertically. */
   height?: number
   /** Maximum complete lines; omission keeps every line that fits. */
   maxLines?: number
-  /** Omission aligns to `start`. */
+  /** Growth edge on an auto axis: start follows direction, end reverses it, center keeps the midpoint. */
   alignment?: TextAlignment
-  /** Omission anchors the initial text block at the top. */
+  /** Defaults to top for ordinary placement, bottom above a snapped rule. Explicit values win. */
   verticalAnchor?: TextVerticalAnchor
 }
 

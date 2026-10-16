@@ -151,12 +151,12 @@ export function validateTextModeOptions(value: unknown): void {
   validateTextAnnotationOptions(value);
   const hasWidth = value.width !== undefined;
   const hasHeight = value.height !== undefined;
-  if (hasWidth !== hasHeight ||
+  if (
     (hasWidth && (typeof value.width !== 'number' || !Number.isFinite(value.width) || value.width <= 0)) ||
     (hasHeight && (typeof value.height !== 'number' || !Number.isFinite(value.height) || value.height <= 0))) {
     throw argumentError(
       'invalid_text_placement_options',
-      'Manual box width and height must be supplied together as finite positive page points',
+      'Manual box dimensions must each be finite positive page points when supplied',
     );
   }
 }

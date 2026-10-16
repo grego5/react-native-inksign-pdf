@@ -377,7 +377,9 @@ internal class TextPlacementInstrumentationTest {
         assertEquals(2, editor.layout.lineCount)
         overlay.finishForLifecycle()
         val annotation = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
-        assertTrue(annotation.flowBounds == null)
+        assertTrue(annotation.flowBounds != null)
+        assertTrue(annotation.autoWidth)
+        assertTrue(annotation.autoHeight)
         assertEquals(2, annotation.maxLines)
         assertEquals(2, TextLayoutSpec.createLayout(annotation).lineCount)
       } finally {
@@ -561,6 +563,79 @@ internal class TextPlacementInstrumentationTest {
       } finally {
         overlay.dispose()
       }
+    }
+  }
+
+  @Test
+  fun logicalGrowthKeepsAcceptedEdgesThroughNewlinesAndDeletion() {
+    val cases = listOf(
+      Triple(false, TextAlignment.START, TextVerticalAnchor.TOP),
+      Triple(true, TextAlignment.START, TextVerticalAnchor.TOP),
+      Triple(false, TextAlignment.CENTER, TextVerticalAnchor.TOP),
+      Triple(false, TextAlignment.START, TextVerticalAnchor.BOTTOM),
+    )
+    for ((rtl, alignment, vertical) in cases) harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        overlay.armPlacement(presentation.generation, TextModeOptions(font = null,
+          direction = if (rtl) TextDirection.RTL else TextDirection.LTR,
+          width = null, height = null, maxLines = null, alignment = alignment,
+          verticalAnchor = vertical, x = null, y = null, zoom = null))
+        val tap = presentation.transform.map(PagePoint(150.0, 140.0))
+        dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_200L)
+        dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_210L)
+        val editor = editorView(overlay)
+        for (value in listOf("A", "A longer line", "First\nSecond\nThird", "A", "")) {
+          editor.setText(value)
+          val bounds = editorPageBounds(editor)
+          val right = (alignment == TextAlignment.START && rtl) || (alignment == TextAlignment.END && !rtl)
+          val edge = when {
+            alignment == TextAlignment.CENTER -> (bounds.left + bounds.right) / 2.0
+            right -> bounds.right
+            else -> bounds.left
+          }
+          assertEquals(150.0, edge, 1.5)
+          assertEquals(140.0, if (vertical == TextVerticalAnchor.BOTTOM) bounds.bottom else bounds.top, 1.5)
+        }
+      } finally { overlay.dispose() }
+    }
+  }
+
+  @Test
+  fun independentDimensionsRetainAdmissionAndSavedAxisIntent() {
+    for ((width, height) in listOf(70.0 to null, null to 45.0, 70.0 to 45.0, null to null)) harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        overlay.armPlacement(presentation.generation, TextModeOptions(font = null,
+          direction = TextDirection.LTR, width = width, height = height, maxLines = 5.0,
+          alignment = TextAlignment.START, verticalAnchor = TextVerticalAnchor.TOP,
+          x = null, y = null, zoom = null))
+        val tap = presentation.transform.map(PagePoint(100.0, 100.0))
+        dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_220L)
+        dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_230L)
+        val editor = editorView(overlay)
+        editor.setText("First")
+        if (height != null) {
+          editor.append("\nSecond\nThird\nFourth")
+          assertEquals("First", editor.text.toString())
+        }
+        if (width != null) assertEquals(width, editorPageBounds(editor).right - editorPageBounds(editor).left, 1.5)
+        overlay.finishForLifecycle()
+        val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        assertEquals(width == null, saved.autoWidth)
+        assertEquals(height == null, saved.autoHeight)
+        val current = checkNotNull(harness.surface.textPresentationSnapshot())
+        val reopen = current.transform.map(PagePoint((saved.bounds.left + saved.bounds.right) / 2.0,
+          (saved.bounds.top + saved.bounds.bottom) / 2.0))
+        dispatch(overlay, MotionEvent.ACTION_DOWN, reopen.x.toFloat(), reopen.y.toFloat(), 1_240L)
+        dispatch(overlay, MotionEvent.ACTION_UP, reopen.x.toFloat(), reopen.y.toFloat(), 1_250L)
+        assertEquals("First", editorView(overlay).text.toString())
+        assertEquals(100.0, editorPageBounds(editorView(overlay)).top, 1.5)
+      } finally { overlay.dispose() }
     }
   }
 
@@ -982,10 +1057,7 @@ internal class TextPlacementInstrumentationTest {
       val tap = presentation.transform.map(PagePoint(150.0, 176.0))
       assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_050L))
       assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_060L))
-      val scale = checkNotNull(presentation.transform.uniformScale())
-      val density = InstrumentationRegistry.getInstrumentation().targetContext
-        .resources.displayMetrics.density
-      expectedBottom = candidate.y - (3.0 * density).toInt() / scale
+      expectedBottom = candidate.y
     }
     try {
       harness.waitForViewportAnimationToFinish()
@@ -998,6 +1070,32 @@ internal class TextPlacementInstrumentationTest {
       }
     } finally {
       harness.runOnMain { overlay.dispose() }
+    }
+  }
+
+  @Test
+  fun explicitTopOverridesRuleSnapDefault() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      harness.surface.installSnapCandidateMeasurement(harness.info.generation, 0,
+        harness.surface.currentPageSwitchId, listOf(PdfiumHorizontalSnapCandidate(60.0, 240.0, 180.0)))
+      val overlay = harness.createOverlay()
+      try {
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        overlay.armPlacement(presentation.generation, TextModeOptions(font = null,
+          direction = TextDirection.LTR, width = null, height = null, maxLines = null,
+          alignment = TextAlignment.START, verticalAnchor = TextVerticalAnchor.TOP,
+          x = null, y = null, zoom = null))
+        val tap = presentation.transform.map(PagePoint(150.0, 176.0))
+        dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 1_070L)
+        dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 1_080L)
+        val editor = editorView(overlay)
+        for (value in listOf("First", "First\nSecond", "First")) {
+          editor.setText(value)
+          assertEquals(value, editor.text.toString())
+          assertEquals(180.0, editorPageBounds(editor).top, 1.5)
+        }
+      } finally { overlay.dispose() }
     }
   }
 
@@ -1626,8 +1724,6 @@ internal class TextPlacementInstrumentationTest {
         assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
         assertEquals(1, editorCount(overlay))
         val editor = editorView(overlay)
-        assertTrue(editor.paddingLeft > 0)
-        assertTrue(editor.paddingTop > 0)
         overlay.syncTransform()
         val beforeTransform = checkNotNull(harness.surface.textPresentationSnapshot()).transform
         val beforeRight = beforeTransform.inverse()
@@ -1654,7 +1750,9 @@ internal class TextPlacementInstrumentationTest {
         val emptiedRight = emptiedTransform.inverse()
           .map(PagePoint(editor.right.toDouble(), editor.top.toDouble())).x
         assertEquals(afterRight, emptiedRight, 2.0)
-        editor.setText("שלום".repeat(40))
+        val wrappingText = "שלום ".repeat(6).trimEnd()
+        editor.setText(wrappingText)
+        assertEquals(wrappingText, editor.text.toString())
         overlay.syncTransform()
         val layout = checkNotNull(editor.layout)
         assertTrue(layout.lineCount > 1)
@@ -1757,7 +1855,9 @@ internal class TextPlacementInstrumentationTest {
             editor.textDirection,
           )
           assertEquals(InteractionMode.TEXTEDIT, overlay.interactionMode())
-          assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.isEmpty())
+          val draft = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+          assertEquals(expectedRtl, draft.directionRtl)
+          assertEquals(expectedText, draft.text.replace("\n", ""))
           val switchedBounds = editorPageBounds(editor)
           assertFrameNear(beforeBounds, switchedBounds)
           overlay.syncContent()
@@ -1775,6 +1875,11 @@ internal class TextPlacementInstrumentationTest {
           val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
           assertEquals(expectedRtl, saved.directionRtl)
           assertEquals(expectedText, saved.text.replace("\n", ""))
+          harness.undo()
+          assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.isEmpty())
+          assertFalse(harness.coordinator.pageHistoryState(harness.surface.documentState.activePageIndex).canUndo)
+          harness.core.redo(harness.surface.documentState.activePageId())
+          assertEquals(saved, checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single())
 
           val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
           val tap = presentation.transform.map(
@@ -1817,13 +1922,20 @@ internal class TextPlacementInstrumentationTest {
 
         assertEquals("Auto direction updates now", editor.text.toString())
         assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
-        assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.isEmpty())
+        val draft = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        assertTrue(draft.directionRtl)
+        assertEquals("Auto direction updates now", draft.text.replace("\n", ""))
         assertFrameNear(beforeBounds, editorPageBounds(editor))
 
         overlay.finishForLifecycle()
         val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         assertTrue(saved.directionRtl)
         assertEquals("Auto direction updates now", saved.text.replace("\n", ""))
+        harness.undo()
+        assertTrue(checkNotNull(harness.surface.textPresentationSnapshot()).annotations.isEmpty())
+        assertFalse(harness.coordinator.pageHistoryState(harness.surface.documentState.activePageIndex).canUndo)
+        harness.core.redo(harness.surface.documentState.activePageId())
+        assertEquals(saved, checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single())
       } finally {
         overlay.dispose()
       }
@@ -1891,15 +2003,19 @@ internal class TextPlacementInstrumentationTest {
 
         assertEquals("Programmatic flow text", editor.text.toString())
         assertEquals(TextView.TEXT_DIRECTION_RTL, editor.textDirection)
-        val stillCommitted = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
-        assertFalse(stillCommitted.directionRtl)
-        assertEquals(original.flowBounds, stillCommitted.flowBounds)
+        val draft = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
+        assertTrue(draft.directionRtl)
+        assertEquals(original.flowBounds, draft.flowBounds)
         assertFrameNear(beforeBounds, editorPageBounds(editor))
 
         overlay.finishForLifecycle()
         val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         assertTrue(saved.directionRtl)
         assertEquals(original.flowBounds, saved.flowBounds)
+        harness.undo()
+        assertEquals(original, checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single())
+        harness.core.redo(harness.surface.documentState.activePageId())
+        assertEquals(saved, checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single())
 
         val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
         val reopenTap = presentation.transform.map(
@@ -1976,12 +2092,18 @@ internal class TextPlacementInstrumentationTest {
       harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
       val overlay = harness.createOverlay()
       try {
-        overlay.armPlacement(1L)
-        choosePlacementDirection(overlay, rtl = false)
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, 150f, 150f, 6_000L))
-        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, 150f, 150f, 6_010L))
+        overlay.armPlacement(1L, TextModeOptions(font = null,
+          direction = TextDirection.LTR, width = 80.0, height = 120.0,
+          maxLines = null, alignment = TextAlignment.START, verticalAnchor = TextVerticalAnchor.TOP,
+          x = null, y = null, zoom = null))
+        val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+        val tap = presentation.transform.map(PagePoint(150.0, 150.0))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 6_000L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 6_010L))
         val editor = editorView(overlay)
-        editor.setText("abcdefghij".repeat(80))
+        val text = "wrap ".repeat(6).trimEnd()
+        editor.setText(text)
+        assertEquals(text, editor.text.toString())
         overlay.syncTransform()
         val nativeLayout = checkNotNull(editor.layout)
         val nativeLineCount = nativeLayout.lineCount
@@ -1996,10 +2118,11 @@ internal class TextPlacementInstrumentationTest {
           .annotations.single()
         assertEquals(nativeLineCount, annotation.text.count { it == '\n' } + 1)
         assertTrue(!annotation.text.contains("\n\n"))
+        // Native pixel layout and page-point layout round metrics at different scales.
         assertEquals(
           nativeHeightInPageUnits,
           annotation.intrinsicHeight,
-          0.01,
+          1.0,
         )
       } finally {
         overlay.dispose()
@@ -2008,7 +2131,7 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
-  fun measuredEmptyEditorContentBottomAndFrameCenterMatchTap() {
+  fun measuredEmptyEditorLogicalStartAndTopMatchTap() {
     lateinit var overlay: TextInteractionOverlay
     lateinit var pageTap: PagePoint
     harness.runOnMain {
@@ -2030,8 +2153,8 @@ internal class TextPlacementInstrumentationTest {
         assertEquals(editor.textSize, emptyContentWidth.toFloat(), 1.5f)
         val tapInView = checkNotNull(harness.surface.textPresentationSnapshot())
           .transform.map(pageTap)
-        assertEquals(tapInView.x.toFloat(), (editor.left + editor.right) / 2f, 1f)
-        assertEquals(tapInView.y.toFloat(), (editor.bottom - editor.compoundPaddingBottom).toFloat(), 1f)
+        assertEquals(tapInView.x.toFloat(), (editor.left + editor.compoundPaddingLeft).toFloat(), 1f)
+        assertEquals(tapInView.y.toFloat(), (editor.top + editor.compoundPaddingTop).toFloat(), 1f)
       }
     } finally {
       harness.runOnMain { overlay.dispose() }
@@ -2039,7 +2162,7 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
-  fun measuredEmptyEditorFrameClampsToPageTopWhenTapIsNearTopEdge() {
+  fun measuredEmptyEditorKeepsTopWhenTapIsNearPageEdge() {
     lateinit var overlay: TextInteractionOverlay
     val pageTap = PagePoint(150.0, 5.0)
     harness.runOnMain {
@@ -2060,7 +2183,7 @@ internal class TextPlacementInstrumentationTest {
         val inverse = transform.inverse()
         val frameTop = inverse.map(PagePoint(editor.left.toDouble(), editor.top.toDouble())).y
         val frameBottom = inverse.map(PagePoint(editor.left.toDouble(), editor.bottom.toDouble())).y
-        assertEquals(0.0, frameTop, 1.0)
+        assertEquals(pageTap.y, frameTop, 1.0)
         assertTrue(frameBottom > pageTap.y)
         assertTrue(frameBottom <= 300.0)
       }
@@ -2151,7 +2274,7 @@ internal class TextPlacementInstrumentationTest {
         val annotation = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.single()
         assertTrue(!annotation.directionRtl)
         assertEquals(stableLeftAnchor, annotation.bounds.left, 1.0)
-        assertEquals(pageAnchor.y, annotation.bounds.bottom, 1.0)
+        assertEquals(pageAnchor.y, annotation.bounds.top, 1.0)
         assertEquals(initialZoom, harness.surface.currentViewportState().zoom, 0.0)
       }
     } finally {

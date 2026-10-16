@@ -4,7 +4,9 @@ import java.security.MessageDigest
 import java.nio.charset.StandardCharsets
 
 apply plugin: 'com.android.library'
-apply plugin: 'org.jetbrains.kotlin.android'
+if (providers.gradleProperty('android.builtInKotlin').orNull == 'false') {
+  apply plugin: 'org.jetbrains.kotlin.android'
+}
 
 apply from: '../nitrogen/generated/android/ReactNativeInkSignPdf+autolinking.gradle'
 
@@ -502,8 +504,10 @@ android {
     targetCompatibility JavaVersion.VERSION_17
   }
 
-  kotlinOptions {
-    jvmTarget = '17'
+  if (providers.gradleProperty('android.builtInKotlin').orNull == 'false') {
+    kotlinOptions {
+      jvmTarget = '17'
+    }
   }
 }
 

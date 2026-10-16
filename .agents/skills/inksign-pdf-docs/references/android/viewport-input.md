@@ -47,13 +47,12 @@
   may reduce overflow; overflowing extensions preserve composition. Direction/font
   changes retain text; vertical anchor affects placement, not fit. Programmatic
   values use the same committed layout.
-- Auto-sized placement centers horizontally with inner bottom at the tap, then
-  clamps/snaps to the page/rules. Snap candidates load lazily from shared analysis.
+- Manual placement follows the shared [text layout contract](../architecture.md#layout-and-editing).
+  Snap candidates load lazily from shared analysis.
   Above-rule tolerance is the greater of screen tolerance and label line-height
   (editor line-height when unlabeled); below-rule tolerance is screen-based.
   Existing annotation editing/dragging does not snap.
-- Auto-sized editors reopen at the stored top edge. Keyboard handling changes
-  the viewport rather than the annotation's position.
+- Keyboard handling changes the viewport rather than the annotation's position.
 - `textDirection` updates future placement and the editor, preserving fixed
   flow bounds; reflow/caret following use the updated direction. Explicit LTR/RTL
   options win; `auto` uses app direction; omitted options use the prop default.

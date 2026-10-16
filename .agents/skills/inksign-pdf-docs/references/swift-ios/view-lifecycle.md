@@ -22,8 +22,10 @@
 
 ## Publication
 
-- `PageInputCoordinator` resolves a foreground scene presenter independently of
-  the viewer. PDF-only selection uses Files; mixed/image selection offers Files
+- `PageInputCoordinator` resolves a foreground key-window presenter independently
+  of the viewer at presentation. None rejects `missing_presenter`; multiple reject
+  `ambiguous_presenter`.
+  PDF-only selection uses Files; mixed/image selection offers Files
   or ordered Photos. Picker popovers anchor to that presenter. Scene disconnect
   cancels waiting selection; ordinary backgrounding preserves it.
   Selection settles and releases its platform lease after controller dismissal;

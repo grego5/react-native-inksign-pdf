@@ -11,13 +11,14 @@ extension DocumentCore {
     fontSize: CGFloat, textColor: String, isRTL: Bool, flowBounds: CGRect?,
     maxLines: Int, verticalAnchor: InkSignPdfTextVerticalAnchor,
     alignment: InkSignPdfTextAlignment, layoutRotation: Int,
-    font: InkSignPdfNamedFont?) -> InkSignPdfTextAnnotation {
+    font: InkSignPdfNamedFont?, autoWidth: Bool = false, autoHeight: Bool = false) -> InkSignPdfTextAnnotation {
     let visible = flowBounds.map {
       InkSignPdfTextRenderer.visibleBounds(for: text, fontSize: fontSize, isRTL: isRTL,
         flowBounds: $0, maxLines: maxLines, verticalAnchor: verticalAnchor, alignment: alignment, font: font)
     } ?? bounds
     return InkSignPdfTextAnnotation(id: id, text: text, bounds: visible,
       fontSize: fontSize, textColor: textColor, isRTL: isRTL, flowBounds: flowBounds,
+      autoWidth: autoWidth, autoHeight: autoHeight,
       maxLines: maxLines, verticalAnchor: verticalAnchor, alignment: alignment,
       layoutRotation: layoutRotation, font: font)
   }
@@ -83,7 +84,12 @@ extension DocumentCore {
         fontSize: CGFloat(options?.fontSize ?? Double(current.fontSize)),
         textColor: options?.color ?? current.textColor,
         isRTL: options?.direction.map { resolvedDirection($0) } ?? current.isRTL,
-        flowBounds: current.flowBounds, maxLines: options?.maxLines == nil ? current.maxLines : proposed.maxLines!,
+        flowBounds: current.flowForFormatting(
+          isRTL: options?.direction.map { resolvedDirection($0) } ?? current.isRTL,
+          alignment: options?.alignment.map(InkSignPdfTextAlignment.init) ?? current.alignment,
+          verticalAnchor: options?.verticalAnchor.map(InkSignPdfTextVerticalAnchor.init) ?? current.verticalAnchor,
+          pageSize: PageGeometry(mediaBox: page.geometry.visibleBox, rotation: current.layoutRotation).displaySize),
+        autoWidth: current.autoWidth, autoHeight: current.autoHeight, maxLines: options?.maxLines == nil ? current.maxLines : proposed.maxLines!,
         verticalAnchor: options?.verticalAnchor.map(InkSignPdfTextVerticalAnchor.init) ?? current.verticalAnchor,
         alignment: options?.alignment.map(InkSignPdfTextAlignment.init) ?? current.alignment,
         layoutRotation: current.layoutRotation,
@@ -135,7 +141,12 @@ extension DocumentCore {
       let styled = InkSignPdfTextAnnotation(id: current.id, text: current.text, bounds: current.bounds,
         fontSize: size, textColor: options.color ?? current.textColor,
         isRTL: options.direction.map { resolvedDirection($0) } ?? current.isRTL,
-        flowBounds: current.flowBounds, maxLines: options.maxLines == nil ? current.maxLines : proposed.maxLines!,
+        flowBounds: current.flowForFormatting(
+          isRTL: options.direction.map { resolvedDirection($0) } ?? current.isRTL,
+          alignment: options.alignment.map(InkSignPdfTextAlignment.init) ?? current.alignment,
+          verticalAnchor: options.verticalAnchor.map(InkSignPdfTextVerticalAnchor.init) ?? current.verticalAnchor,
+          pageSize: PageGeometry(mediaBox: page.geometry.visibleBox, rotation: current.layoutRotation).displaySize),
+        autoWidth: current.autoWidth, autoHeight: current.autoHeight, maxLines: options.maxLines == nil ? current.maxLines : proposed.maxLines!,
         verticalAnchor: options.verticalAnchor.map(InkSignPdfTextVerticalAnchor.init) ?? current.verticalAnchor,
         alignment: options.alignment.map(InkSignPdfTextAlignment.init) ?? current.alignment,
         layoutRotation: current.layoutRotation, font: options.font == nil ? current.font : proposed.font)

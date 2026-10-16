@@ -15,7 +15,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     defer { try? FileManager.default.removeItem(at: pdf); try? FileManager.default.removeItem(at: image) }
     let before = stagedURLs()
     let coordinator = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
-      presenterProvider: { nil }, securityScope: { _, copy in try copy() })
+      presenterProvider: { [] }, securityScope: { _, copy in try copy() })
 
     let staged = try await stage(coordinator, options: .init(type: nil,
       sources: [pdf.absoluteString, image.absoluteString]))
@@ -40,7 +40,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     let image = try makePNG(color: .systemBlue, size: CGSize(width: 4, height: 3))
     defer { try? FileManager.default.removeItem(at: pdf); try? FileManager.default.removeItem(at: image) }
     let coordinator = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
-      presenterProvider: { nil }, securityScope: { _, copy in try copy() })
+      presenterProvider: { [] }, securityScope: { _, copy in try copy() })
     let before = stagedURLs()
 
     assertError(InkSignPdfPageInputCoordinator.PageInputError.unsupportedContent,
@@ -71,7 +71,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     var presented: [(UIViewController, UIViewController)] = []
     var documentPicker: UIDocumentPickerViewController?
     let coordinator = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
-      presenterProvider: { tabs },
+      presenterProvider: { [tabs] },
       documentPickerFactory: { types in
         requestedTypes = types
         return UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
@@ -108,7 +108,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     var filteredTypes: [UTType] = []
     var filteredPicker: UIDocumentPickerViewController?
     let filtered = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
-      presenterProvider: { selected }, documentPickerFactory: { types in
+      presenterProvider: { [selected] }, documentPickerFactory: { types in
         filteredTypes = types
         return UIDocumentPickerViewController(forOpeningContentTypes: types, asCopy: false)
       }, controllerPresenter: { _, controller in filteredPicker = controller as? UIDocumentPickerViewController },
@@ -135,7 +135,7 @@ final class PageInputCoordinatorTests: XCTestCase {
     var actions: InkSignPdfPageInputCoordinator.SourceChoiceActions?
     var picker: PHPickerViewController?
     let coordinator = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
-      presenterProvider: { UIViewController() },
+      presenterProvider: { [UIViewController()] },
       photoPickerFactory: { PHPickerViewController(configuration: $0) },
       controllerPresenter: { _, controller in picker = controller as? PHPickerViewController },
       controllerDismisser: { _, _, completion in completion?() },
@@ -168,7 +168,7 @@ final class PageInputCoordinatorTests: XCTestCase {
   }
 
   func testMissingPresenterAndCompetingPresentationDoNotStealOwner() throws {
-    let missing = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts, presenterProvider: { nil })
+    let missing = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts, presenterProvider: { [] })
     assertError(InkSignPdfPageInputCoordinator.PageInputError.missingPresenter,
       stageResult(missing, options: .init(type: nil, sources: nil)))
 
@@ -176,12 +176,12 @@ final class PageInputCoordinatorTests: XCTestCase {
     var ownerSettlements = 0
     let ownerResult = expectation(description: "owner selection cancels once")
     let owner = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
-      presenterProvider: { UIViewController() },
+      presenterProvider: { [UIViewController()] },
       controllerPresenter: { _, _ in },
       controllerDismisser: { _, _, completion in completion?() },
       sourceChooser: { _, actions in ownerActions = actions; return UIViewController() })
     let competitor = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
-      presenterProvider: { UIViewController() }, controllerPresenter: { _, _ in })
+      presenterProvider: { [UIViewController()] }, controllerPresenter: { _, _ in })
     owner.stage(options: .init(type: nil, sources: nil)) { _ in ownerSettlements += 1; ownerResult.fulfill() }
     let competing = expectation(description: "competing owner is rejected")
     competitor.stage(options: .init(type: nil, sources: nil)) { outcome in
@@ -194,6 +194,49 @@ final class PageInputCoordinatorTests: XCTestCase {
     wait(for: [ownerResult], timeout: 5)
     ownerActions?.cancel()
     XCTAssertEqual(ownerSettlements, 1)
+  }
+
+  func testAmbiguousPresentersRejectBeforePresentationAndReleaseLease() throws {
+    var presentations = 0
+    let ambiguous = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
+      presenterProvider: { [UIViewController(), UIViewController()] },
+      controllerPresenter: { _, _ in presentations += 1 })
+    assertError(.ambiguousPresenter, stageResult(ambiguous, options: .init(type: .pdf, sources: nil)))
+    XCTAssertEqual(presentations, 0)
+    let missing = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts, presenterProvider: { [] })
+    assertError(.missingPresenter, stageResult(missing, options: .init(type: .pdf, sources: nil)))
+  }
+
+  func testPickerSceneInactivityKeepsSelectionAndDisconnectCancelsOnce() throws {
+    guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+      throw XCTSkip("Requires a connected window scene")
+    }
+    let window = UIWindow(windowScene: scene)
+    let presenter = UIViewController()
+    window.rootViewController = presenter
+    window.isHidden = false
+    defer { window.isHidden = true }
+    _ = presenter.view
+    var actions: InkSignPdfPageInputCoordinator.SourceChoiceActions?
+    var settlements = 0
+    let completed = expectation(description: "scene disconnect cancels selection once")
+    let coordinator = InkSignPdfPageInputCoordinator(artifactPolicy: artifacts,
+      presenterProvider: { [presenter] }, controllerPresenter: { _, _ in },
+      controllerDismisser: { _, _, completion in completion?() },
+      sourceChooser: { _, callbacks in actions = callbacks; return UIViewController() })
+    onMain {
+      coordinator.stage(options: .init(type: nil, sources: nil)) { outcome in
+        self.assertError(.operationCancelled, outcome)
+        settlements += 1
+        completed.fulfill()
+      }
+      NotificationCenter.default.post(name: UIScene.willDeactivateNotification, object: scene)
+      XCTAssertEqual(settlements, 0)
+      NotificationCenter.default.post(name: UIScene.didDisconnectNotification, object: scene)
+    }
+    wait(for: [completed], timeout: 5)
+    actions?.cancel()
+    XCTAssertEqual(settlements, 1)
   }
 
   private func stage(_ coordinator: InkSignPdfPageInputCoordinator,

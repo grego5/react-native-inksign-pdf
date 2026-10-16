@@ -418,7 +418,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try awaitDocumentOperation(owner.movePage(fromIndex: 0, toIndex: 0))
 
     XCTAssertTrue(textEditor(in: overlay) === editor)
-    XCTAssertTrue(view.viewerDocument?.activePage.history.content.isEmpty == true)
+    XCTAssertEqual(view.viewerDocument?.activePage.history.content.textAnnotations.map(\.text), ["draft"])
     XCTAssertEqual(view.documentCoordinator.generation, generation)
   }
 
@@ -673,11 +673,11 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(afterAssembly.activePage.history.state.canRedo)
 
     try pageHandle.redo()
-    view.defaultTextColor = "#D00000"
-    drainMainQueue()
     try insertTextForTest("New text",
       bounds: TextAnnotationBounds(x: 60, y: 160, width: 160, height: 24),
-      options: nil, in: view)
+      options: TextAnnotationOptions(untracked: nil, font: nil, fontSize: nil,
+        color: "#D00000", direction: nil, maxLines: nil, alignment: nil, verticalAnchor: nil),
+      in: view)
 
     let exported = expectation(description: "export rotated PDF")
     var outputURL: URL?

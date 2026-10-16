@@ -66,10 +66,12 @@ internal class DocumentTextCommands(
     alignment: TextAlignment = TextAlignment.START,
     layoutPage: PdfPageDimensions? = page, font: NamedFontResource? = null,
     intrinsicSize: TextIntrinsicSize? = null,
+    autoWidth: Boolean = false, autoHeight: Boolean = false,
   ): TextAnnotation = TextAnnotationLayout.reflow(TextAnnotation(
     id = id, text = text, bounds = bounds, fontSize = fontSize, textColor = textColor,
     directionRtl = directionRtl, flowBounds = flowBounds, maxLines = maxLines,
     verticalAnchor = verticalAnchor, alignment = alignment, layoutPage = layoutPage, font = font,
+    autoWidth = autoWidth, autoHeight = autoHeight,
   ), page, intrinsicSize)
 
   internal fun insert(context: TextPageContext, bounds: TextAnnotationBounds, text: String,
@@ -122,7 +124,23 @@ internal class DocumentTextCommands(
   private fun annotation(page: InkPageState, slot: TextTargetSlot, current: TextAnnotation?, text: String,
                          options: TextAnnotationOptions): TextAnnotation {
     val font = fonts.resolve(options.font, current?.font)
-    val flow = if (current == null) displayedTargetBounds(slot, page) else current.flowBounds
+    val rtl = options.direction?.let(::resolveDirection) ?: current?.directionRtl ?: resolveDirection(null)
+    val alignment = options.alignment ?: current?.alignment ?: TextAlignment.START
+    val anchor = options.verticalAnchor ?: current?.verticalAnchor ?: TextVerticalAnchor.TOP
+    var flow = if (current == null) displayedTargetBounds(slot, page) else current.flowBounds
+    if (current != null && flow != null &&
+      ((current.autoWidth && (current.directionRtl != rtl || current.alignment != alignment)) ||
+        (current.autoHeight && current.verticalAnchor != anchor))) {
+      val right = (alignment == TextAlignment.START && rtl) || (alignment == TextAlignment.END && !rtl)
+      val x = if (!current.autoWidth) flow.left else if (alignment == TextAlignment.CENTER)
+        (current.bounds.left + current.bounds.right) / 2.0 else if (right) current.bounds.right else current.bounds.left
+      val y = if (!current.autoHeight) flow.top else if (anchor == TextVerticalAnchor.BOTTOM)
+        current.bounds.bottom else current.bounds.top
+      flow = manualTextFlowBounds(PagePoint(x, y),
+        if (current.autoWidth) null else flow.right - flow.left,
+        if (current.autoHeight) null else flow.bottom - flow.top,
+        current.layoutPage ?: PageCoordinates(page.dimensions).rawPage, rtl, alignment, anchor)
+    }
     if (current == null) requireHorizontalRule(slot, page)
     val layoutPage = if (current == null) page.dimensions else current.layoutPage
     return buildAnnotation(
@@ -131,6 +149,7 @@ internal class DocumentTextCommands(
       textColor = parseTextColor(options.color, current?.textColor ?: defaultTextColor),
       directionRtl = options.direction?.let(::resolveDirection) ?: current?.directionRtl ?: resolveDirection(null),
       flowBounds = flow,
+      autoWidth = current?.autoWidth ?: false, autoHeight = current?.autoHeight ?: false,
       maxLines = options.maxLines?.toInt() ?: current?.maxLines ?: 0,
       alignment = options.alignment ?: current?.alignment ?: TextAlignment.START,
       verticalAnchor = options.verticalAnchor ?: current?.verticalAnchor ?: TextVerticalAnchor.TOP,

@@ -84,6 +84,8 @@ extension ViewerCanvas {
     if let window = canvas.window {
       let origin = canvas.convert(CGPoint.zero, to: window)
       let axis = canvas.convert(CGPoint(x: 1, y: 0), to: window)
+      // UIView conversion includes ancestor transforms; PencilKit's internal
+      // scroll zoom is separate. Each contributes once, in points (not pixels).
       let scale = hypot(axis.x - origin.x, axis.y - origin.y) * canvas.zoomScale
       guard scale.isFinite, scale > 0 else { return }
       width /= scale

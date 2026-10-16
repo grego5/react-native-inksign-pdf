@@ -140,10 +140,12 @@ final class ViewerCanvas: HybridInkSignViewSpec {
   var activeDrawingBaseline: InkSignPdfPageContentSnapshot?
   var activeDrawingPageToOverlayTransform: CGAffineTransform?
   var activeDrawingTransactionID: UInt64?
+  var activeDrawingContext: InkSignPdfCorePageContext?
   var pendingDrawingTransactionID: UInt64?
   var endedDrawingBaseline: InkSignPdfPageContentSnapshot?
   var endedDrawingPageToOverlayTransform: CGAffineTransform?
   var endedDrawingTransactionID: UInt64?
+  var endedDrawingContext: InkSignPdfCorePageContext?
   var nextDrawingTransactionID: UInt64 = 0
   var lastChange: (Int, Bool, String, String?, String?, Int?)?
   var lastPublicPage: PageChangeEvent?
@@ -288,10 +290,12 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     canvasView.delegate = canvasViewDelegate
     installPen(currentPen)
     backgroundObserver = NotificationCenter.default.addObserver(
-      forName: UIApplication.didEnterBackgroundNotification,
+      forName: UIScene.willDeactivateNotification,
       object: nil,
-      queue: .main) { [weak self] _ in
-        self?.cancelActiveStroke()
+      queue: .main) { [weak self] notification in
+        guard let self, let scene = notification.object as? UIWindowScene,
+              scene === self.container.window?.windowScene else { return }
+        self.cancelActiveStroke()
       }
     interaction.setBaseMode(ink: false)
     pdfPageObserver = NotificationCenter.default.addObserver(

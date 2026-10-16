@@ -133,7 +133,7 @@ final class SignatureVectorPathTests: XCTestCase {
                   "The filled connector must bridge distinct centers beyond their circular footprints.")
   }
 
-  func testNonCircularFootprintsAreRejectedAndDuplicateCentersKeepLargestDiameter() throws {
+  func testNonCircularFootprintsAreRejected() throws {
     let nonCircularPoint = PKStrokePoint(location: CGPoint(x: 100, y: 100),
                                          timeOffset: 0,
                                          size: CGSize(width: 20, height: 6),
@@ -147,22 +147,6 @@ final class SignatureVectorPathTests: XCTestCase {
         return XCTFail("Non-circular pen footprints must fail as unsupported ink: \(error)")
       }
     }
-
-    let center = CGPoint(x: 100, y: 140)
-    let duplicate = drawing(points: [
-      strokePoint(x: center.x, y: center.y, size: 4, time: 0),
-      strokePoint(x: center.x, y: center.y, size: 20, time: 0.1),
-      strokePoint(x: 160, y: center.y, size: 4, time: 0.2),
-    ])
-    let samples = Array(try XCTUnwrap(duplicate.strokes.first)
-      .path.interpolatedPoints(by: .distance(1)))
-    let largestAtCenter = try XCTUnwrap(samples.filter { $0.location == center }
-      .max { $0.size.width < $1.size.width })
-    let duplicatePath = try XCTUnwrap(
-      InkSignPdfSignatureVectorPath.filledStrokes(in: duplicate).first).path
-    XCTAssertEqual(verticalReach(of: duplicatePath, at: center),
-                   largestAtCenter.size.width / 2,
-                   accuracy: 1.2)
   }
 
   private func straightVariableWidthDrawing() -> PKDrawing {

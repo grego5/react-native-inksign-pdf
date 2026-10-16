@@ -138,7 +138,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     defer { try? FileManager.default.removeItem(at: source) }
     var actions: InkSignPdfPageInputCoordinator.SourceChoiceActions?
     let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
-      presenterProvider: { UIViewController() },
+      presenterProvider: { [UIViewController()] },
       controllerPresenter: { _, _ in },
       controllerDismisser: { _, _, completion in completion?() },
       sourceChooser: { _, value in actions = value; return UIViewController() },
@@ -168,7 +168,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertTrue(edit.active)
     XCTAssertTrue(core.activeTextEdit === edit)
     XCTAssertEqual(try core.textValue(context, id: id), "draft")
-    XCTAssertEqual(page.history.text(for: UInt64(id))?.text, "committed")
+    XCTAssertEqual(page.history.text(for: UInt64(id))?.text, "draft")
     XCTAssertEqual(page.history.revision, revision)
     XCTAssertEqual(core.coordinator.document?.pages.count, 1)
     XCTAssertFalse(events.contains { if case .structuralWriteStarted = $0 { return true }; return false })
@@ -182,7 +182,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     var actions: InkSignPdfPageInputCoordinator.SourceChoiceActions?
     var picker: UIDocumentPickerViewController?
     let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
-      presenterProvider: { UIViewController() },
+      presenterProvider: { [UIViewController()] },
       documentPickerFactory: { UIDocumentPickerViewController(forOpeningContentTypes: $0, asCopy: false) },
       controllerPresenter: { _, controller in picker = controller as? UIDocumentPickerViewController },
       controllerDismisser: { _, _, completion in completion?() },
@@ -208,7 +208,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(try awaitValue(adding), 1)
     try awaitValue(rotating)
     XCTAssertEqual(core.coordinator.document?.pages.count, 2)
-    XCTAssertEqual(core.coordinator.document?.pages.first?.geometry.rotation, 1)
+    XCTAssertEqual(core.coordinator.document?.pages.first?.geometry.rotation, 90)
     XCTAssertTrue(core.coordinator.document?.pages.last?.tag == "selected")
   }
 
@@ -221,7 +221,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     var presentations = 0
     let secondPresentation = InkSignPdfOperationPromise<Void>()
     let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
-      presenterProvider: { UIViewController() },
+      presenterProvider: { [UIViewController()] },
       controllerPresenter: { _, controller in
         if let picker = controller as? PHPickerViewController { pickers.append(picker) }
       },
@@ -277,7 +277,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     defer { try? FileManager.default.removeItem(at: source) }
     var presentations = 0
     let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
-      presenterProvider: { UIViewController() },
+      presenterProvider: { [UIViewController()] },
       controllerPresenter: { _, _ in },
       controllerDismisser: { _, _, completion in completion?() },
       sourceChooser: { _, _ in presentations += 1; return UIViewController() },
@@ -291,10 +291,10 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     let closing = core.close()
 
     XCTAssertThrowsError(try awaitValue(waiting)) { error in
-      XCTAssertTrue(String(describing: error).contains("operation_cancelled"))
+      XCTAssertTrue(error.localizedDescription.hasPrefix("operation_cancelled:"))
     }
     XCTAssertThrowsError(try awaitValue(queued)) { error in
-      XCTAssertTrue(String(describing: error).contains("operation_cancelled"))
+      XCTAssertTrue(error.localizedDescription.hasPrefix("operation_cancelled:"))
     }
     try awaitValue(closing)
     XCTAssertEqual(presentations, 1)
@@ -306,7 +306,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     let entered = DispatchSemaphore(value: 0)
     let release = DispatchSemaphore(value: 0)
     let inputs = InkSignPdfPageInputCoordinator(artifactPolicy: .shared,
-      presenterProvider: { nil },
+      presenterProvider: { [] },
       securityScope: { _, copy in
         entered.signal()
         guard release.wait(timeout: .now() + 10) == .success else {

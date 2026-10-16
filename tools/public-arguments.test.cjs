@@ -66,7 +66,10 @@ test('text options validate alignment and physical placement dimensions', () => 
     message: /^invalid_text_options:/,
   });
   assert.doesNotThrow(() => validateTextModeOptions({ width: 80, height: 40 }));
-  for (const options of [{ width: 80 }, { width: 0, height: 40 }, { width: 80, height: NaN }]) {
+  for (const options of [{ width: 80 }, { height: 40 }, {}]) {
+    assert.doesNotThrow(() => validateTextModeOptions(options));
+  }
+  for (const options of [{ width: 0 }, { height: -1 }, { width: Infinity }, { width: 0, height: 40 }, { width: 80, height: NaN }]) {
     assert.throws(() => validateTextModeOptions(options), {
       message: /^invalid_text_placement_options:/,
     });

@@ -43,6 +43,9 @@ extension ViewerCanvas {
     }
     pendingDrawingTransactionID = nil
     activeDrawingTransactionID = transactionID
+    activeDrawingContext = viewerDocument.map {
+      InkSignPdfCorePageContext(generation: documentCoordinator.generation, pageID: $0.activePage.id)
+    }
     activeDrawingBaseline = viewerDocument?.activePage.history.content
     activeDrawingPageToOverlayTransform = pageToOverlayTransform
   }
@@ -58,9 +61,11 @@ extension ViewerCanvas {
     }
     pendingDrawingTransactionID = nil
     endedDrawingTransactionID = transactionID
+    endedDrawingContext = activeDrawingContext
     endedDrawingBaseline = baseline
     endedDrawingPageToOverlayTransform = activeDrawingPageToOverlayTransform
     activeDrawingTransactionID = nil
+    activeDrawingContext = nil
     activeDrawingBaseline = nil
     activeDrawingPageToOverlayTransform = nil
   }
@@ -100,9 +105,11 @@ extension ViewerCanvas {
       endedDrawingTransactionID != nil
     pendingDrawingTransactionID = nil
     activeDrawingTransactionID = nil
+    activeDrawingContext = nil
     activeDrawingBaseline = nil
     activeDrawingPageToOverlayTransform = nil
     endedDrawingTransactionID = nil
+    endedDrawingContext = nil
     endedDrawingBaseline = nil
     endedDrawingPageToOverlayTransform = nil
     if hadInteraction { canvasView.cancelDrawingInteraction() }
@@ -110,32 +117,31 @@ extension ViewerCanvas {
     installPenAfterDrawing()
   }
 
-  /// Stores exactly one history action for an ended interaction. A later
-  /// PencilKit revision updates this same transaction before it is cleared;
-  /// it can never be attributed to a subsequent active transaction.
+  /// Retain PencilKit's final visible drawing through synchronous core
+  /// publication. The page observer recognizes this as the local transaction.
   func finishEndedDrawingTransaction(transactionID: UInt64) {
-    guard endedDrawingTransactionID == transactionID,
-          let baseline = endedDrawingBaseline,
-          let transform = endedDrawingPageToOverlayTransform else {
-      endedDrawingTransactionID = nil
-      endedDrawingBaseline = nil
-      endedDrawingPageToOverlayTransform = nil
-      installCommittedDrawing()
+    guard endedDrawingTransactionID == transactionID else { return }
+    guard let baseline = endedDrawingBaseline,
+          let transform = endedDrawingPageToOverlayTransform,
+          let context = endedDrawingContext,
+          context.generation == documentCoordinator.generation,
+          viewerDocument?.activePageID == context.pageID else {
+      cancelActiveStroke()
       return
     }
     let finished = canonicalDrawing(from: canvasView.drawing, using: transform)
+    var adopted = sameDrawing(finished, baseline.drawing)
+    if !adopted {
+      adopted = (try? documentCore.commitDrawing(finished, replacing: baseline.drawing,
+        context: context)) == true
+    }
+    // A synchronous observer may already have cancelled/replaced the input.
+    guard endedDrawingTransactionID == transactionID else { return }
     endedDrawingTransactionID = nil
+    endedDrawingContext = nil
     endedDrawingBaseline = nil
     endedDrawingPageToOverlayTransform = nil
-    if sameDrawing(finished, baseline.drawing) {
-      installCommittedDrawing()
-      installPenAfterDrawing()
-      return
-    }
-    guard let page = viewerDocument?.activePage else { return }
-    _ = try? documentCore.commitDrawing(finished, replacing: baseline.drawing,
-      context: InkSignPdfCorePageContext(generation: documentCoordinator.generation, pageID: page.id))
-    installCommittedDrawing()
+    if !adopted { installCommittedDrawing() }
     installPenAfterDrawing()
     emitChange()
   }
@@ -152,6 +158,9 @@ extension ViewerCanvas {
        attachedOverlayPage == activePageID,
        overlayTransformPage == activePageID,
        let transform = pageToOverlayTransform {
+      if sameDrawing(canonicalDrawing(from: canvasView.drawing, using: transform), committedDrawing) {
+        return
+      }
       displayed = committedDrawing.transformed(using: transform)
     } else {
       displayed = PKDrawing()

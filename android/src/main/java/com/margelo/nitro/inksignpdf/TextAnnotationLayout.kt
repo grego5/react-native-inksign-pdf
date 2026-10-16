@@ -20,6 +20,37 @@ internal object TextAnnotationLayout {
 }
 
 internal const val defaultTextFontSize = 16.0
+
+/** Immutable capacity captured at admission; measurement never moves its edges. */
+internal fun manualTextFlowBounds(
+  tap: PagePoint, width: Double?, height: Double?, page: PdfPageDimensions,
+  isRtl: Boolean, alignment: TextAlignment, verticalAnchor: TextVerticalAnchor,
+): PageRect {
+  val rightAnchored = (alignment == TextAlignment.START && isRtl) ||
+    (alignment == TextAlignment.END && !isRtl)
+  val x = if (width != null) tap.x else if (alignment == TextAlignment.CENTER)
+    tap.x.coerceIn(0.5, page.width - 0.5) else if (rightAnchored)
+    tap.x.coerceIn(1.0, page.width) else tap.x.coerceIn(0.0, page.width - 1.0)
+  val y = if (height != null) tap.y else if (verticalAnchor == TextVerticalAnchor.BOTTOM)
+    tap.y.coerceIn(1.0, page.height) else tap.y.coerceIn(0.0, page.height - 1.0)
+  val radius = minOf(x, page.width - x).coerceAtLeast(0.5)
+  val left = when {
+    width != null -> x
+    alignment == TextAlignment.CENTER -> x - radius
+    rightAnchored -> 0.0
+    else -> x
+  }
+  val right = when {
+    width != null -> x + width
+    alignment == TextAlignment.CENTER -> x + radius
+    rightAnchored -> x.coerceAtLeast(1.0)
+    else -> page.width
+  }
+  val top = if (height != null || verticalAnchor == TextVerticalAnchor.TOP) y else 0.0
+  val bottom = height?.let { y + it }
+    ?: if (verticalAnchor == TextVerticalAnchor.BOTTOM) y.coerceAtLeast(1.0) else page.height
+  return programmaticTextFlowBounds(TextAnnotationBounds(left, top, right - left, bottom - top), page)
+}
 internal const val minimumTextFontSize = 8.0
 internal const val maximumTextFontSize = 72.0
 internal const val minimumTextEditorWidthEm = 1.0

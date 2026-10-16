@@ -84,64 +84,28 @@ class TextInteractionContractTest {
   }
 
   @Test
-  fun emptyTextEditorMinimumContentWidthIsOneEmAndPlacementCentersAboveTap() {
-    val size = TextIntrinsicSize(textEditorMinimumContentWidth(16.0), 20.0)
-    val placement = chooseTextPlacementPosition(
-      PagePoint(150.0, 150.0),
-      size,
-      page = PdfPageDimensions(300.0, 300.0),
-      horizontalPadding = 6.0,
-      verticalPadding = 4.0,
-    )
-
-    assertEquals(16.0, size.width, 0.0)
-    assertTrue(size.height > 0.0)
-    assertEquals(150.0, placement.x + size.width / 2.0, 0.0)
-    assertEquals(150.0, placement.y + size.height, 0.0)
-  }
-
-  @Test
-  fun placementClampsTheVisibleFrameAndKeepsItsContentAnchorAligned() {
+  fun manualCapacityRetainsLogicalEdgesAndIndependentPhysicalAxes() {
     val page = PdfPageDimensions(300.0, 300.0)
-    val size = TextIntrinsicSize(16.0, 20.0)
-
-    val atLeftEdge = chooseTextPlacementPosition(
-      PagePoint(2.0, 3.0), size, page, 6.0, 4.0,
-    )
-    val leftFrame = textEditorFrameBounds(
-      PageRect(
-        atLeftEdge.x,
-        atLeftEdge.y,
-        atLeftEdge.x + size.width,
-        atLeftEdge.y + size.height,
-      ),
-      6.0,
-      4.0,
-      6.0,
-    )
-    assertEquals(0.0, leftFrame.left, 0.0)
-    assertEquals(0.0, leftFrame.top, 0.0)
-    assertEquals(6.0, atLeftEdge.x, 0.0)
-    assertEquals(4.0, atLeftEdge.y, 0.0)
-
-    val atRightEdge = chooseTextPlacementPosition(
-      PagePoint(298.0, 297.0), size, page, 6.0, 4.0,
-    )
-    val rightFrame = textEditorFrameBounds(
-      PageRect(
-        atRightEdge.x,
-        atRightEdge.y,
-        atRightEdge.x + size.width,
-        atRightEdge.y + size.height,
-      ),
-      6.0,
-      4.0,
-      6.0,
-    )
-    assertEquals(300.0, rightFrame.right, 0.0)
-    assertEquals(300.0, rightFrame.bottom, 0.0)
-    assertEquals(294.0, atRightEdge.x + size.width, 0.0)
-    assertEquals(276.0, atRightEdge.y, 0.0)
+    val tap = PagePoint(120.0, 100.0)
+    for (rtl in listOf(false, true)) for (alignment in TextAlignment.entries) {
+      val right = (alignment == TextAlignment.START && rtl) || (alignment == TextAlignment.END && !rtl)
+      val auto = manualTextFlowBounds(tap, null, null, page, rtl, alignment, TextVerticalAnchor.TOP)
+      assertEquals(tap.y, auto.top, 0.0)
+      val edge = if (alignment == TextAlignment.CENTER) (auto.left + auto.right) / 2.0
+        else if (right) auto.right else auto.left
+      assertEquals(tap.x, edge, 0.0)
+      val widthOnly = manualTextFlowBounds(tap, 60.0, null, page, rtl, alignment, TextVerticalAnchor.TOP)
+      assertEquals(120.0, widthOnly.left, 0.0)
+      assertEquals(180.0, widthOnly.right, 0.0)
+      val heightOnly = manualTextFlowBounds(tap, null, 40.0, page, rtl, alignment, TextVerticalAnchor.BOTTOM)
+      assertEquals(100.0, heightOnly.top, 0.0)
+      assertEquals(140.0, heightOnly.bottom, 0.0)
+      val both = manualTextFlowBounds(tap, 60.0, 40.0, page, rtl, alignment, TextVerticalAnchor.BOTTOM)
+      assertEquals(PageRect(120.0, 100.0, 180.0, 140.0), both)
+    }
+    val edge = manualTextFlowBounds(PagePoint(298.0, 297.0), null, null,
+      page, false, TextAlignment.START, TextVerticalAnchor.TOP)
+    assertEquals(PageRect(298.0, 297.0, 300.0, 300.0), edge)
   }
 
   @Test

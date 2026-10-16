@@ -18,6 +18,9 @@
   and source PDF content. Empty ink is a no-op. `clear()` groups module content.
 - Core changes refresh active committed presentation; other pages retain their
   content without rebuilding the current overlay. Delayed ink cannot change page.
+- Ended PencilKit input retains its page/generation, baseline and transform
+  through core publication. Successful commits preserve the visible drawing and
+  record one history action; rejected, stale or cancelled input restores core ink.
 - State/page callbacks run on the main thread and deduplicate payloads. Shapes:
   [state contracts](../architecture.md#state-and-events).
 - Core text transactions expose current text and finish as one history operation.

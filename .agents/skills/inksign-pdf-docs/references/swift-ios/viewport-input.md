@@ -13,6 +13,9 @@
   replacement cancels it.
 - Caret following preserves zoom. Keyboard avoidance owns an additive bottom
   inset, reconciled after zoom and removed when editing ends.
+- Display precision uses the viewport's trait display scale. Scene deactivation
+  cancels live ink only when the notification matches the viewer's current window
+  scene; document-owned selection survives ordinary scene inactivity.
 - `onZoomChange` waits for stable scale/fit and finished PDFView gestures; emit
   only with ready presentation. Shared [events](../architecture.md#state-and-events).
 - `ViewerInteractionCoordinator` derives exclusive input policy from picker,
@@ -25,9 +28,8 @@
 
 ## Text and ink
 
-- Without dimensions, tap placement starts a horizontally centered auto-sized
-  editor; a nearby horizontal rule may set its bottom anchor. Dimensioned taps
-  define the physical top-left. Invalid rectangles keep placement armed.
+- Manual placement follows the shared [text layout contract](../architecture.md#layout-and-editing).
+  TextKit measures within core flow capacity; editor frames do not redefine it.
 - Snapping uses cached labels: above-rule tolerance is max(screen tolerance,
   label line-height), with editor line-height for unlabeled rules. Below-rule
   tolerance is screen-based. PDFium supplies solid/dotted rule candidates,
@@ -38,6 +40,10 @@
 - The core owns effective text; the overlay owns editor state. Mode transitions
   end the transaction or cancel untapped placement. Shared
   [bounds/line admission](../architecture.md#layout-and-editing) applies.
+- Static dashed outlines match Android: one point normally, two when selected,
+  with a more opaque default color. Outside taps deselect; page drags retain selection.
+- Deleting all text ends editing after marked-text composition finishes. Clearing a new
+  draft adds no history; clearing committed text is undoable.
 - Native text options require line counts representable as nonnegative integers.
   Programmatic value/options writes prepare fonts and layout before ending the
   active edit; rejected writes preserve the draft and history.

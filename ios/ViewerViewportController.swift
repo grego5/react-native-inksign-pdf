@@ -468,7 +468,7 @@ final class ViewerViewportController {
           let fitScale = usableFitScale(),
           documentView.scaleFactor.isFinite else { return false }
 
-    let viewPrecision = max(0.5, 1.0 / max(UIScreen.main.scale, 1.0))
+    let viewPrecision = max(0.5, 1.0 / max(container.traitCollection.displayScale, 1.0))
     let pageExtent = max(pageGeometry.visibleBox.width, pageGeometry.visibleBox.height)
     let scaleTolerance = viewPrecision / pageExtent
     guard scaleTolerance.isFinite,

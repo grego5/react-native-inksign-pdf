@@ -27,52 +27,34 @@ enum InkSignPdfTextAlignment: Equatable {
 }
 
 enum InkSignPdfTextBoxGeometry {
-  enum BottomEdge: Equatable {
-    case innerTextArea
-    case outerBox
+  /// Accepted page capacity. Fixed axes start at the physical tap; auto axes
+  /// retain the requested inner edge and never recenter during measurement.
+  static func manualFlow(tap: CGPoint, width: CGFloat?, height: CGFloat?,
+                         pageSize: CGSize, isRTL: Bool,
+                         alignment: InkSignPdfTextAlignment,
+                         verticalAnchor: InkSignPdfTextVerticalAnchor) -> CGRect {
+    let rightAnchored = (alignment == .start && isRTL) || (alignment == .end && !isRTL)
+    let x = width != nil ? tap.x : alignment == .center
+      ? min(max(tap.x, 0.5), pageSize.width - 0.5)
+      : min(max(tap.x, rightAnchored ? 1 : 0), pageSize.width - (rightAnchored ? 0 : 1))
+    let y = height != nil ? tap.y
+      : min(max(tap.y, verticalAnchor == .bottom ? 1 : 0), pageSize.height - (verticalAnchor == .bottom ? 0 : 1))
+    let left: CGFloat
+    let right: CGFloat
+    if let width {
+      left = x; right = min(pageSize.width, x + width)
+    } else if alignment == .center {
+      let radius = max(0.5, min(x, pageSize.width - x))
+      left = x - radius; right = x + radius
+    } else {
+      left = rightAnchored ? 0 : x
+      right = rightAnchored ? max(1, x) : pageSize.width
+    }
+    let top = height != nil || verticalAnchor == .top ? y : 0
+    let bottom = height.map { min(pageSize.height, y + $0) }
+      ?? (verticalAnchor == .bottom ? max(1, y) : pageSize.height)
+    return CGRect(x: left, y: top, width: right - left, height: bottom - top)
   }
-
-  struct PlacementAnchor: Equatable {
-    enum Horizontal: Equatable {
-      case centered
-      case left
-      case right
-    }
-
-    enum Vertical: Equatable {
-      case top
-      case bottom(BottomEdge)
-    }
-
-    let x: CGFloat
-    let y: CGFloat
-    let horizontal: Horizontal
-    let vertical: Vertical
-  }
-
-  static func initialFrame(anchor: PlacementAnchor,
-                           size: CGSize,
-                           insets: UIEdgeInsets,
-                           pageSize: CGSize) -> CGRect {
-    let x: CGFloat
-    switch anchor.horizontal {
-    case .centered: x = anchor.x - size.width / 2
-    case .left: x = anchor.x
-    case .right: x = anchor.x - size.width
-    }
-    let y: CGFloat
-    switch anchor.vertical {
-    case .top:
-      y = anchor.y
-    case .bottom(let edge):
-      let bottomInset = edge == .innerTextArea ? insets.bottom : 0
-      y = anchor.y - size.height + bottomInset
-    }
-    let origin = CGPoint(x: x, y: y)
-    return CGRect(origin: clampedOrigin(for: size, preferred: origin, pageSize: pageSize),
-                  size: size)
-  }
-
   static func outlineBounds(for bounds: CGRect,
                             transform: CGAffineTransform) -> CGRect {
     bounds.applying(transform)
@@ -108,6 +90,8 @@ struct InkSignPdfTextAnnotation: Equatable {
   /// Fixed physical flow rectangle in saved layout coordinates. Its edges
   /// stay left-to-right and top-to-bottom regardless of writing direction.
   let flowBounds: CGRect?
+  let autoWidth: Bool
+  let autoHeight: Bool
   /// Maximum number of complete source-order lines, or zero for no line-count limit.
   let maxLines: Int
   let verticalAnchor: InkSignPdfTextVerticalAnchor
@@ -119,7 +103,7 @@ struct InkSignPdfTextAnnotation: Equatable {
 
   init(id: UInt64, text: String, bounds: CGRect, fontSize: CGFloat,
        textColor: String = "#000000", isRTL: Bool = false,
-       flowBounds: CGRect? = nil,
+       flowBounds: CGRect? = nil, autoWidth: Bool = false, autoHeight: Bool = false,
        maxLines: Int = 0,
        verticalAnchor: InkSignPdfTextVerticalAnchor = .top,
        alignment: InkSignPdfTextAlignment = .start,
@@ -140,6 +124,8 @@ struct InkSignPdfTextAnnotation: Equatable {
     self.isRTL = isRTL
     self.textColor = textColor
     self.flowBounds = flowBounds
+    self.autoWidth = autoWidth
+    self.autoHeight = autoHeight
     self.maxLines = maxLines
     self.verticalAnchor = verticalAnchor
     self.alignment = alignment
@@ -154,8 +140,30 @@ struct InkSignPdfTextAnnotation: Equatable {
     PageGeometry(mediaBox: mediaBox, rotation: 0).layoutToCanonical(rotation: layoutRotation)
   }
 
+  var placementBounds: CGRect {
+    let flow = flowBounds ?? bounds
+    return CGRect(x: autoWidth ? bounds.minX : flow.minX,
+                  y: autoHeight ? bounds.minY : flow.minY,
+                  width: autoWidth ? bounds.width : flow.width,
+                  height: autoHeight ? bounds.height : flow.height)
+  }
+
   func canonicalPlacementBounds(mediaBox: CGRect) -> CGRect {
-    (flowBounds ?? bounds).applying(layoutToCanonical(mediaBox: mediaBox))
+    placementBounds.applying(layoutToCanonical(mediaBox: mediaBox))
+  }
+
+  func flowForFormatting(isRTL: Bool, alignment: InkSignPdfTextAlignment,
+                         verticalAnchor: InkSignPdfTextVerticalAnchor,
+                         pageSize: CGSize) -> CGRect? {
+    guard let flowBounds else { return nil }
+    guard autoWidth && (self.isRTL != isRTL || self.alignment != alignment) ||
+            autoHeight && self.verticalAnchor != verticalAnchor else { return flowBounds }
+    let right = (alignment == .start && isRTL) || (alignment == .end && !isRTL)
+    let x = autoWidth ? (alignment == .center ? bounds.midX : right ? bounds.maxX : bounds.minX) : flowBounds.minX
+    let y = autoHeight ? (verticalAnchor == .bottom ? bounds.maxY : bounds.minY) : flowBounds.minY
+    return InkSignPdfTextBoxGeometry.manualFlow(tap: CGPoint(x: x, y: y),
+      width: autoWidth ? nil : flowBounds.width, height: autoHeight ? nil : flowBounds.height,
+      pageSize: pageSize, isRTL: isRTL, alignment: alignment, verticalAnchor: verticalAnchor)
   }
 
   func replacingText(_ text: String, pageSize: CGSize) -> InkSignPdfTextAnnotation {
@@ -169,7 +177,7 @@ struct InkSignPdfTextAnnotation: Equatable {
                                                         alignment: alignment, font: font)
       return InkSignPdfTextAnnotation(id: id, text: text, bounds: bounds,
                                       fontSize: fontSize, textColor: textColor,
-                                      isRTL: isRTL, flowBounds: flowBounds,
+                                      isRTL: isRTL, flowBounds: flowBounds, autoWidth: autoWidth, autoHeight: autoHeight,
                                       maxLines: maxLines, verticalAnchor: verticalAnchor,
                                       alignment: alignment, layoutRotation: layoutRotation, font: font)
     }
@@ -191,14 +199,21 @@ struct InkSignPdfTextAnnotation: Equatable {
   }
 
   func moving(to position: CGPoint, pageSize: CGSize) -> InkSignPdfTextAnnotation {
-    let sourceFrame = flowBounds ?? bounds
+    let sourceFrame = placementBounds
     let requestedFrameOrigin = CGPoint(x: sourceFrame.minX + position.x - bounds.minX,
                                        y: sourceFrame.minY + position.y - bounds.minY)
     let origin = InkSignPdfTextBoxGeometry.clampedOrigin(for: sourceFrame.size,
                                                         preferred: requestedFrameOrigin,
                                                         pageSize: pageSize)
     let offset = CGPoint(x: origin.x - sourceFrame.minX, y: origin.y - sourceFrame.minY)
-    let movedFlowBounds = flowBounds.map { $0.offsetBy(dx: offset.x, dy: offset.y) }
+    let movedFlowBounds = flowBounds.map { flow -> CGRect in
+      let right = (alignment == .start && isRTL) || (alignment == .end && !isRTL)
+      let x = autoWidth ? (alignment == .center ? flow.midX : right ? flow.maxX : flow.minX) : flow.minX
+      let y = autoHeight && verticalAnchor == .bottom ? flow.maxY : flow.minY
+      return InkSignPdfTextBoxGeometry.manualFlow(tap: CGPoint(x: x + offset.x, y: y + offset.y),
+        width: autoWidth ? nil : flow.width, height: autoHeight ? nil : flow.height,
+        pageSize: pageSize, isRTL: isRTL, alignment: alignment, verticalAnchor: verticalAnchor)
+    }
     let movedBounds = movedFlowBounds.map {
       InkSignPdfTextRenderer.visibleBounds(for: text, fontSize: fontSize,
                                            isRTL: isRTL, flowBounds: $0,
@@ -211,7 +226,7 @@ struct InkSignPdfTextAnnotation: Equatable {
                                     fontSize: fontSize,
                                     textColor: textColor,
                                     isRTL: isRTL,
-                                    flowBounds: movedFlowBounds,
+                                    flowBounds: movedFlowBounds, autoWidth: autoWidth, autoHeight: autoHeight,
                                     maxLines: maxLines,
                                     verticalAnchor: verticalAnchor,
                                     alignment: alignment,
@@ -229,7 +244,7 @@ struct InkSignPdfTextAnnotation: Equatable {
                                                         alignment: alignment, font: font)
       return InkSignPdfTextAnnotation(id: id, text: text, bounds: bounds,
                                       fontSize: fontSize, textColor: textColor,
-                                      isRTL: isRTL, flowBounds: flowBounds,
+                                      isRTL: isRTL, flowBounds: flowBounds, autoWidth: autoWidth, autoHeight: autoHeight,
                                       maxLines: maxLines, verticalAnchor: verticalAnchor,
                                       alignment: alignment, layoutRotation: layoutRotation, font: font)
     }

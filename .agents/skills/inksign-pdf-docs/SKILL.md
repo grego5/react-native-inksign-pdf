@@ -79,5 +79,5 @@ Maintainer references are current-state contracts, not project diaries.
 - Remove content that is historical, speculative, duplicated elsewhere, or explains an implementation transition. Keep a state transition when it is observable behavior or a required lifecycle/failure rule.
 - Prefer positive descriptions of the implemented system. Negative statement acceptable when the absence itself is an externally meaningful invariant such as an API guarantee, ownership boundary, or safety rule.
 - Cross-reference another reference instead of duplicating formulas, contracts, or detailed ownership rules. Keep sections short and bullets compact; use a diagram when it communicates relationships more clearly than prose.
-- Before finishing, compare every changed statement with the current implementation and focused tests. Delete claims that cannot be verified from code, tests, or an explicitly maintained contract.
+- Before finishing, compare every changed statement with the current implementation and focused tests. Delete claims that cannot be verified from code or lsp query, tests, or an explicitly maintained contract.
 
