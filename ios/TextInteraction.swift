@@ -68,6 +68,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     var isRTL: Bool
     let options: TextModeOptions?
     let font: InkSignPdfNamedFont?
+    let maxLines: Int
   }
 
   private struct DragState {
@@ -306,11 +307,6 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     }
   }
 
-  private func lineLimit(_ value: Double?) -> Int {
-    guard let value, value > 0 else { return 0 }
-    return value >= Double(Int.max) ? Int.max : Int(value)
-  }
-
   private func makeFlowBounds(bounds: TextAnnotationBounds,
                               pageSize: CGSize) -> CGRect? {
     let x = CGFloat(bounds.x)
@@ -334,10 +330,11 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     guard presentation.generation == generation else { throw TextError.cancelled }
     let isRTL = resolvedDirection(options?.direction)
     let font = try owner.documentCore.fonts.resolve(options?.font)
+    let maxLines = try InkSignPdfTextTargetOptions.lineLimit(options?.maxLines) ?? 0
     interactionState = .placing(PlacementState(generation: presentation.generation,
                                                pageIndex: presentation.pageIndex,
                                                isRTL: isRTL,
-                                               options: options, font: font))
+                                               options: options, font: font, maxLines: maxLines))
     if options?.width == nil,
        let requestID = beginPlacementRuleScan(generation: presentation.generation,
                                               pageID: presentation.pageID) {
@@ -493,7 +490,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
                 isRTL: placement.isRTL,
                 presentation: presentation,
                 flowBounds: flowBounds,
-                maxLines: lineLimit(placement.options?.maxLines),
+                maxLines: placement.maxLines,
                 verticalAnchor: verticalAnchor,
                 alignment: InkSignPdfTextAlignment(placement.options?.alignment),
                 font: placement.font)

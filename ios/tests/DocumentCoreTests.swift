@@ -9,6 +9,79 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
+  func testRejectedTextWritesPreserveDraftAndHistory() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(core.open(sourceURL: source))
+    let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+    let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+    let id = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 80, width: 200, height: 60)))
+    try core.setTextValue(context, id: id, text: "before")
+    let baseline = try XCTUnwrap(page.history.text(for: UInt64(id)))
+    let edit = try core.beginTextEdit(context, id: UInt64(id))
+    try core.updateTextEdit(edit, annotation: baseline.replacingText("draft", pageSize: page.geometry.displaySize))
+    let revision = page.history.revision
+    var ended = 0
+    let observer = core.observe { if case .editEnded = $0 { ended += 1 } }
+    defer { core.removeObserver(observer) }
+    let invalidOptions = [
+      TextAnnotationOptions(untracked: nil, font: .second("not-loaded"), fontSize: nil,
+        color: nil, direction: nil, maxLines: nil, alignment: nil, verticalAnchor: nil),
+      TextAnnotationOptions(untracked: nil, font: nil, fontSize: nil,
+        color: nil, direction: nil, maxLines: 1e20, alignment: nil, verticalAnchor: nil)
+    ]
+    for options in invalidOptions {
+      XCTAssertThrowsError(try core.setTextValue(context, id: id, text: "replacement", options: options))
+      XCTAssertThrowsError(try core.setTextOptions(context, id: id, options: options))
+      XCTAssertTrue(core.activeTextEdit === edit)
+      XCTAssertTrue(edit.active)
+      XCTAssertEqual(try core.textValue(context, id: id), "draft")
+      XCTAssertEqual(page.history.revision, revision)
+      XCTAssertEqual(ended, 0)
+    }
+    try core.setTextValue(context, id: id, text: "accepted")
+    XCTAssertFalse(edit.active)
+    XCTAssertEqual(ended, 1)
+    try core.undo(context)
+    XCTAssertEqual(try core.textValue(context, id: id), "draft")
+    try core.undo(context)
+    XCTAssertEqual(try core.textValue(context, id: id), "before")
+  }
+
+  func testDeletedPageCommandsPreserveAnotherPagesDraft() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = InkSignDocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(core.open(sourceURL: source))
+    _ = try awaitValue(core.addPages(sources: [source.absoluteString], imageGeometry: nil,
+      targetDpi: nil, jpegQuality: nil, tag: nil))
+    let state = try XCTUnwrap(core.coordinator.document)
+    let stale = HybridDocumentPage(core: core, context: .init(generation: core.coordinator.generation,
+      pageID: state.pages[1].id))
+    _ = try awaitValue(core.mutatePage(index: 1))
+    let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+    let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+    let id = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 80, width: 200, height: 60)))
+    try core.setTextValue(context, id: id, text: "before")
+    let baseline = try XCTUnwrap(page.history.text(for: UInt64(id)))
+    let edit = try core.beginTextEdit(context, id: UInt64(id))
+    try core.updateTextEdit(edit, annotation: baseline.replacingText("draft", pageSize: page.geometry.displaySize))
+    let revision = page.history.revision
+    let commands: [() throws -> Void] = [stale.undo, stale.redo, stale.clear, stale.clearInk]
+    for command in commands {
+      XCTAssertThrowsError(try command())
+      XCTAssertTrue(core.activeTextEdit === edit)
+      XCTAssertTrue(edit.active)
+      XCTAssertEqual(try core.textValue(context, id: id), "draft")
+      XCTAssertEqual(page.history.revision, revision)
+    }
+  }
+
   func testHeadlessEditingExportAndCloseWithoutConstructingViewer() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }

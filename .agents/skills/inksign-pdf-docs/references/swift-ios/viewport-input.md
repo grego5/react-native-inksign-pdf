@@ -38,6 +38,9 @@
 - The core owns effective text; the overlay owns editor state. Mode transitions
   end the transaction or cancel untapped placement. Shared
   [bounds/line admission](../architecture.md#layout-and-editing) applies.
+- Native text options require line counts representable as nonnegative integers.
+  Programmatic value/options writes prepare fonts and layout before ending the
+  active edit; rejected writes preserve the draft and history.
 - Editor/rendering/hit-testing/dragging map captured layout → canonical → display.
   Moves update target placement; named source association remains stable.
 - Module-text touch admission gives overlay tap/long-press/drag priority over

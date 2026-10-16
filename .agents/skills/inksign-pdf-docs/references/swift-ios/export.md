@@ -16,6 +16,8 @@
 - PDFium carries source pages and annotations into the output and embeds module
   text and vector ink. CoreText supplies positioned glyphs and exact font tables;
   unsupported font instances reject export. Resources belong to one export.
+  Equal resolved CoreText fonts reuse prepared resources; distinct instances
+  still deduplicate identical font bytes after validation.
 - The default editor, preview, and export face is static `ArialMT`. CoreText
   resolves missing glyphs; each resolved fallback must be exactly embeddable.
 - A bounded text annotation uses its fixed flow rectangle as its PDF bounds;
@@ -36,8 +38,9 @@
 - Advanced source-PDF semantics follow the scope in
   [architecture.md](../architecture.md#scope-and-validation).
 
-- The common writer reopens output to check geometry, vector counts, and composed
-  text placement. PDFKit reopening verifies viewer interoperability, page boxes,
-  and source annotation identity before publication.
+- The common PDFium writer reopens output to check geometry, vector counts, and
+  composed text placement before publication. Export tests explicitly enable
+  additional PDFKit reopening to check viewer interoperability, page boxes,
+  and source annotation identity.
 - Export admission, cancellation, and close follow
   [core command lifetime](../architecture.md#commands-and-lifetime).

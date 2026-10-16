@@ -12,7 +12,8 @@
   Content flags include current admitted text and exclude imported PDF content.
 - Live ink, caret/composition, selection, and predictions belong to presentation.
   Finished strokes and text edits use explicit core page commands. Undo/redo/clear
-  settle transient input first. Stale drawing baselines reject conflicting commits.
+  validate the page handle before settling transient input. Deleted-page commands
+  preserve another page's active draft. Stale drawing baselines reject conflicting commits.
 - `clearInk()` cancels live ink, then records one drawing change, preserving text
   and source PDF content. Empty ink is a no-op. `clear()` groups module content.
 - Core changes refresh active committed presentation; other pages retain their

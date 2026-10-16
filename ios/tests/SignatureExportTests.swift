@@ -89,7 +89,8 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
     do {
       try InkSignPdfNativeExporter.write(sourceURL: sourceURL,
                                          pages: [snapshot],
-                                         outputURL: outputURL)
+                                         outputURL: outputURL,
+                                         validatePDFKit: true)
     } catch {
       if let pdfData = try? Data(contentsOf: outputURL) {
         let attachment = XCTAttachment(data: pdfData,
@@ -221,7 +222,8 @@ final class SignatureExportTests: XCTestCase, InkSignViewTestSupport {
 
     XCTAssertThrowsError(try InkSignPdfNativeExporter.write(sourceURL: sourceURL,
                                                             pages: [snapshot],
-                                                            outputURL: outputURL)) { error in
+                                                            outputURL: outputURL,
+                                                            validatePDFKit: true)) { error in
       guard case InkSignPdfNativeExporterError.unsupportedInk(let reason) = error else {
         XCTFail("Unsupported ink must fail as an explicit export error: \(error)")
         return

@@ -33,8 +33,16 @@ struct InkSignPdfExportTextLayout {
 
 /// Export-local resources. No font registration or view lifetime is involved.
 final class InkSignPdfCoreTextExportResources {
+  private struct FontKey: Hashable {
+    let font: CTFont
+
+    static func == (lhs: Self, rhs: Self) -> Bool { CFEqual(lhs.font, rhs.font) }
+    func hash(into hasher: inout Hasher) { hasher.combine(CFHash(font)) }
+  }
+
   private(set) var fonts: [Data] = []
   private var fontIndices: [Data: Int] = [:]
+  private var resolvedFontIndices: [FontKey: Int] = [:]
 
   func prepare(_ annotation: InkSignPdfTextAnnotation,
                pageSize: CGSize) throws -> InkSignPdfExportTextLayout {
@@ -52,15 +60,7 @@ final class InkSignPdfCoreTextExportResources {
           throw failure("export_font_unavailable", "CoreText run has no resolved font")
         }
         let font = fontValue as! CTFont
-        let bytes = try fontData(font)
-        let fontIndex: Int
-        if let existing = fontIndices[bytes] {
-          fontIndex = existing
-        } else {
-          fontIndex = fonts.count
-          fonts.append(bytes)
-          fontIndices[bytes] = fontIndex
-        }
+        let fontIndex = try index(for: font)
         let count = CTRunGetGlyphCount(run)
         var glyphs = [CGGlyph](repeating: 0, count: count)
         var positions = [CGPoint](repeating: .zero, count: count)
@@ -94,6 +94,21 @@ final class InkSignPdfCoreTextExportResources {
     }
     return InkSignPdfExportTextLayout(lines: lines, transform: layout.transform,
                                      clip: layout.clip, color: annotation.textColor, isRTL: annotation.isRTL)
+  }
+
+  private func index(for font: CTFont) throws -> Int {
+    let key = FontKey(font: font)
+    if let cached = resolvedFontIndices[key] { return cached }
+    let bytes = try fontData(font)
+    let index: Int
+    if let existing = fontIndices[bytes] { index = existing }
+    else {
+      index = fonts.count
+      fonts.append(bytes)
+      fontIndices[bytes] = index
+    }
+    resolvedFontIndices[key] = index
+    return index
   }
 
   private func fontData(_ font: CTFont) throws -> Data {
