@@ -34,24 +34,24 @@ extension InkSignDocumentCore {
   }
   func undo(_ context: InkSignPdfCorePageContext) throws {
     try requireContentMutationReady()
-    endTextEdit()
     let page = try self.page(context)
+    endTextEdit()
     guard page.history.undo() else { return }
     coordinator.synchronizeTextPlacement(on: page)
     changed(.page(page.id))
   }
   func redo(_ context: InkSignPdfCorePageContext) throws {
     try requireContentMutationReady()
-    endTextEdit()
     let page = try self.page(context)
+    endTextEdit()
     guard page.history.redo() else { return }
     coordinator.synchronizeTextPlacement(on: page)
     changed(.page(page.id))
   }
   func clear(_ context: InkSignPdfCorePageContext, inkOnly: Bool = false) throws {
     try requireContentMutationReady()
-    endTextEdit()
     let page = try self.page(context)
+    endTextEdit()
     let revision = page.history.revision
     if inkOnly {
       let drawing = page.history.drawing

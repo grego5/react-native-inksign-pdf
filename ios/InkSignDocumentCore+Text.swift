@@ -72,42 +72,48 @@ extension InkSignDocumentCore {
       throw TextError.invalidText
     }
     let (page, target) = try self.target(context, id: id)
-    endTextEdit(id: target.id)
-    if let options { try setTextOptions(context, id: id, options: options, applyToCommitted: false) }
-    let untracked = options?.untracked == true
+    let proposed = try updatedTextOptions(target.options, changes: options)
     let current = page.history.text(for: target.id)
-    let edited: Bool
+    let updated: InkSignPdfTextAnnotation?
     if text.isEmpty {
-      edited = current.map { page.history.removeText($0, untracked: untracked) } ?? false
+      updated = nil
     } else if let current {
       let size = PageGeometry(mediaBox: page.geometry.visibleBox, rotation: current.layoutRotation).displaySize
       let styled = InkSignPdfTextAnnotation(id: current.id, text: text, bounds: current.bounds,
         fontSize: CGFloat(options?.fontSize ?? Double(current.fontSize)),
         textColor: options?.color ?? current.textColor,
         isRTL: options?.direction.map { resolvedDirection($0) } ?? current.isRTL,
-        flowBounds: current.flowBounds, maxLines: Int(options?.maxLines ?? Double(current.maxLines)),
+        flowBounds: current.flowBounds, maxLines: options?.maxLines == nil ? current.maxLines : proposed.maxLines!,
         verticalAnchor: options?.verticalAnchor.map(InkSignPdfTextVerticalAnchor.init) ?? current.verticalAnchor,
         alignment: options?.alignment.map(InkSignPdfTextAlignment.init) ?? current.alignment,
         layoutRotation: current.layoutRotation,
-        font: try fonts.resolve(options?.font, previous: current.font))
-      let updated = styled.replacingText(text, pageSize: size)
-      edited = page.history.replaceText(before: current, with: updated, type: .textEdit, untracked: untracked)
+        font: options?.font == nil ? current.font : proposed.font)
+      updated = styled.replacingText(text, pageSize: size)
     } else {
-      let target = try coordinator.textTarget(target.id, pageID: page.id)
       _ = try displayedWritingRule(target, page: page)
       let flow = displayedTargetBounds(target, page: page)
-      let size = CGFloat(target.options.fontSize ?? defaultTextFontSize)
-      let rtl = resolvedDirection(target.options.direction)
-      let anchor = InkSignPdfTextVerticalAnchor(target.options.verticalAnchor)
-      let alignment = InkSignPdfTextAlignment(target.options.alignment)
-      let lines = target.options.maxLines ?? 0
-      let annotation = InkSignPdfTextAnnotation(id: target.id, text: text,
+      let size = CGFloat(proposed.fontSize ?? defaultTextFontSize)
+      let rtl = resolvedDirection(proposed.direction)
+      let anchor = InkSignPdfTextVerticalAnchor(proposed.verticalAnchor)
+      let alignment = InkSignPdfTextAlignment(proposed.alignment)
+      let lines = proposed.maxLines ?? 0
+      updated = InkSignPdfTextAnnotation(id: target.id, text: text,
         bounds: InkSignPdfTextRenderer.visibleBounds(for: text, fontSize: size, isRTL: rtl,
-          flowBounds: flow, maxLines: lines, verticalAnchor: anchor, alignment: alignment, font: target.options.font),
-        fontSize: size, textColor: target.options.color ?? defaultTextColor, isRTL: rtl,
+          flowBounds: flow, maxLines: lines, verticalAnchor: anchor, alignment: alignment, font: proposed.font),
+        fontSize: size, textColor: proposed.color ?? defaultTextColor, isRTL: rtl,
         flowBounds: flow, maxLines: lines, verticalAnchor: anchor, alignment: alignment,
-        layoutRotation: page.geometry.rotation, font: target.options.font)
-      edited = page.history.appendText(annotation, untracked: untracked)
+        layoutRotation: page.geometry.rotation, font: proposed.font)
+    }
+    endTextEdit(id: target.id)
+    try coordinator.updateTextTarget(target.id, pageID: page.id) { $0.options = proposed }
+    let untracked = options?.untracked == true
+    let edited: Bool
+    if let current {
+      if let updated {
+        edited = page.history.replaceText(before: current, with: updated, type: .textEdit, untracked: untracked)
+      } else { edited = page.history.removeText(current, untracked: untracked) }
+    } else {
+      edited = updated.map { page.history.appendText($0, untracked: untracked) } ?? false
     }
     if edited {
       if let annotation = page.history.text(for: target.id) {
@@ -122,37 +128,46 @@ extension InkSignDocumentCore {
                       endEditing: Bool = true) throws {
     try requireContentMutationReady()
     let (page, target) = try self.target(context, id: id)
-    if endEditing { endTextEdit(id: target.id) }
-    let selectedFont = try fonts.resolve(options.font, previous: target.options.font)
-    try coordinator.updateTextTarget(target.id, pageID: page.id) {
-      $0.options.font = selectedFont
-      if let selection = options.font {
-        if case .second(let name) = selection { $0.options.fontName = name }
-        else { $0.options.fontName = nil }
-      }
-      if let value = options.fontSize { $0.options.fontSize = value }
-      if let value = options.color { $0.options.color = value }
-      if let value = options.direction { $0.options.direction = value }
-      if let value = options.maxLines { $0.options.maxLines = Int(value) }
-      if let value = options.alignment { $0.options.alignment = value }
-      if let value = options.verticalAnchor { $0.options.verticalAnchor = value }
+    let proposed = try updatedTextOptions(target.options, changes: options)
+    let current = applyToCommitted ? page.history.text(for: target.id) : nil
+    let updated = current.map { current in
+      let size = CGFloat(options.fontSize ?? Double(current.fontSize))
+      let styled = InkSignPdfTextAnnotation(id: current.id, text: current.text, bounds: current.bounds,
+        fontSize: size, textColor: options.color ?? current.textColor,
+        isRTL: options.direction.map { resolvedDirection($0) } ?? current.isRTL,
+        flowBounds: current.flowBounds, maxLines: options.maxLines == nil ? current.maxLines : proposed.maxLines!,
+        verticalAnchor: options.verticalAnchor.map(InkSignPdfTextVerticalAnchor.init) ?? current.verticalAnchor,
+        alignment: options.alignment.map(InkSignPdfTextAlignment.init) ?? current.alignment,
+        layoutRotation: current.layoutRotation, font: options.font == nil ? current.font : proposed.font)
+      return styled.replacingText(styled.text,
+        pageSize: PageGeometry(mediaBox: page.geometry.visibleBox, rotation: current.layoutRotation).displaySize)
     }
-    guard applyToCommitted, let current = page.history.text(for: target.id) else { return }
-    let size = CGFloat(options.fontSize ?? Double(current.fontSize))
-    let styled = InkSignPdfTextAnnotation(id: current.id, text: current.text, bounds: current.bounds,
-      fontSize: size, textColor: options.color ?? current.textColor,
-      isRTL: options.direction.map { resolvedDirection($0) } ?? current.isRTL,
-      flowBounds: current.flowBounds, maxLines: Int(options.maxLines ?? Double(current.maxLines)),
-      verticalAnchor: options.verticalAnchor.map(InkSignPdfTextVerticalAnchor.init) ?? current.verticalAnchor,
-      alignment: options.alignment.map(InkSignPdfTextAlignment.init) ?? current.alignment,
-      layoutRotation: current.layoutRotation, font: selectedFont)
-    let updated = styled.replacingText(styled.text,
-      pageSize: PageGeometry(mediaBox: page.geometry.visibleBox, rotation: current.layoutRotation).displaySize)
+    if endEditing { endTextEdit(id: target.id) }
+    try coordinator.updateTextTarget(target.id, pageID: page.id) { $0.options = proposed }
+    guard let current, let updated else { return }
     if page.history.replaceText(before: current, with: updated, type: .textEdit,
                                 untracked: options.untracked == true) {
       coordinator.updateTextPlacement(updated, page: page)
       changed(.page(page.id))
     }
+  }
+
+  private func updatedTextOptions(_ previous: InkSignPdfTextTargetOptions,
+                                  changes: TextAnnotationOptions?) throws -> InkSignPdfTextTargetOptions {
+    guard let changes else { return previous }
+    var proposed = previous
+    proposed.font = try fonts.resolve(changes.font, previous: previous.font)
+    if let selection = changes.font {
+      if case .second(let name) = selection { proposed.fontName = name }
+      else { proposed.fontName = nil }
+    }
+    if let value = changes.fontSize { proposed.fontSize = value }
+    if let value = changes.color { proposed.color = value }
+    if let value = changes.direction { proposed.direction = value }
+    if let value = changes.maxLines { proposed.maxLines = try InkSignPdfTextTargetOptions.lineLimit(value) }
+    if let value = changes.alignment { proposed.alignment = value }
+    if let value = changes.verticalAnchor { proposed.verticalAnchor = value }
+    return proposed
   }
   func page(_ context: InkSignPdfCorePageContext) throws -> InkSignPdfPageState {
     try requireClientAccess()

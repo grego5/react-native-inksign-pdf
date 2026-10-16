@@ -42,6 +42,7 @@ enum TextError: LocalizedError, CustomStringConvertible {
   case notFocused
   case invalidText
   case invalidBounds
+  case invalidOptions
   case invalidPageTag
   case cancelled
   case keyNotFound
@@ -65,6 +66,8 @@ enum TextError: LocalizedError, CustomStringConvertible {
       return "invalid_text: Text must not be empty"
     case .invalidBounds:
       return "invalid_text_bounds: Text bounds must define an ordered rectangle inside the active page"
+    case .invalidOptions:
+      return "invalid_text_options: Line count must be a representable nonnegative integer"
     case .invalidPageTag:
       return "invalid_page_tag: Page tags must be nonempty strings"
     case .cancelled:

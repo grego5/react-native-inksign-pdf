@@ -54,6 +54,14 @@ test('text annotation bounds require finite coordinates and positive dimensions'
 
 test('text options validate alignment and physical placement dimensions', () => {
   assert.doesNotThrow(() => validateTextAnnotationOptions({ alignment: 'center' }));
+  for (const maxLines of [0, 1, Number.MAX_SAFE_INTEGER]) {
+    assert.doesNotThrow(() => validateTextAnnotationOptions({ maxLines }));
+  }
+  for (const maxLines of [-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, 1e20]) {
+    assert.throws(() => validateTextAnnotationOptions({ maxLines }), {
+      message: /^invalid_text_options:/,
+    });
+  }
   assert.throws(() => validateTextAnnotationOptions({ alignment: 'middle' }), {
     message: /^invalid_text_options:/,
   });

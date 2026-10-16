@@ -17,85 +17,25 @@ function Assert-NotContains([string]$Text, [string]$Pattern, [string]$Name) {
   if ($Text -match $Pattern) { throw "FAIL $Name" }
 }
 
+# This Windows gate checks platform ownership. Behavioral coverage runs in XCTest.
 $view = Read-Source "ios/InkSignView.swift"
-$overlayProvider = Read-Source "ios/PageOverlay.swift"
-$pageNavigation = Read-Source "ios/InkSignView+PageNavigation.swift"
+$viewerState = Read-Source "ios/ViewerDocumentState.swift"
 $documentState = Read-Source "ios/InkSignDocumentState.swift"
-$candidateLoader = Read-Source "ios/DocumentCandidateLoader.swift"
 $mutableTransactions = Read-Source "ios/MutableDocumentTransactions.swift"
-$inputCoordinator = Read-Source "ios/PageInputCoordinator.swift"
-$interactionOwnership = Read-Source "ios/PDFViewInteractionOwnership.swift"
-$textInteraction = Read-Source "ios/TextInteraction.swift"
-$cacheArtifacts = Read-Source "ios/CacheArtifacts.swift"
-$export = Read-Source "ios/InkSignView+Export.swift"
-$nativeExporter = Read-Source "ios/NativePDFExporter.swift"
-$textRendering = Read-Source "ios/TextRendering.swift"
-$signaturePath = Read-Source "ios/SignatureVectorPath.swift"
+$export = Read-Source "ios/InkSignDocumentCore+Export.swift"
 $podspec = Read-Source "ReactNativeInkSignPdf.podspec"
-$lifecycleTests = Read-Source "ios/tests/InkSignViewLifecycleTests.swift"
-$signatureTests = Read-Source "ios/tests/SignatureExportTests.swift"
-$backendTests = Read-Source "ios/tests/NativePDFBackendTests.swift"
-$inputTests = Read-Source "ios/tests/PageInputCoordinatorTests.swift"
-$renderingDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/rendering.md"
-$lifecycleDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/view-lifecycle.md"
-$exportDocs = Read-Source ".agents/skills/inksign-pdf-docs/references/swift-ios/export.md"
 
-# PDFKit owns the published iOS document; the coordinator serializes all PDF work.
 Assert-Contains $documentState 'let pdfQueue = DispatchQueue' 'one coordinator PDF queue exists'
-Assert-Contains $documentState 'let document: PDFDocument' 'document state owns the PDFKit document'
-Assert-Contains $documentState 'let page: PDFPage' 'stable page records retain their PDFKit pages'
-Assert-Contains $documentState 'activePageID' 'active page is stored by stable identity'
-Assert-Contains $candidateLoader 'PDFDocument\(url: url\)' 'candidate loading uses PDFKit'
-Assert-Contains $candidateLoader 'document\.page\(at: index\)' 'candidate records are derived from PDFKit pages'
-Assert-Contains $mutableTransactions 'candidate\.insert\(page, at:' 'PDF pages transfer by direct insertion'
-Assert-Contains $mutableTransactions 'candidate\.write\(to: allocated\)' 'structural candidates are written before publication'
-Assert-Contains $mutableTransactions 'InkSignPdfDocumentCandidateLoader\.load\(url: allocated\)' 'structural candidates are reopened before publication'
-Assert-Contains $view 'let documentView = PDFView\(\)' 'PDFKit owns the iOS presentation view'
+Assert-NotContains $documentState '\bPDFDocument\b|\bPDFPage\b' 'core state is independent of PDFKit presentation'
+Assert-Contains $viewerState 'let document: PDFDocument' 'viewer owns the PDFKit document'
+Assert-Contains $viewerState 'activePageID' 'viewer selection uses stable page identity'
+Assert-Contains $mutableTransactions 'InkSignPdfPdfiumBackend\.assemble\(' 'structural mutation uses the shared PDFium writer'
+Assert-Contains $view 'let documentView = PDFView\(\)' 'PDFKit owns iOS presentation'
 Assert-Contains $view 'usePageViewController\(true' 'PDFKit owns native page swipe navigation'
 Assert-Contains $view 'pageOverlayViewProvider = overlayProvider' 'PDFKit supplies page overlays'
-Assert-Contains $overlayProvider 'PDFPageOverlayViewProvider' 'ink uses PDFKit page overlays'
-Assert-Contains $overlayProvider 'updatePDFViewInteractionOwnership' 'page input ownership is refreshed after PDFKit installs overlays'
-Assert-NotContains $interactionOwnership 'require\(toFail:' 'PDFView ownership has no permanent recognizer failure relationships'
-Assert-Contains $interactionOwnership 'private func suppress' 'edit-mode suppression remains centralized'
-Assert-Contains $textInteraction 'shouldBeRequiredToFailBy' 'text input sets dynamic PDFView gesture priority'
-Assert-Contains $textInteraction 'private func isPDFViewGesture' 'dynamic priority follows the live PDFView hierarchy'
-Assert-Contains $textInteraction 'view is InkSignPdfPageOverlayView' 'dynamic priority excludes app-owned page overlay input'
-Assert-Contains $textInteraction 'return annotation\(at: touch\.location\(in: self\)\) != nil' 'text taps claim only text hit regions'
-Assert-Contains $pageNavigation 'documentView\.go\(to: page\)' 'imperative navigation uses PDFKit'
 Assert-NotContains $view 'InkPdfView|edgeNavigationGestureRecognizer|PageTurnPreview' 'the live view has no custom presentation engine'
-Assert-Contains $export 'InkSignPdfNativeExporter\.write\(' 'finalize calls the native exporter'
-Assert-Contains $nativeExporter 'PDFDocument\(url: outputURL\)' 'export reopens its written candidate'
-Assert-NotContains $nativeExporter 'CGContext\(consumer|drawPDFPage|copyAnnotations|writePageContent' 'export does not reconstruct source pages'
-Assert-Contains $textRendering 'CTLineDraw' 'committed text is drawn with Core Text'
-Assert-Contains $textRendering 'NSLayoutManager|NSParagraphStyle' 'text uses the shared TextKit paragraph layout'
-Assert-Contains $signaturePath 'path\.fillPath|path\.closeSubpath' 'signature output uses filled vector outlines'
+Assert-Contains $export 'InkSignPdfNativeExporter\.write\(' 'core finalize calls the native exporter'
 Assert-Contains $podspec "'PDFKit'" 'production pod links PDFKit'
 Assert-Contains $podspec "'CoreText'" 'production pod links Core Text'
-
-# Picker staging owns external-file access; structural mutation consumes staged values.
-Assert-Contains $view 'pageInputCoordinator' 'iOS view owns page-input staging'
-Assert-Contains $inputCoordinator 'UIDocumentPickerViewController' 'Files picker exists'
-Assert-Contains $inputCoordinator 'PHPickerViewController' 'Photo Library picker exists'
-Assert-Contains $inputCoordinator 'allowsMultipleSelection = true' 'Files picker allows multiple selection'
-Assert-Contains $inputCoordinator 'selectionLimit = 0' 'Photo picker allows multiple selection'
-Assert-Contains $inputCoordinator 'configuration\.selection = \.ordered' 'Photo picker preserves selection order'
-Assert-Contains $inputCoordinator 'startAccessingSecurityScopedResource' 'Files staging enters security scope'
-Assert-Contains $inputCoordinator 'stopAccessingSecurityScopedResource' 'Files staging leaves security scope'
-Assert-Contains $inputCoordinator 'coordinate\(\s*readingItemAt:' 'Files staging coordinates provider reads'
-Assert-Contains $inputCoordinator 'loadFileRepresentation' 'Photo staging copies provider files'
-Assert-Contains $cacheArtifacts 'allocateStagedInput' 'iOS cache allocates staged inputs'
-Assert-Contains $cacheArtifacts 'allocateWorkingSource' 'iOS cache allocates working sources'
-Assert-Contains $cacheArtifacts 'allocateExportSnapshot' 'iOS cache allocates immutable export snapshots'
-Assert-Contains $inputTests 'testPhotoCancellationDismissesPicker' 'photo picker cancellation is tested'
-Assert-Contains $inputTests 'testSecurityScopeIsBalancedForEachLocalSource' 'security-scope balance is tested'
-Assert-Contains $lifecycleTests 'testCoordinatorUsesStablePageIdentityAndOwnsWorkingArtifact' 'coordinator identity and artifact ownership are tested'
-Assert-Contains $lifecycleTests 'testEndedPageOverlayCanBeRecreatedFromCoordinatorState' 'page overlays release presentation state without discarding committed history'
-Assert-Contains $lifecycleTests 'testStaleExportCannotPublishOutput' 'stale export publication is tested'
-Assert-Contains $backendTests 'testCrossDocumentInsertionPreservesOrderVisiblePagesAndGeometry' 'native page import contract is tested'
-
-Assert-Contains $renderingDocs 'PDFKit' 'rendering reference documents the native backend'
-Assert-Contains $lifecycleDocs 'PDFKit' 'lifecycle reference documents PDFKit ownership'
-Assert-Contains $exportDocs 'CoreText' 'export reference documents native text shaping'
-Assert-NotContains $exportDocs 'PDFium is the only production' 'export reference has no obsolete PDFium ownership claim'
 
 Write-Output "PASS native iOS PDF backend contract checks"

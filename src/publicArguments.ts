@@ -61,7 +61,7 @@ export function validateTextAnnotationOptions(value: unknown): void {
     (value.direction !== undefined && value.direction !== 'ltr' &&
       value.direction !== 'rtl' && value.direction !== 'auto') ||
     (value.maxLines !== undefined &&
-      (typeof value.maxLines !== 'number' || !Number.isInteger(value.maxLines) || value.maxLines < 0)) ||
+      (typeof value.maxLines !== 'number' || !Number.isSafeInteger(value.maxLines) || value.maxLines < 0)) ||
     (value.alignment !== undefined && value.alignment !== 'start' &&
       value.alignment !== 'end' && value.alignment !== 'center') ||
     (value.verticalAnchor !== undefined && value.verticalAnchor !== 'top' &&

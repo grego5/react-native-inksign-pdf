@@ -26,7 +26,7 @@ enum InkSignPdfNativeExporterError: LocalizedError {
 /// Writes committed canonical content into a detached PDFium document.
 enum InkSignPdfNativeExporter {
   static func write(sourceURL: URL, pages: [ExportPageSnapshot], outputURL: URL,
-                    validatePDFKit: Bool = true) throws {
+                    validatePDFKit: Bool) throws {
     let source = try stage("source_read") { try Data(contentsOf: sourceURL) }
     let metadata = try stage("source_inspection") { try InkSignPdfPdfiumBackend.inspect(data: source) }
     guard !pages.isEmpty, metadata.count == pages.count,
@@ -96,7 +96,7 @@ enum InkSignPdfNativeExporter {
     }
     try stage("output_write") { try output.write(to: outputURL, options: .atomic) }
     guard validatePDFKit else { return }
-    // PDFKit is the current viewer: verify interoperability before publication.
+    // Tests can additionally verify interoperability with the PDFKit viewer.
     guard let original = PDFDocument(data: source), let reopened = PDFDocument(url: outputURL),
           reopened.pageCount == pages.count else {
       throw InkSignPdfNativeExporterError.writeFailed

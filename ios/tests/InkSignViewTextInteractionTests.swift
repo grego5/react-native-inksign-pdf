@@ -239,7 +239,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertNil(textEditor(in: view.textInteractionOverlay))
   }
 
-  func testRejectedDraftValuePreservesTextFormattingAndSelection() throws {
+  func testRejectedDraftWritePreservesTextFormattingAndSelection() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
@@ -258,8 +258,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
       pageID: try XCTUnwrap(view.viewerDocument?.activePageID), textID: Double(original.id))
     let options = TextAnnotationOptions(untracked: nil, font: nil, fontSize: 24, color: "#ff0000",
       direction: .rtl, maxLines: 1, alignment: .center, verticalAnchor: .bottom)
-    XCTAssertThrowsError(try text.setValue(text: "first\nsecond", options: options)) {
-      XCTAssertTrue($0.localizedDescription.hasPrefix("text_does_not_fit"))
+    let invalidOptions = TextAnnotationOptions(untracked: nil, font: nil, fontSize: 24, color: "#ff0000",
+      direction: .rtl, maxLines: -1, alignment: .center, verticalAnchor: .bottom)
+    XCTAssertThrowsError(try text.setValue(text: "first\nsecond", options: invalidOptions)) {
+      XCTAssertTrue($0.localizedDescription.hasPrefix("invalid_text_options"))
     }
     XCTAssertEqual(editor.text, "Before")
     XCTAssertEqual(editor.font, font)
@@ -268,8 +270,8 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(editor.selectedRange, selection)
     XCTAssertEqual(view.viewerDocument?.activePage.history.content.textAnnotations.first, original)
     try text.setValue(text: "After", options: options)
-    XCTAssertEqual(editor.text, "After")
-    XCTAssertEqual(editor.textAlignment, .center)
+    XCTAssertNil(textEditor(in: overlay))
+    XCTAssertEqual(try text.getValue(), "After")
     overlay.finishForLifecycle()
     let committed = try XCTUnwrap(view.viewerDocument?.activePage.history.content.textAnnotations.first)
     XCTAssertEqual(committed.text, "After")
@@ -957,7 +959,8 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     do {
       try InkSignPdfNativeExporter.write(sourceURL: state.workingURL,
                                          pages: [snapshot],
-                                         outputURL: output)
+                                         outputURL: output,
+                                         validatePDFKit: true)
     } catch {
       if let pdfData = try? Data(contentsOf: output) {
         let attachment = XCTAttachment(data: pdfData,

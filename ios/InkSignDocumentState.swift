@@ -10,15 +10,21 @@ struct InkSignPdfTextTargetOptions {
   var alignment: TextAlignment?
   var verticalAnchor: TextVerticalAnchor?
 
-  init(_ value: TextAnnotationOptions?) {
+  init(_ value: TextAnnotationOptions?) throws {
     font = nil
     if case .second(let name)? = value?.font { fontName = name } else { fontName = nil }
     fontSize = value?.fontSize
     color = value?.color
     direction = value?.direction
-    maxLines = value?.maxLines.map(Int.init)
+    maxLines = try Self.lineLimit(value?.maxLines)
     alignment = value?.alignment
     verticalAnchor = value?.verticalAnchor
+  }
+
+  static func lineLimit(_ value: Double?) throws -> Int? {
+    guard let value else { return nil }
+    guard value >= 0, let limit = Int(exactly: value) else { throw TextError.invalidOptions }
+    return limit
   }
 
   var publicOptions: TextAnnotationOptions {
@@ -156,7 +162,7 @@ final class InkSignPdfDocumentCoordinator {
     let id = try allocateTextID()
     let target = InkSignPdfTextTarget(id: id, pageID: pageID,
       sourceIdentity: sourceIdentity, fieldName: fieldName, canonicalBounds: normalized,
-      options: InkSignPdfTextTargetOptions(options), embeddedValue: embeddedValue,
+      options: try InkSignPdfTextTargetOptions(options), embeddedValue: embeddedValue,
       canonicalWritingRule: canonicalWritingRule,
       canonicalDetectionBounds: canonicalDetectionBounds ?? normalized, excludedSourceRanges: excludedSourceRanges)
     textTargets[id] = target
