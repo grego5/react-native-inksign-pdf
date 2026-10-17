@@ -11,6 +11,10 @@
 - Detach/unmount settles interaction, unsubscribes, and releases presentation,
   caches, and the exclusive viewer claim. Closing the owner detaches its viewer.
   Backend readers/files retire after their users finish.
+- A `DocumentOptions` prop creates a view-owned document with
+  `HybridInkSignDocument.create`; `ownedOptions` marks ownership. Content-equal
+  options keep it; any replacement, detach, or drop closes it. Borrowed documents
+  detach without closing.
 - Prepared analysis retains rotation-zero labels, glyphs, and writing guides.
   Current rotation supplies lookup/snapping projections without a PDF rescan.
   The core retains prepared contexts; page handles reference them weakly.

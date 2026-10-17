@@ -20,7 +20,7 @@ namespace margelo::nitro::inksignpdf::views {
                                                  const HybridInkSignViewProps& sourceProps,
                                                  const react::RawProps& rawProps):
     react::ViewProps(context, sourceProps, rawProps, filterObjectKeys),
-    document(nitro::ReactProp<std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>>::fromRawValue("InkSignView", "document", rawProps, sourceProps.document)),
+    document(nitro::ReactProp<std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>>::fromRawValue("InkSignView", "document", rawProps, sourceProps.document)),
     strokeColor(nitro::ReactProp<std::optional<std::string>>::fromRawValue("InkSignView", "strokeColor", rawProps, sourceProps.strokeColor)),
     strokeMinWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("InkSignView", "strokeMinWidth", rawProps, sourceProps.strokeMinWidth)),
     strokeMaxWidth(nitro::ReactProp<std::optional<double>>::fromRawValue("InkSignView", "strokeMaxWidth", rawProps, sourceProps.strokeMaxWidth)),

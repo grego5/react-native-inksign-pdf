@@ -33,7 +33,7 @@ abstract class HybridInkSignViewSpec: HybridView() {
   @get:Keep
   @set:DoNotStrip
   @set:Keep
-  abstract var document: HybridInkSignDocumentSpec?
+  abstract var document: Variant_HybridInkSignDocumentSpec_DocumentOptions?
   
   @get:DoNotStrip
   @get:Keep

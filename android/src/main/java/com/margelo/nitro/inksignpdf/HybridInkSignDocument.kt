@@ -13,10 +13,7 @@ internal fun <T> Deferred<T>.asNitroPromise(): Promise<T> = Promise.async { awai
 class HybridInkSignDocumentFactory : HybridInkSignDocumentFactorySpec() {
   override fun createDocument(options: DocumentOptions?): HybridInkSignDocumentSpec {
     val context = checkNotNull(NitroModules.applicationContext) { "React Native context is unavailable" }
-    val core = DocumentCore(context, recordHistory = options?.recordHistory ?: true,
-      exportOwnership = ExportOwnership.CALLER, fallbackFontSource = options?.androidFallbackFont)
-    core.initialize(options)
-    return HybridInkSignDocument(core)
+    return HybridInkSignDocument.create(context, options)
   }
 }
 
@@ -54,6 +51,16 @@ internal class HybridInkSignDocument(internal val core: DocumentCore) : HybridIn
     closePromise ?: core.close().asNitroPromise().also { closePromise = it }
   }
   override fun dispose() { core.close(cancelPending = true) }
+
+  companion object {
+    /** Creates an owner and queues its initial sources before later commands. */
+    fun create(context: Context, options: DocumentOptions?): HybridInkSignDocument {
+      val core = DocumentCore(context, recordHistory = options?.recordHistory ?: true,
+        exportOwnership = ExportOwnership.CALLER, fallbackFontSource = options?.androidFallbackFont)
+      core.initialize(options)
+      return HybridInkSignDocument(core)
+    }
+  }
 }
 
 @DoNotStrip

@@ -744,12 +744,12 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     defer { document.core.dispose() }
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
-    fixture.view.document = document
+    fixture.view.document = .first(document)
     XCTAssertThrowsError(try awaitValue(document.getPage(index: .first(0)))) { error in
       XCTAssertEqual(error.localizedDescription, document.core.initializationError?.localizedDescription)
       XCTAssertEqual(error.localizedDescription, fixture.view.loadError)
     }
-    XCTAssertTrue(fixture.view.document as? HybridInkSignDocument === document)
+    XCTAssertTrue(fixture.view.attachedDocument === document)
     _ = try awaitValue(document.close())
   }
 
@@ -768,7 +768,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     window.makeKeyAndVisible()
     controller.view.layoutIfNeeded()
     defer { view.dispose(); window.isHidden = true }
-    view.document = document
+    view.document = .first(document)
     XCTAssertNil(view.viewerDocument)
     XCTAssertEqual(try document.getState().pageCount, 0)
     var events: [PageChangeEvent] = []
@@ -820,7 +820,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     try core.setTextValue(context, id: id, text: "Before attachment")
     let first = makeFixture(pageCount: 1)
     defer { first.view.dispose(); first.window.isHidden = true }
-    first.view.document = document
+    first.view.document = .first(document)
     XCTAssertTrue(first.view.viewerDocument?.core === core.coordinator.document)
     XCTAssertTrue(try core.pageInfo(context).canUndo)
     first.view.document = nil
@@ -830,7 +830,7 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     try core.setTextValue(context, id: id, text: "After unmount")
     let second = makeFixture(pageCount: 1)
     defer { second.view.dispose(); second.window.isHidden = true }
-    second.view.document = document
+    second.view.document = .first(document)
     XCTAssertTrue(second.view.viewerDocument?.core === core.coordinator.document)
     XCTAssertEqual(try core.textValue(context, id: id), "After unmount")
     XCTAssertEqual(try core.pageInfo(context).pageId, page.id.uuidString)
@@ -848,19 +848,52 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     let document = HybridInkSignDocument(core: core)
     let first = makeFixture(pageCount: 1)
     let second = makeFixture(pageCount: 1)
-    let secondOriginalDocument = try XCTUnwrap(second.view.document as? HybridInkSignDocument)
+    let secondOriginalDocument = try XCTUnwrap(second.view.attachedDocument)
     defer {
       first.view.dispose(); first.window.isHidden = true
       second.view.dispose(); second.window.isHidden = true
     }
-    first.view.document = document
-    second.view.document = document
-    XCTAssertTrue(second.view.document as? HybridInkSignDocument === secondOriginalDocument)
+    first.view.document = .first(document)
+    second.view.document = .first(document)
+    XCTAssertTrue(second.view.attachedDocument === secondOriginalDocument)
     XCTAssertTrue(second.view.loadError?.hasPrefix("document_already_attached") == true)
     first.view.document = nil
-    second.view.document = document
+    second.view.document = .first(document)
     XCTAssertNotNil(second.view.document)
     XCTAssertNil(second.view.loadError)
+  }
+
+  func testViewClosesDocumentsItCreatesFromOptionsAndOnlyDetachesBorrowedOwners() throws {
+    func options(tag: String) -> DocumentOptions {
+      DocumentOptions(type: nil, recordHistory: false, tag: tag, imagePageSize: nil, targetDpi: nil,
+        jpegQuality: nil, androidFallbackFont: nil, sources: [])
+    }
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let fixtureDocument = try XCTUnwrap(fixture.view.attachedDocument)
+
+    fixture.view.document = .second(options(tag: "first"))
+    let owned = try XCTUnwrap(fixture.view.attachedDocument)
+    XCTAssertNoThrow(try awaitValue(fixtureDocument.acceptChanges()))
+    fixture.view.document = .second(options(tag: "first"))
+    XCTAssertTrue(fixture.view.attachedDocument === owned)
+
+    fixture.view.document = .second(options(tag: "second"))
+    let replacement = try XCTUnwrap(fixture.view.attachedDocument)
+    XCTAssertFalse(replacement === owned)
+    XCTAssertThrowsError(try awaitValue(owned.acceptChanges()))
+
+    let borrowed = HybridInkSignDocument(options: nil)
+    defer { borrowed.core.dispose() }
+    fixture.view.document = .first(borrowed)
+    XCTAssertThrowsError(try awaitValue(replacement.acceptChanges()))
+    fixture.view.document = nil
+    XCTAssertNoThrow(try awaitValue(borrowed.acceptChanges()))
+
+    fixture.view.document = .second(options(tag: "disposed"))
+    let disposed = try XCTUnwrap(fixture.view.attachedDocument)
+    fixture.view.dispose()
+    XCTAssertThrowsError(try awaitValue(disposed.acceptChanges()))
   }
 
   private func text(id: UInt64, value: String) -> InkSignPdfTextAnnotation {

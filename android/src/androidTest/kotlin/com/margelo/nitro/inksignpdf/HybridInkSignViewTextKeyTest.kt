@@ -52,7 +52,7 @@ internal class HybridInkSignViewTextKeyTest {
 
     try {
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context).also { it.document = document }
+        val view = HybridInkSignView(context).also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) }
         viewRef.set(view)
         assertTrue("An empty document has no matching page IDs", document.getPageIdsByTag("report").isEmpty())
         val host = view.view
@@ -189,7 +189,7 @@ internal class HybridInkSignViewTextKeyTest {
     val viewRef = AtomicReference<HybridInkSignView>()
     try {
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context).also { it.document = document }
+        val view = HybridInkSignView(context).also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) }
         viewRef.set(view)
         val size = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         view.view.measure(size, size)
@@ -249,7 +249,7 @@ internal class HybridInkSignViewTextKeyTest {
       assertEquals("", handle.getValue())
 
       awaitInitialSources(instrumentation, replacementDocument, sourceB.absolutePath, expectedPageCount = 1.0)
-      instrumentation.runOnMainSync { view.document = replacementDocument }
+      instrumentation.runOnMainSync { view.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(replacementDocument) }
       assertEquals("Detached text handles retain their document", "", handle.getValue())
       handle.setValue("detached", null)
       assertEquals("detached", page.getTextValue(textId))
@@ -314,7 +314,7 @@ internal class HybridInkSignViewTextKeyTest {
     val viewRef = AtomicReference<HybridInkSignView>()
     try {
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context).also { it.document = documentA }
+        val view = HybridInkSignView(context).also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(documentA) }
         viewRef.set(view)
         val exactSize = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         view.view.measure(exactSize, exactSize)
@@ -336,8 +336,8 @@ internal class HybridInkSignViewTextKeyTest {
       assertTrue("prepared page analysis did not reach the worker", analysisStarted.await(10L, TimeUnit.SECONDS))
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        view.document = documentB
-        assertTrue("viewer did not install owner B", view.document === documentB)
+        view.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(documentB)
+        assertTrue("viewer did not install owner B", view.attachedCore === documentB.core)
         assertEquals("owner-b", view.documentState.pageMetadata(0).tag)
       }
 
@@ -345,7 +345,7 @@ internal class HybridInkSignViewTextKeyTest {
       assertEquals(0, rejectionCount.get())
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        assertTrue("viewer changed owners while analysis was blocked", view.document === documentB)
+        assertTrue("viewer changed owners while analysis was blocked", view.attachedCore === documentB.core)
         assertEquals("owner-b", view.documentState.pageMetadata(0).tag)
       }
       releaseAnalysis.countDown()
@@ -358,7 +358,7 @@ internal class HybridInkSignViewTextKeyTest {
       assertEquals(1.0, documentB.getState().pageCount, 0.0)
       instrumentation.runOnMainSync {
         val view = viewRef.get()
-        assertTrue("owner A result was published into viewer B", view.document === documentB)
+        assertTrue("owner A result was published into viewer B", view.attachedCore === documentB.core)
         assertEquals("owner-b", view.documentState.pageMetadata(0).tag)
       }
     } finally {
@@ -395,7 +395,7 @@ internal class HybridInkSignViewTextKeyTest {
     val viewRef = AtomicReference<HybridInkSignView>()
     try {
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context).also { it.document = document }
+        val view = HybridInkSignView(context).also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) }
         viewRef.set(view)
         val size = View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY)
         view.view.measure(size, size)

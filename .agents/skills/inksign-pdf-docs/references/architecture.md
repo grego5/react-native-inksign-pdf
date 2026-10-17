@@ -16,11 +16,16 @@ flowchart LR
   owns FIFO commands, stable pages/targets, committed content,
   admitted text transactions, history, analysis, fonts, export, and cleanup.
   The backend owns PDF resources, not editing state.
-- Document/page/text handles retain the core. `InkSignView.document` attaches one
-  viewer per owner; rejected attachment preserves the viewer's existing document.
-  The prop is optional and empty owners can attach.
+- Document/page/text handles retain the core. `InkSignView.document` accepts either
+  `DocumentOptions` or a borrowed `InkSignDocument`. A borrowed owner attaches to one
+  viewer at a time; rejected attachment preserves the viewer's existing document.
+  Empty owners can attach.
+- `DocumentOptions` makes the native view create and own a document on attachment.
+  Options compare by content, so equal rerenders keep it. Replacing the options or
+  disposing the view closes the owned document. Replacing a borrowed owner, or
+  unmounting, detaches it without closing.
   Detach/unmount settles interaction and releases presentation without closing
-  the owner. Ordinary document handles remain usable headlessly.
+  a borrowed owner. Ordinary document handles remain usable headlessly.
 - Viewers own active-page selection, viewport, gestures, live ink, caret,
   composition, selection, animations, and render caches. They submit explicit-page
   edits and consume publications. Core commands never request drafts from a viewer

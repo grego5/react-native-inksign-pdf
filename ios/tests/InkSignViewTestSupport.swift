@@ -16,7 +16,7 @@ extension InkSignViewTestSupport where Self: XCTestCase {
   }
 
   func attachedDocument(_ view: ViewerCanvas) throws -> HybridInkSignDocument {
-    try XCTUnwrap(view.document as? HybridInkSignDocument)
+    try XCTUnwrap(view.attachedDocument)
   }
 
   func documentPage(_ view: ViewerCanvas, at pageIndex: Int? = nil) throws -> any HybridDocumentPageSpec {
@@ -91,7 +91,7 @@ extension InkSignViewTestSupport where Self: XCTestCase {
       presented.fulfill()
     }
     defer { view.onPageChange = previous }
-    view.document = HybridInkSignDocument(core: core)
+    view.document = .first(HybridInkSignDocument(core: core))
     wait(for: [presented], timeout: 120)
     return try XCTUnwrap(info)
   }
@@ -231,7 +231,7 @@ func insertTextForTest(
 }
 
 private func pageForTest(_ view: ViewerCanvas, at pageIndex: Int) throws -> any HybridDocumentPageSpec {
-  let owner = try XCTUnwrap(view.document as? HybridInkSignDocument)
+  let owner = try XCTUnwrap(view.attachedDocument)
   let completed = XCTestExpectation(description: "test page handle is acquired")
   var page: (any HybridDocumentPageSpec)?
   var failure: Error?

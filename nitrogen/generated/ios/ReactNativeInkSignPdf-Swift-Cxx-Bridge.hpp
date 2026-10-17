@@ -919,18 +919,47 @@ namespace margelo::nitro::inksignpdf::bridge::swift {
     return Result<std::shared_ptr<Promise<PageCoords>>>::withError(error);
   }
   
-  // pragma MARK: std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>
+  // pragma MARK: std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>
   /**
-   * Specialized version of `std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>`.
+   * Wrapper struct for `std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>`.
+   * std::variant cannot be used in Swift because of a Swift bug.
+   * Not even specializing it works. So we create a wrapper struct.
    */
-  using std__optional_std__shared_ptr_HybridInkSignDocumentSpec__ = std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>;
-  inline std::optional<std::shared_ptr<HybridInkSignDocumentSpec>> create_std__optional_std__shared_ptr_HybridInkSignDocumentSpec__(const std::shared_ptr<HybridInkSignDocumentSpec>& value) noexcept {
-    return std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>(value);
+  struct std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions_ final {
+    std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions> variant;
+    std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions_(std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions> variant): variant(variant) { }
+    operator std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>() const noexcept {
+      return variant;
+    }
+    inline size_t index() const noexcept {
+      return variant.index();
+    }
+    inline std::shared_ptr<HybridInkSignDocumentSpec> get_0() const noexcept {
+      return std::get<0>(variant);
+    }
+    inline DocumentOptions get_1() const noexcept {
+      return std::get<1>(variant);
+    }
+  };
+  inline std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions_ create_std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions_(const std::shared_ptr<HybridInkSignDocumentSpec>& value) noexcept {
+    return std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions_(value);
   }
-  inline bool has_value_std__optional_std__shared_ptr_HybridInkSignDocumentSpec__(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& optional) noexcept {
+  inline std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions_ create_std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions_(const DocumentOptions& value) noexcept {
+    return std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions_(value);
+  }
+  
+  // pragma MARK: std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>
+  /**
+   * Specialized version of `std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>`.
+   */
+  using std__optional_std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions__ = std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>;
+  inline std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>> create_std__optional_std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions__(const std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>& value) noexcept {
+    return std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>(value);
+  }
+  inline bool has_value_std__optional_std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions__(const std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>& optional) noexcept {
     return optional.has_value();
   }
-  inline std::shared_ptr<HybridInkSignDocumentSpec> get_std__optional_std__shared_ptr_HybridInkSignDocumentSpec__(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& optional) noexcept {
+  inline std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions> get_std__optional_std__variant_std__shared_ptr_HybridInkSignDocumentSpec___DocumentOptions__(const std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>& optional) noexcept {
     return optional.value();
   }
   

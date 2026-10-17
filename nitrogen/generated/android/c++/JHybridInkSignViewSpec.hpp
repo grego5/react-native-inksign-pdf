@@ -50,8 +50,8 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Properties
-    std::optional<std::shared_ptr<HybridInkSignDocumentSpec>> getDocument() override;
-    void setDocument(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& document) override;
+    std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>> getDocument() override;
+    void setDocument(const std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>& document) override;
     std::optional<std::string> getStrokeColor() override;
     void setStrokeColor(const std::optional<std::string>& strokeColor) override;
     std::optional<double> getStrokeMinWidth() override;

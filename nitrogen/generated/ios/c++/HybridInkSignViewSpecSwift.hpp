@@ -14,6 +14,14 @@ namespace ReactNativeInkSignPdf { class HybridInkSignViewSpec_cxx; }
 
 // Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
+// Forward declaration of `DocumentOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOptions; }
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
+// Forward declaration of `AndroidFallbackFont` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
@@ -53,8 +61,14 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 
 #include <memory>
 #include "HybridInkSignDocumentSpec.hpp"
+#include "DocumentOptions.hpp"
+#include <variant>
 #include <optional>
+#include "PageInputType.hpp"
 #include <string>
+#include "ImagePageSize.hpp"
+#include "AndroidFallbackFont.hpp"
+#include <vector>
 #include "DoubleTapOptions.hpp"
 #include "PagerDirection.hpp"
 #include "TextDirection.hpp"
@@ -62,7 +76,6 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include <functional>
 #include "InteractionMode.hpp"
 #include <NitroModules/Null.hpp>
-#include <variant>
 #include "PageChangeEvent.hpp"
 #include "TextSelection.hpp"
 #include <NitroModules/Promise.hpp>
@@ -124,11 +137,11 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Properties
-    inline std::optional<std::shared_ptr<HybridInkSignDocumentSpec>> getDocument() noexcept override {
+    inline std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>> getDocument() noexcept override {
       auto __result = _swiftPart.getDocument();
       return __result;
     }
-    inline void setDocument(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& document) noexcept override {
+    inline void setDocument(const std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>& document) noexcept override {
       _swiftPart.setDocument(document);
     }
     inline std::optional<std::string> getStrokeColor() noexcept override {

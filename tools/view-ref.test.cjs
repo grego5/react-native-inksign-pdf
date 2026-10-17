@@ -430,6 +430,15 @@ test('required document prop passes native ownership through updates and unmount
   } finally { if (root) await act(async () => { root.unmount(); }); }
 });
 
+test('DocumentOptions prop reaches the native view as options for view-owned documents', async () => {
+  const options = { sources: ['/document.pdf'], recordHistory: false };
+  let root;
+  try {
+    await act(async () => { root = create(React.createElement(InkSignView, { document: options })); });
+    assert.equal(observedDocuments.at(-1), options);
+  } finally { if (root) await act(async () => { root.unmount(); }); }
+});
+
 test('view mode dispatches while the coordinate request is still waiting', async () => {
   const ref = React.createRef();
   let rejectRequest;

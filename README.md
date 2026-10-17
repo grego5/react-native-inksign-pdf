@@ -97,6 +97,12 @@ The viewer can mount with an empty owner or with `document` omitted.
 Attach one viewer at a time. Unmounting keeps the document available for editing or another viewer.
 Call `await document.close()` when finished. Keep or delete exported files yourself.
 
+To let the viewer own its document, pass `DocumentOptions` instead of a document handle:
+
+```tsx
+<InkSignView document={{ sources: [uri], recordHistory: false }} />
+```
+
 ## Methods
 
 Documents can be populated and edited without a mounted viewer. Native selection

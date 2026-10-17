@@ -215,7 +215,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try view.setMode(mode: .view, options: nil)
     try view.setMode(mode: .view, options: nil)
     try view.requestUserTap().catch { errors.append($0) }
-    try awaitDocumentOperation((view.document as! HybridInkSignDocument).close())
+    try awaitDocumentOperation(view.attachedDocument!.close())
     XCTAssertEqual(errors.count, 2)
     XCTAssertFalse(view.isPickingPageCoords)
     XCTAssertNil(view.interaction.coordinateRequest)
@@ -320,7 +320,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let workingURL = try XCTUnwrap(fixture.view.viewerDocument).workingURL
-    let owner = try XCTUnwrap(fixture.view.document as? HybridInkSignDocument)
+    let owner = try XCTUnwrap(fixture.view.attachedDocument)
     let coordinator = owner.core.coordinator
     do {
     let document = try XCTUnwrap(fixture.view.viewerDocument)
@@ -1196,7 +1196,7 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     try awaitTestPromise(initializeDocument(replacementCore, from: source))
     let replacement = HybridInkSignDocument(core: replacementCore)
     let replacementPageID = try XCTUnwrap(replacementCore.coordinator.document?.pages.first?.id)
-    view.document = replacement
+    view.document = .first(replacement)
     wait(for: [focusSettled], timeout: 5)
     XCTAssertFalse(focusSucceeded)
     XCTAssertTrue(focusError?.localizedDescription.hasPrefix("operation_cancelled") == true)

@@ -19,6 +19,8 @@
 
 #include <memory>
 #include "HybridInkSignDocumentSpec.hpp"
+#include "DocumentOptions.hpp"
+#include <variant>
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
@@ -29,7 +31,6 @@
 #include "PageChangeEvent.hpp"
 #include <NitroModules/Null.hpp>
 #include "TextSelection.hpp"
-#include <variant>
 #include "HybridInkSignViewSpec.hpp"
 
 namespace margelo::nitro::inksignpdf::views {
@@ -52,7 +53,7 @@ namespace margelo::nitro::inksignpdf::views {
                            const react::RawProps& rawProps);
 
   public:
-    nitro::ReactProp<std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>> document;
+    nitro::ReactProp<std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>> document;
     nitro::ReactProp<std::optional<std::string>> strokeColor;
     nitro::ReactProp<std::optional<double>> strokeMinWidth;
     nitro::ReactProp<std::optional<double>> strokeMaxWidth;

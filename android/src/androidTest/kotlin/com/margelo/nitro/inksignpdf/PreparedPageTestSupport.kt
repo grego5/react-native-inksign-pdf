@@ -29,8 +29,8 @@ internal fun awaitPreparedPage(
   instrumentation.runOnMainSync {
     val query = if (tag != null) PageQuery.create(TaggedPageQuery(tag, pageIndex))
       else PageQuery.create(pageIndex ?: 0.0)
-    checkNotNull(view.document) { "Viewer test must attach a document before preparing a page" }
-      .getPage(query).then { page.set(it); settled.countDown() }
+    (checkNotNull(view.document) { "Viewer test must attach a document before preparing a page" } as Variant_HybridInkSignDocumentSpec_DocumentOptions.First)
+      .value.getPage(query).then { page.set(it); settled.countDown() }
       .catch { error -> failure.set(error); settled.countDown() }
   }
   assertTrue("Document getPage did not settle", settled.await(15L, TimeUnit.SECONDS))

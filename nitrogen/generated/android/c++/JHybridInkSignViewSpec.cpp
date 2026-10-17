@@ -9,6 +9,14 @@
 
 // Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
+// Forward declaration of `DocumentOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOptions; }
+// Forward declaration of `PageInputType` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { enum class PageInputType; }
+// Forward declaration of `ImagePageSize` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct ImagePageSize; }
+// Forward declaration of `AndroidFallbackFont` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct AndroidFallbackFont; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
@@ -48,9 +56,20 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 
 #include <memory>
 #include "HybridInkSignDocumentSpec.hpp"
+#include "DocumentOptions.hpp"
+#include <variant>
 #include <optional>
+#include "JVariant_HybridInkSignDocumentSpec_DocumentOptions.hpp"
 #include "JHybridInkSignDocumentSpec.hpp"
+#include "JDocumentOptions.hpp"
+#include "PageInputType.hpp"
+#include "JPageInputType.hpp"
 #include <string>
+#include "ImagePageSize.hpp"
+#include "JImagePageSize.hpp"
+#include "AndroidFallbackFont.hpp"
+#include "JAndroidFallbackFont.hpp"
+#include <vector>
 #include "DoubleTapOptions.hpp"
 #include "JDoubleTapOptions.hpp"
 #include "PagerDirection.hpp"
@@ -65,7 +84,6 @@ namespace margelo::nitro::inksignpdf { enum class TextVerticalAnchor; }
 #include "InteractionMode.hpp"
 #include "JInteractionMode.hpp"
 #include <NitroModules/Null.hpp>
-#include <variant>
 #include "JVariant_NullType_String.hpp"
 #include <NitroModules/JNull.hpp>
 #include "JVariant_NullType_Double.hpp"
@@ -134,14 +152,14 @@ namespace margelo::nitro::inksignpdf {
   }
 
   // Properties
-  std::optional<std::shared_ptr<HybridInkSignDocumentSpec>> JHybridInkSignViewSpec::getDocument() {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JHybridInkSignDocumentSpec::JavaPart>()>("getDocument");
+  std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>> JHybridInkSignViewSpec::getDocument() {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JVariant_HybridInkSignDocumentSpec_DocumentOptions>()>("getDocument");
     auto __result = method(_javaPart);
-    return __result != nullptr ? std::make_optional(__result->getJHybridInkSignDocumentSpec()) : std::nullopt;
+    return __result != nullptr ? std::make_optional(__result->toCpp()) : std::nullopt;
   }
-  void JHybridInkSignViewSpec::setDocument(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& document) {
-    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JHybridInkSignDocumentSpec::JavaPart> /* document */)>("setDocument");
-    method(_javaPart, document.has_value() ? std::dynamic_pointer_cast<JHybridInkSignDocumentSpec>(document.value())->getJavaPart() : nullptr);
+  void JHybridInkSignViewSpec::setDocument(const std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>& document) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(jni::alias_ref<JVariant_HybridInkSignDocumentSpec_DocumentOptions> /* document */)>("setDocument");
+    method(_javaPart, document.has_value() ? JVariant_HybridInkSignDocumentSpec_DocumentOptions::fromCpp(document.value()) : nullptr);
   }
   std::optional<std::string> JHybridInkSignViewSpec::getStrokeColor() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<jni::JString>()>("getStrokeColor");

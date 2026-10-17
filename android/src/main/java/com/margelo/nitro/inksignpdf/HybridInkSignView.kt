@@ -38,31 +38,46 @@ class HybridInkSignView internal constructor(
   private var attachedDocument: HybridInkSignDocument? = null
   private val viewerScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
   private val viewerCommands = Mutex()
-  override var document: HybridInkSignDocumentSpec?
-    get() = attachedDocument
+  /** Options that created [attachedDocument]; non-null means the view owns and closes it. */
+  private var ownedOptions: DocumentOptions? = null
+  override var document: Variant_HybridInkSignDocumentSpec_DocumentOptions?
+    get() = attachedDocument?.let { Variant_HybridInkSignDocumentSpec_DocumentOptions.First(it) }
     set(value) = runOnMainSync {
-      val next = value as? HybridInkSignDocument
-      if (value != null && next == null) throw operationCancelled()
-      if (next === attachedDocument) return@runOnMainSync
       if (disposed) return@runOnMainSync
-      try { next?.core?.claimViewer(attachmentId) }
-      catch (error: Throwable) { loadError = error.message; emitState(); return@runOnMainSync }
-      detachDocument()
-      attachedDocument = next
-      loadError = next?.core?.initializationError?.message
-      viewerCanvas.bindCore(next?.core)
-      textOverlay.bindCore(next?.core)
-      textOverlay.setTextDirection(textDirection ?: TextDirection.AUTO)
-      defaultTextFontSize?.let(textOverlay::setDefaultFontSize)
-      defaultTextColor?.let(textOverlay::setDefaultTextColor)
-      updatePenConfiguration()
-      documentSubscription = next?.core?.observe(::documentChanged)
-      lastPublicPage = null
-      lastPublicState = null
-      if (documentState.hasDocument) viewerCanvas.installDocumentPresentation(notifyState = true)
-      emitState()
+      when (value) {
+        null -> attachDocument(null, ownedOptions = null)
+        is Variant_HybridInkSignDocumentSpec_DocumentOptions.First ->
+          attachDocument(value.value as? HybridInkSignDocument ?: throw operationCancelled(), ownedOptions = null)
+        is Variant_HybridInkSignDocumentSpec_DocumentOptions.Second -> {
+          val options = value.value
+          if (ownedOptions?.hasSameContent(options) == true) return@runOnMainSync
+          attachDocument(HybridInkSignDocument.create(context.applicationContext, options), ownedOptions = options)
+        }
+      }
     }
 
+  private fun attachDocument(next: HybridInkSignDocument?, ownedOptions: DocumentOptions?) {
+    if (next === attachedDocument) return
+    try { next?.core?.claimViewer(attachmentId) }
+    catch (error: Throwable) { loadError = error.message; emitState(); return }
+    detachDocument()
+    attachedDocument = next
+    this.ownedOptions = ownedOptions
+    loadError = next?.core?.initializationError?.message
+    viewerCanvas.bindCore(next?.core)
+    textOverlay.bindCore(next?.core)
+    textOverlay.setTextDirection(textDirection ?: TextDirection.AUTO)
+    defaultTextFontSize?.let(textOverlay::setDefaultFontSize)
+    defaultTextColor?.let(textOverlay::setDefaultTextColor)
+    updatePenConfiguration()
+    documentSubscription = next?.core?.observe(::documentChanged)
+    lastPublicPage = null
+    lastPublicState = null
+    if (documentState.hasDocument) viewerCanvas.installDocumentPresentation(notifyState = true)
+    emitState()
+  }
+
+  /** Detaches the current document and closes it when the view owns it. */
   private fun detachDocument(commitDraft: Boolean = true) {
     viewportRequestID += 1L
     pageNavigationRequestID += 1L
@@ -73,7 +88,10 @@ class HybridInkSignView internal constructor(
     documentSubscription?.close()
     documentSubscription = null
     attachedCore?.releaseViewer(attachmentId)
+    val previous = attachedDocument
     attachedDocument = null
+    if (ownedOptions != null) previous?.close()
+    ownedOptions = null
     viewerCanvas.bindCore(null)
     textOverlay.bindCore(null)
   }
@@ -908,3 +926,7 @@ class HybridInkSignView internal constructor(
   }
 
 }
+
+/** Compares option contents so equal view props keep the view-owned document. */
+private fun DocumentOptions.hasSameContent(other: DocumentOptions): Boolean =
+  copy(sources = null) == other.copy(sources = null) && sources.contentEquals(other.sources)

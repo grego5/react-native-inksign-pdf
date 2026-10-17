@@ -15,6 +15,8 @@
 
 // Forward declaration of `HybridInkSignDocumentSpec` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { class HybridInkSignDocumentSpec; }
+// Forward declaration of `DocumentOptions` to properly resolve imports.
+namespace margelo::nitro::inksignpdf { struct DocumentOptions; }
 // Forward declaration of `DoubleTapOptions` to properly resolve imports.
 namespace margelo::nitro::inksignpdf { struct DoubleTapOptions; }
 // Forward declaration of `PagerDirection` to properly resolve imports.
@@ -46,6 +48,8 @@ namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 
 #include <memory>
 #include "HybridInkSignDocumentSpec.hpp"
+#include "DocumentOptions.hpp"
+#include <variant>
 #include <optional>
 #include <string>
 #include "DoubleTapOptions.hpp"
@@ -56,7 +60,6 @@ namespace margelo::nitro::inksignpdf { struct TextModeOptions; }
 #include "PageChangeEvent.hpp"
 #include <NitroModules/Null.hpp>
 #include "TextSelection.hpp"
-#include <variant>
 #include <NitroModules/Promise.hpp>
 #include "HybridDocumentPageSpec.hpp"
 #include "InputTargetFocusOptions.hpp"
@@ -94,8 +97,8 @@ namespace margelo::nitro::inksignpdf {
 
     public:
       // Properties
-      virtual std::optional<std::shared_ptr<HybridInkSignDocumentSpec>> getDocument() = 0;
-      virtual void setDocument(const std::optional<std::shared_ptr<HybridInkSignDocumentSpec>>& document) = 0;
+      virtual std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>> getDocument() = 0;
+      virtual void setDocument(const std::optional<std::variant<std::shared_ptr<HybridInkSignDocumentSpec>, DocumentOptions>>& document) = 0;
       virtual std::optional<std::string> getStrokeColor() = 0;
       virtual void setStrokeColor(const std::optional<std::string>& strokeColor) = 0;
       virtual std::optional<double> getStrokeMinWidth() = 0;

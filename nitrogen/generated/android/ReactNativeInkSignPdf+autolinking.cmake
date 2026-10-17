@@ -50,6 +50,7 @@ target_sources(
   ../nitrogen/generated/android/c++/JHybridModeSessionSpec.cpp
   ../nitrogen/generated/android/c++/JVariant_Double_TaggedPageQuery.cpp
   ../nitrogen/generated/android/c++/JHybridInkSignViewSpec.cpp
+  ../nitrogen/generated/android/c++/JVariant_HybridInkSignDocumentSpec_DocumentOptions.cpp
   ../nitrogen/generated/android/c++/JVariant_NullType_Double.cpp
   ../nitrogen/generated/android/c++/JVariant_NullType_TextSelection.cpp
   ../nitrogen/generated/android/c++/JVariant_HybridTextHandleSpec_NullType.cpp

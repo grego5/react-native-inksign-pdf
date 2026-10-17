@@ -103,7 +103,7 @@ internal class DocumentAttachmentTest {
       await { document.acceptChanges() }
       await { document.addPages(DocumentAddPagesOptions(type = null, tag = null,
         sources = arrayOf(source.path, source.path), imagePageSize = null, targetDpi = null, jpegQuality = null)) }
-      instrumentation.runOnMainSync { view = viewer().also { it.document = document } }
+      instrumentation.runOnMainSync { view = viewer().also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) } }
       val page = await { document.getPage(PageQuery.create(0.0)) }
       var generation = 0L
       var ids = emptyList<String>()
@@ -125,7 +125,7 @@ internal class DocumentAttachmentTest {
         assertEquals(ids, document.core.coordinator.pages.map { it.id })
         assertEquals(generation, document.core.coordinator.generation)
         assertEquals(90.0, page.getState().rotation, 0.0)
-        assertTrue(view!!.document === document)
+        assertTrue(view!!.attachedCore === document.core)
         document.core.coordinator.pages.forEach { item ->
           assertEquals("Keep", item.history.contentSnapshot().filterIsInstance<PageContent.Text>().single().annotation.text)
           assertTrue(!item.history.canUndo && !item.history.canRedo)
@@ -189,7 +189,7 @@ internal class DocumentAttachmentTest {
       await { document.addPages(DocumentAddPagesOptions(type = null, tag = null,
         sources = arrayOf(source.path), imagePageSize = null, targetDpi = null, jpegQuality = null)) }
       instrumentation.runOnMainSync {
-        val owner = viewer().also { it.document = document }
+        val owner = viewer().also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) }
         view = owner
         session = owner.setMode(InputMode.TEXT, null)
         val host = owner.view as FrameLayout
@@ -212,7 +212,7 @@ internal class DocumentAttachmentTest {
         assertEquals(selectedId, overlay.selectedText()?.textId)
         assertTrue("Reset must not emit an intermediate deselect/reselect", selectionEvents.isEmpty())
         assertTrue(!document.getState().isDirty)
-        assertTrue(view!!.document === document)
+        assertTrue(view!!.attachedCore === document.core)
       }
       val handle = await { session.getPage(null) }
       instrumentation.runOnMainSync {
@@ -293,14 +293,14 @@ internal class DocumentAttachmentTest {
     val document = HybridInkSignDocument(instrumentation.targetContext)
     var view: HybridInkSignView? = null
     try {
-      instrumentation.runOnMainSync { view = viewer().also { it.document = document } }
+      instrumentation.runOnMainSync { view = viewer().also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) } }
       await { document.addPages(DocumentAddPagesOptions(type = null, tag = null,
         sources = arrayOf(source.path), imagePageSize = null, targetDpi = null, jpegQuality = null)) }
       await { document.revertChanges() }
       instrumentation.runOnMainSync {
         assertEquals(0.0, document.pageCount, 0.0)
         assertTrue(!document.getState().isDirty)
-        assertTrue(view!!.document === document)
+        assertTrue(view!!.attachedCore === document.core)
       }
       await { document.revertChanges() }
       await { document.addPages(DocumentAddPagesOptions(type = null, tag = null,
@@ -356,7 +356,7 @@ internal class DocumentAttachmentTest {
     try {
       instrumentation.runOnMainSync {
         view = viewer().also {
-          it.document = document
+          it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document)
           it.onStateChange = { state -> reportedError = state.error?.asSecondOrNull() }
         }
         document.core.initialize(DocumentOptions(type = null, recordHistory = null, tag = null,
@@ -368,7 +368,7 @@ internal class DocumentAttachmentTest {
         assertTrue(failure != null)
         assertEquals(document.core.initializationError?.message, failure?.message)
         assertEquals(failure?.message, reportedError)
-        assertTrue(view!!.document === document)
+        assertTrue(view!!.attachedCore === document.core)
       }
     } finally {
       instrumentation.runOnMainSync { view?.onDropView() }
@@ -387,7 +387,7 @@ internal class DocumentAttachmentTest {
     try {
       instrumentation.runOnMainSync {
         view = viewer().also {
-          it.document = document
+          it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document)
           it.onPageChange = { page -> events.add(page) }
         }
         assertEquals(0.0, document.pageCount, 0.0)
@@ -404,7 +404,7 @@ internal class DocumentAttachmentTest {
         assertEquals(1.0, added.pageCount, 0.0)
         assertEquals(document.core.state.pageInfo(0).pageId, events.last().pageId)
         assertTrue(document.getState().isDirty)
-        assertTrue(view!!.document === document)
+        assertTrue(view!!.attachedCore === document.core)
         view!!.document = null
         assertEquals(1.0, document.pageCount, 0.0)
       }
@@ -426,7 +426,7 @@ internal class DocumentAttachmentTest {
       instrumentation.runOnMainSync {
         val attached = viewer()
         view = attached
-        attached.document = document
+        attached.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document)
         attached.onStateChange = {}
         val events = mutableListOf<PageChangeEvent>()
         attached.onPageChange = { events.add(it) }
@@ -462,8 +462,8 @@ internal class DocumentAttachmentTest {
       instrumentation.runOnMainSync {
         pageId = page.getState().pageId
         first = viewer()
-        first!!.document = owned
-        assertTrue(first!!.document === owned)
+        first!!.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(owned)
+        assertTrue(first!!.attachedCore === (owned as HybridInkSignDocument).core)
         first!!.document = null
         first!!.onDropView()
       }
@@ -472,11 +472,11 @@ internal class DocumentAttachmentTest {
         assertEquals(pageId, page.getState().pageId)
         assertEquals(90.0, page.getState().rotation, 0.0)
         second = viewer()
-        second!!.document = owned
-        assertTrue(second!!.document === owned)
+        second!!.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(owned)
+        assertTrue(second!!.attachedCore === (owned as HybridInkSignDocument).core)
       }
       await { owned.close() }
-      instrumentation.runOnMainSync { assertNull(second!!.document) }
+      instrumentation.runOnMainSync { assertNull(second!!.attachedCore) }
     } finally {
       instrumentation.runOnMainSync {
         first?.onDropView()
@@ -499,13 +499,13 @@ internal class DocumentAttachmentTest {
       instrumentation.runOnMainSync {
         first = viewer()
         second = viewer()
-        first!!.document = document
-        second!!.document = document
-        assertTrue(first!!.document === document)
-        assertNull(second!!.document)
+        first!!.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document)
+        second!!.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document)
+        assertTrue(first!!.attachedCore === (document as HybridInkSignDocument).core)
+        assertNull(second!!.attachedCore)
         first!!.document = null
-        second!!.document = document
-        assertTrue(second!!.document === document)
+        second!!.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document)
+        assertTrue(second!!.attachedCore === (document as HybridInkSignDocument).core)
       }
     } finally {
       instrumentation.runOnMainSync {
@@ -514,6 +514,48 @@ internal class DocumentAttachmentTest {
       }
       await { document.close() }
       source.delete()
+    }
+  }
+
+  @Test
+  fun viewClosesDocumentsItCreatesFromOptionsAndOnlyDetachesBorrowedOwners() {
+    NativeTestRuntime.initialize()
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    fun options(tag: String) = Variant_HybridInkSignDocumentSpec_DocumentOptions.Second(DocumentOptions(
+      type = null, recordHistory = false, tag = tag, imagePageSize = null, targetDpi = null,
+      jpegQuality = null, androidFallbackFont = null, sources = emptyArray()))
+    fun attached(view: HybridInkSignView): HybridInkSignDocument {
+      var document: HybridInkSignDocument? = null
+      instrumentation.runOnMainSync {
+        document = (view.document as Variant_HybridInkSignDocumentSpec_DocumentOptions.First).value as HybridInkSignDocument
+      }
+      return document!!
+    }
+    val borrowed = HybridInkSignDocument(instrumentation.targetContext)
+    var view: HybridInkSignView? = null
+    try {
+      instrumentation.runOnMainSync { view = viewer().also { it.document = options("first") } }
+      val owned = attached(view!!)
+      instrumentation.runOnMainSync { view!!.document = options("first") }
+      assertTrue(attached(view!!) === owned)
+
+      instrumentation.runOnMainSync { view!!.document = options("second") }
+      val replacement = attached(view!!)
+      assertTrue(replacement !== owned)
+      assertTrue(runCatching { await { owned.acceptChanges() } }.isFailure)
+
+      instrumentation.runOnMainSync { view!!.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(borrowed) }
+      assertTrue(runCatching { await { replacement.acceptChanges() } }.isFailure)
+      instrumentation.runOnMainSync { view!!.document = null }
+      await { borrowed.acceptChanges() }
+
+      instrumentation.runOnMainSync { view!!.document = options("disposed") }
+      val disposed = attached(view!!)
+      instrumentation.runOnMainSync { view!!.onDropView(); view = null }
+      assertTrue(runCatching { await { disposed.acceptChanges() } }.isFailure)
+    } finally {
+      instrumentation.runOnMainSync { view?.onDropView() }
+      await { borrowed.close() }
     }
   }
 

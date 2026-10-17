@@ -66,10 +66,29 @@ final class HybridInkSignDocument: HybridInkSignDocumentSpec {
   }
 }
 
-final class HybridInkSignDocumentFactory: HybridInkSignDocumentFactorySpec {
-  func createDocument(options: DocumentOptions?) throws -> any HybridInkSignDocumentSpec {
+extension HybridInkSignDocument {
+  /// Creates an owner and queues its initial sources before later commands.
+  convenience init(options: DocumentOptions?) {
     let core = DocumentCore(artifactPolicy: .shared, recordHistory: options?.recordHistory ?? true)
     core.initialize(options: options)
-    return HybridInkSignDocument(core: core)
+    self.init(core: core)
+  }
+}
+
+extension DocumentOptions {
+  /// Compares option contents so equal view props keep the view-owned document.
+  func hasSameContent(as other: DocumentOptions) -> Bool {
+    type == other.type && recordHistory == other.recordHistory && tag == other.tag &&
+      imagePageSize?.width == other.imagePageSize?.width && imagePageSize?.height == other.imagePageSize?.height &&
+      targetDpi == other.targetDpi && jpegQuality == other.jpegQuality &&
+      androidFallbackFont?.uri == other.androidFallbackFont?.uri &&
+      androidFallbackFont?.collectionIndex == other.androidFallbackFont?.collectionIndex &&
+      sources == other.sources
+  }
+}
+
+final class HybridInkSignDocumentFactory: HybridInkSignDocumentFactorySpec {
+  func createDocument(options: DocumentOptions?) throws -> any HybridInkSignDocumentSpec {
+    HybridInkSignDocument(options: options)
   }
 }

@@ -5,7 +5,7 @@ import type {
   HybridViewProps,
 } from 'react-native-nitro-modules'
 
-import type { InkSignDocument, DocumentPage } from './InkSignDocument.nitro'
+import type { DocumentOptions, InkSignDocument, DocumentPage } from './InkSignDocument.nitro'
 import type {
   StrokeColor,
   TextColor,
@@ -50,8 +50,12 @@ export interface ModeSession extends HybridObject<{ ios: 'swift'; android: 'kotl
 }
 
 export interface InkSignViewProps extends HybridViewProps {
-  /** Externally owned document. Removing it or unmounting detaches presentation only. */
-  document?: InkSignDocument
+  /**
+   * Document source. DocumentOptions makes the view create and own a document, which closes on
+   * replacement or disposal; options are compared by content. An InkSignDocument is borrowed:
+   * the view attaches and detaches it without closing it.
+   */
+  document?: DocumentOptions | InkSignDocument
 
   strokeColor?: StrokeColor
   /** Android brush minimum in logical display points; PencilKit controls iOS dynamics. */

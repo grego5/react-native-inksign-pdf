@@ -16,8 +16,12 @@
 - Import-time PDFium analysis retains source geometry. Display projections and
   directional-pair caches survive reorder/rotation; page retirement releases them.
   Snapping and field resolution share the projection.
+- A `DocumentOptions` prop creates a view-owned document with
+  `HybridInkSignDocument(options:)`; `ownedOptions` marks ownership. Content-equal
+  options keep it; any replacement, detach, dispose, or deinit closes it. Borrowed
+  documents detach without closing.
 - Detach/unmount settles local edits, unsubscribes, and releases presentation/
-  exclusive attachment without closing the core. A detached viewer retains
+  exclusive attachment without closing a borrowed core. A detached viewer retains
   configuration and empty state, with no fallback document.
 
 ## Publication

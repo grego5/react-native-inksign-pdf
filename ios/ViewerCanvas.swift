@@ -78,9 +78,11 @@ final class ViewerCanvas: HybridInkSignViewSpec {
   var textDirection: TextDirection? {
     didSet { applyTextDirection() }
   }
-  private var attachedDocument: HybridInkSignDocument?
-  var document: (any HybridInkSignDocumentSpec)? {
-    get { attachedDocument }
+  private(set) var attachedDocument: HybridInkSignDocument?
+  /// Options that created `attachedDocument`; non-nil means the view owns and closes it.
+  private var ownedOptions: DocumentOptions?
+  var document: Variant__any_HybridInkSignDocumentSpec__DocumentOptions? {
+    get { attachedDocument.map { .first($0) } }
     set {
       performOnMain {
         do { try self.attachDocument(newValue) }
@@ -89,15 +91,27 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     }
   }
 
-  private func attachDocument(_ value: (any HybridInkSignDocumentSpec)?) throws {
+  private func attachDocument(_ value: Variant__any_HybridInkSignDocumentSpec__DocumentOptions?) throws {
     guard !disposed else { throw OperationError.cancelled }
-    let next = value as? HybridInkSignDocument
-    guard value == nil || next != nil else { throw OperationError.cancelled }
+    switch value {
+    case nil:
+      try attach(nil, ownedOptions: nil)
+    case .first(let spec)?:
+      guard let borrowed = spec as? HybridInkSignDocument else { throw OperationError.cancelled }
+      try attach(borrowed, ownedOptions: nil)
+    case .second(let options)?:
+      if let ownedOptions, ownedOptions.hasSameContent(as: options) { return }
+      try attach(HybridInkSignDocument(options: options), ownedOptions: options)
+    }
+  }
+
+  private func attach(_ next: HybridInkSignDocument?, ownedOptions options: DocumentOptions?) throws {
     if attachedDocument === next { return }
     if let next { try next.core.claimViewer(attachmentID) }
     releaseAttachment(notify: false)
     loadError = next?.core.initializationError?.localizedDescription
     attachedDocument = next
+    ownedOptions = options
     guard next != nil else { emitChange(force: true); return }
     textInteractionOverlay.setDefaultFontSize(defaultTextFontSize)
     textInteractionOverlay.setDefaultTextColor(defaultTextColor)
@@ -113,9 +127,11 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     }
   }
 
+  /// Detaches the current document and closes it when the view owns it.
   func releaseAttachment(commitDraft: Bool = true, notify: Bool = true) {
     let previousDocument = attachedDocument
     let previousCore = attachedCore
+    let ownsPrevious = ownedOptions != nil
     defer { withExtendedLifetime(previousDocument) {} }
     if commitDraft && previousCore?.coordinator.document != nil { interaction.finishInteraction() }
     interaction.retireRequests()
@@ -125,7 +141,9 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     previousCore?.releaseViewer(attachmentID)
     clearPresentation()
     attachedDocument = nil
+    ownedOptions = nil
     loadError = nil
+    if ownsPrevious, let previousDocument { _ = try? previousDocument.close() }
     if notify { emitChange(force: true) }
   }
   var documentCoordinator: InkSignPdfDocumentCoordinator { documentCore.coordinator }
@@ -311,6 +329,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
   deinit {
     if let coreObserver { attachedCore?.removeObserver(coreObserver) }
     attachedCore?.releaseViewer(attachmentID)
+    if ownedOptions != nil, let attachedDocument { _ = try? attachedDocument.close() }
     disposed = true
     interaction.dispose()
     pageNavigationRequestID &+= 1

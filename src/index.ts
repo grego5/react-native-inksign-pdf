@@ -121,8 +121,11 @@ export type InkSignViewProps = Omit<
   NativeInkSignViewProps,
   'document' | 'hybridRef' | 'onStateChange' | 'onPageChange' | 'onTextSelectionChange' | 'onZoomChange'
 > & {
-  /** Optional owner, which may be empty. Unmounting detaches without closing it. */
-  document?: InkSignDocument;
+  /**
+   * DocumentOptions: the view creates and owns a document, closing it on replacement or disposal;
+   * options are compared by content. InkSignDocument: borrowed; unmounting detaches without closing it.
+   */
+  document?: DocumentOptions | InkSignDocument;
   onStateChange?: InkSignViewNativeProps['onStateChange'];
   onPageChange?: InkSignViewNativeProps['onPageChange'];
   onZoomChange?: InkSignViewNativeProps['onZoomChange'];
@@ -346,7 +349,7 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
 
     return React.createElement(NativeInkSignView, {
       ...nativeProps,
-      document: document === undefined ? undefined : nativeDocuments.get(document) ?? document,
+      document: nativeViewDocument(document),
       hybridRef: wrappedHybridRef,
       onStateChange: onStateChange ? nativeCallbacks.onStateChange : undefined,
       onPageChange: onPageChange ? nativeCallbacks.onPageChange : undefined,
@@ -355,6 +358,14 @@ export const InkSignView = React.forwardRef<InkSignViewHandle, InkSignViewProps>
     });
   },
 );
+
+function nativeViewDocument(value: DocumentOptions | InkSignDocument | undefined): InkSignDocument | DocumentOptions | undefined {
+  if (value === undefined) return undefined;
+  const borrowed = nativeDocuments.get(value as InkSignDocument);
+  if (borrowed !== undefined) return borrowed;
+  validateDocumentOptions(value as DocumentOptions);
+  return value as DocumentOptions;
+}
 
 function validateNamedFonts(fonts: NamedFontSource[]): void {
   if (!Array.isArray(fonts) || fonts.some(font => typeof font !== 'object' || font === null ||

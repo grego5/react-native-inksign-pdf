@@ -72,7 +72,7 @@ class PageRotationInstrumentationTest {
     try {
       source.writeBytes(sourcePdf(width = 320, height = 240))
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context).also { it.document = document }
+        val view = HybridInkSignView(context).also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) }
         viewRef.set(view)
         val size = View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY)
         view.view.measure(size, size)
@@ -180,7 +180,7 @@ class PageRotationInstrumentationTest {
     try {
       source.writeBytes(sourcePdf(300, 400, fieldRules = true))
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context).also { it.document = document }
+        val view = HybridInkSignView(context).also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) }
         viewRef.set(view)
         val size = View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY)
         view.view.measure(size, size)
@@ -223,7 +223,7 @@ class PageRotationInstrumentationTest {
     try {
       source.writeBytes(sourcePdf(300, 400, fieldRules = true))
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context).also { it.document = document }
+        val view = HybridInkSignView(context).also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) }
         viewRef.set(view)
         val size = View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY)
         view.view.measure(size, size)
@@ -348,7 +348,7 @@ class PageRotationInstrumentationTest {
       source.writeBytes(sourcePdf(320, 240, importedInk = true))
       instrumentation.runOnMainSync {
         view.set(HybridInkSignView(context).also {
-          it.document = document
+          it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document)
           it.strokeColor = "#000000"
           it.onPageChange = { state -> pageEvents += state }
           val size = View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY)
@@ -479,7 +479,7 @@ class PageRotationInstrumentationTest {
     try {
       source.writeBytes(sourcePdf(width = 320, height = 240))
       instrumentation.runOnMainSync {
-        val view = HybridInkSignView(context).also { it.document = document }
+        val view = HybridInkSignView(context).also { it.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document) }
         viewRef.set(view)
         val exactSize = View.MeasureSpec.makeMeasureSpec(480, View.MeasureSpec.EXACTLY)
         view.view.measure(exactSize, exactSize)
