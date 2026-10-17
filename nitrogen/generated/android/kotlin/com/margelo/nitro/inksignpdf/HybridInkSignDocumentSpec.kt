@@ -70,6 +70,14 @@ abstract class HybridInkSignDocumentSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun acceptChanges(): Promise<Unit>
+  
+  @DoNotStrip
+  @Keep
+  abstract fun revertChanges(): Promise<Unit>
+  
+  @DoNotStrip
+  @Keep
   abstract fun close(): Promise<Unit>
 
   // Default implementation of `HybridObject.toString()`

@@ -23,6 +23,8 @@
   record one history action; rejected, stale or cancelled input restores core ink.
 - State/page callbacks run on the main thread and deduplicate payloads. Shapes:
   [state contracts](../architecture.md#state-and-events).
-- Core text transactions expose current text and finish as one history operation.
+- Targets share `InkSignPdfTextTargetState` with page history. Restoration and live
+  edits update that state before callbacks; transactions retain only their initial
+  snapshot and finish as one history operation.
   Export ends the transaction before capturing its snapshot; live ink is excluded.
   Disposal releases callbacks and prevents late viewer publication.

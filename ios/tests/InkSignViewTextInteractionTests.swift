@@ -363,10 +363,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
     XCTAssertEqual(editor.textContainer.size.width, 120, accuracy: 0.01)
-    let anchoredBottom = editor.frame.maxY
+    let anchoredBottom = textContainerFrame(editor, in: overlay).maxY
     editor.insertText("First line\nSecond line")
     XCTAssertEqual(editor.text, "First line\nSecond line")
-    XCTAssertEqual(editor.frame.maxY, anchoredBottom, accuracy: 0.01)
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).maxY, anchoredBottom, accuracy: 0.01)
 
     let insertionCaret = editor.selectedRange
     editor.insertText("\nThird line")
@@ -383,7 +383,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
     editor.deleteBackward()
     XCTAssertEqual(editor.text, String(acceptedText.dropLast()))
-    XCTAssertEqual(editor.frame.maxY, anchoredBottom, accuracy: 0.01)
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).maxY, anchoredBottom, accuracy: 0.01)
 
     overlay.finishForLifecycle()
     let annotation = try XCTUnwrap(view.viewerDocument?.activePage.history.content
@@ -683,7 +683,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     }
   }
 
-  func testSnappedPlacementUsesRuleBeforeDisplayAndKeepsOuterBottomDuringGrowth() throws {
+  func testSnappedPlacementKeepsTextContainerBottomOnRuleDuringGrowth() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let overlay = fixture.view.textInteractionOverlay
@@ -696,12 +696,12 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
     XCTAssertEqual(editor.frame.minX, 150, accuracy: 0.001)
-    XCTAssertEqual(editor.frame.maxY, rule.y, accuracy: 0.001)
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).maxY, rule.y, accuracy: 0.001)
     editor.text = "A note that grows above the selected rule while it is edited"
     editor.selectedRange = NSRange(location: (editor.text as NSString).length, length: 0)
     overlay.textViewDidChange(editor)
     XCTAssertGreaterThan(editor.frame.height, 16)
-    XCTAssertEqual(editor.frame.maxY, rule.y, accuracy: 0.001)
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).maxY, rule.y, accuracy: 0.001)
     XCTAssertEqual(editor.frame.minX, 150, accuracy: 0.001)
   }
 
@@ -744,7 +744,8 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
       XCTAssertTrue(overlay.routePlacementTap(at: point))
       let editor = try XCTUnwrap(textEditor(in: overlay))
       let presentedTransform = try XCTUnwrap(fixture.view.pageToOverlayTransform)
-      let bottom = CGPoint(x: editor.frame.midX, y: editor.frame.maxY)
+      let textFrame = textContainerFrame(editor, in: overlay)
+      let bottom = CGPoint(x: textFrame.midX, y: textFrame.maxY)
         .applying(presentedTransform.inverted())
       return abs(bottom.y - rule.y) < 0.001
     }
@@ -772,10 +773,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
     let editor = try XCTUnwrap(textEditor(in: overlay))
     XCTAssertEqual(editor.frame.minX, tap.x, accuracy: 0.001)
-    XCTAssertEqual(editor.frame.minY,
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).minY,
                    tap.y,
                    accuracy: 0.001)
-    XCTAssertNotEqual(editor.frame.maxY, rule.y)
+    XCTAssertNotEqual(textContainerFrame(editor, in: overlay).maxY, rule.y)
   }
 
   func testEmptyPlacementRuleResultLeavesOrdinaryPlacementAvailable() throws {
@@ -790,7 +791,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertTrue(overlay.routePlacementTap(at: tap))
     let editor = try XCTUnwrap(textEditor(in: overlay))
     XCTAssertEqual(editor.frame.minX, tap.x, accuracy: 0.001)
-    XCTAssertEqual(editor.frame.minY,
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).minY,
                    tap.y,
                    accuracy: 0.001)
   }
@@ -815,7 +816,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     try overlay.armPlacement(generation: generation)
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 150, y: 195)))
     var editor = try XCTUnwrap(textEditor(in: overlay))
-    XCTAssertEqual(editor.frame.minY,
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).minY,
                    195,
                    accuracy: 0.001)
     overlay.finishForLifecycle()
@@ -827,7 +828,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     try overlay.armPlacement(generation: generation)
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 150, y: 195)))
     editor = try XCTUnwrap(textEditor(in: overlay))
-    XCTAssertEqual(editor.frame.maxY, nearbyRule.y, accuracy: 0.001)
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).maxY, nearbyRule.y, accuracy: 0.001)
   }
 
   func testPlacementRuleCacheIsPageLocalAndRejectsPreviousPageResults() throws {
@@ -882,7 +883,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     try overlay.armPlacement(generation: generation)
     XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 150, y: 195)))
     let editor = try XCTUnwrap(textEditor(in: overlay))
-    XCTAssertEqual(editor.frame.minY,
+    XCTAssertEqual(textContainerFrame(editor, in: overlay).minY,
                    195,
                    accuracy: 0.001,
                    "The old page result must not snap after switching away and back")
@@ -1339,8 +1340,10 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
 
     editor.text = ""
     overlay.textViewDidChange(editor)
+    XCTAssertTrue(textEditor(in: overlay) === editor)
+    XCTAssertTrue(editor.isFirstResponder)
+    overlay.finishForLifecycle()
     XCTAssertNil(textEditor(in: overlay))
-    XCTAssertFalse(editor.isFirstResponder)
     XCTAssertTrue(view.viewerDocument!.activePage.history.content.textAnnotations.isEmpty)
   }
 
@@ -1367,12 +1370,13 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
                            InkSignPdfTextStyle.font(size: 16).lineHeight)
       let caret = try XCTUnwrap(editor.selectedTextRange.map { editor.caretRect(for: $0.end) })
       XCTAssertTrue(editor.bounds.insetBy(dx: -1, dy: -1).intersects(caret))
-      let measuredBounds = editor.bounds
+      let draft = try XCTUnwrap(fixture.view.viewerDocument?.activePage
+        .history.content.textAnnotations.first { $0.text == editor.text })
       let committedText = editor.text
       overlay.finishForLifecycle()
       let annotation = try XCTUnwrap(fixture.view.viewerDocument?.activePage
         .history.content.textAnnotations.first { $0.text == committedText })
-      XCTAssertEqual(annotation.bounds.height, measuredBounds.height, accuracy: 0.001)
+      XCTAssertEqual(annotation, draft, "Submitting preserves stored placement independently of native caret padding")
     }
   }
 
@@ -1647,6 +1651,11 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertGreaterThan(first.id, 0)
     XCTAssertGreaterThan(second.id, first.id)
     XCTAssertEqual(fixture.view.viewerDocument?.activePage.history.content.textAnnotations.count, 2)
+  }
+
+  /// Native caret padding may expand the editor beyond its page-space text anchor.
+  private func textContainerFrame(_ editor: UITextView, in overlay: UIView) -> CGRect {
+    editor.convert(editor.bounds.inset(by: editor.textContainerInset), to: overlay)
   }
 
 }

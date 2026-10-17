@@ -57,14 +57,25 @@ struct InkSignPdfPageContentHistoryAction {
 
 /// Permanent base plus keyed tracked overrides. Undo never restores unrelated base content.
 final class InkSignPdfPageContentHistory {
-  struct TextPreview {
-    let id: UInt64
-    let annotation: InkSignPdfTextAnnotation?
-    let changed: Bool
+  let textState = InkSignPdfPageTextState()
+  private var editingID: UInt64?
+  private var editingChanged = false
+
+  func applyTextState(id: UInt64, annotation: InkSignPdfTextAnnotation?, changed: Bool) {
+    textState.apply(id: id, annotation: annotation)
+    editingID = id
+    editingChanged = changed
+    revision &+= 1
   }
-  var textPreview: TextPreview? { didSet { revision &+= 1 } }
+
+  func finishTextState(id: UInt64) {
+    precondition(editingID == nil || editingID == id)
+    editingID = nil
+    editingChanged = false
+    applyHistoryState()
+  }
+
   private var base: InkSignPdfPageContentSnapshot
-  private var baseTextByID: [UInt64: InkSignPdfTextAnnotation]
   private var textOverrides: [UInt64: InkSignPdfTextOverride] = [:]
   private var drawingOverride: PKDrawing?
   private var nextOrder: UInt64 = 0
@@ -77,24 +88,29 @@ final class InkSignPdfPageContentHistory {
   init(content: InkSignPdfPageContentSnapshot = InkSignPdfPageContentSnapshot(
     drawing: PKDrawing(), textAnnotations: []), recordHistory: Bool = true) {
     base = content
-    baseTextByID = Dictionary(uniqueKeysWithValues: content.textAnnotations.map { ($0.id, $0) })
     self.recordHistory = recordHistory
+    textState.apply(content.textAnnotations)
+  }
+
+  private var historyText: [InkSignPdfTextAnnotation] {
+    base.textAnnotations.filter { textOverrides[$0.id] == nil } +
+      textOverrides.values.sorted { $0.order < $1.order }.compactMap(\.annotation)
+  }
+
+  private func applyHistoryState() {
+    guard let id = editingID else { textState.apply(historyText); return }
+    let draft = textState.target(id).annotation
+    textState.apply(historyText.filter { $0.id != id } + (draft.map { [$0] } ?? []))
   }
 
   var content: InkSignPdfPageContentSnapshot {
-    var text = base.textAnnotations.filter { textOverrides[$0.id] == nil } +
-      textOverrides.values.sorted { $0.order < $1.order }.compactMap(\.annotation)
-    if let preview = textPreview {
-      text.removeAll { $0.id == preview.id }
-      if let annotation = preview.annotation { text.append(annotation) }
-    }
-    return InkSignPdfPageContentSnapshot(drawing: drawingOverride ?? base.drawing, textAnnotations: text)
+    InkSignPdfPageContentSnapshot(drawing: drawingOverride ?? base.drawing, textAnnotations: textState.annotations)
   }
 
   var canUndo: Bool { !undoStack.isEmpty }
   var canRedo: Bool { !redoStack.isEmpty }
   var state: (canUndo: Bool, canRedo: Bool, isDirty: Bool) {
-    (canUndo, canRedo, canUndo || (recordHistory && textPreview?.changed == true))
+    (canUndo, canRedo, canUndo || (recordHistory && editingChanged))
   }
 
   func hasRetainedHistory(for id: UInt64) -> Bool {
@@ -103,11 +119,7 @@ final class InkSignPdfPageContentHistory {
 
   var drawing: PKDrawing { drawingOverride ?? base.drawing }
 
-  func text(for id: UInt64) -> InkSignPdfTextAnnotation? {
-    if let preview = textPreview, preview.id == id { return preview.annotation }
-    if let override = textOverrides[id] { return override.annotation }
-    return baseTextByID[id]
-  }
+  func text(for id: UInt64) -> InkSignPdfTextAnnotation? { textState.target(id).annotation }
 
   private func appendAction(_ action: InkSignPdfPageContentHistoryAction) {
     for discarded in redoStack {
@@ -128,7 +140,6 @@ final class InkSignPdfPageContentHistory {
       if let index = text.firstIndex(where: { $0.id == id }) {
         if let annotation { text[index] = annotation } else { text.remove(at: index) }
       } else if let annotation { text.append(annotation) }
-      baseTextByID[id] = annotation
       base = base.replacingText(text)
     } else {
       let previous = textOverrides[id]
@@ -139,6 +150,7 @@ final class InkSignPdfPageContentHistory {
       appendAction(InkSignPdfPageContentHistoryAction(type: type,
         text: [InkSignPdfTextHistoryChange(id: id, before: previous, after: next)], drawing: nil))
     }
+    applyHistoryState()
     revision &+= 1
     return true
   }
@@ -153,6 +165,7 @@ final class InkSignPdfPageContentHistory {
       drawingOverride = next
       appendAction(InkSignPdfPageContentHistoryAction(type: type, text: [], drawing: change))
     } else { base = base.replacingDrawing(next) }
+    applyHistoryState()
     revision &+= 1
     return true
   }
@@ -177,7 +190,7 @@ final class InkSignPdfPageContentHistory {
       }
       base = InkSignPdfPageContentSnapshot(drawing: drawingChanged ? after.drawing : base.drawing,
                                            textAnnotations: text)
-      baseTextByID = Dictionary(uniqueKeysWithValues: text.map { ($0.id, $0) })
+      applyHistoryState()
       revision &+= 1
       return true
     }
@@ -194,6 +207,7 @@ final class InkSignPdfPageContentHistory {
       ? InkSignPdfDrawingHistoryChange(before: drawingOverride, after: after.drawing) : nil
     if drawingChanged { drawingOverride = after.drawing }
     appendAction(InkSignPdfPageContentHistoryAction(type: type, text: changes, drawing: drawing))
+    applyHistoryState()
     revision &+= 1
     return true
   }
@@ -217,6 +231,29 @@ final class InkSignPdfPageContentHistory {
     return recordText(id: annotation.id, annotation: nil, type: .textDelete, untracked: untracked)
   }
 
+  func revertChanges() {
+    precondition(editingID == nil, "Finish text editing before reverting history")
+    textOverrides.removeAll(keepingCapacity: true)
+    drawingOverride = nil
+    retainedTextCounts.removeAll(keepingCapacity: true)
+    undoStack.removeAll(keepingCapacity: true)
+    redoStack.removeAll(keepingCapacity: true)
+    applyHistoryState()
+    revision &+= 1
+  }
+
+  func acceptChanges() {
+    precondition(editingID == nil, "Finish text editing before resetting history")
+    base = content
+    textOverrides.removeAll(keepingCapacity: true)
+    drawingOverride = nil
+    retainedTextCounts.removeAll(keepingCapacity: true)
+    undoStack.removeAll(keepingCapacity: true)
+    redoStack.removeAll(keepingCapacity: true)
+    applyHistoryState()
+    revision &+= 1
+  }
+
   func clear() {
     let before = content
     guard !before.isEmpty else { return }
@@ -230,6 +267,7 @@ final class InkSignPdfPageContentHistory {
     for change in action.text { textOverrides[change.id] = change.before }
     if let change = action.drawing { drawingOverride = change.before }
     redoStack.append(action)
+    applyHistoryState()
     revision &+= 1
     return true
   }
@@ -240,6 +278,7 @@ final class InkSignPdfPageContentHistory {
     for change in action.text { textOverrides[change.id] = change.after }
     if let change = action.drawing { drawingOverride = change.after }
     undoStack.append(action)
+    applyHistoryState()
     revision &+= 1
     return true
   }

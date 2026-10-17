@@ -28,8 +28,10 @@ final class DocumentCore {
   func beginTextEdit(_ context: InkSignPdfCorePageContext, id: UInt64) throws -> InkSignPdfDocumentTextEdit {
     try requireContentMutationReady()
     let page = try self.page(context)
+    _ = try coordinator.textTarget(id, pageID: page.id)
     endTextEdit()
-    let edit = InkSignPdfDocumentTextEdit(context: context, page: page, id: id)
+    let target = try coordinator.textTarget(id, pageID: page.id)
+    let edit = InkSignPdfDocumentTextEdit(context: context, page: page, id: id, options: target.options)
     activeTextEdit = edit
     return edit
   }
@@ -46,15 +48,63 @@ final class DocumentCore {
     changed(.page(edit.page.id))
   }
 
+  func cancelTextEdit(id: UInt64? = nil) {
+    precondition(Thread.isMainThread)
+    guard let edit = activeTextEdit, id == nil || id == edit.id else { return }
+    activeTextEdit = nil
+    edit.cancel()
+    if edit.baseline == nil {
+      try? coordinator.updateTextTarget(edit.id, pageID: edit.page.id) { $0.options = edit.initialOptions }
+    }
+    changed(.editEnded(edit))
+    changed(.page(edit.page.id))
+  }
+
   func endTextEdit(id: UInt64? = nil) {
     precondition(Thread.isMainThread)
     guard let edit = activeTextEdit, id == nil || id == edit.id else { return }
     activeTextEdit = nil
     edit.end()
-    if let current = edit.current { coordinator.updateTextPlacement(current, page: edit.page) }
     changed(.editEnded(edit))
     changed(.page(edit.page.id))
   }
+  func acceptChanges() -> Promise<Void> {
+    submit {
+      self.changed(.historyResetStarted)
+      self.endTextEdit()
+      self.coordinator.document?.pages.forEach { $0.history.acceptChanges() }
+      self.coordinator.setStructuralDirty(false)
+      self.coordinator.acceptBaseline()
+      self.changed(.historyReset)
+      return .resolved()
+    }
+  }
+
+  func revertChanges() -> Promise<Void> {
+    submit {
+      self.changed(.historyResetStarted)
+      self.endTextEdit()
+      guard let operation = self.coordinator.admit(.structural) else { throw Error.closed }
+      self.changed(.structuralWriteStarted)
+      guard let baseline = self.coordinator.acceptedDocument else {
+        self.coordinator.clearDocument()
+        self.coordinator.settle(operation)
+        self.changed(.structure)
+        return .resolved()
+      }
+      let current = self.coordinator.document
+      let input = InkSignPdfDocumentCoordinator.StructuralInput(operation: operation,
+        document: current, pages: current?.pages ?? [], targetPageID: baseline.pages[0].id,
+        targetPageIndex: 0, imageGeometry: baseline.pages[0].geometry, imageTargetDpi: nil,
+        imageJpegQuality: nil, recordHistory: self.recordHistory, tag: nil)
+      let result = InkSignPdfOperationPromise<Void>()
+      self.commitStructureNow(input, staged: [], command: .restore(baseline))
+        .then { _ in result.resolve(()) }
+        .catch { result.reject($0) }
+      return result.promise
+    }
+  }
+
   private var disposed = false
   private var closing = false
   private var closePromise: Promise<Void>?
@@ -76,6 +126,8 @@ final class DocumentCore {
     case structure
     case structuralWriteStarted
     case willClose
+    case historyResetStarted
+    case historyReset
     case page(UUID)
     case editEnded(InkSignPdfDocumentTextEdit)
     case inkCleared(UUID)

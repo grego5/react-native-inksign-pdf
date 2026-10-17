@@ -6,6 +6,66 @@ import org.junit.Test
 
 class PageContentHistoryTest {
   @Test
+  fun acceptChangesPreservesEffectiveContentAndMakesItTheUndoBaseline() {
+    val history = PageContentHistory()
+    val base = text(1L, "Base", 24.0, 40.0)
+    val deleted = text(2L, "Delete", 24.0, 80.0)
+    history.appendText(base, untracked = true)
+    history.appendText(deleted, untracked = true)
+    history.replaceText(base, base.copy(text = "Changed"))
+    history.removeTextAnnotation(deleted)
+    history.append(outline(0f))
+    history.appendText(text(3L, "Undone", 24.0, 120.0))
+    history.undoMutation()
+    val baseline = history.contentSnapshot()
+    history.acceptChanges()
+    assertEquals(baseline, history.contentSnapshot())
+    assertEquals(InkState(false, false, false), history.state())
+    history.redoMutation()
+    assertEquals(baseline, history.contentSnapshot())
+    val current = baseline.filterIsInstance<PageContent.Text>().single().annotation
+    history.replaceText(current, current.copy(text = "Next"))
+    assertTrue(history.state().isDirty)
+    history.undoMutation()
+    assertEquals(baseline, history.contentSnapshot())
+    assertEquals(false, history.state().isDirty)
+    history.acceptChanges()
+    history.replaceText(current, current.copy(text = "Untracked"), untracked = true)
+    assertEquals(InkState(false, false, false), history.state())
+  }
+
+  @Test
+  fun resettingEmptyAndHistoryDisabledContentIsIdempotent() {
+    for (enabled in listOf(true, false)) {
+      val history = PageContentHistory(recordHistory = enabled)
+      history.acceptChanges()
+      val annotation = text(1L, "Keep", 24.0, 40.0)
+      history.appendText(annotation)
+      history.acceptChanges()
+      history.acceptChanges()
+      assertEquals(listOf(PageContent.Text(annotation)), history.contentSnapshot())
+      assertEquals(InkState(false, false, false), history.state())
+      history.replaceText(annotation, annotation.copy(text = "New"))
+      assertEquals(enabled, history.state().isDirty)
+    }
+  }
+
+  @Test
+  fun revertDiscardsTrackedOverridesAndRedoButKeepsTheCurrentBase() {
+    val history = PageContentHistory()
+    val base = text(1L, "Base", 24.0, 40.0)
+    history.appendText(base, untracked = true)
+    history.removeTextAnnotation(base)
+    history.append(outline(0f))
+    val laterBase = text(2L, "Permanent", 24.0, 80.0)
+    history.appendText(laterBase, untracked = true)
+    history.undoMutation()
+    history.revertChanges()
+    assertEquals(listOf(PageContent.Text(base), PageContent.Text(laterBase)), history.contentSnapshot())
+    assertEquals(InkState(false, false, false), history.state())
+  }
+
+  @Test
   fun untrackedBaseSurvivesUndoAndRedoWithoutBecomingDirty() {
     val history = PageContentHistory()
     val ink = outline(0f)
@@ -272,6 +332,57 @@ class PageContentHistoryTest {
       data.commands.count { it.type == InkPathCommand.MOVE } == 1 &&
         data.commands.count { it.type == InkPathCommand.CLOSE } == 1
     })
+  }
+
+  @Test
+  fun restoredTargetStateIncludesPlacementFormattingAndRetainedEmptyPlacement() {
+    val history = PageContentHistory()
+    val target = history.textState.target(1L)
+    val baseline = text(1L, "A", 12.0, 18.0)
+    history.appendText(baseline)
+    history.acceptChanges()
+    val moved = baseline.copy(bounds = PageRect(80.0, 90.0, 140.0, 120.0),
+      fontSize = 24.0, directionRtl = true, maxLines = 2)
+    history.replaceText(baseline, moved)
+    assertEquals(moved, target.annotation)
+    history.undoMutation()
+    assertEquals(baseline, target.annotation)
+    history.redoMutation()
+    assertEquals(moved, target.annotation)
+    history.removeTextAnnotation(moved)
+    assertEquals(null, target.annotation)
+    assertEquals(moved, target.placementAnnotation)
+    history.undoMutation()
+    assertEquals(moved, target.annotation)
+    history.revertChanges()
+    assertEquals(baseline, target.annotation)
+    assertTrue(target === history.textState.target(1L))
+    history.clearMutation()
+    assertEquals(null, target.annotation)
+    assertEquals(baseline, target.placementAnnotation)
+    history.appendText(baseline.copy(text = "reused"))
+    assertEquals(baseline.bounds, target.annotation?.bounds)
+  }
+
+  @Test
+  fun draftStateSurvivesUnrelatedUntrackedWritesAndRestoresBeforeCommit() {
+    val history = PageContentHistory()
+    val baseline = text(1L, "A", 12.0, 18.0)
+    val unrelated = text(2L, "untracked", 12.0, 18.0)
+    history.appendText(baseline)
+    history.acceptChanges()
+    val draft = baseline.copy(text = "draft", fontSize = 24.0)
+    history.applyTextState(1L, draft, true)
+    history.appendText(unrelated, untracked = true)
+    assertEquals(draft, history.textState.target(1L).annotation)
+    assertEquals(unrelated, history.textState.target(2L).annotation)
+    history.finishTextState(1L)
+    assertEquals(baseline, history.textState.target(1L).annotation)
+    history.replaceText(baseline, draft)
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(baseline), PageContent.Text(unrelated)), history.contentSnapshot())
+    history.revertChanges()
+    assertEquals(listOf(PageContent.Text(baseline), PageContent.Text(unrelated)), history.contentSnapshot())
   }
 
   private fun outline(offset: Float): StrokeOutline = StrokeOutline.fromCommands(listOf(

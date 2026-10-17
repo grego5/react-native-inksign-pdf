@@ -42,6 +42,41 @@ final class InkSignViewStabilizationTests: XCTestCase, InkSignViewTestSupport {
       path: PKStrokePath(controlPoints: points, creationDate: Date()), transform: .identity, mask: nil)])
   }
 
+  func testAcceptChangesCancelsLiveInkAndKeepsPresentationAndModeSession() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let session = try view.setMode(mode: .ink, options: nil)
+    let canvas = view.canvasView
+    view.canvasViewDidBeginUsingTool(canvas)
+    canvas.isInstallingDrawing = true
+    canvas.drawing = sampleDrawing()
+    canvas.isInstallingDrawing = false
+    view.canvasViewDidEndUsingTool(canvas)
+    view.canvasViewDrawingDidChange(canvas)
+    let page = try XCTUnwrap(view.viewerDocument?.activePage)
+    let committed = page.history.content.drawing.dataRepresentation()
+    let presented = view.viewerDocument
+    let generation = view.documentCoordinator.generation
+    view.canvasViewDidBeginUsingTool(canvas)
+    canvas.isInstallingDrawing = true
+    canvas.drawing = PKDrawing(strokes: canvas.drawing.strokes + sampleDrawing().strokes)
+    canvas.isInstallingDrawing = false
+    XCTAssertTrue(view.hasDrawingTransaction)
+    let document = try attachedDocument(view)
+    try awaitTestPromise(document.acceptChanges())
+    XCTAssertFalse(view.hasDrawingTransaction)
+    XCTAssertEqual(page.history.content.drawing.dataRepresentation(), committed)
+    XCTAssertEqual(canvas.drawing.strokes.count, 1)
+    XCTAssertTrue(view.viewerDocument === presented)
+    XCTAssertEqual(view.documentCoordinator.generation, generation)
+    XCTAssertFalse(view.documentCoordinator.isDirty)
+    XCTAssertFalse(page.history.canUndo)
+    XCTAssertFalse(page.history.canRedo)
+    let handle = try awaitTestPromise(session.getPage(pageIndex: nil))
+    XCTAssertEqual(try handle.getState().pageId, page.id.uuidString)
+  }
+
   func testEndedDrawingStaysVisibleThroughPublicationAndRecordsOneUndo() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }

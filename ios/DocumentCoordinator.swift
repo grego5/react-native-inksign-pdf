@@ -40,6 +40,8 @@ final class InkSignPdfDocumentCoordinator {
   private(set) var generation: UInt64 = 0
   private(set) var isDisposed = false
   private(set) var structuralDirty = false
+  private(set) var acceptedDocument: CommittedDocumentState?
+  private var acceptedWorkingLease: InkSignPdfWorkingLease?
   private var activeOperation: OperationToken?
   private var pendingCancellations: [UUID: () -> Void] = [:]
   private var pendingArtifacts = Set<URL>()
@@ -68,7 +70,7 @@ final class InkSignPdfDocumentCoordinator {
                          canonicalWritingRule: InkSignPdfCanonicalWritingRule? = nil,
                          canonicalDetectionBounds: CGRect? = nil,
                          excludedSourceRanges: [NSRange] = []) throws -> InkSignPdfTextTarget {
-    guard document?.pages.contains(where: { $0.id == pageID }) == true else {
+    guard let page = document?.pages.first(where: { $0.id == pageID }) else {
       throw TextError.cancelled
     }
     let normalized = canonicalBounds.standardized
@@ -78,7 +80,8 @@ final class InkSignPdfDocumentCoordinator {
       sourceIdentity: sourceIdentity, fieldName: fieldName, canonicalBounds: normalized,
       options: try InkSignPdfTextTargetOptions(options), embeddedValue: embeddedValue,
       canonicalWritingRule: canonicalWritingRule,
-      canonicalDetectionBounds: canonicalDetectionBounds ?? normalized, excludedSourceRanges: excludedSourceRanges)
+      canonicalDetectionBounds: canonicalDetectionBounds ?? normalized, excludedSourceRanges: excludedSourceRanges,
+      state: page.history.textState.target(id), mediaBox: page.geometry.visibleBox)
     textTargets[id] = target
     return target
   }
@@ -136,22 +139,6 @@ final class InkSignPdfDocumentCoordinator {
         abs(bounds.minY - canonicalBounds.minY) <= 0.000001 && abs(bounds.maxX - canonicalBounds.maxX) <= 0.000001 &&
         abs(bounds.maxY - canonicalBounds.maxY) <= 0.000001
     }
-  }
-
-  func updateTextPlacement(_ annotation: InkSignPdfTextAnnotation, page: InkSignPdfPageState) {
-    let bounds = annotation.canonicalPlacementBounds(mediaBox: page.geometry.visibleBox)
-    guard var target = textTargets[annotation.id] else { preconditionFailure("Committed text requires a reserved target") }
-    precondition(target.pageID == page.id)
-    target.canonicalBounds = bounds
-    target.options.font = annotation.font
-    if target.sourceIdentity == nil { target.canonicalDetectionBounds = bounds }
-    target.embeddedValue = page.sourceAnalysis.embeddedText(in: target.canonicalDetectionBounds,
-                                                           excluding: target.excludedSourceRanges)
-    textTargets[annotation.id] = target
-  }
-
-  func synchronizeTextPlacement(on page: InkSignPdfPageState) {
-    page.history.content.textAnnotations.forEach { updateTextPlacement($0, page: page) }
   }
 
   func updateTextTarget(_ id: UInt64, pageID: UUID, mutate: (inout InkSignPdfTextTarget) -> Void) throws {
@@ -364,6 +351,7 @@ final class InkSignPdfDocumentCoordinator {
     }
     self.document = document
     structuralDirty = false
+    acceptBaseline()
     return true
   }
 
@@ -381,7 +369,7 @@ final class InkSignPdfDocumentCoordinator {
           generation == operation.generation, activeOperation?.id == operation.id,
           let previous = document else { return nil }
     document = candidate
-    let retainedPageIDs = Set(candidate.pages.map(\.id))
+    let retainedPageIDs = Set((candidate.pages + (acceptedDocument?.pages ?? [])).map(\.id))
     textTargets = textTargets.filter { retainedPageIDs.contains($0.value.pageID) }
     pendingArtifacts.remove(candidate.workingURL)
     structuralDirty = true
@@ -420,11 +408,24 @@ final class InkSignPdfDocumentCoordinator {
     return true
   }
 
+  func acceptBaseline() {
+    let current = document
+    let lease = current.map { workingArtifacts.retain($0.workingURL) }
+    acceptedDocument = current.map {
+      CommittedDocumentState(id: $0.id, sourceURL: $0.sourceURL, workingURL: $0.workingURL, pages: $0.pages)
+    }
+    acceptedWorkingLease = lease
+    let retained = Set(current?.pages.map(\.id) ?? [])
+    textTargets = textTargets.filter { retained.contains($0.value.pageID) }
+  }
+
   func clearDocument() {
     if let workingURL = document?.workingURL {
       workingArtifacts.retire(workingURL)
     }
     document = nil
+    acceptedDocument = nil
+    acceptedWorkingLease = nil
     textTargets.removeAll(keepingCapacity: false)
     structuralDirty = false
   }

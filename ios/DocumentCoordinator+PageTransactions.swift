@@ -6,6 +6,7 @@ extension InkSignPdfDocumentCoordinator {
     case append
     case remove
     case move(to: Int)
+    case restore(CommittedDocumentState)
   }
 
   struct StructuralInput {
@@ -57,6 +58,17 @@ extension InkSignPdfDocumentCoordinator {
             nativeInputs.append(image.nativeInput)
           }
         }
+      case .restore(let baseline):
+        operation = .create
+        retained = baseline.pages.map { page in
+          let currentRevision = input.pages.first { $0.id == page.id }?.geometryRevision ?? 0
+          return InkSignPdfPageState(id: page.id, tag: page.tag, geometry: page.geometry,
+            history: page.history, geometryRevision: max(page.geometryRevision, currentRevision) &+ 1,
+            sourceGeometry: page.sourceGeometry, sourceAnalysis: page.sourceAnalysis, prepared: page.prepared)
+        }
+        let bytes = try Data(contentsOf: baseline.workingURL)
+        initialPDF = bytes
+        nativeInputs = [InkSignPdfPdfiumInput(pdfData: bytes)]
       case .remove:
         operation = .remove
         let order = try Self.pageOrder(current: input.pages, activePageID: input.targetPageID,

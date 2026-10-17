@@ -133,9 +133,24 @@ internal sealed interface InkHistoryMutation {
 
 /** UI-thread-owned permanent base and ordered, undoable overrides. */
 internal class PageContentHistory(private val recordHistory: Boolean = true) {
-  internal data class TextPreview(val id: Long, val annotation: TextAnnotation?, val changed: Boolean)
-  internal var textPreview: TextPreview? = null
-    set(value) { field = value; revision += 1L }
+  val textState = PageTextState()
+  private var editingId: Long? = null
+  private var editingChanged = false
+
+  fun applyTextState(id: Long, annotation: TextAnnotation?, changed: Boolean) {
+    textState.apply(id, annotation)
+    editingId = id
+    editingChanged = changed
+    revision += 1L
+  }
+
+  fun finishTextState(id: Long) {
+    check(editingId == null || editingId == id)
+    editingId = null
+    editingChanged = false
+    applyHistoryState()
+  }
+
   private sealed interface Key {
     data class Ink(val outline: StrokeOutline) : Key
     data class Text(val id: Long) : Key
@@ -164,16 +179,28 @@ internal class PageContentHistory(private val recordHistory: Boolean = true) {
   val canUndo: Boolean get() = undoStack.isNotEmpty()
   val canRedo: Boolean get() = redoStack.isNotEmpty()
 
-  fun state() = InkState(canUndo, canRedo, isDirty = canUndo || (recordHistory && textPreview?.changed == true))
+  fun state() = InkState(canUndo, canRedo, isDirty = canUndo || (recordHistory && editingChanged))
 
   /** Base first, then tracked content; overrides suppress the matching base identity. */
-  fun contentSnapshot(): List<PageContent> {
+  private fun historyContent(): List<PageContent> {
     val overridden = tracked.mapTo(HashSet()) { it.key }
-    val content = base.filterNot { it.key in overridden }.mapNotNull { it.content } +
-      tracked.mapNotNull { it.content }
-    val preview = textPreview ?: return content
-    val replacement = preview.annotation?.let { listOf(PageContent.Text(it)) } ?: emptyList()
-    return content.filterNot { it is PageContent.Text && it.annotation.id == preview.id } + replacement
+    return base.filterNot { it.key in overridden }.mapNotNull { it.content } + tracked.mapNotNull { it.content }
+  }
+
+  private fun applyHistoryState() {
+    val id = editingId
+    val draft = id?.let { textState.target(it).annotation }
+    val states = historyContent().filterIsInstance<PageContent.Text>().map { it.annotation }
+    textState.apply(if (id == null) states else states.filterNot { it.id == id } + listOfNotNull(draft))
+  }
+
+  fun contentSnapshot(): List<PageContent> {
+    val content = historyContent().mapNotNull { item ->
+      if (item is PageContent.Text) textState.target(item.annotation.id).annotation?.let { PageContent.Text(it) } else item
+    }
+    val id = editingId ?: return content
+    return content.filterNot { it is PageContent.Text && it.annotation.id == id } +
+      listOfNotNull(textState.target(id).annotation?.let { PageContent.Text(it) })
   }
   fun snapshot(): List<StrokeOutline> = contentSnapshot().inkOutlines()
   fun hasInk(): Boolean = contentSnapshot().any { it is PageContent.Ink }
@@ -204,6 +231,7 @@ internal class PageContentHistory(private val recordHistory: Boolean = true) {
         check(index >= 0) { "Base removal target is missing" }
         base.removeAt(index)
       } else if (index < 0) base += Entry(key, after) else base[index] = Entry(key, after)
+      applyHistoryState()
       revision += 1L
       return
     }
@@ -216,6 +244,7 @@ internal class PageContentHistory(private val recordHistory: Boolean = true) {
     applyEntry(index, before, entry)
     undoStack += HistoryAction.Edit(index, before, entry)
     redoStack.clear()
+    applyHistoryState()
     revision += 1L
   }
 
@@ -230,6 +259,7 @@ internal class PageContentHistory(private val recordHistory: Boolean = true) {
       undoStack += HistoryAction.Edit(index, null, entry)
       redoStack.clear()
     }
+    applyHistoryState()
     revision += 1L
   }
 
@@ -288,6 +318,7 @@ internal class PageContentHistory(private val recordHistory: Boolean = true) {
       }
     }
     redoStack += action
+    applyHistoryState()
     revision += 1L
     return if (action is HistoryAction.Edit) action.mutation(undo = true)
       else InkHistoryMutation.Replaced(contentSnapshot())
@@ -304,6 +335,7 @@ internal class PageContentHistory(private val recordHistory: Boolean = true) {
       }
     }
     undoStack += action
+    applyHistoryState()
     revision += 1L
     return if (action is HistoryAction.Edit) action.mutation(undo = false)
       else InkHistoryMutation.Replaced(contentSnapshot())
@@ -327,6 +359,7 @@ internal class PageContentHistory(private val recordHistory: Boolean = true) {
       tracked.addAll(after)
       redoStack.clear()
     }
+    applyHistoryState()
     revision += 1L
     return InkHistoryMutation.Replaced(contentSnapshot())
   }
@@ -337,12 +370,34 @@ internal class PageContentHistory(private val recordHistory: Boolean = true) {
   }
   fun clearInkMutation(): InkHistoryMutation = clearMatching { it is PageContent.Ink }
 
+  fun revertChanges() {
+    check(editingId == null) { "Finish text editing before reverting history" }
+    tracked.clear()
+    undoStack.clear()
+    redoStack.clear()
+    applyHistoryState()
+    revision += 1L
+  }
+
+  fun acceptChanges() {
+    check(editingId == null) { "Finish text editing before resetting history" }
+    val current = contentSnapshot()
+    base.clear()
+    base.addAll(current.map { Entry(it.key(), it) })
+    tracked.clear()
+    undoStack.clear()
+    redoStack.clear()
+    applyHistoryState()
+    revision += 1L
+  }
+
   fun reset() {
     base.clear()
     tracked.clear()
     insertedInputTargetIds.clear()
     undoStack.clear()
     redoStack.clear()
+    applyHistoryState()
     revision += 1L
   }
 }

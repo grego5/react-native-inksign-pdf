@@ -16,18 +16,24 @@ import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
-internal data class TextTargetSlot(
+internal class TextTargetSlot(
   val id: Long,
   val pageId: String,
   var sourceIdentity: String?,
   var fieldName: String?,
-  var canonicalBounds: PageRect,
+  canonicalBounds: PageRect,
   var options: TextAnnotationOptions?,
   var embeddedValue: String = "",
   var canonicalWritingRule: CanonicalWritingRule? = null,
   var canonicalDetectionBounds: PageRect = canonicalBounds,
   var excludedSourceRanges: List<IntRange> = emptyList(),
-)
+  val state: TextTargetState = TextTargetState(),
+) {
+  private var emptyBounds = canonicalBounds
+  var canonicalBounds: PageRect
+    get() = state.placementAnnotation?.canonicalPlacementBounds ?: emptyBounds
+    set(value) { if (state.placementAnnotation == null) emptyBounds = value }
+}
 
 /** UI-thread-owned coordinator for one published mutable PDF document. */
 internal class DocumentCoordinator(
@@ -41,6 +47,8 @@ internal class DocumentCoordinator(
   private var mutablePages: MutableList<InkPageState> = pages.map { dimensions ->
     InkPageState(PageRecord.newId(), dimensions, history = PageContentHistory(recordHistory))
   }.toMutableList()
+  private var acceptedPages = mutablePages.toList()
+  private var acceptedSourcePath = sourcePath
   private var generationValue = generation
   private var activeOpenRequest: OpenRequest? = null
   private val openStateLock = Any()
@@ -123,7 +131,7 @@ internal class DocumentCoordinator(
     sourcePath = candidatePath
     mutablePages.clear()
     mutablePages.addAll(candidatePages)
-    val retainedPageIds = candidatePages.mapTo(HashSet()) { it.id }
+    val retainedPageIds = (candidatePages + acceptedPages).mapTo(HashSet()) { it.id }
     textTargets.entries.removeAll { it.value.pageId !in retainedPageIds }
     textSourceGlyphs.keys.removeAll { it !in retainedPageIds }
     structuralDirty = true
@@ -173,6 +181,46 @@ internal class DocumentCoordinator(
       current.tag,
     )
     return StructuralCandidate(next)
+  }
+
+  fun isAcceptedPage(id: String): Boolean = acceptedPages.any { it.id == id }
+
+  fun acceptBaseline() {
+    val previous = acceptedSourcePath
+    acceptedPages = mutablePages.toList()
+    acceptedSourcePath = sourcePath
+    val retained = mutablePages.mapTo(HashSet()) { it.id }
+    textTargets.entries.removeAll { it.value.pageId !in retained }
+    textSourceGlyphs.keys.removeAll { it !in retained }
+    if (previous.isNotEmpty() && previous != sourcePath) retireWorkingFile(java.io.File(previous))
+  }
+
+  suspend fun revertChanges(notifyPublished: () -> Unit) {
+    val expectedGeneration = generation
+    val baseline = acceptedPages
+    if (baseline.isEmpty()) {
+      val previous = currentWorkingFile()
+      awaitWorkerResult<Unit> { sessionWorker.clearCurrentForReplacement(it) }
+      ensureCurrent(expectedGeneration)
+      clearPublishedDocument()
+      previous?.let(::retireWorkingFile)
+      notifyPublished()
+      return
+    }
+    val restored = baseline.map { page ->
+      InkPageState(page.id, page.dimensions, page.history,
+        maxOf(page.geometryRevision, mutablePages.firstOrNull { it.id == page.id }?.geometryRevision ?: 0L) + 1L,
+        page.sourceDimensions, page.tag)
+    }
+    executeStructuralMutation(expectedGeneration,
+      PdfiumAssemblyRequest(PdfiumAssemblyOperation.CREATE,
+        appendInputs = listOf(PdfiumAppendRequest(PageType.PDF, sourcePath = acceptedSourcePath))),
+      candidateBuilder = { StructuralCandidate(restored) },
+      notifyPublished = {
+        baseline.forEach { it.history.revertChanges() }
+        markStructuralClean()
+        notifyPublished()
+      })
   }
 
   fun markStructuralDirty() { structuralDirty = true }
@@ -252,8 +300,10 @@ internal class DocumentCoordinator(
     if (nextInputTargetId > MAX_SAFE_TEXT_ID) throw PdfSessionException(
       "text_id_exhausted", "The view has exhausted its numeric text IDs",
     )
-    val slot = TextTargetSlot(nextInputTargetId++, pageId, sourceIdentity, fieldName, canonicalBounds, options,
-      embeddedValue, canonicalWritingRule, canonicalDetectionBounds, excludedSourceRanges)
+    val id = nextInputTargetId++
+    val slot = TextTargetSlot(id, pageId, sourceIdentity, fieldName, canonicalBounds, options,
+      embeddedValue, canonicalWritingRule, canonicalDetectionBounds, excludedSourceRanges,
+      checkNotNull(pageForId(pageId)).history.textState.target(id))
     return slot
   }
 
@@ -320,27 +370,18 @@ internal class DocumentCoordinator(
     return slot
   }
 
-  fun updateTextTargetBounds(id: Long, pageId: String, canonicalBounds: PageRect) {
-    val target = textTarget(id)
-    if (target.pageId != pageId) throw PdfSessionException(
-      "text_not_found", "The text ID belongs to another page",
-    )
-    target.canonicalBounds = canonicalBounds
-    if (target.sourceIdentity == null) {
-      target.canonicalDetectionBounds = canonicalBounds
-      refreshEmbeddedValue(target)
-    }
+  fun embeddedValue(target: TextTargetSlot): String {
+    val glyphs = textSourceGlyphs[target.pageId] ?: return target.embeddedValue
+    return embeddedTextInCanonicalRegion(glyphs,
+      if (target.sourceIdentity == null) target.canonicalBounds else target.canonicalDetectionBounds,
+      target.excludedSourceRanges)
   }
 
   private fun refreshEmbeddedValue(target: TextTargetSlot) {
     val glyphs = textSourceGlyphs[target.pageId] ?: return
-    target.embeddedValue = embeddedTextInCanonicalRegion(glyphs, target.canonicalDetectionBounds, target.excludedSourceRanges)
-  }
-
-  private fun synchronizeTextPlacement(page: InkPageState) {
-    page.history.contentSnapshot().mapNotNull { it.textAnnotationOrNull() }.forEach { annotation ->
-      updateTextTargetBounds(annotation.id, page.id, annotation.canonicalPlacementBounds)
-    }
+    target.embeddedValue = embeddedTextInCanonicalRegion(glyphs,
+      if (target.sourceIdentity == null) target.canonicalBounds else target.canonicalDetectionBounds,
+      target.excludedSourceRanges)
   }
 
   fun removeTextTargetsForPage(pageId: String) {
@@ -358,18 +399,12 @@ internal class DocumentCoordinator(
   override fun isDirty(): Boolean = structuralDirty || mutablePages.any { it.history.state().isDirty }
   fun appendText(page: InkPageState, annotation: TextAnnotation, untracked: Boolean = false) {
     page.history.appendText(annotation, untracked)
-    updateTextTargetBounds(annotation.id, page.id, annotation.canonicalPlacementBounds)
   }
   fun replaceText(page: InkPageState, before: TextAnnotation, after: TextAnnotation, untracked: Boolean = false) {
     page.history.replaceText(before, after, untracked)
-    updateTextTargetBounds(after.id, page.id, after.canonicalPlacementBounds)
   }
-  fun undoHistory(page: InkPageState): InkHistoryMutation = page.history.undoMutation().also {
-    synchronizeTextPlacement(page)
-  }
-  fun redoHistory(page: InkPageState): InkHistoryMutation = page.history.redoMutation().also {
-    synchronizeTextPlacement(page)
-  }
+  fun undoHistory(page: InkPageState): InkHistoryMutation = page.history.undoMutation()
+  fun redoHistory(page: InkPageState): InkHistoryMutation = page.history.redoMutation()
   fun clearHistory(page: InkPageState): InkHistoryMutation = page.history.clearMutation()
   fun clearInk(page: InkPageState): InkHistoryMutation = page.history.clearInkMutation()
 
@@ -580,6 +615,7 @@ internal class DocumentCoordinator(
     sourcePath = candidate.sourcePath
     generationValue = candidate.generation
     markStructuralClean()
+    acceptBaseline()
     fallbackFont = candidate.fallbackFont
     untrackWorkingFile(candidate.workingFile)
   }
@@ -641,7 +677,6 @@ internal class DocumentCoordinator(
     ensureCurrent(generation)
     sessionWorker.prepareMutation(
       workingPath = if (request.operation == PdfiumAssemblyOperation.CREATE) {
-        check(!hasDocument && currentWorkingFile() == null) { "CREATE requires an empty coordinator" }
         null
       } else {
         checkNotNull(currentWorkingFile()).path
@@ -734,7 +769,9 @@ internal class DocumentCoordinator(
         fallbackFont = fontFallback
         published = true
         untrackWorkingFile(candidate)
-        try { notifyPublished() } finally { oldWorking?.let(policy::deleteExact) }
+        try { notifyPublished() } finally {
+          oldWorking?.let { if (it.path == acceptedSourcePath) trackWorkingFile(it) else retireWorkingFile(it) }
+        }
       }
     } finally {
       if (!published) discardPreparedMutation(candidate, policy::deleteExact)
@@ -756,6 +793,8 @@ internal class DocumentCoordinator(
   }
 
   fun clearPublishedDocument() {
+    acceptedPages = emptyList()
+    acceptedSourcePath = ""
     mutablePages.clear()
     sourcePath = ""
     fallbackFont = null

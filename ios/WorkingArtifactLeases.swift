@@ -6,7 +6,7 @@ final class InkSignPdfWorkingLease {
   deinit { release() }
 }
 
-/// Reader lifetime only; document/content ownership stays in the core.
+/// Keeps working artifacts alive for readers and accepted baselines; content stays core-owned.
 final class InkSignPdfWorkingArtifacts {
   private let policy: InkSignPdfCacheArtifactPolicy
   private let queue: DispatchQueue

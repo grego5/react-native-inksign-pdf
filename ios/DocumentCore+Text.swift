@@ -24,14 +24,14 @@ extension DocumentCore {
   }
   func inputTarget(_ context: InkSignPdfCorePageContext, id: Double) throws -> InputTarget {
     let (page, target) = try self.target(context, id: id)
-    let annotation = page.history.text(for: target.id)
+    let annotation = target.state.annotation
     let edit = activeTextEdit.flatMap { $0.page.id == page.id && $0.id == target.id ? $0 : nil }
     let bounds = displayedTargetBounds(target, page: page)
-    return InputTarget(id: Double(target.id), value: edit.map { $0.current?.text ?? "" } ?? annotation?.text ?? target.embeddedValue,
+    return InputTarget(id: Double(target.id), value: edit.map { $0.current?.text ?? "" } ?? annotation?.text ?? embeddedValue(target, page: page),
       fieldName: target.fieldName,
       bounds: TextAnnotationBounds(x: Double(bounds.minX), y: Double(bounds.minY),
         width: Double(bounds.width), height: Double(bounds.height)),
-      valueSource: edit != nil || annotation != nil ? .annotation : target.embeddedValue.isEmpty ? .empty : .embedded)
+      valueSource: edit != nil || annotation != nil ? .annotation : embeddedValue(target, page: page).isEmpty ? .empty : .embedded)
   }
 
   func inputTargets(_ context: InkSignPdfCorePageContext) throws -> [InputTarget] {
@@ -41,7 +41,7 @@ extension DocumentCore {
 
   func adjustTextSize(_ context: InkSignPdfCorePageContext, id: Double, delta: Double) throws -> Double {
     let (page, target) = try self.target(context, id: id)
-    let current = page.history.text(for: target.id)
+    let current = target.state.annotation
     let size = current.map { Double($0.fontSize) } ?? target.options.fontSize ?? defaultTextFontSize
     guard delta.isFinite else { throw TextError.invalidBounds }
     let next = min(max(size + delta, 8), 72)
@@ -58,12 +58,17 @@ extension DocumentCore {
     return (page, try coordinator.textTarget(UInt64(id), pageID: page.id))
   }
 
+  func embeddedValue(_ target: InkSignPdfTextTarget, page: InkSignPdfPageState) -> String {
+    page.sourceAnalysis.embeddedText(in: target.sourceIdentity == nil ? target.canonicalBounds : target.canonicalDetectionBounds,
+      excluding: target.excludedSourceRanges)
+  }
+
   func textValue(_ context: InkSignPdfCorePageContext, id: Double) throws -> String {
     let (page, target) = try self.target(context, id: id)
     if let edit = activeTextEdit, edit.page.id == page.id, edit.id == target.id {
       return edit.current?.text ?? ""
     }
-    return page.history.text(for: target.id)?.text ?? target.embeddedValue
+    return target.state.annotation?.text ?? embeddedValue(target, page: page)
   }
 
   func setTextValue(_ context: InkSignPdfCorePageContext, id: Double, text: String,
@@ -74,11 +79,11 @@ extension DocumentCore {
     }
     let (page, target) = try self.target(context, id: id)
     let proposed = try updatedTextOptions(target.options, changes: options)
-    let current = page.history.text(for: target.id)
+    let current = target.state.annotation
     let updated: InkSignPdfTextAnnotation?
     if text.isEmpty {
       updated = nil
-    } else if let current {
+    } else if let current = current ?? target.state.placementAnnotation {
       let size = PageGeometry(mediaBox: page.geometry.visibleBox, rotation: current.layoutRotation).displaySize
       let styled = InkSignPdfTextAnnotation(id: current.id, text: text, bounds: current.bounds,
         fontSize: CGFloat(options?.fontSize ?? Double(current.fontSize)),
@@ -111,7 +116,9 @@ extension DocumentCore {
         layoutRotation: page.geometry.rotation, font: proposed.font)
     }
     endTextEdit(id: target.id)
-    try coordinator.updateTextTarget(target.id, pageID: page.id) { $0.options = proposed }
+    if current == nil && updated == nil && target.state.placementAnnotation == nil {
+      try coordinator.updateTextTarget(target.id, pageID: page.id) { $0.options = proposed }
+    }
     let untracked = options?.untracked == true
     let edited: Bool
     if let current {
@@ -122,9 +129,6 @@ extension DocumentCore {
       edited = updated.map { page.history.appendText($0, untracked: untracked) } ?? false
     }
     if edited {
-      if let annotation = page.history.text(for: target.id) {
-        coordinator.updateTextPlacement(annotation, page: page)
-      }
       changed(.page(page.id))
     }
   }
@@ -135,8 +139,9 @@ extension DocumentCore {
     try requireContentMutationReady()
     let (page, target) = try self.target(context, id: id)
     let proposed = try updatedTextOptions(target.options, changes: options)
-    let current = applyToCommitted ? page.history.text(for: target.id) : nil
-    let updated = current.map { current in
+    let current = applyToCommitted ? target.state.annotation : nil
+    let placement = current ?? (target.state.annotation == nil ? target.state.placementAnnotation : nil)
+    let updated = placement.map { current in
       let size = CGFloat(options.fontSize ?? Double(current.fontSize))
       let styled = InkSignPdfTextAnnotation(id: current.id, text: current.text, bounds: current.bounds,
         fontSize: size, textColor: options.color ?? current.textColor,
@@ -154,11 +159,16 @@ extension DocumentCore {
         pageSize: PageGeometry(mediaBox: page.geometry.visibleBox, rotation: current.layoutRotation).displaySize)
     }
     if endEditing { endTextEdit(id: target.id) }
-    try coordinator.updateTextTarget(target.id, pageID: page.id) { $0.options = proposed }
+    if current == nil {
+      if let updated { target.state.retainEmpty(updated) }
+      else if target.state.placementAnnotation == nil {
+        try coordinator.updateTextTarget(target.id, pageID: page.id) { $0.options = proposed }
+      }
+      return
+    }
     guard let current, let updated else { return }
     if page.history.replaceText(before: current, with: updated, type: .textEdit,
                                 untracked: options.untracked == true) {
-      coordinator.updateTextPlacement(updated, page: page)
       changed(.page(page.id))
     }
   }
@@ -168,10 +178,6 @@ extension DocumentCore {
     guard let changes else { return previous }
     var proposed = previous
     proposed.font = try fonts.resolve(changes.font, previous: previous.font)
-    if let selection = changes.font {
-      if case .second(let name) = selection { proposed.fontName = name }
-      else { proposed.fontName = nil }
-    }
     if let value = changes.fontSize { proposed.fontSize = value }
     if let value = changes.color { proposed.color = value }
     if let value = changes.direction { proposed.direction = value }

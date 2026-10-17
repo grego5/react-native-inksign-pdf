@@ -26,6 +26,13 @@ extension DocumentCore {
             self.changed(.structure)
             settlement.reject(error)
           case .success(let document):
+            guard coordinator.isCurrent(input.operation) else {
+              coordinator.discardCandidate(document)
+              coordinator.settle(input.operation)
+              settlement.reject(Error.closed)
+              return
+            }
+            if case .restore = command { document.pages.forEach { $0.history.revertChanges() } }
             let previous: CommittedDocumentState?
             let published: Bool
             if input.document == nil {
@@ -42,7 +49,8 @@ extension DocumentCore {
               return
             }
             // Presentation does not own mutation success or the core FIFO slot.
-            if initialImport { coordinator.setStructuralDirty(false) }
+            if initialImport { coordinator.setStructuralDirty(false); coordinator.acceptBaseline() }
+            if case .restore = command { coordinator.setStructuralDirty(false) }
             if let previous { coordinator.workingArtifacts.retire(previous.workingURL) }
             coordinator.settle(input.operation)
             self.changed(.structure)

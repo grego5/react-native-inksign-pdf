@@ -657,6 +657,7 @@ internal class TextInteractionOverlay(
   }
 
   fun cancelForDocumentReplacement() {
+    if (interactionState is InteractionState.Editing) core.cancelTextEdit()
     cancelViewportTouch()
     clearPlacementForLifecycle()
     cancelEditing()
@@ -1324,7 +1325,7 @@ internal class TextInteractionOverlay(
     invalidate()
   }
 
-  private fun finishEditing(): TextAnnotation? {
+  internal fun finishEditing(keepingSelection: Boolean = false): TextAnnotation? {
     val state = interactionState as? InteractionState.Editing ?: return null
     cancelPendingTouch()
     val entry = editor
@@ -1335,12 +1336,13 @@ internal class TextInteractionOverlay(
     }
     val text = materializedEditorText(entry)
     val finished = text.takeUnless { it.isBlank() }?.let { annotationAt(state, it, entry) }
+    closeEditor()
+    transitionTo(if (keepingSelection && finished != null)
+      InteractionState.Selected(state.generation, state.pageIndex, finished) else InteractionState.Idle)
     try {
       core.activeTextEdit?.takeIf { it.id == state.id }?.let { core.updateTextEdit(it, finished, editingOptions(state)) }
       core.endTextEdit(state.id)
     } finally {
-      closeEditor()
-      transitionTo(InteractionState.Idle)
       syncContent()
       emitInteractionModeChanged()
     }
@@ -1552,11 +1554,6 @@ internal class TextInteractionOverlay(
     val presentation = lastPresentation ?: return null
     val pageScale = hypot(presentation.transform.a, presentation.transform.b)
     return presentation.annotations.asReversed().firstOrNull { annotation ->
-      val selected = when (val state = interactionState) {
-        is InteractionState.Selected -> state.annotation.id == annotation.id
-        is InteractionState.Dragging -> state.original.id == annotation.id
-        else -> false
-      }
       val outer = textOutlineRect(annotation, presentation, pageScale)
       viewX >= outer.left && viewX <= outer.right && viewY >= outer.top && viewY <= outer.bottom
     }?.id

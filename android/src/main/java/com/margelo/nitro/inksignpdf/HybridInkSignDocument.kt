@@ -48,6 +48,8 @@ internal class HybridInkSignDocument(internal val core: DocumentCore) : HybridIn
   override fun movePage(fromIndex: Double, toIndex: Double): Promise<Unit> = command { core.movePage(fromIndex, toIndex) }
   override fun rotatePage(index: Double, degrees: Double): Promise<Unit> = command { core.rotatePage(index, degrees) }
   override fun finalize(): Promise<String> = command { core.finalize() }
+  override fun acceptChanges(): Promise<Unit> = command { core.acceptChanges() }
+  override fun revertChanges(): Promise<Unit> = command { core.revertChanges() }
   override fun close(): Promise<Unit> = synchronized(this) {
     closePromise ?: core.close().asNitroPromise().also { closePromise = it }
   }

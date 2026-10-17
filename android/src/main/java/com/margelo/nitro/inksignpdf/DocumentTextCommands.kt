@@ -33,9 +33,9 @@ internal class DocumentTextCommands(
     core.withMutablePage(context) { page ->
       core.requireContentMutationReady()
       val id = checkNotNull(after?.id ?: before?.id)
-      target(context, id.toDouble())
+      val slot = target(context, id.toDouble())
       check(before == null || before.id == id) { "An edit cannot change text identity" }
-      val current = moduleAnnotations(page.id).firstOrNull { it.id == id }
+      val current = slot.state.annotation
       if (current != before) throw PdfSessionException(
         "operation_cancelled", "The committed text changed during editing",
       )
@@ -104,8 +104,8 @@ internal class DocumentTextCommands(
     options?.verticalAnchor ?: previous?.verticalAnchor,
   )
 
-  /** Snapshot current formatting only when removing content leaves an empty target. */
-  private fun emptyTargetOptions(annotation: TextAnnotation) = TextAnnotationOptions(
+  /** Current formatting comes from the target state, including its empty placement. */
+  private fun annotationOptions(annotation: TextAnnotation) = TextAnnotationOptions(
     null,
     fonts.selection(annotation.font), annotation.fontSize,
     String.format(java.util.Locale.ROOT, "#%06X", annotation.textColor and 0xffffff),
@@ -113,12 +113,15 @@ internal class DocumentTextCommands(
     annotation.maxLines.toDouble(), annotation.alignment, annotation.verticalAnchor,
   )
 
+  private fun targetOptions(slot: TextTargetSlot): TextAnnotationOptions? =
+    slot.state.placementAnnotation?.let(::annotationOptions) ?: slot.options
+
   internal fun getValue(context: TextPageContext, rawId: Double): String = core.withMutablePage(context) { page ->
     val slot = target(context, rawId)
     core.activeTextEdit?.takeIf { it.context.pageId == page.id && it.id == slot.id }?.let {
       return@withMutablePage it.current?.text ?: ""
     }
-    moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.text ?: slot.embeddedValue
+    slot.state.annotation?.text ?: coordinator.embeddedValue(slot)
   }
 
   private fun annotation(page: InkPageState, slot: TextTargetSlot, current: TextAnnotation?, text: String,
@@ -162,42 +165,47 @@ internal class DocumentTextCommands(
                         options: TextAnnotationOptions? = null) = core.withMutablePage(context) { page ->
     core.requireContentMutationReady()
     val slot = target(context, rawId)
-    val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
-    val proposed = merged(if (current == null) slot.options else null, options)
+    val current = slot.state.annotation
+    val proposed = merged(if (current == null) targetOptions(slot) else null, options)
     // Resolve font and compute layout before publishing target or content changes.
     fonts.resolve(proposed.font, current?.font)
-    val updated = if (text.isEmpty()) null else annotation(page, slot, current, text, proposed)
-    val capturedOptions = if (text.isEmpty() && current != null) merged(emptyTargetOptions(current), options)
-      else merged(slot.options, options)
+    val updated = if (text.isEmpty()) null else annotation(page, slot, current ?: slot.state.placementAnnotation, text, proposed)
     core.endTextEdit(slot.id)
-    slot.options = capturedOptions
+    if (current == null && updated == null) slot.options = merged(slot.options, options)
     commit(page, current, updated, untracked = options?.untracked == true)
   }
 
   internal fun captureEditOptions(context: TextPageContext, id: Long, options: TextAnnotationOptions) =
-    core.withMutablePage(context) {
+    core.withMutablePage(context) { page ->
       core.requireContentMutationReady()
       val slot = target(context, id.toDouble())
-      fonts.resolve(options.font)
-      slot.options = merged(slot.options, options)
+      val proposed = merged(targetOptions(slot), options)
+      fonts.resolve(proposed.font, slot.state.placementAnnotation?.font)
+      if (slot.state.annotation == null) {
+        val placement = slot.state.placementAnnotation
+        if (placement == null) slot.options = proposed
+        else slot.state.retainEmpty(annotation(page, slot, placement, placement.text, proposed))
+      }
     }
 
   internal fun setOptions(context: TextPageContext, rawId: Double,
                           options: TextAnnotationOptions) = core.withMutablePage(context) { page ->
     core.requireContentMutationReady()
     val slot = target(context, rawId)
-    val current = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
-    val proposed = merged(if (current == null) slot.options else null, options)
+    val current = slot.state.annotation
+    val proposed = merged(if (current == null) targetOptions(slot) else null, options)
     fonts.resolve(proposed.font, current?.font)
-    val updated = current?.let { annotation(page, slot, it, it.text, proposed) }
+    val updated = (current ?: slot.state.placementAnnotation)?.let { annotation(page, slot, it, it.text, proposed) }
     core.endTextEdit(slot.id)
-    slot.options = merged(slot.options, options)
-    commit(page, current, updated, untracked = options.untracked == true)
+    if (current == null) {
+      if (updated != null) slot.state.retainEmpty(updated)
+      else slot.options = merged(slot.options, options)
+    } else commit(page, current, updated, untracked = options.untracked == true)
   }
 
   internal fun adjustSize(context: TextPageContext, rawId: Double, delta: Double): Double = core.withMutablePage(context) { page ->
     val slot = target(context, rawId)
-    val size = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }?.fontSize ?: slot.options?.fontSize ?: defaultFontSize
+    val size = slot.state.annotation?.fontSize ?: targetOptions(slot)?.fontSize ?: defaultFontSize
     val adjusted = (size + delta).coerceIn(minimumTextFontSize, maximumTextFontSize)
     if (adjusted != size) setOptions(context, rawId,
       TextAnnotationOptions(null, null, adjusted, null, null, null, null, null))
@@ -290,12 +298,12 @@ internal class DocumentTextCommands(
   internal fun getEntry(context: TextPageContext, rawId: Double): InputTarget =
     core.withMutablePage(context) { page ->
       val slot = target(context, rawId)
-      val annotation = moduleAnnotations(page.id).firstOrNull { it.id == slot.id }
+      val annotation = slot.state.annotation
       val edit = core.activeTextEdit?.takeIf { it.context.pageId == page.id && it.id == slot.id }
-      val value = if (edit != null) edit.current?.text ?: "" else annotation?.text ?: slot.embeddedValue
+      val value = if (edit != null) edit.current?.text ?: "" else annotation?.text ?: coordinator.embeddedValue(slot)
       val source = when {
         edit != null || annotation != null -> TextValueSource.ANNOTATION
-        slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
+        coordinator.embeddedValue(slot).isNotEmpty() -> TextValueSource.EMBEDDED
         else -> TextValueSource.EMPTY
       }
       InputTarget(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
@@ -303,16 +311,8 @@ internal class DocumentTextCommands(
 
   internal fun getEntries(context: TextPageContext): Array<InputTarget> =
     core.withMutablePage(context) { page ->
-      val annotations = moduleAnnotations(page.id).associateBy { it.id }
       coordinator.textTargetsForPage(page.id).map { slot ->
-        val annotation = annotations[slot.id]
-        val value = annotation?.text ?: slot.embeddedValue
-        val source = when {
-          annotation != null -> TextValueSource.ANNOTATION
-          slot.embeddedValue.isNotEmpty() -> TextValueSource.EMBEDDED
-          else -> TextValueSource.EMPTY
-        }
-        InputTarget(slot.id.toDouble(), value, slot.fieldName, displayedTargetBounds(slot, page).toPublicBounds(), source)
+        getEntry(context, slot.id.toDouble())
       }.toTypedArray()
     }
 
@@ -342,7 +342,7 @@ internal class DocumentTextCommands(
       val start = transform.map(rule.start)
       val end = transform.map(rule.end)
       if (kotlin.math.abs(start.y - end.y) <= 0.001) {
-        val bottom = (slot.options?.verticalAnchor ?: TextVerticalAnchor.BOTTOM) == TextVerticalAnchor.BOTTOM
+        val bottom = (targetOptions(slot)?.verticalAnchor ?: TextVerticalAnchor.BOTTOM) == TextVerticalAnchor.BOTTOM
         val flow = textAnnotationOuterBounds(slot.canonicalBounds, transform, 0.0, 0.0)
         return PageRect(flow.left, if (bottom) 0.0 else start.y,
           flow.right, if (bottom) start.y else page.dimensions.height)

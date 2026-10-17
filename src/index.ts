@@ -414,6 +414,8 @@ function createValidatedDocument(native: InkSignDocument): InkSignDocument {
       }, () => native.rotatePage(index, degrees));
     },
     finalize: () => native.finalize(),
+    acceptChanges: () => native.acceptChanges(),
+    revertChanges: () => native.revertChanges(),
     close: () => native.close(),
   };
   nativeDocuments.set(handle, native);

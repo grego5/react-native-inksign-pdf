@@ -24,6 +24,8 @@ namespace margelo::nitro::inksignpdf {
       prototype.registerHybridMethod("movePage", &HybridInkSignDocumentSpec::movePage);
       prototype.registerHybridMethod("rotatePage", &HybridInkSignDocumentSpec::rotatePage);
       prototype.registerHybridMethod("finalize", &HybridInkSignDocumentSpec::finalize);
+      prototype.registerHybridMethod("acceptChanges", &HybridInkSignDocumentSpec::acceptChanges);
+      prototype.registerHybridMethod("revertChanges", &HybridInkSignDocumentSpec::revertChanges);
       prototype.registerHybridMethod("close", &HybridInkSignDocumentSpec::close);
     });
   }

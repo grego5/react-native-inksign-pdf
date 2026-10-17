@@ -348,6 +348,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   func discardForDocumentReplacement() {
+    if let edit = editingTransaction { owner?.attachedCore?.cancelTextEdit(id: edit.id) }
+    editingTransaction = nil
     clearPlacementRules()
     closeEditor()
     interactionState = .idle
@@ -355,6 +357,8 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   }
 
   func discardForDisposal() {
+    if let edit = editingTransaction { owner?.attachedCore?.cancelTextEdit(id: edit.id) }
+    editingTransaction = nil
     clearPlacementRules()
     closeEditor()
     interactionState = .idle
@@ -993,7 +997,7 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     syncPresentation()
   }
 
-  private func finishEditing(keepingSelection: Bool = true) {
+  func finishEditing(keepingSelection: Bool = true) {
     guard case .editing = interactionState, let textView = editor else { return }
     layoutEditor()
     guard case .editing(let state) = interactionState else { return }
@@ -1263,11 +1267,6 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private var editingID: UInt64? {
     guard case .editing(let state) = interactionState else { return nil }
     return state.id
-  }
-
-  private var isUncommittedDraft: Bool {
-    guard case .editing(let state) = interactionState else { return false }
-    return editor != nil && state.original == nil
   }
 
   private var draggingID: UInt64? {

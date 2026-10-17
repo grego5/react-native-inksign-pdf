@@ -11,6 +11,10 @@ extension ViewerCanvas {
     case .editEnded(let edit): textInteractionOverlay.endEditorTransaction(edit)
     case .inkCleared(let id):
       if viewerDocument?.activePageID == id { cancelActiveStroke(clearLive: true) }
+    case .historyResetStarted:
+      textInteractionOverlay.finishEditing(keepingSelection: true)
+      cancelActiveStroke(clearLive: true)
+    case .historyReset: emitChange()
     case .willClose:
       if document != nil { releaseAttachment() }
     case .structuralWriteStarted:
@@ -28,7 +32,7 @@ extension ViewerCanvas {
     case .document, .structure:
       if document != nil {
         guard let state = documentCoordinator.document else {
-          interaction.resetAvailability()
+          clearPresentation()
           emitChange(force: true)
           return
         }

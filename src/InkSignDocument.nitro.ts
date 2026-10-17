@@ -64,6 +64,10 @@ export interface InkSignDocument extends HybridObject<{ ios: 'swift'; android: '
   rotatePage(index: number, degrees: number): Promise<void>
   /** Returns a caller-owned temporary file; close never deletes successful outputs. */
   finalize(): Promise<string>
+  /** Accepts current content and page structure as the clean baseline and clears undo/redo. */
+  acceptChanges(): Promise<void>
+  /** Discards tracked edits and restores accepted page structure, preserving untracked content. */
+  revertChanges(): Promise<void>
   /** Terminal and idempotent. Drains admitted work and waits for resource cleanup. */
   close(): Promise<void>
 }

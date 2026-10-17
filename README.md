@@ -124,6 +124,10 @@ requires a foreground presenter; explicit inputs do not.
 - `document.movePage(from, to)` — Reorder pages.
 - `document.rotatePage(index, degrees)` — Rotate clockwise by 90, 180, or 270.
 - `document.finalize()` — Export a caller-owned temporary PDF `file://` URI.
+- `document.acceptChanges()` — Accept current content and page structure as clean;
+  clear undo/redo. Does not save a file.
+- `document.revertChanges()` — Discard tracked edits and restore accepted page
+  structure, preserving untracked content.
 - `document.close()` — End the document and invalidate its handles after admitted
   work finishes. Unmounting a viewer does not close its document.
 

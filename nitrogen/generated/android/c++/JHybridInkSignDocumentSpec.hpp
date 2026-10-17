@@ -63,6 +63,8 @@ namespace margelo::nitro::inksignpdf {
     std::shared_ptr<Promise<void>> movePage(double fromIndex, double toIndex) override;
     std::shared_ptr<Promise<void>> rotatePage(double index, double degrees) override;
     std::shared_ptr<Promise<std::string>> finalize() override;
+    std::shared_ptr<Promise<void>> acceptChanges() override;
+    std::shared_ptr<Promise<void>> revertChanges() override;
     std::shared_ptr<Promise<void>> close() override;
 
   private:

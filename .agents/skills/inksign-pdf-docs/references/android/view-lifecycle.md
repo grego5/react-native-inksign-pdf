@@ -61,6 +61,9 @@
 - `PageContentHistory` is keyed by stable page ID. Permanent base plus keyed tracked
   overrides supplies rendering, lookup, and export. Shared
   [history/state policy](../architecture.md#history) defines dirty and undo semantics.
+- Targets share `TextTargetState` with page history. Live edits and restoration
+  apply through `PageTextState` before publication; transactions retain their initial
+  snapshot.
 - Append new strokes/text directly. Retain inserted text identities through
   deletion and redo so later writes use the existing-target policy.
 - Untracked base edits preserve unrelated redo. Tracked clear/delete masks base

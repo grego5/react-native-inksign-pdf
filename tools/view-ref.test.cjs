@@ -137,6 +137,8 @@ test('iOS headless wrapper dispatches document and text operations without mount
       return { addedPageCount: 1, pageCount: ++count };
     },
     finalize: async () => 'file:///output.pdf',
+    acceptChanges: async () => { operations.push(['accept']); },
+    revertChanges: async () => { operations.push(['revert']); },
     close: async () => { closed = true; },
   };
   try {
@@ -158,6 +160,8 @@ test('iOS headless wrapper dispatches document and text operations without mount
     await document.addPages({ sources: ['file:///attachment.pdf'] });
     assert.equal(document.pageCount, 2);
     assert.equal(await document.finalize(), 'file:///output.pdf');
+    await document.acceptChanges();
+    await document.revertChanges();
     await document.close();
     assert.throws(() => document.pageCount, /document_closed/);
     assert.throws(() => document.getState(), /document_closed/);
@@ -165,7 +169,7 @@ test('iOS headless wrapper dispatches document and text operations without mount
     assert.deepEqual(operations, [
       ['create', ['file:///source.pdf'], 'report'], ['fonts', 'form'],
       ['page', { tag: 'report' }], ['resolve', 'Name'], ['write', 'Ada', 'form'],
-      ['append', 'file:///attachment.pdf'],
+      ['append', 'file:///attachment.pdf'], ['accept'], ['revert'],
     ]);
   } finally {
     platform.OS = previousPlatform;

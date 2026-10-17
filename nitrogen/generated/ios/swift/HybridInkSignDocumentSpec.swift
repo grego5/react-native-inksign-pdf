@@ -22,6 +22,8 @@ public protocol HybridInkSignDocumentSpec_protocol: HybridObject {
   func movePage(fromIndex: Double, toIndex: Double) throws -> Promise<Void>
   func rotatePage(index: Double, degrees: Double) throws -> Promise<Void>
   func finalize() throws -> Promise<String>
+  func acceptChanges() throws -> Promise<Void>
+  func revertChanges() throws -> Promise<Void>
   func close() throws -> Promise<Void>
 }
 

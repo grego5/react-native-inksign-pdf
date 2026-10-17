@@ -6,22 +6,27 @@ internal class DocumentTextEdit(
   val page: InkPageState,
   val id: Long,
   val baseline: TextAnnotation?,
+  val initialOptions: TextAnnotationOptions?,
 ) {
-  var current: TextAnnotation? = baseline
-    private set
+  private val initialPlacement = page.history.textState.target(id).placementAnnotation
+  val current: TextAnnotation? get() = page.history.textState.target(id).annotation
   var active = true
     private set
 
   fun update(annotation: TextAnnotation?) {
     check(active)
     check(annotation == null || annotation.id == id)
-    current = annotation
-    page.history.textPreview = PageContentHistory.TextPreview(id, annotation, baseline != annotation)
+    page.history.applyTextState(id, annotation, baseline != annotation)
+  }
+
+  fun cancel() {
+    end()
+    if (baseline == null) page.history.textState.target(id).retainEmpty(initialPlacement)
   }
 
   fun end() {
     check(active)
     active = false
-    page.history.textPreview = null
+    page.history.finishTextState(id)
   }
 }

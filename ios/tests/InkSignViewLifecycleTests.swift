@@ -58,6 +58,26 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertEqual(view.viewerDocument?.activePageIndex, 1)
   }
 
+  func testAcceptChangesSubmitsNativeEditorAndPreservesSelectionAndSession() throws {
+    let fixture = makeFixture(pageCount: 1)
+    let view = fixture.view
+    defer { view.dispose(); fixture.window.isHidden = true }
+    let session = try view.setMode(mode: .text, options: nil)
+    let overlay = view.textInteractionOverlay
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 100, y: 140)))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    editor.insertText("one\ntwo")
+    let selectedID = try XCTUnwrap(overlay.selectedText?.textId)
+    let document = try attachedDocument(view)
+    try awaitDocumentOperation(document.acceptChanges())
+    XCTAssertNil(textEditor(in: overlay))
+    XCTAssertEqual(overlay.selectedText?.textId, selectedID)
+    XCTAssertFalse(view.documentCoordinator.isDirty)
+    let page = try awaitDocumentOperation(session.getPage(pageIndex: nil))
+    XCTAssertFalse(try page.getState().canUndo)
+    XCTAssertFalse(try page.getState().canRedo)
+  }
+
   func testAnimatedViewportCentersRequestedPointBeforeCompletion() throws {
     let fixture = makeFixture(pageCount: 1)
     let view = fixture.view

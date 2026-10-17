@@ -48,6 +48,8 @@ final class HybridInkSignDocument: HybridInkSignDocumentSpec {
     core.rotatePage(index: try Self.integer(index), degrees: try Self.integer(degrees))
   }
   func finalize() throws -> Promise<String> { core.finalize() }
+  func acceptChanges() throws -> Promise<Void> { core.acceptChanges() }
+  func revertChanges() throws -> Promise<Void> { core.revertChanges() }
   func close() throws -> Promise<Void> { try core.onOwnerSync { core.close() } }
 
   static func integer(_ value: Double) throws -> Int {

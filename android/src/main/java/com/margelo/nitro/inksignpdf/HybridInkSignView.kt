@@ -325,6 +325,11 @@ class HybridInkSignView internal constructor(
         viewerCanvas.setStructuralWriteActive(false)
         if (documentState.hasDocument) viewerCanvas.installStructuralPresentation()
       }
+      DocumentChange.HistoryResetStarted -> {
+        textOverlay.finishEditing(keepingSelection = true)
+        viewerCanvas.cancelInputGesture(cancelEngineWhenIdle = true)
+      }
+      DocumentChange.HistoryReset -> emitState()
       DocumentChange.WillClose -> {
         if (attachedDocument != null) {
           detachDocument()
@@ -345,7 +350,9 @@ class HybridInkSignView internal constructor(
       DocumentChange.Pages -> {
         viewerCanvas.setStructuralWriteActive(false)
         viewportRequestID += 1L
-        viewerCanvas.installStructuralPresentation()
+        if (attachedDocument?.core?.state?.hasDocument == true) viewerCanvas.installStructuralPresentation()
+        else viewerCanvas.clearDocument()
+        emitState()
       }
       is DocumentChange.Text -> viewerCanvas.refreshCommittedText(change.pageId)
       is DocumentChange.Content -> viewerCanvas.presentContentChange(change)

@@ -28,6 +28,8 @@ internal sealed interface DocumentChange {
   data object Pages : DocumentChange
   data object StructuralWriteStarted : DocumentChange
   data object WillClose : DocumentChange
+  data object HistoryResetStarted : DocumentChange
+  data object HistoryReset : DocumentChange
   data class EditEnded(val edit: DocumentTextEdit) : DocumentChange
   data object StructuralReady : DocumentChange
   data class InkCleared(val pageId: String) : DocumentChange
@@ -62,9 +64,10 @@ internal class DocumentCore(
 
   fun beginTextEdit(context: TextPageContext, id: Long): DocumentTextEdit = withMutablePage(context) { page ->
     requireContentMutationReady()
+    text.targetId(context, id.toDouble())
     endTextEdit()
     DocumentTextEdit(context, page, id,
-      page.history.contentSnapshot().filterIsInstance<PageContent.Text>().firstOrNull { it.annotation.id == id }?.annotation
+      page.history.textState.target(id).annotation, coordinator.textTarget(id)?.options
     ).also { activeTextEdit = it }
   }
 
@@ -77,13 +80,25 @@ internal class DocumentCore(
     changed(DocumentChange.Text(page.id))
   }
 
+  fun cancelTextEdit(id: Long? = null) {
+    checkMainThread()
+    val edit = activeTextEdit ?: return
+    if (id != null && edit.id != id) return
+    activeTextEdit = null
+    edit.cancel()
+    if (edit.baseline == null) coordinator.textTarget(edit.id)?.options = edit.initialOptions
+    changed(DocumentChange.EditEnded(edit))
+    changed(DocumentChange.Text(edit.context.pageId))
+  }
+
   fun endTextEdit(id: Long? = null) {
     checkMainThread()
     val edit = activeTextEdit ?: return
     if (id != null && edit.id != id) return
     activeTextEdit = null
+    val current = edit.current
     edit.end()
-    if (edit.baseline != edit.current) text.applyEdit(edit.context, edit.baseline, edit.current)
+    if (edit.baseline != current) text.applyEdit(edit.context, edit.baseline, current)
     changed(DocumentChange.EditEnded(edit))
     changed(DocumentChange.Text(edit.context.pageId))
   }
@@ -278,7 +293,7 @@ internal class DocumentCore(
             appendInputs = requests),
           candidateBuilder = { info -> coordinator.appendCandidate(info.pages.drop(count), options?.tag) },
           notifyPublished = {
-            if (initialImport) coordinator.markStructuralClean()
+            if (initialImport) { coordinator.markStructuralClean(); coordinator.acceptBaseline() }
             pagesChanged()
           }, fontFallback = fontFallback)
       }
@@ -333,8 +348,32 @@ internal class DocumentCore(
   }
 
   private fun pagesChanged() {
-    prepared.keys.removeAll { coordinator.pageForId(it) == null }
+    prepared.keys.removeAll { coordinator.pageForId(it) == null && !coordinator.isAcceptedPage(it) }
     changed(DocumentChange.Pages)
+  }
+
+  fun acceptChanges() {
+    checkMainThread()
+    changed(DocumentChange.HistoryResetStarted)
+    endTextEdit()
+    coordinator.pages.forEach { it.history.acceptChanges() }
+    coordinator.markStructuralClean()
+    coordinator.acceptBaseline()
+    prepared.keys.removeAll { coordinator.pageForId(it) == null }
+    changed(DocumentChange.HistoryReset)
+  }
+
+  suspend fun revertChanges() {
+    changed(DocumentChange.HistoryResetStarted)
+    endTextEdit()
+    val operation = coordinator.beginOperation(requireDocument = false)
+    try {
+      changed(DocumentChange.StructuralWriteStarted)
+      withContext(NonCancellable) { coordinator.revertChanges(::pagesChanged) }
+    } finally {
+      coordinator.endOperation(operation)
+      if (structuralBusy) changed(DocumentChange.StructuralReady)
+    }
   }
 
   suspend fun finalize(): String {

@@ -169,6 +169,22 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline std::shared_ptr<Promise<void>> acceptChanges() override {
+      auto __result = _swiftPart.acceptChanges();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
+    inline std::shared_ptr<Promise<void>> revertChanges() override {
+      auto __result = _swiftPart.revertChanges();
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+      auto __value = std::move(__result.value());
+      return __value;
+    }
     inline std::shared_ptr<Promise<void>> close() override {
       auto __result = _swiftPart.close();
       if (__result.hasError()) [[unlikely]] {

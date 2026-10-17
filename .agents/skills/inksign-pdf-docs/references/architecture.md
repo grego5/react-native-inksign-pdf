@@ -108,8 +108,10 @@ Resource contracts: [Android lifecycle](android/view-lifecycle.md),
   bounds use visible layout on auto axes. Formatting preserves fixed intervals;
   direction/alignment changes reanchor auto growth at the current bounds. Moving
   text recalculates page capacity at the translated anchor.
-- The core owns effective text; overlays own native editor state. Ending a changed
-  transaction records one history action; unchanged/new blank text adds none.
+- Edits and history restoration apply through the page text-state boundary before
+  publication. Transactions retain their initial snapshot; overlays own native
+  caret/composition state. Finishing records one history action; cancellation
+  restores the initial state. Unchanged/new blank text adds none.
   Same-target writes end editing first. Structural/export snapshots end the
   transaction before capture; live ink is excluded.
 - Outlines are thin dashed when inactive, solid when editing, and thicker dashed
@@ -122,6 +124,13 @@ Resource contracts: [Android lifecycle](android/view-lifecycle.md),
 
 ## History
 
+- `document.revertChanges()` discards tracked edits and undo/redo, restores accepted
+  page membership/order/rotation, and preserves untracked content on those pages.
+  Acceptance retains source resources until the next acceptance or close; initial
+  sources form the first baseline, otherwise the baseline is empty.
+- `document.acceptChanges()` settles active text, cancels unfinished ink, and accepts
+  current content and page structure as the clean baseline. It clears undo/redo
+  without saving, replacing pages, or invalidating handles. Runs in the document FIFO.
 - Pages compose permanent base content with keyed tracked overrides.
   `recordHistory` is fixed at open (default true); disabled recording writes base
   content. Undo/redo/clear address explicit pages.

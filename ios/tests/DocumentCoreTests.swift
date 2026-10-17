@@ -10,6 +10,112 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
+  func testTargetReadersFollowMoveRestorationAndDeletedTargetReuse() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(initializeDocument(core, from: source))
+    let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+    let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+    let id = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 80, width: 200, height: 60)))
+    try core.setTextValue(context, id: id, text: "Original")
+    let baseline = try XCTUnwrap(page.history.text(for: UInt64(id)))
+    _ = try awaitValue(core.acceptChanges())
+    let target = try core.coordinator.textTarget(UInt64(id), pageID: page.id)
+    func checkReaders(_ expected: InkSignPdfTextAnnotation) throws {
+      XCTAssertEqual(target.state.annotation, expected)
+      XCTAssertEqual(page.history.content.textAnnotations, [expected])
+      XCTAssertEqual(target.canonicalBounds, expected.canonicalPlacementBounds(mediaBox: page.geometry.visibleBox))
+      let entry = try core.inputTarget(context, id: id)
+      let focus = core.displayedTargetBounds(target, page: page)
+      XCTAssertEqual(entry.value, expected.text)
+      let bounds = try XCTUnwrap(entry.bounds)
+      XCTAssertEqual(bounds.x, Double(focus.minX))
+      XCTAssertEqual(bounds.y, Double(focus.minY))
+      XCTAssertEqual(try core.inputTargets(context).first?.value, entry.value)
+    }
+    let moved = baseline.moving(to: CGPoint(x: 120, y: 160), pageSize: page.geometry.displaySize)
+      .changingFontSize(to: 24, pageSize: page.geometry.displaySize)
+    try core.replaceText(baseline, with: moved, type: .textMove, context: context)
+    try checkReaders(moved)
+    try core.undo(context)
+    try checkReaders(baseline)
+    try core.redo(context)
+    try checkReaders(moved)
+    let edit = try core.beginTextEdit(context, id: UInt64(id))
+    try core.updateTextEdit(edit, annotation: moved.replacingText("cancelled", pageSize: page.geometry.displaySize))
+    core.cancelTextEdit()
+    try checkReaders(moved)
+    _ = try awaitValue(core.revertChanges())
+    try checkReaders(baseline)
+    try core.clear(context)
+    XCTAssertNil(target.state.annotation)
+    XCTAssertEqual(target.canonicalBounds, baseline.canonicalPlacementBounds(mediaBox: page.geometry.visibleBox))
+    try core.setTextValue(context, id: id, text: "Reused")
+    let reused = try XCTUnwrap(target.state.annotation)
+    XCTAssertEqual(reused.id, baseline.id)
+    XCTAssertEqual(reused.flowBounds, baseline.flowBounds)
+    XCTAssertEqual(reused.fontSize, baseline.fontSize)
+    XCTAssertEqual(reused.layoutRotation, baseline.layoutRotation)
+    let emptyID = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 280, width: 100, height: 60)))
+    let emptyTarget = try core.coordinator.textTarget(UInt64(emptyID), pageID: page.id)
+    let emptyBounds = emptyTarget.canonicalBounds
+    let emptyEdit = try core.beginTextEdit(context, id: UInt64(emptyID))
+    try core.updateTextEdit(emptyEdit, annotation: text(id: UInt64(emptyID), value: "discarded"))
+    core.cancelTextEdit()
+    XCTAssertNil(emptyTarget.state.annotation)
+    XCTAssertEqual(emptyTarget.canonicalBounds, emptyBounds)
+  }
+
+  func testUnrelatedUntrackedWritePreservesDraftAndGroupedClearPublishesCompleteState() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(initializeDocument(core, from: source))
+    let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+    let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+    let first = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 80, width: 200, height: 60)))
+    let second = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 180, width: 200, height: 60)))
+    try core.setTextValue(context, id: first, text: "baseline")
+    _ = try awaitValue(core.acceptChanges())
+    let initial = try XCTUnwrap(page.history.text(for: UInt64(first)))
+    let edit = try core.beginTextEdit(context, id: UInt64(first))
+    let draft = initial.replacingText("draft", pageSize: page.geometry.displaySize)
+    try core.updateTextEdit(edit, annotation: draft)
+    try core.setTextValue(context, id: second, text: "untracked", options: TextAnnotationOptions(
+      untracked: true, font: nil, fontSize: nil, color: nil, direction: nil,
+      maxLines: nil, alignment: nil, verticalAnchor: nil))
+    XCTAssertEqual(edit.current, draft)
+    core.endTextEdit()
+    XCTAssertEqual(page.history.undoStack.count, 1)
+    try core.undo(context)
+    XCTAssertEqual(try core.textValue(context, id: first), "baseline")
+    XCTAssertEqual(try core.textValue(context, id: second), "untracked")
+    _ = try awaitValue(core.revertChanges())
+    XCTAssertEqual(try core.textValue(context, id: second), "untracked")
+    var clearPublished = false
+    let observer = core.observe { change in
+      if case .page = change {
+        clearPublished = true
+        XCTAssertTrue(page.history.content.textAnnotations.isEmpty)
+        XCTAssertNil(page.history.textState.target(UInt64(first)).annotation)
+        XCTAssertNil(page.history.textState.target(UInt64(second)).annotation)
+      }
+    }
+    try core.clear(context)
+    core.removeObserver(observer)
+    XCTAssertTrue(clearPublished)
+    try core.undo(context)
+    XCTAssertEqual(try core.textValue(context, id: first), "baseline")
+    XCTAssertEqual(try core.textValue(context, id: second), "untracked")
+  }
+
   func testRejectedTextWritesPreserveDraftAndHistory() throws {
     let source = try fixture()
     defer { try? FileManager.default.removeItem(at: source) }
@@ -366,6 +472,168 @@ final class DocumentCoreTests: XCTestCase, InkSignViewTestSupport {
     _ = try awaitValue(initializeDocument(reopened, from: output))
     XCTAssertTrue(try reopened.pageIDs(tag: " ").isEmpty)
     XCTAssertTrue(try reopened.pageIDs(tag: "attachment").isEmpty)
+  }
+
+  func testAcceptChangesPreservesEffectiveContentAndAcceptsTheVisibleUndoBranch() {
+    let history = InkSignPdfPageContentHistory()
+    let base = text(id: 1, value: "Base")
+    let deleted = text(id: 2, value: "Delete")
+    XCTAssertTrue(history.appendText(base, untracked: true))
+    XCTAssertTrue(history.appendText(deleted, untracked: true))
+    let current = text(id: 1, value: "Changed")
+    XCTAssertTrue(history.replaceText(before: base, with: current, type: .textEdit))
+    XCTAssertTrue(history.removeText(deleted))
+    XCTAssertTrue(history.appendText(text(id: 3, value: "Undone")))
+    XCTAssertTrue(history.undo())
+    let point = PKStrokePoint(location: CGPoint(x: 50, y: 50), timeOffset: 0,
+      size: CGSize(width: 4, height: 4), opacity: 1, force: 0.5, azimuth: 0, altitude: .pi / 2)
+    let drawing = PKDrawing(strokes: [PKStroke(ink: PKInk(.pen, color: .black),
+      path: PKStrokePath(controlPoints: [point], creationDate: Date()), transform: .identity, mask: nil)])
+    XCTAssertTrue(history.recordDrawing(drawing, replacing: history.drawing, type: .ink))
+    XCTAssertTrue(history.appendText(text(id: 4, value: "Discard redo")))
+    XCTAssertTrue(history.undo())
+    let baseline = history.content
+    history.acceptChanges()
+    XCTAssertTrue(history.content.equals(baseline))
+    XCTAssertFalse(history.canUndo)
+    XCTAssertFalse(history.canRedo)
+    XCTAssertFalse(history.state.isDirty)
+    XCTAssertFalse(history.redo())
+    XCTAssertTrue(history.replaceText(before: current, with: text(id: 1, value: "Next"), type: .textEdit))
+    XCTAssertTrue(history.state.isDirty)
+    XCTAssertTrue(history.undo())
+    XCTAssertTrue(history.content.equals(baseline))
+    XCTAssertFalse(history.state.isDirty)
+    history.acceptChanges()
+    XCTAssertTrue(history.replaceText(before: current, with: text(id: 1, value: "Untracked"), type: .textEdit, untracked: true))
+    XCTAssertFalse(history.state.isDirty)
+  }
+
+  func testAcceptChangesRunsAfterRotationAndSettlesActiveText() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(initializeDocument(core, from: source))
+    let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+    let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+    let id = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 80, width: 200, height: 60)))
+    try core.setTextValue(context, id: id, text: "Original")
+    let edit = try core.beginTextEdit(context, id: UInt64(id))
+    try core.updateTextEdit(edit, annotation: text(id: UInt64(id), value: "Draft"))
+    try awaitValue(core.acceptChanges())
+    XCTAssertFalse(edit.active)
+    XCTAssertNil(core.activeTextEdit)
+    XCTAssertEqual(try core.textValue(context, id: id), "Draft")
+    XCTAssertFalse(core.coordinator.isDirty)
+    let adding = core.addPages(sources: [source.absoluteString], imageGeometry: nil,
+      targetDpi: nil, jpegQuality: nil, tag: nil, type: nil)
+    let rotating = core.rotatePage(index: 0, degrees: 90)
+    let resetting = core.acceptChanges()
+    XCTAssertEqual(try awaitValue(adding), 1)
+    try awaitValue(rotating)
+    try awaitValue(resetting)
+    XCTAssertEqual(core.coordinator.document?.pages.count, 2)
+    XCTAssertTrue(core.coordinator.document?.pages.allSatisfy { !$0.history.canUndo && !$0.history.canRedo } == true)
+    XCTAssertEqual(core.coordinator.document?.pages.first?.geometry.rotation, 90)
+    XCTAssertEqual(core.coordinator.document?.pages.first?.id, context.pageID)
+    XCTAssertEqual(core.coordinator.generation, context.generation)
+    XCTAssertFalse(core.coordinator.isDirty)
+    XCTAssertFalse(page.history.canUndo)
+    XCTAssertFalse(page.history.canRedo)
+    try core.setTextValue(context, id: id, text: "After reset")
+    XCTAssertTrue(core.coordinator.isDirty)
+    XCTAssertTrue(page.history.undo())
+    XCTAssertEqual(try core.textValue(context, id: id), "Draft")
+    try awaitValue(core.close())
+    XCTAssertThrowsError(try awaitValue(core.acceptChanges()))
+  }
+
+  func testAcceptChangesOnEmptyAndHistoryDisabledDocuments() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    for enabled in [true, false] {
+      let core = DocumentCore(artifactPolicy: .shared, recordHistory: enabled)
+      defer { core.dispose() }
+      try awaitValue(core.acceptChanges())
+      try awaitValue(core.acceptChanges())
+      XCTAssertFalse(core.coordinator.isDirty)
+      _ = try awaitValue(initializeDocument(core, from: source))
+      let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+      let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+      let id = try core.resolveText(context, options: InputTargetResolutionOptions(
+        bounds: .init(x: 24, y: 80, width: 200, height: 60)))
+      try core.setTextValue(context, id: id, text: "Keep")
+      try awaitValue(core.acceptChanges())
+      XCTAssertEqual(try core.textValue(context, id: id), "Keep")
+      try core.setTextValue(context, id: id, text: "Next")
+      XCTAssertEqual(core.coordinator.isDirty, enabled)
+    }
+  }
+
+  func testRevertChangesRestoresAcceptedStructureAndKeepsUntrackedText() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(initializeDocument(core, from: source))
+    _ = try awaitValue(core.addPages(sources: [source.absoluteString], imageGeometry: nil,
+      targetDpi: nil, jpegQuality: nil, tag: nil, type: nil))
+    let page = try XCTUnwrap(core.coordinator.document?.pages.first)
+    let context = InkSignPdfCorePageContext(generation: core.coordinator.generation, pageID: page.id)
+    let id = try core.resolveText(context, options: InputTargetResolutionOptions(
+      bounds: .init(x: 24, y: 80, width: 200, height: 60)))
+    try core.setTextValue(context, id: id, text: "Base")
+    let ids = try XCTUnwrap(core.coordinator.document).pages.map(\.id)
+    try awaitValue(core.acceptChanges())
+    let baselineURL = try XCTUnwrap(core.coordinator.document?.workingURL)
+    try core.setTextValue(context, id: id, text: "Tracked")
+    let permanent = text(id: 999, value: "Permanent")
+    XCTAssertTrue(page.history.appendText(permanent, untracked: true))
+    try awaitValue(core.mutatePage(index: 0))
+    try awaitValue(core.rotatePage(index: 0, degrees: 90))
+    _ = try awaitValue(core.addPages(sources: [source.absoluteString], imageGeometry: nil,
+      targetDpi: nil, jpegQuality: nil, tag: nil, type: nil))
+    try awaitValue(core.mutatePage(index: 0, destination: 1))
+    XCTAssertTrue(FileManager.default.fileExists(atPath: baselineURL.path))
+    try awaitValue(core.revertChanges())
+    XCTAssertEqual(core.coordinator.document?.pages.map(\.id), ids)
+    XCTAssertEqual(try core.textValue(context, id: id), "Base")
+    XCTAssertEqual(core.coordinator.document?.pages.first?.history.text(for: 999), permanent)
+    XCTAssertFalse(core.coordinator.isDirty)
+    XCTAssertTrue(core.coordinator.document?.pages.allSatisfy {
+      $0.geometry.rotation == 0 && !$0.history.canUndo && !$0.history.canRedo
+    } == true)
+    try core.setTextValue(context, id: id, text: "Next")
+    XCTAssertTrue(core.coordinator.isDirty)
+    try awaitValue(core.revertChanges())
+    XCTAssertEqual(try core.textValue(context, id: id), "Base")
+    try awaitValue(core.rotatePage(index: 0, degrees: 90))
+    try awaitValue(core.acceptChanges())
+    try awaitValue(core.rotatePage(index: 0, degrees: 90))
+    try awaitValue(core.revertChanges())
+    XCTAssertEqual(core.coordinator.document?.pages.first?.geometry.rotation, 90)
+  }
+
+  func testRevertChangesToEmptyBaselineAllowsReimport() throws {
+    let source = try fixture()
+    defer { try? FileManager.default.removeItem(at: source) }
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
+    defer { core.dispose() }
+    _ = try awaitValue(core.addPages(sources: [source.absoluteString], imageGeometry: nil,
+      targetDpi: nil, jpegQuality: nil, tag: nil, type: nil))
+    try awaitValue(core.revertChanges())
+    XCTAssertNil(core.coordinator.document)
+    XCTAssertFalse(core.coordinator.isDirty)
+    try awaitValue(core.revertChanges())
+    _ = try awaitValue(core.addPages(sources: [source.absoluteString], imageGeometry: nil,
+      targetDpi: nil, jpegQuality: nil, tag: nil, type: nil))
+    try awaitValue(core.acceptChanges())
+    try awaitValue(core.rotatePage(index: 0, degrees: 90))
+    try awaitValue(core.revertChanges())
+    XCTAssertEqual(core.coordinator.document?.pages.count, 1)
+    XCTAssertEqual(core.coordinator.document?.pages.first?.geometry.rotation, 0)
   }
 
   func testIndependentBaseTextSurvivesUndoAndClearWhileRetainedTextStaysTracked() {
