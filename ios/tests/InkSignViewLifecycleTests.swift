@@ -31,6 +31,33 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertThrowsError(try session.selectPage(index: 0))
   }
 
+  func testPageSelectionPreservesPendingStructuralPresentation() throws {
+    let fixture = makeFixture(pageCount: 2)
+    let view = fixture.view
+    defer { view.dispose(); fixture.window.isHidden = true }
+    try holdCurrentStructuralPresentation(view)
+    let pending = try XCTUnwrap(view.interaction.presentation)
+
+    try view.selectPage(index: 0)
+    try view.previousPage()
+    XCTAssertTrue(view.interaction.presentation === pending)
+    XCTAssertTrue(view.interaction.isStructurallySuspended)
+
+    try view.selectPage(index: 1)
+    drainMainQueue()
+    XCTAssertTrue(view.interaction.presentation === pending)
+    XCTAssertTrue(view.interaction.isStructurallySuspended)
+    XCTAssertEqual(view.viewerDocument?.activePageIndex, 0)
+
+    try completeCurrentPagePresentation(view)
+    XCTAssertNil(view.interaction.presentation)
+    XCTAssertFalse(view.interaction.isStructurallySuspended)
+    let destination = try XCTUnwrap(view.viewerDocument?.pages[1].id)
+    try view.selectPage(index: 1)
+    try awaitViewerPageReady(view, pageID: destination)
+    XCTAssertEqual(view.viewerDocument?.activePageIndex, 1)
+  }
+
   func testAnimatedViewportCentersRequestedPointBeforeCompletion() throws {
     let fixture = makeFixture(pageCount: 1)
     let view = fixture.view

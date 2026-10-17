@@ -1427,7 +1427,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(view.viewerDocument?.activePage.history.content.textAnnotations.first?.text, "note")
   }
 
-  func testBackspaceClearingNewTextBlursAndDiscardsTheDraft() throws {
+  func testBackspaceClearingNewTextKeepsEditorUntilSubmission() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
@@ -1438,6 +1438,17 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     editor.insertText("X")
     editor.deleteBackward()
 
+    XCTAssertTrue(textEditor(in: overlay) === editor)
+    XCTAssertTrue(editor.isFirstResponder)
+    XCTAssertGreaterThan(editor.bounds.width, 0)
+    XCTAssertGreaterThan(editor.bounds.height, 0)
+    editor.insertText("again\nagain")
+    XCTAssertEqual(editor.text, "again\nagain")
+    XCTAssertLessThanOrEqual(editor.caretRect(for: editor.endOfDocument).maxY, editor.bounds.height + 1)
+    editor.selectedRange = NSRange(location: 0, length: (editor.text as NSString).length)
+    editor.deleteBackward()
+    XCTAssertTrue(textEditor(in: overlay) === editor)
+    overlay.finishForLifecycle()
     XCTAssertNil(textEditor(in: overlay))
     XCTAssertFalse(editor.isFirstResponder)
     XCTAssertNil(overlay.selectedText)
@@ -1453,7 +1464,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     XCTAssertEqual(view.viewerDocument?.activePage.history.content.textAnnotations.first?.text, "next")
   }
 
-  func testBackspaceClearingCommittedTextBlursAndCanBeUndone() throws {
+  func testBackspaceClearingCommittedTextKeepsEditorUntilSubmissionAndCanBeUndone() throws {
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
@@ -1465,6 +1476,11 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     editor.selectedRange = NSRange(location: 1, length: 0)
     editor.deleteBackward()
 
+    XCTAssertTrue(textEditor(in: overlay) === editor)
+    XCTAssertTrue(editor.isFirstResponder)
+    XCTAssertGreaterThan(editor.bounds.width, 0)
+    XCTAssertGreaterThan(editor.bounds.height, 0)
+    overlay.finishForLifecycle()
     XCTAssertNil(textEditor(in: overlay))
     XCTAssertFalse(editor.isFirstResponder)
     XCTAssertNil(overlay.selectedText)
@@ -1473,6 +1489,46 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     try page.undo()
     XCTAssertEqual(view.viewerDocument?.activePage.history.content.textAnnotations.first, original)
     XCTAssertNil(textEditor(in: overlay))
+  }
+
+  func testEditingTapPlacesCaretAndBorderLongPressBeginsDragging() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let overlay = view.textInteractionOverlay
+    try overlay.armPlacement(generation: view.documentCoordinator.generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 100, y: 140)))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    editor.insertText("abcdef")
+    let start = editor.caretRect(for: editor.beginningOfDocument)
+    XCTAssertTrue(overlay.routeTap(at: editor.convert(CGPoint(x: start.midX, y: start.midY), to: overlay)))
+    XCTAssertEqual(editor.selectedRange, NSRange(location: 0, length: 0))
+    XCTAssertTrue(textEditor(in: overlay) === editor)
+
+    let border = editor.convert(CGPoint(x: -2, y: editor.bounds.midY), to: overlay)
+    XCTAssertTrue(overlay.routeDrag(.began, at: border, selectedOnly: false))
+    XCTAssertNil(textEditor(in: overlay))
+    XCTAssertTrue(overlay.routeDrag(.changed, at: CGPoint(x: border.x + 20, y: border.y + 10), selectedOnly: false))
+    XCTAssertTrue(overlay.routeDrag(.ended, at: CGPoint(x: border.x + 20, y: border.y + 10), selectedOnly: false))
+    XCTAssertNotNil(overlay.selectedText)
+  }
+
+  func testLiveEditorPresentationContainsNativeCaretForMultilineRTLText() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    view.textDirection = .rtl
+    let overlay = view.textInteractionOverlay
+    try overlay.armPlacement(generation: view.documentCoordinator.generation)
+    XCTAssertTrue(overlay.routePlacementTap(at: CGPoint(x: 200, y: 140)))
+    let editor = try XCTUnwrap(textEditor(in: overlay))
+    editor.insertText("שלום   \nעולם   ")
+    for position in [editor.beginningOfDocument, editor.endOfDocument] {
+      let caret = editor.caretRect(for: position)
+      XCTAssertGreaterThanOrEqual(caret.minY, -1)
+      XCTAssertLessThanOrEqual(caret.maxY, editor.bounds.height + 1)
+    }
+    XCTAssertEqual(editor.text, "שלום   \nעולם   ")
   }
 
   func testUnselectedLongPressCanMoveTextInOneHistoryAction() throws {

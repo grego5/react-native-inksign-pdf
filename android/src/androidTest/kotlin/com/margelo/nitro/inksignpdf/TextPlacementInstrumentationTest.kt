@@ -347,6 +347,45 @@ internal class TextPlacementInstrumentationTest {
   }
 
   @Test
+  fun reopenedOverflowEditorRespectsMaxLinesAndCompleteLineHeight() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
+      val lineHeight = TextLayoutSpec.createLayout(
+        text = "one", fontSize = defaultTextFontSize, textColor = android.graphics.Color.BLACK,
+        layoutWidth = 100.0, baseDirectionRtl = false,
+      ).height.toDouble()
+      val cases = listOf(Triple(2, 120.0, 2), Triple(0, lineHeight * 1.5, 1))
+      for ((limit, height, retainedLines) in cases) {
+        val overlay = harness.createOverlay()
+        try {
+          harness.insertText(TextAnnotationBounds(40.0, 30.0, 100.0, height), "one\ntwo\nthree",
+            TextAnnotationOptions(untracked = null, font = null, fontSize = null, color = null,
+              direction = TextDirection.LTR, maxLines = limit.toDouble(),
+              alignment = TextAlignment.START, verticalAnchor = TextVerticalAnchor.TOP))
+          val presentation = checkNotNull(harness.surface.textPresentationSnapshot())
+          val annotation = presentation.annotations.last()
+          val tap = presentation.transform.map(PagePoint(annotation.bounds.left + 10.0, annotation.bounds.top + 5.0))
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 7_000L))
+          assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 7_010L))
+          val editor = editorView(overlay)
+          overlay.syncTransform()
+          val nativeLayout = checkNotNull(editor.layout)
+          assertEquals(3, nativeLayout.lineCount)
+          assertEquals("one\ntwo\nthree", editor.text.toString())
+          assertEquals("Only retained complete native lines should be visible",
+            nativeLayout.getLineBottom(retainedLines - 1).toDouble(), editor.height.toDouble(), 1.0)
+          overlay.finishForLifecycle()
+          val saved = checkNotNull(harness.surface.textPresentationSnapshot()).annotations.last()
+          assertEquals(retainedLines, TextLayoutSpec.selectVisibleLines(TextLayoutSpec.createLayout(saved),
+            checkNotNull(saved.flowBounds), saved.maxLines, saved.verticalAnchor).lineCount)
+        } finally {
+          overlay.dispose()
+        }
+      }
+    }
+  }
+
+  @Test
   fun autoSizedManualPlacementAppliesMaxLines() {
     harness.runOnMain {
       harness.setDocument(harness.info, zoom = 1.0, fitToPage = false)
@@ -2082,6 +2121,32 @@ internal class TextPlacementInstrumentationTest {
         } finally {
           overlay.dispose()
         }
+      }
+    }
+  }
+
+  @Test
+  fun flowEditorContainsNativeMultilineHebrewLayout() {
+    harness.runOnMain {
+      harness.setDocument(harness.info, zoom = 3.0, fitToPage = false)
+      val overlay = harness.createOverlay()
+      try {
+        overlay.armPlacement(1L, TextModeOptions(font = null,
+          direction = TextDirection.RTL, width = 80.0, height = null,
+          maxLines = null, alignment = TextAlignment.START, verticalAnchor = TextVerticalAnchor.TOP,
+          x = null, y = null, zoom = null))
+        val tap = checkNotNull(harness.surface.textPresentationSnapshot()).transform.map(PagePoint(150.0, 80.0))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_DOWN, tap.x.toFloat(), tap.y.toFloat(), 6_000L))
+        assertTrue(dispatch(overlay, MotionEvent.ACTION_UP, tap.x.toFloat(), tap.y.toFloat(), 6_010L))
+        val editor = editorView(overlay)
+        editor.setText("שלום\nעולם\nשלום")
+        overlay.syncTransform()
+        val layout = checkNotNull(editor.layout)
+        assertEquals(3, layout.lineCount)
+        assertTrue("Live editor must contain the native font line boxes",
+          editor.height >= layout.height + editor.compoundPaddingTop + editor.compoundPaddingBottom)
+      } finally {
+        overlay.dispose()
       }
     }
   }

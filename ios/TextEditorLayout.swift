@@ -38,8 +38,8 @@ enum InkSignPdfTextEditorLayout {
     let glyphRange = NSRange(location: 0, length: manager.numberOfGlyphs)
     var contentHeight: CGFloat = 0
     var lineCount = 0
-    manager.enumerateLineFragments(forGlyphRange: glyphRange) { _, usedRect, _, _, _ in
-      contentHeight = max(contentHeight, usedRect.maxY)
+    manager.enumerateLineFragments(forGlyphRange: glyphRange) { lineRect, usedRect, _, _, _ in
+      contentHeight = max(contentHeight, max(lineRect.maxY, usedRect.maxY))
       lineCount += 1
     }
     let lineHeight = max(font.lineHeight, 1)

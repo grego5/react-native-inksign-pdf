@@ -228,7 +228,7 @@ internal object TextLayoutSpec {
   }
 
   fun selectVisibleLines(
-    layout: StaticLayout,
+    layout: Layout,
     flowBounds: PageRect,
     maxLines: Int,
     verticalAnchor: TextVerticalAnchor,

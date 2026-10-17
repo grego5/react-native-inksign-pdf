@@ -52,6 +52,8 @@
   Above-rule tolerance is the greater of screen tolerance and label line-height
   (editor line-height when unlabeled); below-rule tolerance is screen-based.
   Existing annotation editing/dragging does not snap.
+- Live editor height uses complete native lines within `maxLines` and flow height,
+  including fallback-font metrics; committed text keeps the shared renderer layout.
 - Keyboard handling changes the viewport rather than the annotation's position.
 - `textDirection` updates future placement and the editor, preserving fixed
   flow bounds; reflow/caret following use the updated direction. Explicit LTR/RTL

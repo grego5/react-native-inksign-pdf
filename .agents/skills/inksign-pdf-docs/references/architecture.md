@@ -112,6 +112,11 @@ Resource contracts: [Android lifecycle](android/view-lifecycle.md),
   transaction records one history action; unchanged/new blank text adds none.
   Same-target writes end editing first. Structural/export snapshots end the
   transaction before capture; live ink is excluded.
+- Outlines are thin dashed when inactive, solid when editing, and thicker dashed
+  when selected. Outside taps deselect; page drags retain selection.
+- Inside taps place the caret; long-press selects text for dragging. Empty editors
+  stay open until submitted. Presentation fits native line/caret extents without
+  changing stored text placement.
 - Headless automatic direction follows app layout. Viewer defaults independently
   configure interactive edits; explicit per-operation direction wins.
 

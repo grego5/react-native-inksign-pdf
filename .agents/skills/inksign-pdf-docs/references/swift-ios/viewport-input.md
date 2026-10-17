@@ -40,10 +40,6 @@
 - The core owns effective text; the overlay owns editor state. Mode transitions
   end the transaction or cancel untapped placement. Shared
   [bounds/line admission](../architecture.md#layout-and-editing) applies.
-- Static dashed outlines match Android: one point normally, two when selected,
-  with a more opaque default color. Outside taps deselect; page drags retain selection.
-- Deleting all text ends editing after marked-text composition finishes. Clearing a new
-  draft adds no history; clearing committed text is undoable.
 - Native text options require line counts representable as nonnegative integers.
   Programmatic value/options writes prepare fonts and layout before ending the
   active edit; rejected writes preserve the draft and history.
@@ -68,6 +64,8 @@
 
 ## Navigation and picking
 
+- Page selection preserves pending presentation until a replacement passes readiness
+  checks. Selecting the active page leaves its presentation intact.
 - `pagerDirection` sets PDFView semantic direction independently of text;
   auto follows system layout. PDFKit owns physical swipes.
 - UIKit distinguishes picker taps from pan/pinch; text/ink input is inactive.

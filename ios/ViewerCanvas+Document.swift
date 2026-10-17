@@ -125,7 +125,6 @@ extension ViewerCanvas {
 
   private func navigatePage(to target: Int, current: InkSignPdfNativePageInfo,
                             session: InkSignPdfModeSessionToken?) throws {
-    interaction.cancelPresentation()
     pageNavigationRequestID &+= 1
     if target == current.pageIndex {
       return

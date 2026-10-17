@@ -1747,7 +1747,23 @@ internal class TextInteractionOverlay(
         layoutWidth = width, baseDirectionRtl = state.directionRtl,
         alignment = state.alignment, typeface = editingTypeface())
       val selection = TextLayoutSpec.selectVisibleLines(layout, flowBounds, state.maxLines, state.verticalAnchor)
-      val top = flowBounds.top + selection.topOffset
+      // The committed renderer's line box can be shorter than EditText's
+      // fallback-font lines. Size the live frame from its final native layout.
+      val scale = presentation?.transform?.uniformScale()
+      val height = if (entry != null && scale != null) {
+        entry.measure(
+          View.MeasureSpec.makeMeasureSpec(max(1, ceil(width * scale).toInt()), View.MeasureSpec.EXACTLY),
+          View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val nativeLayout = checkNotNull(entry.layout)
+        TextLayoutSpec.selectVisibleLines(
+          nativeLayout,
+          PageRect(0.0, 0.0, width * scale, (flowBounds.bottom - flowBounds.top) * scale),
+          state.maxLines,
+          state.verticalAnchor,
+        ).height / scale
+      } else selection.height
+      val top = if (state.verticalAnchor == TextVerticalAnchor.BOTTOM) flowBounds.bottom - height else flowBounds.top
       val right = (state.alignment == TextAlignment.START && state.directionRtl) ||
         (state.alignment == TextAlignment.END && !state.directionRtl)
       val left = when {
@@ -1755,7 +1771,7 @@ internal class TextInteractionOverlay(
         right -> flowBounds.right - width
         else -> flowBounds.left
       }
-      return PageRect(left, top, left + width, top + selection.height)
+      return PageRect(left, top, left + width, top + height)
     }
     val size = if (entry != null && presentation != null) {
       editorSize(entry, state, presentation)
