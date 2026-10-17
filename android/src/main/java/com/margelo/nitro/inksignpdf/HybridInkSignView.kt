@@ -353,6 +353,22 @@ class HybridInkSignView internal constructor(
     emitPageState()
   }
 
+  override fun selectPage(index: Double) {
+    selectPage(index, null)
+  }
+
+  internal fun selectPage(index: Double, session: ModeSessionToken?) {
+    runOnMainSync {
+      if (disposed) throw operationCancelled()
+      session?.let(::requireModeSession)
+      val current = viewerCanvas.currentPageInfo()
+      if (!index.isFinite() || index < 0 || index % 1.0 != 0.0 || index >= current.pageCount) {
+        throw PdfSessionException("invalid_page_index", "The page index is out of range")
+      }
+      navigateToPage(index.toInt(), current.pageIndex, session)
+    }
+  }
+
   override fun nextPage() {
     runOnMainSync { startPageNavigation(1) }
   }
@@ -576,9 +592,13 @@ class HybridInkSignView internal constructor(
     if (disposed) throw operationCancelled()
     val current = viewerCanvas.currentPageInfo()
     val target = (current.pageIndex + delta).coerceIn(0, current.pageCount - 1)
+    navigateToPage(target, current.pageIndex, null)
+  }
+
+  private fun navigateToPage(target: Int, currentIndex: Int, session: ModeSessionToken?) {
     pageNavigationRequestID += 1L
     val requestID = pageNavigationRequestID
-    if (target == current.pageIndex) return
+    if (target == currentIndex) return
     if (isPickingPageCoords) cancelCoordinateRequest()
     val requestGeneration = documentState.generation
     if (!Handler(Looper.getMainLooper()).post {
@@ -586,6 +606,7 @@ class HybridInkSignView internal constructor(
           pageNavigationRequestID != requestID
         ) return@post
         try {
+          session?.let(::requireModeSession)
           viewerCanvas.withStateTransaction {
             finishInteractionForLifecycle()
             viewerCanvas.switchPage(target)

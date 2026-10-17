@@ -90,6 +90,10 @@ namespace margelo::nitro::inksignpdf {
       return __promise;
     }();
   }
+  void JHybridModeSessionSpec::selectPage(double index) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* index */)>("selectPage");
+    method(_javaPart, index);
+  }
   std::shared_ptr<Promise<void>> JHybridModeSessionSpec::focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) {
     static const auto method = _javaPart->javaClassStatic()->getMethod<jni::local_ref<JPromise::javaobject>(jni::alias_ref<JHybridDocumentPageSpec::JavaPart> /* page */, double /* id */, jni::alias_ref<JInputTargetFocusOptions> /* options */)>("focusInputTarget");
     auto __result = method(_javaPart, std::dynamic_pointer_cast<JHybridDocumentPageSpec>(page)->getJavaPart(), id, options.has_value() ? JInputTargetFocusOptions::fromCpp(options.value()) : nullptr);

@@ -36,6 +36,10 @@ abstract class HybridModeSessionSpec: HybridObject() {
   
   @DoNotStrip
   @Keep
+  abstract fun selectPage(index: Double): Unit
+  
+  @DoNotStrip
+  @Keep
   abstract fun focusInputTarget(page: HybridDocumentPageSpec, id: Double, options: InputTargetFocusOptions?): Promise<Unit>
   
   @DoNotStrip

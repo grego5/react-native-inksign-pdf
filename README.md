@@ -158,6 +158,8 @@ Programmatic `untracked: true` skips history unless the target already has track
 
 - `view.setMode('view' | 'ink' | 'text', options?)` — Enter a mode and return its
   session. Options configure text placement only; omission preserves the viewport.
+- `view.selectPage(index)` — Select a page by zero-based index. After appending pages,
+  use `pageCount - addedPageCount` for the first added page or `pageCount - 1` for the last.
 - `view.nextPage()`, `view.previousPage()` — Navigate in document order.
 - `view.getViewport()` — Read current focus and zoom.
 - `view.focusInputTarget(page, id, options?)` — Select that page and focus its target.
@@ -171,7 +173,8 @@ Programmatic `untracked: true` skips history unless the target already has track
 Mode sessions prevent delayed async follow-up work from running after the user
 switches mode or detaches the view. They expose `getPage(query?)`,
 `focusInputTarget(page, id, options?)`, `requestUserTap()`, and `setViewport(options?)`.
-An empty viewport object fits the page. Session pages cancel with their session;
+Sessions also expose `selectPage(index)`. An empty viewport object fits the page.
+Session pages cancel with their session;
 ordinary document pages remain usable independently. Catch cancellation with
 `isOperationCancelled(error)`.
 

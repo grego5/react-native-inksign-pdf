@@ -31,6 +31,7 @@ public protocol HybridInkSignViewSpec_protocol: HybridObject, HybridView {
   var onTextSelectionChange: ((_ selection: Variant_NullType_TextSelection?) -> Void)? { get set }
 
   // Methods
+  func selectPage(index: Double) throws -> Void
   func nextPage() throws -> Void
   func focusInputTarget(page: (any HybridDocumentPageSpec), id: Double, options: InputTargetFocusOptions?) throws -> Promise<Void>
   func previousPage() throws -> Void

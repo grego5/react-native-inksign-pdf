@@ -95,6 +95,19 @@ extension ViewerCanvas {
     return try result!.get()
   }
 
+  func selectPage(index: Double) throws {
+    try performOnMainSync { try self.selectPage(index: index, session: nil) }
+  }
+
+  func selectPage(index: Double, session: InkSignPdfModeSessionToken?) throws {
+    guard !disposed else { throw ViewportError.cancelled }
+    if let session { try interaction.requireSession(session) }
+    let current = try currentPageInfo()
+    guard index.isFinite, index >= 0, index.rounded(.towardZero) == index,
+          index < Double(current.pageCount) else { throw MutablePageError.invalidPageIndex }
+    try navigatePage(to: Int(index), current: current, session: session)
+  }
+
   func nextPage() throws {
     try performOnMainSync { try self.navigatePage(by: 1) }
   }
@@ -107,6 +120,11 @@ extension ViewerCanvas {
     guard !disposed else { throw ViewportError.cancelled }
     let current = try currentPageInfo()
     let target = min(max(current.pageIndex + delta, 0), current.pageCount - 1)
+    try navigatePage(to: target, current: current, session: nil)
+  }
+
+  private func navigatePage(to target: Int, current: InkSignPdfNativePageInfo,
+                            session: InkSignPdfModeSessionToken?) throws {
     interaction.cancelPresentation()
     pageNavigationRequestID &+= 1
     if target == current.pageIndex {
@@ -119,6 +137,7 @@ extension ViewerCanvas {
             !self.disposed,
             self.attachedCore?.coordinator.generation == requestGeneration,
             self.pageNavigationRequestID == requestID else { return }
+      if let session, !self.interaction.sessionIsCurrent(session) { return }
       do {
         try self.switchPage(to: target, completion: self.programmaticPageSwitchCompletion())
       } catch {

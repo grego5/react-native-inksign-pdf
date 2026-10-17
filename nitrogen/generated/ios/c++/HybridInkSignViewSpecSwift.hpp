@@ -260,6 +260,12 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
+    inline void selectPage(double index) override {
+      auto __result = _swiftPart.selectPage(std::forward<decltype(index)>(index));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline void nextPage() override {
       auto __result = _swiftPart.nextPage();
       if (__result.hasError()) [[unlikely]] {

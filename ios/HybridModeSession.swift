@@ -39,6 +39,10 @@ final class HybridModeSession: HybridModeSessionSpec {
     }
   }
 
+  func selectPage(index: Double) throws {
+    try withOwner { try $0.selectPage(index: index, session: token) }
+  }
+
   func requestUserTap() throws -> Promise<PageCoords> {
     try withOwner { try $0.interaction.requestCoordinates(modeSession: token) }
   }

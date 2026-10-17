@@ -23,6 +23,9 @@ internal class HybridModeSession(owner: HybridInkSignView, private val token: Mo
   override fun focusInputTarget(page: HybridDocumentPageSpec, id: Double, options: InputTargetFocusOptions?): Promise<Unit> =
     withOwner { it.focusPageInputTarget(page, id, options, token) }
 
+  override fun selectPage(index: Double) =
+    withOwner { it.selectPage(index, token) }
+
   override fun requestUserTap(): Promise<PageCoords> =
     withOwner { it.requestSessionPageCoords(token) }
 

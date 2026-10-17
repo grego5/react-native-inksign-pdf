@@ -91,6 +91,7 @@ namespace margelo::nitro::inksignpdf {
 
   public:
     // Methods
+    void selectPage(double index) override;
     void nextPage() override;
     std::shared_ptr<Promise<void>> focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) override;
     void previousPage() override;

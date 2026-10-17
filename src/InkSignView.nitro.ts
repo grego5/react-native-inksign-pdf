@@ -40,6 +40,8 @@ export interface TextHandle extends HybridObject<{ ios: 'swift'; android: 'kotli
 export interface ModeSession extends HybridObject<{ ios: 'swift'; android: 'kotlin' }> {
   /** Prepares a page bound to this session and its captured document. */
   getPage(pageIndex?: PageQuery): Promise<DocumentPage>
+  /** Selects a page by zero-based index. */
+  selectPage(index: number): void
   focusInputTarget(page: DocumentPage, id: InputTargetId, options?: InputTargetFocusOptions): Promise<void>
   /** Temporarily picks one page tap, then restores this session's input mode. */
   requestUserTap(): Promise<PageCoords>
@@ -86,6 +88,8 @@ export interface InkSignViewProps extends HybridViewProps {
 }
 
 export interface InkSignViewMethods extends HybridViewMethods {
+  /** Selects a page by zero-based index; rejects out-of-range indices. */
+  selectPage(index: number): void
   /** Selects the next page; stays on the last page at the end. */
   nextPage(): void
   focusInputTarget(page: DocumentPage, id: InputTargetId, options?: InputTargetFocusOptions): Promise<void>

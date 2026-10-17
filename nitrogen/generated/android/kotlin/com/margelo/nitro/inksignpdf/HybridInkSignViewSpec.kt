@@ -178,6 +178,10 @@ abstract class HybridInkSignViewSpec: HybridView() {
   // Methods
   @DoNotStrip
   @Keep
+  abstract fun selectPage(index: Double): Unit
+  
+  @DoNotStrip
+  @Keep
   abstract fun nextPage(): Unit
   
   @DoNotStrip

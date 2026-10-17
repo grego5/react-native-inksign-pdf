@@ -15,6 +15,7 @@ namespace margelo::nitro::inksignpdf {
     // load custom methods/properties
     registerHybrids(this, [](Prototype& prototype) {
       prototype.registerHybridMethod("getPage", &HybridModeSessionSpec::getPage);
+      prototype.registerHybridMethod("selectPage", &HybridModeSessionSpec::selectPage);
       prototype.registerHybridMethod("focusInputTarget", &HybridModeSessionSpec::focusInputTarget);
       prototype.registerHybridMethod("requestUserTap", &HybridModeSessionSpec::requestUserTap);
       prototype.registerHybridMethod("setViewport", &HybridModeSessionSpec::setViewport);

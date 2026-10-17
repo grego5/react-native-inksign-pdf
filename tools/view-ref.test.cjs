@@ -14,6 +14,7 @@ let selectedText = null;
 let headlessFactory;
 const platform = { OS: 'android' };
 const nativeSession = {
+  selectPage: index => { calls.push(['session-select', index]); },
   getPage: async () => { calls.push('session-page'); return { getInputTargets: () => [] }; },
   requestUserTap: async () => ({ pageId: 'page', pageIndex: 0, x: 10, y: 20 }),
   setViewport: async options => { calls.push(['viewport', options]); },
@@ -24,6 +25,7 @@ const nativeDocument = {
   getPageIdsByTag: tag => { calls.push(['tag-ids', tag]); return ['report-0', 'report-1']; },
 };
 const native = {
+  selectPage: index => { calls.push(['view-select', index]); },
   getSelectedText: () => selectedText,
   requestUserTap: async () => { calls.push('tap'); return { pageId: 'page', pageIndex: 0, x: 10, y: 20 }; },
   setMode: mode => { calls.push(mode); return nativeSession; },
@@ -373,6 +375,9 @@ test('mode-session and document handles acquire pages independently', async () =
     assert.deepEqual((await nativeDocument.getPage()).getInputTargets(), []);
     await session.setViewport({ zoom: 3 });
     assert.deepEqual(calls, ['ink', 'session-page', ['document-page', undefined], ['viewport', { zoom: 3 }]]);
+    ref.current.selectPage(2);
+    session.selectPage(0);
+    assert.deepEqual(calls.slice(-2), [['view-select', 2], ['session-select', 0]]);
     assert.deepEqual(nativeDocument.getPageIdsByTag('report'), ['report-0', 'report-1']);
     assert.deepEqual(calls.at(-1), ['tag-ids', 'report']);
     let receivedQuery;

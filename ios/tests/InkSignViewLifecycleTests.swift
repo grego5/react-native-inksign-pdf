@@ -7,6 +7,30 @@ import XCTest
 @testable import ReactNativeInkSignPdf
 
 final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
+  func testSelectPageNavigatesDirectlyAndCancelledSessionCannotNavigate() throws {
+    let fixture = makeFixture(pageCount: 3)
+    let view = fixture.view
+    defer { view.dispose(); fixture.window.isHidden = true }
+    let pages = try XCTUnwrap(view.viewerDocument).pages
+
+    try view.selectPage(index: 2)
+    try awaitViewerPageReady(view, pageID: pages[2].id)
+    XCTAssertEqual(view.viewerDocument?.activePageIndex, 2)
+    XCTAssertThrowsError(try view.selectPage(index: 3))
+    XCTAssertEqual(view.viewerDocument?.activePageIndex, 2)
+
+    let session = try view.setMode(mode: .view, options: nil)
+    try session.selectPage(index: 1)
+    try awaitViewerPageReady(view, pageID: pages[1].id)
+    XCTAssertEqual(view.viewerDocument?.activePageIndex, 1)
+
+    try session.selectPage(index: 0)
+    _ = try view.setMode(mode: .ink, options: nil)
+    drainMainQueue()
+    XCTAssertEqual(view.viewerDocument?.activePageIndex, 1)
+    XCTAssertThrowsError(try session.selectPage(index: 0))
+  }
+
   func testAnimatedViewportCentersRequestedPointBeforeCompletion() throws {
     let fixture = makeFixture(pageCount: 1)
     let view = fixture.view

@@ -14,6 +14,7 @@ public protocol HybridModeSessionSpec_protocol: HybridObject {
 
   // Methods
   func getPage(pageIndex: Variant_Double_TaggedPageQuery?) throws -> Promise<(any HybridDocumentPageSpec)>
+  func selectPage(index: Double) throws -> Void
   func focusInputTarget(page: (any HybridDocumentPageSpec), id: Double, options: InputTargetFocusOptions?) throws -> Promise<Void>
   func requestUserTap() throws -> Promise<PageCoords>
   func setViewport(options: ViewportOptions?) throws -> Promise<Void>

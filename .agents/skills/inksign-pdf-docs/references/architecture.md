@@ -144,6 +144,9 @@ Details: [Android history](android/view-lifecycle.md#page-history-and-disposal),
 - Viewer commands use a separate presentation queue. Focus/navigation can await
   installed page/overlay/transform readiness; core commands finish at publication.
   Replacing the attached owner cancels viewer work, not ordinary work on that owner.
+- Viewer and mode-session `selectPage(index)` use zero-based indices and reject
+  out-of-range values. Like next/previous, selection schedules presentation; later
+  navigation supersedes it. Document imports preserve viewer selection.
 - `setMode()` replaces the session token, including same-mode requests. Without a
   document, view mode is a no-op returning an inactive session; ink/text require
   readiness. Mode-scoped methods/pages cancel on supersession, detach, close, or

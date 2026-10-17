@@ -339,6 +339,10 @@ namespace margelo::nitro::inksignpdf {
   }
 
   // Methods
+  void JHybridInkSignViewSpec::selectPage(double index) {
+    static const auto method = _javaPart->javaClassStatic()->getMethod<void(double /* index */)>("selectPage");
+    method(_javaPart, index);
+  }
   void JHybridInkSignViewSpec::nextPage() {
     static const auto method = _javaPart->javaClassStatic()->getMethod<void()>("nextPage");
     method(_javaPart);

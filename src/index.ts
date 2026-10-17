@@ -165,6 +165,10 @@ function createValidatedModeSession(native: ModeSession): ModeSession {
       return callAsync(() => validatePageQuery(pageIndex), async () =>
         createValidatedDocumentPage(await native.getPage(pageIndex)));
     },
+    selectPage(index) {
+      validateRequiredPageIndex(index);
+      native.selectPage(index);
+    },
     requestUserTap: () => native.requestUserTap(),
     focusInputTarget(page, id, options) {
       return callAsync(() => validateInputTargetFocusOptions(options), () =>
@@ -261,6 +265,10 @@ function createValidatedViewHandle(
     },
     dispose: () => getNative().dispose(),
     requestUserTap: () => connection.invoke(native => native.requestUserTap()),
+    selectPage(index) {
+      validateRequiredPageIndex(index);
+      getNative().selectPage(index);
+    },
     nextPage: () => getNative().nextPage(),
     focusInputTarget(page, id, options) {
       return callAsync(() => validateInputTargetFocusOptions(options), () =>

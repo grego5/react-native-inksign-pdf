@@ -95,6 +95,12 @@ namespace margelo::nitro::inksignpdf {
       auto __value = std::move(__result.value());
       return __value;
     }
+    inline void selectPage(double index) override {
+      auto __result = _swiftPart.selectPage(std::forward<decltype(index)>(index));
+      if (__result.hasError()) [[unlikely]] {
+        std::rethrow_exception(__result.error());
+      }
+    }
     inline std::shared_ptr<Promise<void>> focusInputTarget(const std::shared_ptr<HybridDocumentPageSpec>& page, double id, const std::optional<InputTargetFocusOptions>& options) override {
       auto __result = _swiftPart.focusInputTarget(page, std::forward<decltype(id)>(id), options);
       if (__result.hasError()) [[unlikely]] {

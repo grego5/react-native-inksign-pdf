@@ -610,6 +610,17 @@ open class HybridInkSignViewSpec_cxx {
 
   // Methods
   @inline(__always)
+  public final func selectPage(index: Double) -> bridge.Result_void_ {
+    do {
+      try self.__implementation.selectPage(index: index)
+      return bridge.create_Result_void_()
+    } catch (let __error) {
+      let __exceptionPtr = __error.toCpp()
+      return bridge.create_Result_void_(__exceptionPtr)
+    }
+  }
+  
+  @inline(__always)
   public final func nextPage() -> bridge.Result_void_ {
     do {
       try self.__implementation.nextPage()
