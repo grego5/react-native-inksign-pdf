@@ -1,0 +1,116 @@
+name: Publish completed PDFium builds
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: PDFium version built by the selected runs
+        type: string
+        default: '157.0.8086.0'
+        required: true
+      android_run_id:
+        description: Completed Android build run ID (optional)
+        type: string
+        default: ''
+      apple_run_id:
+        description: Completed Apple build run ID (optional)
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+      android_run_id:
+        type: string
+        default: ''
+      apple_run_id:
+        type: string
+        default: ''
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: pdfium-static-release-publish
+      cancel-in-progress: false
+    env:
+      PDFIUM_VERSION: ${{ inputs.version }}
+      ANDROID_RUN_ID: ${{ inputs.android_run_id }}
+      APPLE_RUN_ID: ${{ inputs.apple_run_id }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Validate publishing inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PDFIUM_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ -n "$ANDROID_RUN_ID" || -n "$APPLE_RUN_ID" ]]
+          mkdir -p release-assets
+
+      - name: Download completed Android slices
+        if: inputs.android_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          pattern: pdfium-static-android-*
+          path: android-slices
+          run-id: ${{ inputs.android_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Package Android release asset
+        if: inputs.android_run_id != ''
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android-bundle/android
+          for abi in arm64-v8a x86_64; do
+            cp "android-slices/pdfium-static-android-$abi/libpdfium.a" \
+              "android-bundle/android/$abi-libpdfium.a"
+          done
+          (
+            cd android-bundle
+            zip -q -r "../release-assets/${PDFIUM_VERSION}-android-static.zip" android
+          )
+          (
+            cd release-assets
+            sha256sum "${PDFIUM_VERSION}-android-static.zip" > SHA256SUMS-ANDROID
+          )
+
+      - name: Download completed Apple bundle
+        if: inputs.apple_run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: pdfium-static-apple-${{ inputs.version }}
+          path: apple-bundle
+          run-id: ${{ inputs.apple_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify Apple release asset
+        if: inputs.apple_run_id != ''
+        shell: bash
+        run: |
+          set -euxo pipefail
+          (
+            cd apple-bundle
+            sha256sum --check SHA256SUMS
+          )
+          cp "apple-bundle/PDFium-static-${PDFIUM_VERSION}.xcframework.tar.gz" release-assets/
+          cp apple-bundle/SHA256SUMS release-assets/SHA256SUMS-APPLE
+
+      - name: Publish versioned release assets
+        shell: bash
+        run: |
+          set -euxo pipefail
+          tag="pdfium-${PDFIUM_VERSION}-static"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" --target "$GITHUB_SHA" --latest=false \
+              --title "PDFium ${PDFIUM_VERSION} static" \
+              --notes 'Static PDFium libraries. Android and Apple assets are published independently from completed build runs; each platform has its own checksum list.'
+          fi
+          gh release upload "$tag" release-assets/* --clobber
+          gh release view "$tag" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

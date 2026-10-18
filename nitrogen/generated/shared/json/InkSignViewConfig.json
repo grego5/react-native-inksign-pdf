@@ -1,0 +1,28 @@
+{
+  "uiViewClassName": "InkSignView",
+  "supportsRawText": false,
+  "bubblingEventTypes": {},
+  "directEventTypes": {},
+  "validAttributes": {
+    "document": true,
+    "strokeColor": true,
+    "strokeMinWidth": true,
+    "strokeMaxWidth": true,
+    "strokeSmoothing": true,
+    "defaultTextFontSize": true,
+    "defaultTextColor": true,
+    "outlineColor": true,
+    "selectedOutlineColor": true,
+    "editorBackgroundColor": true,
+    "selectedBackgroundColor": true,
+    "doubleTap": true,
+    "keyboardAvoidanceEnabled": true,
+    "pagerDirection": true,
+    "textDirection": true,
+    "onStateChange": true,
+    "onPageChange": true,
+    "onZoomChange": true,
+    "onTextSelectionChange": true,
+    "hybridRef": true
+  }
+}

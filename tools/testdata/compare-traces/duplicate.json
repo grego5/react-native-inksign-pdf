@@ -1,0 +1,10 @@
+{
+  "trace": "duplicate.perfetto-trace",
+  "file_size_bytes": 106,
+  "file_size_cross_check": true,
+  "metrics": [
+    {"section": "native_timing", "metric": "average", "scope": "cpp_geometry", "value": 2.0, "unit": "ms"},
+    {"section": "native_timing", "metric": "average", "scope": "cpp_geometry", "value": 2.1, "unit": "ms"}
+  ],
+  "anomalies": []
+}

@@ -1,0 +1,417 @@
+package com.margelo.nitro.inksignpdf
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PageContentHistoryTest {
+  @Test
+  fun acceptChangesPreservesEffectiveContentAndMakesItTheUndoBaseline() {
+    val history = PageContentHistory()
+    val base = text(1L, "Base", 24.0, 40.0)
+    val deleted = text(2L, "Delete", 24.0, 80.0)
+    history.appendText(base, untracked = true)
+    history.appendText(deleted, untracked = true)
+    history.replaceText(base, base.copy(text = "Changed"))
+    history.removeTextAnnotation(deleted)
+    history.append(outline(0f))
+    history.appendText(text(3L, "Undone", 24.0, 120.0))
+    history.undoMutation()
+    val baseline = history.contentSnapshot()
+    history.acceptChanges()
+    assertEquals(baseline, history.contentSnapshot())
+    assertEquals(InkState(false, false, false), history.state())
+    history.redoMutation()
+    assertEquals(baseline, history.contentSnapshot())
+    val current = baseline.filterIsInstance<PageContent.Text>().single().annotation
+    history.replaceText(current, current.copy(text = "Next"))
+    assertTrue(history.state().isDirty)
+    history.undoMutation()
+    assertEquals(baseline, history.contentSnapshot())
+    assertEquals(false, history.state().isDirty)
+    history.acceptChanges()
+    history.replaceText(current, current.copy(text = "Untracked"), untracked = true)
+    assertEquals(InkState(false, false, false), history.state())
+  }
+
+  @Test
+  fun resettingEmptyAndHistoryDisabledContentIsIdempotent() {
+    for (enabled in listOf(true, false)) {
+      val history = PageContentHistory(recordHistory = enabled)
+      history.acceptChanges()
+      val annotation = text(1L, "Keep", 24.0, 40.0)
+      history.appendText(annotation)
+      history.acceptChanges()
+      history.acceptChanges()
+      assertEquals(listOf(PageContent.Text(annotation)), history.contentSnapshot())
+      assertEquals(InkState(false, false, false), history.state())
+      history.replaceText(annotation, annotation.copy(text = "New"))
+      assertEquals(enabled, history.state().isDirty)
+    }
+  }
+
+  @Test
+  fun revertDiscardsTrackedOverridesAndRedoButKeepsTheCurrentBase() {
+    val history = PageContentHistory()
+    val base = text(1L, "Base", 24.0, 40.0)
+    history.appendText(base, untracked = true)
+    history.removeTextAnnotation(base)
+    history.append(outline(0f))
+    val laterBase = text(2L, "Permanent", 24.0, 80.0)
+    history.appendText(laterBase, untracked = true)
+    history.undoMutation()
+    history.revertChanges()
+    assertEquals(listOf(PageContent.Text(base), PageContent.Text(laterBase)), history.contentSnapshot())
+    assertEquals(InkState(false, false, false), history.state())
+  }
+
+  @Test
+  fun untrackedBaseSurvivesUndoAndRedoWithoutBecomingDirty() {
+    val history = PageContentHistory()
+    val ink = outline(0f)
+    val base = text(1L, "Base", 24.0, 40.0)
+    history.append(ink)
+    history.undoMutation()
+    history.appendText(base, untracked = true)
+    assertEquals(InkState(false, true, false), history.state())
+    history.redoMutation()
+    assertEquals(listOf(PageContent.Text(base), PageContent.Ink(ink)), history.contentSnapshot())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(base)), history.contentSnapshot())
+    history.replaceText(base, base.copy(text = "New base"), untracked = true)
+    assertEquals(false, history.state().isDirty)
+    history.redoMutation()
+    history.undoMutation()
+    assertEquals("New base", history.contentSnapshot().single().textAnnotationOrNull()?.text)
+    assertEquals(false, history.state().isDirty)
+  }
+
+  @Test
+  fun untrackedFlagIsIgnoredForTextWithRetainedTrackedEdits() {
+    val history = PageContentHistory()
+    val base = text(1L, "Base", 24.0, 40.0)
+    val tracked = base.copy(text = "Tracked")
+    val later = base.copy(text = "Later")
+    history.appendText(base, untracked = true)
+    history.replaceText(base, tracked)
+    history.undoMutation()
+    history.replaceText(base, later, untracked = true)
+    assertEquals(InkState(true, false, true), history.state())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(base)), history.contentSnapshot())
+    history.redoMutation()
+    assertEquals(listOf(PageContent.Text(later)), history.contentSnapshot())
+  }
+
+  @Test
+  fun trackedDeletionAndClearDoNotRetireThePermanentBase() {
+    val history = PageContentHistory()
+    val base = text(1L, "Base", 24.0, 40.0)
+    val laterBase = text(2L, "Later base", 24.0, 80.0)
+    history.appendText(base, untracked = true)
+    history.removeTextAnnotation(base)
+    assertEquals(emptyList<PageContent>(), history.contentSnapshot())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(base)), history.contentSnapshot())
+    history.clearMutation()
+    history.appendText(laterBase, untracked = true)
+    assertEquals(listOf(PageContent.Text(laterBase)), history.contentSnapshot())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(base), PageContent.Text(laterBase)), history.contentSnapshot())
+    history.redoMutation()
+    assertEquals(listOf(PageContent.Text(laterBase)), history.contentSnapshot())
+  }
+
+  @Test
+  fun dirtyStateFollowsAppliedTrackedHistoryAcrossPages() {
+    val document = DocumentCoordinator(
+      sourcePath = "multi-page.pdf", generation = 1L,
+      pages = listOf(PdfPageDimensions(300.0, 400.0), PdfPageDimensions(300.0, 400.0)),
+      sessionWorker = PdfSessionWorker(), artifactPolicy = TestDocumentArtifactPolicy(),
+    )
+    val first = document.page(0).history
+    val second = document.page(1).history
+    second.appendText(text(1L, "Base", 24.0, 40.0), untracked = true)
+    assertEquals(false, document.isDirty())
+    first.append(outline(0f))
+    assertTrue(document.isDirty())
+    first.undoMutation()
+    assertEquals(InkState(false, true, false), first.state())
+    assertEquals(false, document.isDirty())
+    first.redoMutation()
+    assertTrue(document.isDirty())
+    first.undoMutation()
+    first.append(outline(20f))
+    assertEquals(InkState(true, false, true), first.state())
+    first.undoMutation()
+    document.markStructuralDirty()
+    assertTrue(document.isDirty())
+  }
+
+  @Test
+  fun headlessContentDoesNotCreateHistoryOrDirtyState() {
+    val history = PageContentHistory(recordHistory = false)
+    val annotation = text(1L, "Base", 24.0, 40.0)
+    history.appendText(annotation)
+    history.replaceText(annotation, annotation.copy(text = "Updated"))
+    assertEquals(InkState(false, false, false), history.state())
+    assertEquals("Updated", history.contentSnapshot().single().textAnnotationOrNull()?.text)
+    history.clearMutation()
+    assertEquals(InkState(false, false, false), history.state())
+  }
+
+  @Test
+  fun clearInkPreservesTextAndRestoresOrderInOneUndoStep() {
+    val history = PageContentHistory()
+    val first = outline(0f)
+    val annotation = text(1L, "Keep", 24.0, 40.0)
+    val second = outline(20f)
+    history.append(first)
+    history.appendText(annotation)
+    history.append(second)
+    val original = history.contentSnapshot()
+    history.clearInkMutation()
+    assertEquals(listOf(PageContent.Text(annotation)), history.contentSnapshot())
+    val revision = history.revision
+    assertEquals(InkHistoryMutation.NoOp, history.clearInkMutation())
+    assertEquals(revision, history.revision)
+    history.undoMutation()
+    assertEquals(original, history.contentSnapshot())
+    history.redoMutation()
+    assertEquals(listOf(PageContent.Text(annotation)), history.contentSnapshot())
+  }
+
+  @Test
+  fun documentPagesKeepHistoryAndDirtyStateIndependent() {
+    val document = DocumentCoordinator(
+      sourcePath = "multi-page.pdf",
+      generation = 1L,
+      pages = listOf(
+        PdfPageDimensions(300.0, 400.0),
+        PdfPageDimensions(600.0, 800.0),
+      ),
+      sessionWorker = PdfSessionWorker(),
+      artifactPolicy = TestDocumentArtifactPolicy(),
+    )
+    val first = outline(0f)
+    val second = outline(20f)
+    document.page(0).history.append(first)
+    document.page(1).history.append(second)
+
+    assertEquals(listOf(first), document.page(0).history.snapshot())
+    assertEquals(listOf(second), document.page(1).history.snapshot())
+    assertTrue(document.pages.any { it.history.state().isDirty })
+
+    document.clearInk(document.page(0))
+    assertTrue(document.page(0).history.snapshot().isEmpty())
+    assertEquals(listOf(second), document.page(1).history.snapshot())
+    document.page(0).history.undoMutation()
+    assertEquals(listOf(first), document.page(0).history.snapshot())
+    document.page(0).history.clearMutation()
+    assertTrue(document.page(1).history.state().isDirty)
+  }
+
+  @Test
+  fun strokeUndoRedoAndClearKeepStateSnapshotsConsistent() {
+    val history = PageContentHistory()
+    val first = outline(0f)
+    val second = outline(20f)
+    assertEquals(InkState(false, false, false), history.state())
+    history.append(first); assertEquals(InkState(true, false, true), history.state())
+    history.append(second); history.undoMutation()
+    assertEquals(InkState(true, true, true), history.state())
+    assertEquals(listOf(first), history.snapshot())
+    history.undoMutation()
+    assertEquals(InkState(false, true, false), history.state())
+    history.redoMutation(); history.clearMutation()
+    assertEquals(InkState(true, false, true), history.state())
+    history.undoMutation()
+    assertEquals(listOf(first), history.snapshot())
+  }
+
+  @Test
+  fun interleavedInkAndTextUseOneOrderedHistory() {
+    val history = PageContentHistory()
+    val first = outline(0f)
+    val text = text(1L, "Hello\nworld", 24.0, 40.0)
+    val second = outline(20f)
+
+    history.append(first)
+    history.appendText(text)
+    history.append(second)
+
+    assertEquals(
+      listOf(
+        PageContent.Ink(first),
+        PageContent.Text(text),
+        PageContent.Ink(second),
+      ),
+      history.contentSnapshot(),
+    )
+    history.undoMutation()
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Ink(first)), history.contentSnapshot())
+    history.redoMutation()
+    assertEquals(
+      listOf(PageContent.Ink(first), PageContent.Text(text)),
+      history.contentSnapshot(),
+    )
+  }
+
+  @Test
+  fun textEditFontAndDeleteEachHaveIndependentHistoryActions() {
+    val history = PageContentHistory()
+    val before = text(1L, "Hello", 10.0, 20.0)
+    val after = text(1L, "Hello\nworld", 10.0, 20.0, width = 48.0, height = 32.0, fontSize = 18.0)
+
+    history.appendText(before)
+    history.replaceText(before, after)
+    assertEquals(listOf(PageContent.Text(after)), history.contentSnapshot())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(before)), history.contentSnapshot())
+    history.redoMutation()
+    history.removeTextAnnotation(after)
+    assertTrue(history.contentSnapshot().isEmpty())
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(after)), history.contentSnapshot())
+  }
+
+  @Test
+  fun clearAndUndoRestoreInkAndTextTogether() {
+    val history = PageContentHistory()
+    val first = outline(0f)
+    val text = text(1L, "Signed", 12.0, 18.0)
+    history.append(first)
+    history.appendText(text)
+
+    history.clearMutation()
+    assertEquals(InkState(true, false, true), history.state())
+    history.undoMutation()
+    assertEquals(2, history.contentSnapshot().size)
+    assertEquals(InkState(true, true, true), history.state())
+    history.redoMutation()
+    assertTrue(history.contentSnapshot().isEmpty())
+  }
+
+  @Test
+  fun textSnapshotKeepsCanonicalBoundsAndDoesNotExposeHistoryStorage() {
+    val history = PageContentHistory()
+    val annotation = text(1L, "A\nlongest", 14.0, 22.0, width = 64.0, height = 30.0)
+    history.appendText(annotation)
+
+    val snapshot = history.contentSnapshot()
+    assertEquals(PagePoint(14.0, 22.0), annotation.position)
+    assertEquals(64.0, annotation.intrinsicWidth, 0.0)
+    assertEquals(30.0, annotation.intrinsicHeight, 0.0)
+    assertEquals(listOf(PageContent.Text(annotation)), snapshot)
+    assertEquals(listOf(PageContent.Text(annotation)), history.contentSnapshot())
+  }
+
+  @Test
+  fun historyOwnsAnImmutableCubicCommandSnapshot() {
+    val commands = mutableListOf(
+      InkPathCommand(InkPathCommand.MOVE, 4f, 5f),
+      InkPathCommand(InkPathCommand.CUBIC, 8f, 9f, 5f, 6f, 7f, 8f),
+      InkPathCommand(InkPathCommand.CLOSE),
+    )
+    val outline = StrokeOutline.fromCommands(commands)
+    commands[1] = InkPathCommand(InkPathCommand.CUBIC, 99f, 99f)
+    val data = outline.contourPathData.single()
+    assertEquals(8f, data.commands[1].x)
+    assertEquals(5f, data.commands[1].c1x)
+    assertEquals(1, outline.cubicSegmentCount)
+  }
+
+  @Test
+  fun contourCollectionKeepsIndependentClosedSubpaths() {
+    val first = contour(0f)
+    val second = contour(20f)
+    val outline = StrokeOutline.copyOf(listOf(first, second))
+    assertEquals(2, outline.contourPathData.size)
+    assertTrue(outline.contourPathData.all { data ->
+      data.commands.count { it.type == InkPathCommand.MOVE } == 1 &&
+        data.commands.count { it.type == InkPathCommand.CLOSE } == 1
+    })
+  }
+
+  @Test
+  fun restoredTargetStateIncludesPlacementFormattingAndRetainedEmptyPlacement() {
+    val history = PageContentHistory()
+    val target = history.textState.target(1L)
+    val baseline = text(1L, "A", 12.0, 18.0)
+    history.appendText(baseline)
+    history.acceptChanges()
+    val moved = baseline.copy(bounds = PageRect(80.0, 90.0, 140.0, 120.0),
+      fontSize = 24.0, directionRtl = true, maxLines = 2)
+    history.replaceText(baseline, moved)
+    assertEquals(moved, target.annotation)
+    history.undoMutation()
+    assertEquals(baseline, target.annotation)
+    history.redoMutation()
+    assertEquals(moved, target.annotation)
+    history.removeTextAnnotation(moved)
+    assertEquals(null, target.annotation)
+    assertEquals(moved, target.placementAnnotation)
+    history.undoMutation()
+    assertEquals(moved, target.annotation)
+    history.revertChanges()
+    assertEquals(baseline, target.annotation)
+    assertTrue(target === history.textState.target(1L))
+    history.clearMutation()
+    assertEquals(null, target.annotation)
+    assertEquals(baseline, target.placementAnnotation)
+    history.appendText(baseline.copy(text = "reused"))
+    assertEquals(baseline.bounds, target.annotation?.bounds)
+  }
+
+  @Test
+  fun draftStateSurvivesUnrelatedUntrackedWritesAndRestoresBeforeCommit() {
+    val history = PageContentHistory()
+    val baseline = text(1L, "A", 12.0, 18.0)
+    val unrelated = text(2L, "untracked", 12.0, 18.0)
+    history.appendText(baseline)
+    history.acceptChanges()
+    val draft = baseline.copy(text = "draft", fontSize = 24.0)
+    history.applyTextState(1L, draft, true)
+    history.appendText(unrelated, untracked = true)
+    assertEquals(draft, history.textState.target(1L).annotation)
+    assertEquals(unrelated, history.textState.target(2L).annotation)
+    history.finishTextState(1L)
+    assertEquals(baseline, history.textState.target(1L).annotation)
+    history.replaceText(baseline, draft)
+    history.undoMutation()
+    assertEquals(listOf(PageContent.Text(baseline), PageContent.Text(unrelated)), history.contentSnapshot())
+    history.revertChanges()
+    assertEquals(listOf(PageContent.Text(baseline), PageContent.Text(unrelated)), history.contentSnapshot())
+  }
+
+  private fun outline(offset: Float): StrokeOutline = StrokeOutline.fromCommands(listOf(
+    InkPathCommand(InkPathCommand.MOVE, offset, 0f),
+    InkPathCommand(InkPathCommand.CUBIC, offset + 10f, 0f, offset + 3f, 4f, offset + 7f, -4f),
+    InkPathCommand(InkPathCommand.CLOSE),
+  ))
+
+  private fun contour(offset: Float) = StrokeContour(listOf(
+    StrokeCubicSegment(
+      offset, 0f, offset + 3f, 4f, offset + 7f, -4f, offset + 10f, 0f, 0L, 1L,
+    ),
+    StrokeCubicSegment(
+      offset + 10f, 0f, offset + 7f, 4f, offset + 3f, -4f, offset, 0f, 0L, 1L,
+    ),
+  ), 0L, 1L, true)
+
+  private fun text(
+    id: Long,
+    value: String,
+    left: Double,
+    top: Double,
+    width: Double = 40.0,
+    height: Double = 16.0,
+    fontSize: Double = 16.0,
+  ) = TextAnnotation(
+    id = id,
+    text = value,
+    bounds = PageRect(left, top, left + width, top + height),
+    fontSize = fontSize,
+  )
+}

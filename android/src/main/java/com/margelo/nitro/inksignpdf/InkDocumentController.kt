@@ -1,0 +1,956 @@
+package com.margelo.nitro.inksignpdf
+
+import android.animation.ValueAnimator
+import android.app.ActivityManager
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
+import android.view.GestureDetector
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import android.widget.OverScroller
+import android.view.animation.DecelerateInterpolator
+import kotlin.math.max
+import kotlin.math.min
+
+/**
+ * UI-thread-owned document, viewport, tile, and navigation state for
+ * [ViewerCanvas]. The surface remains responsible for deciding when
+ * navigation is allowed and for coordinating cancellation with active ink.
+ */
+internal class InkDocumentController(
+  context: Context,
+  sessionWorker: PdfSessionWorker?,
+  private val requestInvalidate: () -> Unit,
+  private val requestAnimation: () -> Unit,
+  private val currentDocumentGeneration: () -> Long?,
+  private val currentPageIndex: () -> Int?,
+  private val currentPageSwitchId: () -> Long?,
+  tileCacheBudgetBytes: Long? = null,
+) {
+  private var attachedWorker = sessionWorker
+  private val sessionWorker: PdfSessionWorker get() = checkNotNull(attachedWorker)
+  internal data class TilePresentationStateForTest(
+    val activeVisibleKeys: List<PdfTileKey>,
+    val activePrefetchKeys: List<PdfTileKey>,
+    val displayedVisibleKeys: List<PdfTileKey>,
+    val protectedVisibleKeys: Set<PdfTileKey>,
+    val pendingKeys: Set<PdfTileKey>,
+    val transitionPending: Boolean,
+  )
+
+  /** UI-thread-owned result consumed immediately by [ViewerCanvas]. */
+  internal class DrawState {
+    var viewScale: Double = 0.0
+      private set
+    var viewOffsetX: Double = 0.0
+      private set
+    var viewOffsetY: Double = 0.0
+      private set
+    internal fun set(
+      viewScale: Double,
+      viewOffsetX: Double,
+      viewOffsetY: Double,
+    ) {
+      this.viewScale = viewScale
+      this.viewOffsetX = viewOffsetX
+      this.viewOffsetY = viewOffsetY
+    }
+  }
+
+  private val pagePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+  private val tilePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    isFilterBitmap = true
+    isDither = true
+  }
+  private val pageRect = RectF()
+  private val tileRect = RectF()
+  private val tileCoreRect = RectF()
+  private val cache = PdfTileCache(tileCacheBudgetBytes ?: tileCacheLimitBytes(context))
+  private val scroller = OverScroller(context)
+  private val gestureDetector = GestureDetector(context, GestureListener())
+  private val scaleGestureDetector = ScaleGestureDetector(context, ScaleListener())
+  private val mainHandler = Handler(Looper.getMainLooper())
+  private val tileTopLeft = MutablePagePoint()
+  private val tileBottomRight = MutablePagePoint()
+  private val drawState = DrawState()
+  private val density = context.resources.displayMetrics.density.toDouble()
+  private var viewportSize = ViewportSize(0.0, 0.0, density)
+  private var viewport: PageViewport? = null
+  private var pageDimensions: PdfPageDimensions? = null
+  private var scaling = false
+  private var lastScrollerX = 0
+  private var lastScrollerY = 0
+  private var tileRequestEpoch = 0L
+  private var tileRasterEpoch = 0L
+  private var pendingTileRequest: PdfTileRequest? = null
+  private var activeTileWindow: PdfTileWindow? = null
+  private var activeVisibleTileRequests: List<PdfTileRequest> = emptyList()
+  private var activePrefetchTileRequests: List<PdfTileRequest> = emptyList()
+  private var displayedVisibleTileRequests: List<PdfTileRequest> = emptyList()
+  private var tileLevelTransitionPending = false
+  private val protectedVisibleTileKeys = HashSet<PdfTileKey>()
+  // One attempt per unchanged window, even if a successfully cached tile is later evicted.
+  private val attemptedPrefetchKeys = HashSet<PdfTileKey>()
+  private var lastPlannedZoom = Double.NaN
+  private var lastPlannedFocusX = Double.NaN
+  private var lastPlannedFocusY = Double.NaN
+  private var lastPlannedWidthPx = Double.NaN
+  private var lastPlannedHeightPx = Double.NaN
+  private var disposed = false
+  private var tileRequestsSuspended = false
+  private var viewportAnimator: ValueAnimator? = null
+  private var fitToPageOnLayout = false
+  private var usableViewportWaiter: ((ViewportSize) -> Unit)? = null
+  private var doubleTapZoom = DEFAULT_DOUBLE_TAP_ZOOM
+  private var doubleTapEntersEditMode = false
+  var onDoubleTapEditMode: (() -> Unit)? = null
+  internal var suppressTapActions = false
+  var onViewportChanged: (() -> Unit)? = null
+  var onVisibleTilesReady: (() -> Unit)? = null
+  var onVisibleTilesFailed: ((Long, Int, Long) -> Unit)? = null
+
+  fun setDoubleTapConfiguration(options: DoubleTapOptions?) {
+    requireOnUiThread()
+    if (options == null) {
+      doubleTapZoom = DEFAULT_DOUBLE_TAP_ZOOM
+      doubleTapEntersEditMode = false
+      return
+    }
+    if (!options.zoom.isFinite() || options.zoom <= 0.0) return
+    doubleTapZoom = options.zoom
+    doubleTapEntersEditMode = options.enterEditMode == true
+  }
+
+  fun setPage(
+    dimensions: PdfPageDimensions,
+    zoom: Double? = null,
+    focus: PagePoint? = null,
+    fitToPage: Boolean = true,
+  ) {
+    requireOnUiThread()
+    if (disposed) return
+    stopViewportAnimation()
+    stopFling()
+    pageDimensions = dimensions
+    val nextViewport = PageViewport(
+      page = dimensions,
+      initialSize = viewportSize,
+    )
+    fitToPageOnLayout = fitToPage &&
+      (viewportSize.widthPx <= 0.0 || viewportSize.heightPx <= 0.0)
+    if (fitToPage) {
+      if (!fitToPageOnLayout) nextViewport.fit()
+    } else {
+      nextViewport.setZoom(zoom ?: 1.0, focus)
+    }
+    viewport = nextViewport
+    invalidateTiles()
+    requestVisibleTiles()
+    requestInvalidate()
+    signalUsableViewportSize()
+  }
+
+  /** Installs a viewport fully configured before an open candidate is committed. */
+  fun installPreparedPage(prepared: PageViewport) {
+    requireOnUiThread()
+    if (disposed) return
+    stopViewportAnimation()
+    stopFling()
+    pageDimensions = prepared.page
+    fitToPageOnLayout = false
+    viewport = prepared
+    invalidateTiles()
+    requestInvalidate()
+  }
+
+  fun hasUsableViewportSize(): Boolean =
+    viewportSize.widthPx > 0.0 && viewportSize.heightPx > 0.0
+
+  fun usableViewportSize(): ViewportSize? = viewportSize.takeIf { hasUsableViewportSize() }
+
+  fun suspendTileRequests() {
+    requireOnUiThread()
+    tileRequestsSuspended = true
+  }
+
+  fun resumeTileRequests() {
+    requireOnUiThread()
+    tileRequestsSuspended = false
+    requestVisibleTiles()
+  }
+
+  fun onUsableViewportSize(listener: (ViewportSize) -> Unit): () -> Unit {
+    usableViewportSize()?.let(listener) ?: run { usableViewportWaiter = listener }
+    return { if (usableViewportWaiter === listener) usableViewportWaiter = null }
+  }
+
+  private fun signalUsableViewportSize() {
+    if (!hasUsableViewportSize()) return
+    val waiter = usableViewportWaiter ?: return
+    usableViewportWaiter = null
+    waiter(viewportSize)
+  }
+
+  fun bindSessionWorker(worker: PdfSessionWorker?) {
+    requireOnUiThread()
+    clearDocument()
+    attachedWorker = worker
+  }
+
+  fun clearDocument() {
+    requireOnUiThread()
+    if (disposed) return
+    stopViewportAnimation()
+    stopFling()
+    fitToPageOnLayout = false
+    tileRequestsSuspended = false
+    pageDimensions = null
+    viewport = null
+    invalidateTiles()
+    requestInvalidate()
+  }
+
+  fun onSizeChanged(width: Int, height: Int) {
+    requireOnUiThread()
+    if (disposed) return
+    viewportSize = ViewportSize(width.toDouble(), height.toDouble(), density)
+    viewport?.setViewportSize(viewportSize)
+    if (fitToPageOnLayout && viewportSize.widthPx > 0.0 && viewportSize.heightPx > 0.0) {
+      viewport?.fit()
+      fitToPageOnLayout = false
+      onViewportChanged?.invoke()
+      requestInvalidate()
+    }
+    requestVisibleTiles()
+    signalUsableViewportSize()
+  }
+
+  fun setKeyboardOcclusion(bottomPx: Double) {
+    requireOnUiThread()
+    if (disposed) return
+    val currentViewport = viewport ?: return
+    currentViewport.setBottomInsetPx(bottomPx)
+    onViewportChanged?.invoke()
+    requestVisibleTiles()
+    requestInvalidate()
+  }
+
+  fun ensurePageRectVisible(rect: PageRect, paddingPx: Double): Boolean {
+    requireOnUiThread()
+    if (disposed) return false
+    val currentViewport = viewport ?: return false
+    val moved = currentViewport.ensurePageRectVisible(
+      rect.left, rect.top, rect.right, rect.bottom, paddingPx,
+    )
+    if (moved) {
+      onViewportChanged?.invoke()
+      requestVisibleTiles()
+      requestInvalidate()
+    }
+    return moved
+  }
+
+  fun isViewportAnimationRunning(): Boolean {
+    requireOnUiThread()
+    return viewportAnimator != null
+  }
+
+  /** Exposes the editor and active caret without changing zoom. */
+  fun focusTextForEditing(rect: PageRect, caret: PageRect, paddingPx: Double): Boolean {
+    return focusText(rect, caret, paddingPx, request = ViewportRequest.Preserve)
+  }
+
+  fun focusTextForPlacement(
+    rect: PageRect,
+    caret: PageRect,
+    paddingPx: Double,
+    zoomAnchor: PagePoint,
+    request: ViewportRequest,
+  ): Boolean {
+    return focusText(
+      rect,
+      caret,
+      paddingPx,
+      request = request,
+      zoomAnchor = zoomAnchor,
+    )
+  }
+
+  private fun focusText(
+    rect: PageRect,
+    caret: PageRect,
+    paddingPx: Double,
+    request: ViewportRequest,
+    zoomAnchor: PagePoint? = null,
+  ): Boolean {
+    requireOnUiThread()
+    if (disposed) return false
+    val currentViewport = viewport ?: return false
+    val target = if (request == ViewportRequest.Preserve) {
+      currentViewport.targetForTextEditing(rect, caret, paddingPx)
+    } else {
+      val resolved = if (request is ViewportRequest.FocusAndZoom) {
+        ViewportRequest.FocusAndZoom(request.focus ?: zoomAnchor, request.zoom)
+      } else request
+      checkNotNull(currentViewport.targetFor(resolved))
+    }
+    if (currentViewport.zoom == target.zoom && currentViewport.focus == target.focus) return false
+    stopViewportAnimation()
+    animateViewport(currentViewport, target)
+    return true
+  }
+
+  fun onEditModeChanged(enabled: Boolean) {
+    requireOnUiThread()
+    if (disposed) return
+    if (enabled) {
+      scaling = false
+      stopFling()
+    }
+  }
+
+  fun requireViewportCommandReady() {
+    requireOnUiThread()
+    if (disposed) {
+      throw PdfSessionException(
+        "operation_cancelled",
+        "PDF view was disposed",
+      )
+    }
+    if (pageDimensions == null || viewport == null || viewportSize.widthPx <= 0.0 ||
+      viewportSize.heightPx <= 0.0
+    ) {
+      throw PdfSessionException(
+        "view_not_ready",
+        "A loaded PDF must have a laid-out viewport",
+      )
+    }
+  }
+
+  fun applyViewport(request: ViewportRequest) {
+    applyViewport(request, animated = false)
+  }
+
+  fun applyViewport(
+    request: ViewportRequest,
+    animated: Boolean,
+    completion: (() -> Unit)? = null,
+    cancelled: (() -> Unit)? = null,
+  ) {
+    requireViewportCommandReady()
+    val currentViewport = checkNotNull(viewport)
+    stopViewportAnimation()
+    if (animated) {
+      val target = currentViewport.targetFor(request)
+      if (target != null &&
+        (target.zoom != currentViewport.zoom || target.focus != currentViewport.focus)
+      ) {
+        animateViewport(currentViewport, target, completion, cancelled)
+        return
+      }
+    }
+    when (request) {
+      ViewportRequest.Preserve -> Unit
+      ViewportRequest.Fit -> currentViewport.fit()
+      is ViewportRequest.FocusAndZoom -> {
+        request.zoom?.let(currentViewport::setZoomPreservingFocus)
+        request.focus?.let(currentViewport::setFocus)
+      }
+      is ViewportRequest.FocusRule -> {
+        val target = checkNotNull(currentViewport.targetFor(request))
+        currentViewport.setViewport(target.zoom, target.focus)
+      }
+    }
+    onViewportChanged?.invoke()
+    requestVisibleTiles()
+    requestInvalidate()
+    completion?.invoke()
+  }
+
+  fun draw(
+    canvas: Canvas,
+    navigationPresentation: NavigationPresentation = NavigationPresentation(),
+    baseRaster: android.graphics.Bitmap? = null,
+  ): DrawState? {
+    requireOnUiThread()
+    if (disposed) return null
+    val currentViewport = viewport ?: return null
+    val currentPage = pageDimensions ?: return null
+    canvas.save()
+    canvas.clipRect(0f, 0f, viewportSize.widthPx.toFloat(), viewportSize.heightPx.toFloat())
+    canvas.translate(navigationPresentation.translationX.toFloat(), 0f)
+    canvas.scale(
+      navigationPresentation.currentPageScale.toFloat(),
+      navigationPresentation.currentPageScale.toFloat(),
+      (viewportSize.widthPx / 2.0).toFloat(),
+      (viewportSize.heightPx / 2.0).toFloat(),
+    )
+    val transform = currentViewport.state.pageToView
+    val viewScale = transform.uniformScale() ?: return null.also { canvas.restore() }
+    val viewOffsetX = transform.tx
+    val viewOffsetY = transform.ty
+    pageRect.set(
+      viewOffsetX.toFloat(),
+      viewOffsetY.toFloat(),
+      (viewOffsetX + currentPage.width * viewScale).toFloat(),
+      (viewOffsetY + currentPage.height * viewScale).toFloat(),
+    )
+    canvas.drawRect(pageRect, pagePaint)
+    baseRaster?.let { canvas.drawBitmap(it, null, pageRect, tilePaint) }
+
+    val displayedRequests = displayedVisibleTileRequests
+    visibleTilesDrawn = false
+    var drawnTiles = 0
+    if (displayedRequests.isNotEmpty()) {
+      val tileToViewScale = viewScale / displayedRequests[0].scale
+      displayedRequests.forEach { request ->
+        val tile = cache[request.key] ?: return@forEach
+        drawPdfTile(
+          canvas = canvas,
+          tile = tile,
+          pageToViewX = viewOffsetX,
+          pageToViewY = viewOffsetY,
+          tileToViewScale = tileToViewScale,
+          rasterRect = tileRect,
+          coreRect = tileCoreRect,
+          paint = tilePaint,
+        )
+        drawnTiles += 1
+      }
+    }
+    canvas.restore()
+    visibleTilesDrawn = displayedRequests.isNotEmpty() &&
+      !tileLevelTransitionPending && displayedRequests == activeVisibleTileRequests &&
+      drawnTiles == displayedRequests.size
+    drawState.set(viewScale, viewOffsetX, viewOffsetY)
+    return drawState
+  }
+
+  fun handleViewTouch(event: MotionEvent) {
+    requireOnUiThread()
+    if (disposed) return
+    if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+      stopViewportAnimation()
+      stopFling()
+    }
+    scaleGestureDetector.onTouchEvent(event)
+    gestureDetector.onTouchEvent(event)
+    if (event.actionMasked == MotionEvent.ACTION_CANCEL) {
+      scaling = false
+      stopFling()
+      requestVisibleTiles()
+    }
+  }
+
+  fun computeScroll() {
+    requireOnUiThread()
+    if (disposed || !scroller.computeScrollOffset()) return
+    val deltaX = scroller.currX - lastScrollerX
+    val deltaY = scroller.currY - lastScrollerY
+    lastScrollerX = scroller.currX
+    lastScrollerY = scroller.currY
+    viewport?.panBy(deltaX.toDouble(), deltaY.toDouble())
+    onViewportChanged?.invoke()
+    requestVisibleTiles()
+    requestAnimation()
+  }
+
+  fun onAttachedToWindow() {
+    requireOnUiThread()
+    if (disposed) return
+    requestVisibleTiles()
+    requestInvalidate()
+  }
+
+  fun onDetachedFromWindow() {
+    requireOnUiThread()
+    if (disposed) return
+    stopViewportAnimation()
+    stopFling()
+    invalidateTiles()
+  }
+
+  fun dispose() {
+    requireOnUiThread()
+    if (disposed) return
+    disposed = true
+    stopViewportAnimation()
+    stopFling()
+    pageDimensions = null
+    viewport = null
+    invalidateTiles()
+  }
+
+  fun mapPagePoint(
+    x: Float,
+    y: Float,
+    destination: MutablePagePoint,
+  ): Boolean {
+    requireOnUiThread()
+    if (!x.isFinite() || !y.isFinite()) return false
+    val currentViewport = viewport ?: return false
+    val currentPage = pageDimensions ?: return false
+    currentViewport.viewToPage(x.toDouble(), y.toDouble(), destination)
+    if (!destination.isFinite()) return false
+    val raw = PageCoordinates(currentPage).displayToRaw(PagePoint(destination.x, destination.y))
+    destination.set(raw.x, raw.y)
+    val coordinates = PageCoordinates(currentPage)
+    return destination.isFinite() && destination.x >= 0.0 && destination.x <= coordinates.rawWidth &&
+      destination.y >= 0.0 && destination.y <= coordinates.rawHeight
+  }
+
+  fun pageToViewTransform(): PageTransform? {
+    requireOnUiThread()
+    return viewport?.state?.pageToView
+  }
+
+  fun historyToViewTransform(): PageTransform? {
+    requireOnUiThread()
+    val currentViewport = viewport ?: return null
+    val currentPage = pageDimensions ?: return null
+    return PageCoordinates(currentPage).rawToView(currentViewport.state.pageToView)
+  }
+
+  fun logicalDisplayUnitsPerPageUnit(): Double? {
+    requireOnUiThread()
+    return viewport?.state?.pageToView?.logicalDisplayUnitsPerPageUnit(density)
+  }
+
+  fun currentViewportState(): PageViewportState {
+    requireViewportCommandReady()
+    return checkNotNull(viewport).state
+  }
+
+  /** Immutable UI-thread snapshot captured by the page-navigation owner at touch-down. */
+  internal fun viewportSnapshot(): PageViewportState? {
+    requireOnUiThread()
+    return viewport?.state
+  }
+
+  fun refreshVisibleTiles() {
+    requireOnUiThread()
+    requestVisibleTiles()
+  }
+
+  fun fitZoomFor(dimensions: PdfPageDimensions): Double {
+    requireOnUiThread()
+    return PageViewport(dimensions, viewportSize).fitZoom()
+  }
+
+  fun usableFitZoomFor(dimensions: PdfPageDimensions): Double? {
+    requireOnUiThread()
+    if (viewportSize.widthPx <= 0.0 || viewportSize.heightPx <= 0.0) return null
+    val fitZoom = PageViewport(dimensions, viewportSize).fitZoom()
+    return fitZoom.takeIf { it.isFinite() && it > 0.0 }
+  }
+
+  internal fun viewportStateForTest(): PageViewportState? {
+    requireOnUiThread()
+    return viewport?.state
+  }
+
+  /** Narrow state seam for exercising UI-owned tile handoff decisions. */
+  internal fun tilePresentationStateForTest(): TilePresentationStateForTest {
+    requireOnUiThread()
+    return TilePresentationStateForTest(
+      activeVisibleKeys = activeVisibleTileRequests.map { it.key },
+      activePrefetchKeys = activePrefetchTileRequests.map { it.key },
+      displayedVisibleKeys = displayedVisibleTileRequests.map { it.key },
+      protectedVisibleKeys = protectedVisibleTileKeys.toSet(),
+      pendingKeys = pendingTileRequest?.let { setOf(it.key) } ?: emptySet(),
+      transitionPending = tileLevelTransitionPending,
+    )
+  }
+
+  internal val tileCacheBytes: Long get() = cache.allocatedBytes
+
+  /** Reports existing coverage without changing the viewport or requesting tiles. */
+  internal fun isVisibleTileCoverageComplete(): Boolean {
+    requireOnUiThread()
+    return activeTileWindow != null && !tileLevelTransitionPending &&
+      activeVisibleTileRequests.all { cache.containsKey(it.key) }
+  }
+
+  internal fun retryVisibleTiles() {
+    requireOnUiThread()
+    requestVisibleTiles()
+  }
+
+  /** Sets the viewport directly for controller handoff tests without changing public API. */
+  internal fun setZoomForTest(zoom: Double, focus: PagePoint? = null) {
+    requireOnUiThread()
+    viewport?.setZoom(zoom, focus)
+    requestVisibleTiles()
+  }
+
+  private fun requestVisibleTiles() {
+    requireOnUiThread()
+    if (disposed || tileRequestsSuspended) return
+    InkPerfetto.section("InkSign/tile planning") {
+      requestVisibleTilesInternal()
+    }
+  }
+
+  private fun requestVisibleTilesInternal() {
+    val currentPage = pageDimensions ?: return
+    val currentViewport = viewport ?: return
+    val generation = currentDocumentGeneration() ?: return
+    val pageIndex = currentPageIndex() ?: return
+    val pageSwitchId = currentPageSwitchId() ?: return
+    val currentViewportSize = currentViewport.size
+    val currentZoom = currentViewport.zoom
+    val currentFocusX = currentViewport.focusX
+    val currentFocusY = currentViewport.focusY
+    if (currentZoom == lastPlannedZoom && currentFocusX == lastPlannedFocusX &&
+      currentFocusY == lastPlannedFocusY && currentViewportSize.widthPx == lastPlannedWidthPx &&
+      currentViewportSize.heightPx == lastPlannedHeightPx
+    ) {
+      return
+    }
+    lastPlannedZoom = currentZoom
+    lastPlannedFocusX = currentFocusX
+    lastPlannedFocusY = currentFocusY
+    lastPlannedWidthPx = currentViewportSize.widthPx
+    lastPlannedHeightPx = currentViewportSize.heightPx
+    val nextWindow = PdfTileGrid.visibleWindow(
+      page = currentPage,
+      viewport = currentViewport,
+      generation = generation,
+      pageSwitchId = pageSwitchId,
+      pageIndex = pageIndex,
+      topLeft = tileTopLeft,
+      bottomRight = tileBottomRight,
+      previous = activeTileWindow,
+    )
+    if (nextWindow != activeTileWindow) {
+      visibleTilesDrawn = false
+      val previousWindow = activeTileWindow
+      tileRequestEpoch += 1L
+      activeTileWindow = nextWindow
+      val nextVisibleRequests = ArrayList<PdfTileRequest>()
+      val nextPrefetchRequests = ArrayList<PdfTileRequest>()
+      nextWindow?.let(PdfTileGrid::requests)?.forEach { request ->
+        if (request.priority == androidPdfTileVisiblePriority) {
+          nextVisibleRequests += request
+        } else {
+          nextPrefetchRequests += request
+        }
+      }
+      activeVisibleTileRequests = nextVisibleRequests
+      activePrefetchTileRequests = nextPrefetchRequests
+      val levelChanged = previousWindow != null && nextWindow != null &&
+        previousWindow.level != nextWindow.level
+      if (nextWindow == null) {
+        displayedVisibleTileRequests = emptyList()
+        tileLevelTransitionPending = false
+      } else if (levelChanged) {
+        tileLevelTransitionPending = true
+      } else if (!tileLevelTransitionPending) {
+        displayedVisibleTileRequests = activeVisibleTileRequests
+      }
+      rebuildProtectedVisibleTileKeys()
+      attemptedPrefetchKeys.clear()
+      sessionWorker.updateTileEpoch(generation, tileRasterEpoch)
+      completeTileLevelTransitionIfCovered()
+    }
+    dispatchNextTile()
+    notifyVisibleTilesReadyIfCovered()
+  }
+
+  /** Only one tile is admitted to the serialized worker; the rest remain latest UI demand. */
+  private fun dispatchNextTile() {
+    if (disposed || tileRequestsSuspended || pendingTileRequest != null) return
+    val generation = currentDocumentGeneration() ?: return
+    val request = activeVisibleTileRequests.firstOrNull { !cache.containsKey(it.key) }
+      ?: activePrefetchTileRequests.firstOrNull {
+        !cache.containsKey(it.key) && it.key !in attemptedPrefetchKeys
+      } ?: return
+    val rasterEpoch = tileRasterEpoch
+    pendingTileRequest = request
+    sessionWorker.updateTileEpoch(generation, rasterEpoch)
+    sessionWorker.renderTiles(generation, rasterEpoch, listOf(request)) { result ->
+      val posted = mainHandler.post {
+        if (disposed || rasterEpoch != tileRasterEpoch || pendingTileRequest !== request) {
+          result.getOrNull()?.forEach { it.bitmap.recycle() }
+          return@post
+        }
+        pendingTileRequest = null
+        val currentRequest = activeVisibleTileRequests.firstOrNull { it.key == request.key }
+          ?: activePrefetchTileRequests.firstOrNull { it.key == request.key }
+        val accepted = currentDocumentGeneration() == generation &&
+          currentPageIndex() == request.key.pageIndex &&
+          currentPageSwitchId() == request.key.pageSwitchId && currentRequest != null
+        if (!accepted) {
+          result.getOrNull()?.forEach { it.bitmap.recycle() }
+          dispatchNextTile()
+          return@post
+        }
+        val latest = checkNotNull(currentRequest)
+        if (latest.priority == androidPdfTilePrefetchPriority) {
+          attemptedPrefetchKeys.add(request.key)
+        }
+        if (result.isFailure) {
+          if (latest.priority == androidPdfTileVisiblePriority) {
+            lastPlannedZoom = Double.NaN
+            lastPlannedFocusX = Double.NaN
+            lastPlannedFocusY = Double.NaN
+            lastPlannedWidthPx = Double.NaN
+            lastPlannedHeightPx = Double.NaN
+            onVisibleTilesFailed?.invoke(generation, request.key.pageIndex, request.key.pageSwitchId)
+            requestInvalidate()
+            return@post
+          }
+        } else {
+          result.getOrThrow().forEach { tile ->
+            cache.put(tile, protectedVisibleTileKeys)
+          }
+          if (!completeTileLevelTransitionIfCovered()) requestInvalidate()
+          notifyVisibleTilesReadyIfCovered()
+        }
+        dispatchNextTile()
+      }
+      if (!posted) result.getOrNull()?.forEach { it.bitmap.recycle() }
+    }
+  }
+
+  private fun invalidateTiles() {
+    visibleTilesDrawn = false
+    tileRequestEpoch += 1L
+    tileRasterEpoch += 1L
+    pendingTileRequest = null
+    currentDocumentGeneration()?.let { sessionWorker.updateTileEpoch(it, tileRasterEpoch) }
+    activeTileWindow = null
+    activeVisibleTileRequests = emptyList()
+    activePrefetchTileRequests = emptyList()
+    displayedVisibleTileRequests = emptyList()
+    tileLevelTransitionPending = false
+    protectedVisibleTileKeys.clear()
+    attemptedPrefetchKeys.clear()
+    lastPlannedZoom = Double.NaN
+    lastPlannedFocusX = Double.NaN
+    lastPlannedFocusY = Double.NaN
+    lastPlannedWidthPx = Double.NaN
+    lastPlannedHeightPx = Double.NaN
+    cache.clear()
+  }
+
+  private fun rebuildProtectedVisibleTileKeys() {
+    protectedVisibleTileKeys.clear()
+    activeVisibleTileRequests.forEach { request ->
+      protectedVisibleTileKeys += request.key
+    }
+    if (tileLevelTransitionPending) {
+      displayedVisibleTileRequests.forEach { request ->
+        protectedVisibleTileKeys += request.key
+      }
+    }
+  }
+
+  private fun completeTileLevelTransitionIfCovered(): Boolean {
+    if (!tileLevelTransitionPending) return false
+    activeVisibleTileRequests.forEach { request ->
+      if (!cache.containsKey(request.key)) return false
+    }
+    displayedVisibleTileRequests = activeVisibleTileRequests
+    tileLevelTransitionPending = false
+    rebuildProtectedVisibleTileKeys()
+    cache.trimToLimit(protectedVisibleTileKeys)
+    requestInvalidate()
+    return true
+  }
+
+  private fun notifyVisibleTilesReadyIfCovered() {
+    if (activeTileWindow == null || tileLevelTransitionPending) return
+    if (activeVisibleTileRequests.all { cache.containsKey(it.key) }) {
+      onVisibleTilesReady?.invoke()
+    }
+  }
+
+  /** True only after the current draw submitted complete destination coverage. */
+  internal var visibleTilesDrawn: Boolean = false
+    private set
+
+  internal fun visibleTilePresentationEpoch(): Long? =
+    tileRequestEpoch.takeIf { visibleTilesDrawn && isVisibleTileCoverageComplete() }
+
+  private fun stopFling() {
+    scroller.forceFinished(true)
+    lastScrollerX = 0
+    lastScrollerY = 0
+  }
+
+  fun cancelViewportAnimation() {
+    requireOnUiThread()
+    stopViewportAnimation()
+  }
+
+  private fun animateViewport(
+    currentViewport: PageViewport,
+    target: PageViewportTarget,
+    completion: (() -> Unit)? = null,
+    cancelled: (() -> Unit)? = null,
+  ) {
+    val startZoom = currentViewport.zoom
+    val startFocus = currentViewport.focus
+    val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+      duration = VIEWPORT_ANIMATION_DURATION_MS
+      interpolator = DecelerateInterpolator()
+      addUpdateListener { valueAnimator ->
+        val progress = valueAnimator.animatedValue as Float
+      currentViewport.setViewport(
+          zoom = startZoom + (target.zoom - startZoom) * progress,
+          focus = PagePoint(
+            x = startFocus.x + (target.focus.x - startFocus.x) * progress,
+            y = startFocus.y + (target.focus.y - startFocus.y) * progress,
+          ),
+        )
+        onViewportChanged?.invoke()
+        requestVisibleTiles()
+        requestInvalidate()
+      }
+      addListener(object : android.animation.AnimatorListenerAdapter() {
+        override fun onAnimationEnd(animation: android.animation.Animator) {
+          if (viewportAnimator !== animation) return
+          viewportAnimator = null
+          currentViewport.setViewport(target.zoom, target.focus)
+          onViewportChanged?.invoke()
+          requestVisibleTiles()
+          requestInvalidate()
+          completion?.invoke()
+        }
+
+        override fun onAnimationCancel(animation: android.animation.Animator) {
+          if (viewportAnimator === animation) {
+            viewportAnimator = null
+            cancelled?.invoke()
+          }
+        }
+      })
+    }
+    viewportAnimator = animator
+    animator.start()
+  }
+
+  private fun stopViewportAnimation() {
+    viewportAnimator?.cancel()
+    viewportAnimator = null
+  }
+
+  private inner class GestureListener : GestureDetector.SimpleOnGestureListener() {
+    override fun onDown(event: MotionEvent): Boolean = true
+
+    override fun onDoubleTap(event: MotionEvent): Boolean {
+      if (suppressTapActions) return true
+      val currentViewport = viewport ?: return true
+      if (!currentViewport.isFitted()) {
+        applyViewport(ViewportRequest.Fit, animated = true)
+        return true
+      }
+      val target = currentViewport.zoomTo(
+          event.x.toDouble(),
+          event.y.toDouble(),
+          doubleTapZoom,
+        ) ?: return true
+      animateViewport(
+        currentViewport,
+        target,
+        completion = if (doubleTapEntersEditMode) onDoubleTapEditMode else null,
+      )
+      return true
+    }
+
+    override fun onScroll(
+      firstEvent: MotionEvent?,
+      event: MotionEvent,
+      distanceX: Float,
+      distanceY: Float,
+    ): Boolean {
+      if (scaling) return false
+      viewport?.panBy(distanceX.toDouble(), distanceY.toDouble())
+      onViewportChanged?.invoke()
+      requestInvalidate()
+      requestVisibleTiles()
+      return true
+    }
+
+    override fun onFling(
+      firstEvent: MotionEvent?,
+      event: MotionEvent,
+      velocityX: Float,
+      velocityY: Float,
+    ): Boolean {
+      if (scaling) return false
+      lastScrollerX = 0
+      lastScrollerY = 0
+      val flingRange = 1_000_000
+      scroller.fling(
+        0,
+        0,
+        -velocityX.toInt(),
+        -velocityY.toInt(),
+        -flingRange,
+        flingRange,
+        -flingRange,
+        flingRange,
+      )
+      requestAnimation()
+      return true
+    }
+  }
+
+  private inner class ScaleListener : ScaleGestureDetector.SimpleOnScaleGestureListener() {
+    private var focusX = 0f
+    private var focusY = 0f
+
+    override fun onScaleBegin(detector: ScaleGestureDetector): Boolean {
+      scaling = true
+      focusX = detector.focusX
+      focusY = detector.focusY
+      stopFling()
+      return true
+    }
+
+    override fun onScale(detector: ScaleGestureDetector): Boolean {
+      val currentViewport = viewport ?: return false
+      currentViewport.panBy((focusX - detector.focusX).toDouble(), (focusY - detector.focusY).toDouble())
+      focusX = detector.focusX
+      focusY = detector.focusY
+      currentViewport.zoomAround(
+        detector.focusX.toDouble(),
+        detector.focusY.toDouble(),
+        detector.scaleFactor.toDouble(),
+      )
+      onViewportChanged?.invoke()
+      requestVisibleTiles()
+      requestInvalidate()
+      return true
+    }
+
+    override fun onScaleEnd(detector: ScaleGestureDetector) {
+      scaling = false
+      requestVisibleTiles()
+    }
+  }
+
+  private fun requireOnUiThread() {
+    check(Looper.myLooper() == Looper.getMainLooper())
+  }
+
+  private companion object {
+    const val DEFAULT_DOUBLE_TAP_ZOOM = 2.0
+    const val VIEWPORT_ANIMATION_DURATION_MS = 160L
+    const val maxTileCacheBytes = 48L * 1024L * 1024L
+
+    fun tileCacheLimitBytes(context: Context): Long {
+      val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+      val memoryLimit = activityManager?.memoryClass?.toLong()?.times(1024L * 1024L)
+        ?: Runtime.getRuntime().maxMemory()
+      return min(maxTileCacheBytes, max(1L, memoryLimit / 16L))
+    }
+  }
+}

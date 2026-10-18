@@ -1,0 +1,115 @@
+{
+  "name": "PDFium",
+  "version": "157.0.8086.0",
+  "upstream": {
+    "repository": "https://pdfium.googlesource.com/pdfium",
+    "branch": "chromium/8086",
+    "commit": "2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec",
+    "publicHeaders": [
+      "fpdfview.h",
+      "fpdf_text.h",
+      "fpdf_edit.h",
+      "fpdf_ppo.h",
+      "fpdf_save.h"
+    ],
+    "requiredSymbols": [
+      "FPDF_InitLibraryWithConfig",
+      "FPDF_DestroyLibrary",
+      "FPDFText_LoadPage",
+      "FPDFPage_New",
+      "FPDF_ImportPagesByIndex",
+      "FPDFPage_Delete",
+      "FPDF_MovePages",
+      "FPDFPageObj_NewImageObj",
+      "FPDFImageObj_LoadJpegFileInline",
+      "FPDFImageObj_SetMatrix",
+      "FPDFImageObj_SetBitmap",
+      "FPDFPageObj_NewTextObj",
+      "FPDFText_SetText",
+      "FPDFPageObj_TransformF",
+      "FPDFPage_InsertObject",
+      "FPDFPage_GenerateContent",
+      "FPDF_SaveAsCopy"
+    ],
+    "license": "BSD-3-Clause"
+  },
+  "buildWorkflow": {
+    "repository": "https://github.com/bblanchon/pdfium-binaries",
+    "releaseCommit": "5325fa6d0d9379329f10f98fdc4839b4e40f2e79",
+    "script": "build.sh",
+    "staticBuildType": "static",
+    "staticArguments": "./build.sh -b chromium/8086 -s android <abi>",
+    "androidNdk": "27.1.12297006",
+    "staticGnArguments": [
+      "pdf_is_complete_lib = true",
+      "use_custom_libcxx = false"
+    ],
+    "staticBuildNote": "The repository workflow builds from the pinned upstream PDFium source using bblanchon/pdfium-binaries build tooling. Android GN uses the installed NDK through the repository's toolchain-root override. Only final release assets are distributed."
+  },
+  "distribution": {
+    "staticRelease": {
+      "repository": "https://github.com/grego5/react-native-inksign-pdf",
+      "tag": "pdfium-157.0.8086.0-static",
+      "androidAsset": "157.0.8086.0-android-static.zip",
+      "checksumsAsset": "SHA256SUMS-ANDROID",
+      "status": "published; archive structure and symbols validated in CI",
+      "androidAssetBytes": 26945983,
+      "androidAssetSha256": "31776b9aa7d5fe5950794aa0d1547182fae593214f0005708e6a5e94acb7cbf2",
+      "appleAsset": "PDFium-static-157.0.8086.0.xcframework.tar.gz",
+      "appleAssetBytes": 346727156,
+      "appleAssetSha256": "0eb0043326416d27222a1edf31b60c7e05dea34657c766b701ead977ef0e04f4",
+      "checksumsAssetBytes": 98,
+      "checksumsAssetSha256": "d7531ae0d22f3c2556b1ba5a19a2e9d49f90f0c5667994a2c705b5f6e43342e9",
+      "artifacts": [
+        {
+          "target": "android",
+          "buildType": "static",
+          "abi": "arm64-v8a",
+          "architecture": "AARCH64",
+          "packagedLibrary": "android/build/pdfium/arm64-v8a/libpdfium.a",
+          "packagedLibraryBytes": 44835524,
+          "packagedLibrarySha256": "1cc871f85b4cb2060ecac190be62ff42fbfdb30f0801fab85f03a84493a86058",
+          "expectedElfMachine": "AARCH64"
+        },
+        {
+          "target": "android",
+          "buildType": "static",
+          "abi": "x86_64",
+          "architecture": "X86_64",
+          "packagedLibrary": "android/build/pdfium/x86_64/libpdfium.a",
+          "packagedLibraryBytes": 44795700,
+          "packagedLibrarySha256": "1d7d1047e52ea0358ddc41bd765eb4a667fce1220aeecb70cdaea57108304883",
+          "expectedElfMachine": "X86_64"
+        }
+      ]
+    }
+  },
+  "candidateEvaluation": [
+    {
+      "candidate": "Official PDFium source checkout",
+      "decision": "rejected",
+      "reason": "Reproducible source, but its Chromium/depot_tools closure would make this package responsible for building and maintaining every mobile toolchain slice."
+    },
+    {
+      "candidate": "bblanchon/pdfium-binaries",
+      "decision": "selected",
+      "reason": "Its pinned scripts and patches provide a reproducible Android static build from upstream PDFium source, including public headers and license staging."
+    },
+    {
+      "candidate": "Android PdfRenderer",
+      "decision": "rejected",
+      "reason": "Android PdfRenderer does not provide the page mutation and vector assembly APIs required by this package. iOS uses PDFKit and Core Graphics."
+    }
+  ],
+  "sizeImpact": {
+    "baseline": "Static archive sizes; final linked module size depends on retained code and stripping.",
+    "androidReleaseAbi": {
+      "abi": "arm64-v8a",
+      "incrementalBytes": 44835524
+    },
+    "androidX86_64": {
+      "abi": "x86_64",
+      "incrementalBytes": 44795700
+    }
+  }
+}

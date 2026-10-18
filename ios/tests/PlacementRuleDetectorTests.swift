@@ -1,0 +1,474 @@
+import CoreGraphics
+import CoreText
+import PDFKit
+import UIKit
+import XCTest
+@testable import ReactNativeInkSignPdf
+
+final class PlacementRuleDetectorTests: XCTestCase {
+  func testPDFiumAnalysisKeepsCanonicalLabelAndRuleThroughIntrinsicRotation() throws {
+    let url = try makePDF { context in
+      drawFixtureLabel("Name", at: CGPoint(x: 80, y: 120), in: context)
+      context.move(to: CGPoint(x: 160, y: 120))
+      context.addLine(to: CGPoint(x: 300, y: 120))
+      context.strokePath()
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let initial = try analyze(url)
+    let initialMatch = try XCTUnwrap(initial.lookup(key: "Name").matches.first)
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    page.setBounds(CGRect(x: 20, y: 30, width: 595, height: 842), for: .mediaBox)
+    page.setBounds(CGRect(x: 20, y: 30, width: 595, height: 842), for: .cropBox)
+    page.rotation = 90
+    XCTAssertTrue(document.write(to: url))
+    let snapshots = try InkSignPdfPdfiumBackend.analyze(data: Data(contentsOf: url), pageIndices: [0])
+    let snapshot = try XCTUnwrap(snapshots.first)
+    XCTAssertEqual(snapshot.metadata.rotation, 90)
+    XCTAssertEqual(snapshot.metadata.mediaBox.size, CGSize(width: 595, height: 842))
+    let rotated = InkSignPdfPageAnalysis.build(snapshot: snapshot)
+    let match = try XCTUnwrap(rotated.lookup(key: "Name").matches.first)
+    XCTAssertEqual(match.bounds.minX, initialMatch.bounds.minX - 20, accuracy: 0.01)
+    XCTAssertEqual(match.bounds.minY, initialMatch.bounds.minY + 30, accuracy: 0.01)
+    XCTAssertEqual(match.bounds.width, initialMatch.bounds.width, accuracy: 0.01)
+    XCTAssertEqual(match.bounds.height, initialMatch.bounds.height, accuracy: 0.01)
+    XCTAssertEqual(rotated.rules.count, initial.rules.count)
+    let rule = try XCTUnwrap(rotated.rules.first)
+    let initialRule = try XCTUnwrap(initial.rules.first)
+    XCTAssertEqual(rule.start.x, initialRule.start.x - 20, accuracy: 0.01)
+    XCTAssertEqual(rule.start.y, initialRule.start.y + 30, accuracy: 0.01)
+  }
+
+  func testCroppedAnalysisUsesVisibleOriginAtEveryRotation() throws {
+    let url = try makePDF { context in
+      drawFixtureLabel("Name", at: CGPoint(x: 80, y: 120), in: context)
+      context.setLineWidth(1)
+      context.move(to: CGPoint(x: 140, y: 120))
+      context.addLine(to: CGPoint(x: 340, y: 120))
+      context.strokePath()
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let baseline = try analyze(url)
+    let match = try XCTUnwrap(baseline.lookup(key: "Name").matches.first)
+    let rule = try XCTUnwrap(baseline.rules.first)
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let crop = CGRect(x: 40, y: 50, width: 500, height: 750)
+    for rotation in [0, 90, 180, 270] {
+      page.setBounds(crop, for: .cropBox)
+      page.rotation = rotation
+      XCTAssertTrue(document.write(to: url))
+      let cropped = try analyze(url)
+      let croppedMatch = try XCTUnwrap(cropped.lookup(key: "Name").matches.first)
+      let croppedRule = try XCTUnwrap(cropped.rules.first)
+      XCTAssertEqual(croppedMatch.bounds.minX, match.bounds.minX - crop.minX, accuracy: 0.01)
+      XCTAssertEqual(croppedMatch.bounds.minY, match.bounds.minY - (842 - crop.maxY), accuracy: 0.01)
+      XCTAssertEqual(croppedRule.start.x, rule.start.x - crop.minX, accuracy: 0.01)
+      XCTAssertEqual(croppedRule.start.y, rule.start.y - (842 - crop.maxY), accuracy: 0.01)
+    }
+  }
+
+  func testJoinedWholeLabelMatchesMissingSpaceWithoutAcceptingPartialLabel() throws {
+    let url = try makePDF { context in
+      drawFixtureLabel("FullName", at: CGPoint(x: 80, y: 120), in: context)
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    try requireDrawableLabel("FullName", in: page)
+    let analysis = try analyze(url)
+    XCTAssertEqual(analysis.lookup(key: "Full Name").matches.count, 1)
+    XCTAssertFalse(analysis.lookup(key: "Name").hasLiteralMatch)
+    XCTAssertFalse(analysis.lookup(key: "Full").hasLiteralMatch)
+    XCTAssertFalse(analysis.lookup(key: "Full Full Name").hasLiteralMatch)
+  }
+
+  func testCanonicalGeometryRoundTripsWithRotationsAndMediaBoxOrigin() {
+    let mediaBox = CGRect(x: 36, y: 54, width: 320, height: 240)
+    let canonicalPoint = CGPoint(x: 47, y: 81)
+    let canonicalRect = CGRect(x: 47, y: 81, width: 63, height: 29)
+
+    for rotation in [0, 90, 180, 270] {
+      let geometry = PageGeometry(mediaBox: mediaBox, rotation: rotation)
+      XCTAssertEqual(geometry.displayToCanonical(geometry.canonicalToDisplay(canonicalPoint)),
+                     canonicalPoint)
+      XCTAssertEqual(geometry.displayToCanonical(geometry.canonicalToDisplay(canonicalRect)),
+                     canonicalRect)
+      XCTAssertEqual(canonicalPoint.applying(geometry.canonicalToPDFTransform),
+                     geometry.canonicalToDisplay(canonicalPoint).applying(geometry.displayToPDFTransform))
+    }
+  }
+
+  func testScansLowerHorizontalRulesAndRowsOfFilledRectangles() throws {
+    let linesURL = try makePDF { context in
+      context.setLineWidth(1)
+      for row in 0..<4 {
+        let y = CGFloat(722 + row * 12)
+        context.beginPath()
+        context.move(to: CGPoint(x: 44, y: y))
+        context.addLine(to: CGPoint(x: 540, y: y))
+        context.strokePath()
+      }
+    }
+    defer { try? FileManager.default.removeItem(at: linesURL) }
+
+    let dotsURL = try makePDF { context in
+      for row in 0..<5 {
+        for column in 0..<34 {
+          let rect = CGRect(x: 32 + CGFloat(column * 9),
+                            y: 230 + CGFloat(row * 22),
+                            width: 1.8,
+                            height: 1.8)
+          context.fill(rect)
+        }
+      }
+    }
+    defer { try? FileManager.default.removeItem(at: dotsURL) }
+
+    let lineRules = try scan(linesURL)
+    XCTAssertEqual(lineRules.count, 4)
+    XCTAssertTrue(lineRules.allSatisfy { $0.maxX - $0.minX > 490 && $0.y > 700 })
+
+    let dottedRows = try scan(dotsURL)
+    XCTAssertEqual(dottedRows.count, 5)
+    XCTAssertTrue(dottedRows.allSatisfy { $0.maxX - $0.minX > 290 })
+  }
+
+  func testScansAnUpperPageWritingRule() throws {
+    let url = try makePDF { context in
+      context.setLineWidth(1)
+      context.beginPath()
+      context.move(to: CGPoint(x: 44, y: 200))
+      context.addLine(to: CGPoint(x: 540, y: 200))
+      context.strokePath()
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let rules = try scan(url)
+    XCTAssertEqual(rules.count, 1)
+    XCTAssertEqual(rules[0].y, 200, accuracy: 0.01)
+  }
+
+  func testKeyTextSearchFoldsAsciiOccurrencesInCanonicalBounds() throws {
+    let url = try makePDF { context in
+      NSAttributedString(string: "Name   NAME",
+                         attributes: [.font: UIFont.systemFont(ofSize: 18)])
+        .draw(at: CGPoint(x: 80, y: 120))
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let mediaBox = page.bounds(for: .mediaBox)
+    let lookup = try analyze(url).lookup(key: "name")
+    XCTAssertTrue(lookup.hasLiteralMatch)
+    let matches = lookup.matches
+    XCTAssertEqual(matches.count, 2)
+    XCTAssertLessThan(matches[0].sourceIndex, matches[1].sourceIndex)
+    XCTAssertTrue(matches.allSatisfy {
+      $0.bounds.minX >= 0 && $0.bounds.minY >= 0 &&
+        $0.bounds.maxX <= mediaBox.width && $0.bounds.maxY <= mediaBox.height &&
+        $0.lineHeight > 0
+    })
+  }
+
+  func testKeyTextSearchRejectsALiteralSpanningVisualLines() throws {
+    let url = try makePDF { _ in
+      NSAttributedString(string: "First",
+                         attributes: [.font: UIFont.systemFont(ofSize: 18)])
+        .draw(at: CGPoint(x: 80, y: 100))
+      NSAttributedString(string: "Second",
+                         attributes: [.font: UIFont.systemFont(ofSize: 18)])
+        .draw(at: CGPoint(x: 80, y: 140))
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let key = try XCTUnwrap(page.string)
+
+    let lookup = try analyze(url).lookup(key: key)
+    XCTAssertFalse(lookup.hasLiteralMatch,
+                   "The API matches complete prepared labels, not source text spanning visual rows")
+    let matches = lookup.matches
+    XCTAssertTrue(matches.isEmpty)
+  }
+
+  func testPDFiumMultiwordLookupRetainsRepeatedWordsAndAcceptsReorderedWords() throws {
+    let url = try makePDF { context in
+      drawFixtureLabel("Full Name", at: CGPoint(x: 80, y: 120), in: context)
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let source = try XCTUnwrap(page.string)
+    let sourceString = source as NSString
+    let match = sourceString.range(of: "Full Name")
+    XCTAssertNotEqual(match.location, NSNotFound, "PDFKit extracted: \(source)")
+    try requireDrawableLabel("Full Name", in: page)
+
+    let analysis = try analyze(url)
+    let lookup = analysis.lookup(key: "Full Name")
+    XCTAssertTrue(lookup.hasLiteralMatch,
+      "Extracted: \(source); rows: \(analysis.characterVisualRows); labels: \(analysis.labelCandidates.map(\.fieldName))")
+    XCTAssertEqual(lookup.matches.count, 1,
+      "Extracted: \(source); rows: \(analysis.characterVisualRows); labels: \(analysis.labelCandidates.map(\.fieldName))")
+    guard let match = lookup.matches.first else { return }
+    XCTAssertGreaterThan(match.lineHeight, 0)
+    XCTAssertNotNil(match.lineCenterY)
+    let reorderedLookup = analysis.lookup(key: "Name Full")
+    XCTAssertEqual(reorderedLookup.matches.count, 1)
+    XCTAssertEqual(reorderedLookup.matches.first?.bounds, lookup.matches.first?.bounds)
+    XCTAssertFalse(analysis.lookup(key: "Full Nam").hasLiteralMatch)
+
+    XCTAssertFalse(analysis.lookup(key: "Full Full Name").hasLiteralMatch)
+
+  }
+
+  func testMultiwordKeyDoesNotCombineDistantFieldsOnOneRow() throws {
+    let url = try makePDF { _ in
+      let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 18)]
+      NSAttributedString(string: "Full", attributes: attributes).draw(at: CGPoint(x: 80, y: 120))
+      NSAttributedString(string: "Name", attributes: attributes).draw(at: CGPoint(x: 300, y: 120))
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let analysis = try analyze(url)
+    XCTAssertFalse(analysis.lookup(key: "Full").matches.isEmpty)
+    XCTAssertFalse(analysis.lookup(key: "Name").matches.isEmpty)
+    XCTAssertTrue(analysis.lookup(key: "Full Name").matches.isEmpty)
+  }
+
+  func testKeyRuleSelectionSkipsEarlierNameWithoutRuleBeforeApplyingOccurrence() {
+    let matches = [
+      InkSignPdfKeyTextMatch(bounds: CGRect(x: 10, y: 10, width: 10, height: 10),
+                             sourceIndex: 0,
+                             lineHeight: 10),
+      InkSignPdfKeyTextMatch(bounds: CGRect(x: 10, y: 30, width: 10, height: 10),
+                             sourceIndex: 8,
+                             lineHeight: 10),
+      InkSignPdfKeyTextMatch(bounds: CGRect(x: 10, y: 50, width: 10, height: 10),
+                             sourceIndex: 16,
+                             lineHeight: 10),
+    ]
+    let rules = [InkSignPdfPlacementRule(minX: 25, maxX: 100, y: 40),
+                 InkSignPdfPlacementRule(minX: 25, maxX: 100, y: 60)]
+    let pageSize = CGSize(width: 120, height: 120)
+
+    let first = InkSignPdfKeyRuleSelector.select(matches: matches,
+                                                  rules: rules,
+                                                  occurrence: .first,
+                                                  directionRtl: false,
+                                                  pageSize: pageSize)
+    XCTAssertEqual(first?.match.sourceIndex, 8)
+    XCTAssertEqual(first?.rule, rules[0])
+    let last = InkSignPdfKeyRuleSelector.select(matches: matches,
+                                                rules: rules,
+                                                occurrence: .last,
+                                                directionRtl: false,
+                                                pageSize: pageSize)
+    XCTAssertEqual(last?.match.sourceIndex, 16)
+    XCTAssertEqual(last?.rule, rules[1])
+    let multiline = InkSignPdfKeyTextMatch(bounds: CGRect(x: 10, y: 10, width: 10, height: 20),
+                                           sourceIndex: 0,
+                                           lineHeight: 0)
+    XCTAssertNil(InkSignPdfKeyRuleSelector.select(matches: [multiline],
+                                                   rules: rules,
+                                                   occurrence: .first,
+                                                   directionRtl: false,
+                                                   pageSize: pageSize))
+  }
+
+  func testPageAnalysisExtractsRepeatedNameFromSeparatedFieldsOnOneRow() throws {
+    let url = try makePDF { context in
+      drawFixtureLabel("Name        NAME", at: CGPoint(x: 80, y: 100), in: context)
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: 0))
+    let mediaBox = page.bounds(for: .mediaBox)
+    let extracted = try XCTUnwrap(page.string)
+    XCTAssertEqual(extracted.lowercased().components(separatedBy: "name").count - 1, 2,
+                   "The PDF-backed fixture must expose both occurrences: \(extracted)")
+    let analysis = try analyze(url)
+    let lookup = analysis.lookup(key: "Name")
+    XCTAssertTrue(lookup.hasLiteralMatch)
+    XCTAssertEqual(lookup.matches.count, 2,
+      "Extracted text: \(analysis.sourceText); prepared labels: \(analysis.labelCandidates.map(\.fieldName))")
+    XCTAssertLessThan(lookup.matches[0].bounds.maxX, lookup.matches[1].bounds.minX,
+      "Separated fields on one visual row must remain distinct prepared labels")
+  }
+
+  func testReboundPageAnalysisRetainsOriginalTextAfterSourceFileRemoval() throws {
+    let originalURL = try makePDF { context in
+      drawFixtureLabel("Name        X", at: CGPoint(x: 80, y: 120), in: context)
+    }
+    let workingURL = try makePDF { context in
+      drawFixtureLabel("Owner        X", at: CGPoint(x: 80, y: 120), in: context)
+    }
+    defer {
+      try? FileManager.default.removeItem(at: originalURL)
+      try? FileManager.default.removeItem(at: workingURL)
+    }
+    let original = try InkSignPdfDocumentCandidateLoader.load(url: originalURL)
+    let working = try InkSignPdfDocumentCandidateLoader.load(url: workingURL,
+                                                            retainingAnalysis: [0: original.pages[0].sourceAnalysis])
+    let rebound = InkSignPdfDocumentCandidateLoader.rebinding(original.pages[0], to: working.pages[0])
+    try FileManager.default.removeItem(at: originalURL)
+
+    XCTAssertEqual(rebound.id, original.pages[0].id)
+    XCTAssertTrue(try XCTUnwrap(PDFDocument(url: workingURL)?.page(at: 0)?.string).contains("Owner"))
+    XCTAssertTrue(rebound.sourceAnalysis.lookup(key: "Name").hasLiteralMatch)
+    XCTAssertFalse(rebound.sourceAnalysis.lookup(key: "Owner").hasLiteralMatch)
+    let replacement = try InkSignPdfDocumentCandidateLoader.load(url: workingURL)
+    XCTAssertTrue(replacement.pages[0].sourceAnalysis.lookup(key: "Owner").hasLiteralMatch)
+    XCTAssertFalse(replacement.pages[0].sourceAnalysis.lookup(key: "Name").hasLiteralMatch)
+  }
+
+  func testKeyUnderlineRuleLeavesTheLabelAndMarginOutsideTheTextFlow() {
+    let match = InkSignPdfKeyTextMatch(bounds: CGRect(x: 40, y: 20, width: 20, height: 10),
+                                       sourceIndex: 0,
+                                       lineHeight: 10)
+    let ltrRule = InkSignPdfPlacementRule(minX: 50, maxX: 100, y: 25)
+    let rtlRule = InkSignPdfPlacementRule(minX: 0, maxX: 50, y: 25)
+    let pageSize = CGSize(width: 120, height: 120)
+
+    let ltr = InkSignPdfKeyRuleSelector.select(matches: [match],
+                                                rules: [ltrRule],
+                                                occurrence: .first,
+                                                directionRtl: false,
+                                                pageSize: pageSize)
+    XCTAssertEqual(ltr?.contentMinX, 62)
+    XCTAssertEqual(ltr?.contentMaxX, 100)
+
+    let rtl = InkSignPdfKeyRuleSelector.select(matches: [match],
+                                                rules: [rtlRule],
+                                                occurrence: .first,
+                                                directionRtl: true,
+                                                pageSize: pageSize)
+    XCTAssertEqual(rtl?.contentMinX, 0)
+    XCTAssertEqual(rtl?.contentMaxX, 38)
+  }
+
+  func testTableBorderStrokesRetainSharedHorizontalRuleCandidates() throws {
+    let url = try makePDF { context in
+      context.setLineWidth(1)
+      for y in [CGFloat(650), 720] {
+        context.beginPath()
+        context.move(to: CGPoint(x: 44, y: y))
+        context.addLine(to: CGPoint(x: 540, y: y))
+        context.strokePath()
+      }
+      for x in [CGFloat(44), 540] {
+        context.beginPath()
+        context.move(to: CGPoint(x: x, y: 650))
+        context.addLine(to: CGPoint(x: x, y: 720))
+        context.strokePath()
+      }
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let rules = try scan(url)
+    XCTAssertEqual(rules.count, 2)
+    XCTAssertEqual(rules.map(\.y).sorted(), [650, 720])
+    XCTAssertTrue(rules.allSatisfy { abs($0.minX - 44) < 0.01 && abs($0.maxX - 540) < 0.01 })
+  }
+
+  func testScansOptionalSuppliedSolidRulePDF() throws {
+    guard let linesURL = fixtureURL(named: "RaDaLqz0kjfZbrgDjeEd") else {
+      throw XCTSkip("Optional local PDF fixture is not present")
+    }
+    let lineRules = try scan(linesURL)
+    let lineDocument = try XCTUnwrap(PDFDocument(url: linesURL))
+    let linePage = try XCTUnwrap(lineDocument.page(at: 0))
+    let lowerRules = lineRules.filter {
+      $0.y >= linePage.bounds(for: .mediaBox).height * 0.68
+    }
+    XCTAssertEqual(lowerRules.count, 4, "The supplied form has four lower writing rules")
+  }
+
+  func testScansOptionalSuppliedDottedRulePDF() throws {
+    guard let dotsURL = fixtureURL(named: "גיל אייזנברג 3206") else {
+      throw XCTSkip("Optional local PDF fixture is not present")
+    }
+    let dottedRows = try scan(dotsURL)
+    XCTAssertGreaterThanOrEqual(dottedRows.count, 5,
+                                 "The supplied form's evenly spaced dot rows should be candidates")
+  }
+
+  private func drawFixtureLabel(_ text: String, at baseline: CGPoint, in context: CGContext) {
+    let font = CTFontCreateWithName("Helvetica" as CFString, 18, nil)
+    let attributes: [NSAttributedString.Key: Any] = [
+      NSAttributedString.Key(kCTFontAttributeName as String): font,
+    ]
+    let line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes))
+    context.saveGState()
+    context.translateBy(x: baseline.x, y: baseline.y)
+    context.scaleBy(x: 1, y: -1)
+    context.textMatrix = .identity
+    context.textPosition = .zero
+    CTLineDraw(line, context)
+    context.restoreGState()
+  }
+
+  private func requireDrawableLabel(_ label: String, in page: PDFPage) throws {
+    let source = try XCTUnwrap(page.string) as NSString
+    let range = source.range(of: label)
+    XCTAssertNotEqual(range.location, NSNotFound, "Fixture extraction: \(source)")
+    guard range.location != NSNotFound else { return }
+    for index in range.location..<NSMaxRange(range) {
+      if source.character(at: index) == 0x20 { continue }
+      let selection = try XCTUnwrap(page.selection(for: NSRange(location: index, length: 1)))
+      let bounds = selection.bounds(for: page)
+      XCTAssertFalse(bounds.isNull || bounds.isEmpty,
+        "Fixture label \(label), character index \(index), bounds \(bounds)")
+    }
+  }
+
+  private func fixtureURL(named name: String) -> URL? {
+    let fileName = "\(name).pdf"
+    let configuredDirectory = ProcessInfo.processInfo.environment["INKSIGN_PDF_TEST_FIXTURES"]
+    let directory: URL
+    if let configuredDirectory {
+      directory = URL(fileURLWithPath: configuredDirectory, isDirectory: true)
+    } else {
+      let testSource = URL(fileURLWithPath: #filePath)
+      let repositoryRoot = testSource.deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+      directory = repositoryRoot.appendingPathComponent("diagnostics", isDirectory: true)
+    }
+    let url = directory.appendingPathComponent(fileName)
+    return FileManager.default.fileExists(atPath: url.path) ? url : nil
+  }
+
+  private func makePDF(draw: (CGContext) -> Void) throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+      .appendingPathComponent("placement-rules-\(UUID().uuidString).pdf")
+    let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0,
+                                                         width: 595, height: 842))
+    try renderer.writePDF(to: url) { context in
+      context.beginPage()
+      draw(context.cgContext)
+    }
+    return url
+  }
+
+  private func analyze(_ url: URL, pageIndex: Int = 0) throws -> InkSignPdfPageAnalysis {
+    let snapshots = try InkSignPdfPdfiumBackend.analyze(data: Data(contentsOf: url),
+                                                       pageIndices: [NSNumber(value: pageIndex)])
+    return InkSignPdfPageAnalysis.build(snapshot: try XCTUnwrap(snapshots.first))
+  }
+
+  private func scan(_ url: URL, pageIndex: Int = 0) throws -> [InkSignPdfPlacementRule] {
+    let document = try XCTUnwrap(PDFDocument(url: url))
+    let page = try XCTUnwrap(document.page(at: pageIndex))
+    let geometry = PageGeometry(mediaBox: page.bounds(for: .mediaBox), rotation: page.rotation)
+    return try analyze(url, pageIndex: pageIndex).rules.compactMap { rule in
+      let start = geometry.canonicalToDisplay(rule.start)
+      let end = geometry.canonicalToDisplay(rule.end)
+      guard abs(start.y - end.y) <= 0.001 else { return nil }
+      return InkSignPdfPlacementRule(minX: min(start.x, end.x), maxX: max(start.x, end.x), y: start.y)
+    }
+  }
+}
