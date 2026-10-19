@@ -199,8 +199,8 @@ extension DocumentCore {
     switch direction {
     case .ltr?: return false
     case .rtl?: return true
-    case .auto?: return appDirectionRTL
-    case nil: return appDirectionRTL
+    case .auto?: return appDirectionRTL()
+    case nil: return appDirectionRTL()
     }
   }
 

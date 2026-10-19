@@ -52,6 +52,9 @@
   `textDirection` or app layout when unset/auto. Placement captures direction
   when armed. Prop changes reflow the active editor inside unchanged fixed bounds
   and reconcile caret visibility; commit saves resolved direction.
+- View-free core resolution (`resolveInputUnderline`, programmatic text) reads
+  `RCTI18nUtil.isRTL` per call, as Android reads `I18nUtil`; UIKit's bundle
+  localization direction stays LTR in apps without RTL localizations.
 
 ## Prepared page text
 

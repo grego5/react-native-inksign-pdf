@@ -16,7 +16,8 @@ final class DocumentCore {
   let inputs: InkSignPdfPageInputCoordinator
   let recordHistory: Bool
   let fonts = InkSignPdfNamedFontRegistry()
-  var appDirectionRTL = UIView.userInterfaceLayoutDirection(for: .unspecified) == .rightToLeft
+  /// Read per use: I18nManager direction, not bundle localization, matching Android.
+  var appDirectionRTL: () -> Bool = { InkSignPdfAppLayout.isRTL() }
   let defaultTextFontSize: Double = 16
   let defaultTextColor = "#000000"
   private(set) var activeTextEdit: InkSignPdfDocumentTextEdit?

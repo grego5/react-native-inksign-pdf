@@ -26,9 +26,9 @@ Pod::Spec.new do |s|
   s.vendored_frameworks = 'ios/build/pdfium/sdk/PDFium.xcframework'
   s.preserve_paths = 'ios/build/pdfium/sdk/**/*'
   s.private_header_files = 'core/pdfium-adapter/*.hpp'
-  # Nitrogen declares an explicit public-header list. Include the ObjC bridge
+  # Nitrogen declares an explicit public-header list. Include the ObjC bridges
   # there so CocoaPods' umbrella module exposes its value types to Swift.
-  s.public_header_files = 'ios/PdfiumBackend.h'
+  s.public_header_files = ['ios/PdfiumBackend.h', 'ios/InkSignPdfAppLayout.h']
   s.exclude_files = 'ios/tests/**/*'
   s.pod_target_xcconfig = {
     'HEADER_SEARCH_PATHS' => '$(inherited) "$(PODS_TARGET_SRCROOT)" "$(PODS_TARGET_SRCROOT)/core" "$(PODS_ROOT)/Headers/Private/Yoga"',

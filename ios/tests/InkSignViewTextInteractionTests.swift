@@ -220,7 +220,7 @@ final class InkSignViewTextInteractionTests: XCTestCase, InkSignViewTestSupport 
     let fixture = makeFixture(pageCount: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }
     let view = fixture.view
-    view.documentCore.appDirectionRTL = true
+    view.documentCore.appDirectionRTL = { true }
     view.container.semanticContentAttribute = .forceRightToLeft
     view.textDirection = .ltr
 
