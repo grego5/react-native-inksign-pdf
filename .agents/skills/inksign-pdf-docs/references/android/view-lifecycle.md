@@ -52,7 +52,8 @@
 - `loadFonts()` atomically publishes named static single-face TrueType sources.
   Normalized-source aliases share bytes, typeface, and private font file.
   Registry publication is on UI; loading/file retirement is on IO.
-- `androidFallbackFont.uri` supports HTTP(S), local paths/files, content/resource
+- `androidFallbackFont` is validated and used only on Android (empty URI rejects
+  `invalid_fallback_font`); iOS ignores it. `uri` supports HTTP(S), local paths/files, content/resource
   URIs, Expo `file:///android_res/`, and bare resource names. Source/reconstructed
   faces are capped at 64 MiB. Streams/connections close after resolution;
   cancellation prevents publication.

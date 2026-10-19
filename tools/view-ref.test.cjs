@@ -212,6 +212,23 @@ test('headless imports preserve omitted and explicit selection arguments', async
   }
 });
 
+test('Android fallback font validates only on Android with a font error', () => {
+  const previousPlatform = platform.OS;
+  const options = { androidFallbackFont: { uri: '' } };
+  try {
+    headlessFactory = { createDocument: () => ({
+      getState: () => ({ documentId: 'font-document', pageCount: 0, isDirty: false }),
+    }) };
+    platform.OS = 'ios';
+    createDocument(options);
+    platform.OS = 'android';
+    assert.throws(() => createDocument(options), /^Error: invalid_fallback_font:/);
+  } finally {
+    platform.OS = previousPlatform;
+    headlessFactory = undefined;
+  }
+});
+
 test('native lifecycle cancellation remains recognizable through imports', async () => {
   const previousPlatform = platform.OS;
   try {

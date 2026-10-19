@@ -132,12 +132,6 @@ export type InkSignViewProps = Omit<
   onTextSelectionChange?: InkSignViewNativeProps['onTextSelectionChange'];
 };
 
-function validateDocumentPath(path: string): void {
-  if (typeof path !== 'string' || path.trim() === '') {
-    throw argumentError('invalid_document_path', 'A non-empty PDF path or file URI is required');
-  }
-}
-
 function callAsync<T>(validate: () => void, invoke: () => Promise<T>): Promise<T> {
   try {
     validate();
@@ -438,9 +432,10 @@ function validateDocumentOptions(options?: DocumentOptions): void {
   if (options?.recordHistory !== undefined && typeof options.recordHistory !== 'boolean') {
     throw argumentError('invalid_document_options', 'recordHistory must be a boolean');
   }
-  if (options?.androidFallbackFont !== undefined) {
-    validateDocumentPath(options.androidFallbackFont.uri);
-    const index = options.androidFallbackFont.collectionIndex;
+  // iOS ignores the Android fallback font, so platform-specific app values need not resolve there.
+  if (Platform.OS === 'android' && options?.androidFallbackFont !== undefined) {
+    const { uri, collectionIndex: index } = options.androidFallbackFont;
+    if (typeof uri !== 'string' || uri.trim() === '') throw argumentError('invalid_fallback_font', 'A non-empty font path or URI is required');
     if (index !== undefined && (!Number.isInteger(index) || index < 0)) throw argumentError('invalid_fallback_font', 'A font face index must be a nonnegative integer');
   }
 }

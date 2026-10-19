@@ -222,7 +222,7 @@ export interface ViewportOptions {
 }
 
 export interface AndroidFallbackFont {
-  /** Font source: HTTP(S), local file, content/resource URI, or packaged Android resource name. */
+  /** Font source: HTTP(S), local file, content/resource URI, or packaged Android resource name. Ignored on iOS. */
   uri: string
   /** Font collection face index. Defaults to 0. */
   collectionIndex?: number
