@@ -118,13 +118,9 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     applyTextDirection()
     coreObserver = documentCore.observe { [weak self] change in self?.documentCoreDidChange(change) }
     guard let state = documentCoordinator.document else { emitChange(force: true); return }
-    let expectedCore = documentCore
     installStructuralPresentation(state, generation: documentCoordinator.generation,
-      viewport: nil, selectedPageID: state.pages.first?.id, fitPage: true) { [weak self] result in
-      guard let self, !self.disposed, self.document != nil, self.documentCore === expectedCore else { return }
-      if case .failure(let error) = result { self.loadError = error.localizedDescription }
-      self.emitChange(force: true)
-    }
+      viewport: nil, selectedPageID: state.pages.first?.id, fitPage: true,
+      completion: structuralPresentationCompletion())
   }
 
   /// Detaches the current document and closes it when the view owns it.

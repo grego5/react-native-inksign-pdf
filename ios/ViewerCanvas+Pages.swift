@@ -42,4 +42,17 @@ extension ViewerCanvas {
     finishPagePresentationIfReady()
   }
 
+  /// Publishes a structural presentation result for the current core. A superseded request stays
+  /// silent because its replacement publishes the state.
+  func structuralPresentationCompletion() -> (Result<PageInfo, Error>) -> Void {
+    let expectedCore = documentCore
+    return { [weak self] result in
+      guard let self, !self.disposed, self.document != nil, self.documentCore === expectedCore else { return }
+      if case .failure(let error) = result {
+        guard !Self.isSuperseded(error) else { return }
+        self.loadError = error.localizedDescription
+      }
+      self.emitChange(force: true)
+    }
+  }
 }

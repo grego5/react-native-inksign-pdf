@@ -103,9 +103,14 @@ extension ViewerCanvas {
     }
   }
 
+  /// A newer presentation or disposal replaced the request; the replacement reports its own result.
+  static func isSuperseded(_ error: Error) -> Bool {
+    if case .cancelled? = error as? ViewportError { return true }
+    return false
+  }
+
   func reportPageNavigationFailure(_ error: Error) {
-    if let viewportError = error as? ViewportError,
-       case .cancelled = viewportError { return }
+    if Self.isSuperseded(error) { return }
     print("ReactNativeInkSignPdf page navigation failed: \(error.localizedDescription)")
   }
 

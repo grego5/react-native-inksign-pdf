@@ -36,7 +36,6 @@ extension ViewerCanvas {
           emitChange(force: true)
           return
         }
-        let expectedCore = documentCore
         let oldID = viewerDocument?.activePageID
         let oldIndex = viewerDocument?.activePageIndex ?? 0
         let selected = oldID.flatMap { state.index(of: $0) == nil ? nil : $0 }
@@ -44,11 +43,8 @@ extension ViewerCanvas {
         let selectedPage = state.pages[state.index(of: selected)!]
         let fitPage = oldID != selected || viewerDocument?.activePDFPage.rotation != selectedPage.geometry.rotation
         installStructuralPresentation(state, generation: documentCoordinator.generation,
-          viewport: try? interaction.viewport.currentViewportSnapshot(), selectedPageID: selected, fitPage: fitPage) { [weak self] result in
-          guard let self, !self.disposed, self.document != nil, self.documentCore === expectedCore else { return }
-          if case .failure(let error) = result { self.loadError = error.localizedDescription }
-          self.emitChange(force: true)
-        }
+          viewport: try? interaction.viewport.currentViewportSnapshot(), selectedPageID: selected, fitPage: fitPage,
+          completion: structuralPresentationCompletion())
         return
       }
       // Presentation installation owns page-ready events. The mutation is already

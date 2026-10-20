@@ -609,6 +609,22 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertFalse(view.documentStateSnapshot().isDirty)
   }
 
+  func testSupersededStructuralPresentationDoesNotReportLoadError() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let page = try XCTUnwrap(view.viewerDocument?.activePage)
+    let pending = view.interaction.beginPresentation(page: page, structural: true,
+      completion: view.structuralPresentationCompletion())
+    XCTAssertTrue(view.interaction.presentation === pending)
+
+    view.documentCoreDidChange(.structure)
+    XCTAssertFalse(view.interaction.presentation === pending)
+    XCTAssertNil(view.loadError)
+    try awaitViewerPageReady(view)
+    XCTAssertNil(view.loadError)
+  }
+
   func testMoveAndRemoveCommandsPublishFinalPageOrder() throws {
     let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }

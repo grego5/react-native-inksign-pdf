@@ -45,7 +45,8 @@
   paths, so resolving an unallocated leaf would fall outside the root.
 - Detached PDFium candidates validate before publication. Assembly failure
   preserves published data; presentation failure reports an error without
-  rolling back valid core data.
+  rolling back valid core data. A presentation superseded by a newer structural
+  publication reports nothing; the replacement publishes state.
 - Core commands finish at publication. Viewer commands separately await page,
   overlay, transform, and viewport readiness.
 - Import/reorder/rotation preserve selected identity; deletion selects the
