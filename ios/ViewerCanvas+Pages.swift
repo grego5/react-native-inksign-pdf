@@ -6,7 +6,6 @@ import UIKit
 
 extension ViewerCanvas {
   func installStructuralPresentation(_ state: CommittedDocumentState,
-                                             generation: UInt64,
                                              viewport: Viewport?,
                                              selectedPageID: UUID? = nil,
                                              fitPage: Bool = false,
@@ -26,11 +25,43 @@ extension ViewerCanvas {
     let request = interaction.beginPresentation(page: page, viewport: viewportRequest,
       structural: true, completion: completion)
     guard interaction.presentation === request else { return }
+    // PDFKit's page controller keeps a stale page view when it receives a document
+    // before layout, so installation waits for a sized view in a window.
+    guard canInstallPresentation else {
+      presentationInstallDeferred = true
+      // The retiring state's working-file lease ends with this call; PDFKit must not keep
+      // reading its document while the replacement waits for layout.
+      if let shown = documentView.document, shown !== presented.document { detachShownDocument() }
+      return
+    }
+    installPresentedDocument()
+  }
+
+  private func detachShownDocument() {
+    documentView.document = nil
+    overlayProvider.reset()
+  }
+
+  /// PDFKit sizes its page controller from `documentView`, whose constrained frame lags the
+  /// container until the container's layout pass runs.
+  var canInstallPresentation: Bool {
+    documentView.window != nil && documentView.bounds.width > 0 && documentView.bounds.height > 0
+  }
+
+  func containerDidLayout() {
+    guard !disposed, presentationInstallDeferred, canInstallPresentation else { return }
+    presentationInstallDeferred = false
+    guard viewerDocument != nil, interaction.presentation != nil else { return }
+    installPresentedDocument()
+  }
+
+  private func installPresentedDocument() {
+    guard let presented = viewerDocument else { return }
     invalidateOverlayTransformCache()
     textInteractionOverlay.clearPlacementRules()
     if documentView.document !== presented.document {
       documentView.document = nil
-      overlayProvider.install(document: presented.document, generation: generation)
+      overlayProvider.install(document: presented.document, generation: documentCoordinator.generation)
       documentView.document = presented.document
     }
     interaction.viewport.navigate(to: presented.activePDFPage)

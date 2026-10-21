@@ -625,6 +625,108 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
     XCTAssertNil(view.loadError)
   }
 
+  func testLoadedDocumentAttachedBeforeLayoutPresentsAfterLayout() throws {
+    let sourceURL = FileManager.default.temporaryDirectory
+      .appendingPathComponent("InkSignPdfEarlyAttach-\(UUID().uuidString).pdf")
+    defer { try? FileManager.default.removeItem(at: sourceURL) }
+    let source = PDFDocument()
+    let size = CGSize(width: 300, height: 400)
+    let image = UIGraphicsImageRenderer(size: size).image { context in
+      UIColor.white.setFill()
+      context.fill(CGRect(origin: .zero, size: size))
+    }
+    let sourcePage = try XCTUnwrap(PDFPage(image: image))
+    sourcePage.setBounds(CGRect(origin: .zero, size: size), for: .mediaBox)
+    source.insert(sourcePage, at: 0)
+    XCTAssertTrue(source.write(to: sourceURL))
+    let core = DocumentCore(artifactPolicy: .shared, recordHistory: true)
+    let loaded = expectation(description: "document opens before the view mounts")
+    initializeDocument(core, from: sourceURL).then { _ in loaded.fulfill() }
+      .catch { _ in loaded.fulfill() }
+    wait(for: [loaded], timeout: 120)
+    XCTAssertNotNil(core.coordinator.document)
+    let document = HybridInkSignDocument(core: core)
+
+    // The app mounts the editor with an opened document; props arrive before layout, and the
+    // bindings apply pagerDirection after document.
+    // The second pass attaches to a mounted, sized container before its layout pass.
+    for attachesAfterMount in [false, true] {
+      let view = ViewerCanvas()
+      var states: [ViewerState] = []
+      view.onStateChange = { states.append($0) }
+      let applyProps = {
+        view.document = .first(document)
+        view.pagerDirection = .ltr
+      }
+      if !attachesAfterMount { applyProps() }
+      let controller = UIViewController()
+      let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 600, height: 600))
+      window.rootViewController = controller
+      window.makeKeyAndVisible()
+      controller.view.addSubview(view.view)
+      view.view.frame = controller.view.bounds
+      if attachesAfterMount {
+        XCTAssertGreaterThan(view.container.bounds.width, 0)
+        XCTAssertEqual(view.documentView.bounds.width, 0)
+        applyProps()
+      }
+      controller.view.layoutIfNeeded()
+
+      try awaitViewerPageReady(view)
+      XCTAssertEqual(view.interaction.availability, .ready)
+      XCTAssertNil(view.loadError)
+      XCTAssertEqual(states.last?.pageCount, 1)
+      view.dispose()
+      window.isHidden = true
+    }
+  }
+
+  func testRotationFitsRotatedPageInPortraitViewer() throws {
+    let fixture = makeFixture(pageCount: 1)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    // A square viewer fits a page identically in both orientations; a phone does not.
+    fixture.window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+    view.view.frame = fixture.window.bounds
+    fixture.window.layoutIfNeeded()
+    var reports: [Double] = []
+    view.onZoomChange = { reports.append($0) }
+    let owner = try attachedDocument(view)
+
+    try awaitDocumentOperation(owner.rotatePage(index: 0, degrees: 90))
+    try awaitViewerPageReady(view)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+
+    let fit = try XCTUnwrap(view.interaction.viewport.usableFitScale())
+    XCTAssertEqual(view.documentView.scaleFactor, fit, accuracy: 0.0001)
+    XCTAssertEqual(try XCTUnwrap(reports.last), 1, accuracy: 0.0001)
+  }
+
+  func testDeferredStructuralPresentationDetachesRetiredPDFKitDocument() throws {
+    let fixture = makeFixture(pageCount: 2)
+    defer { fixture.view.dispose(); fixture.window.isHidden = true }
+    let view = fixture.view
+    let owner = try attachedDocument(view)
+    let superview = try XCTUnwrap(view.view.superview)
+    let retiredURL = try XCTUnwrap(view.viewerDocument?.workingURL)
+
+    // Removal rewrites the working file; rotation keeps it and applies orientation logically.
+    view.view.removeFromSuperview()
+    try awaitDocumentOperation(owner.removePage(index: 1))
+    let presented = try XCTUnwrap(view.viewerDocument)
+    XCTAssertNotEqual(presented.workingURL, retiredURL)
+    XCTAssertTrue(view.presentationInstallDeferred)
+    // The retired state's lease is gone, so PDFKit must not still read its file.
+    XCTAssertNil(view.documentView.document)
+
+    superview.addSubview(view.view)
+    view.view.frame = superview.bounds
+    superview.layoutIfNeeded()
+    try awaitViewerPageReady(view)
+    XCTAssertTrue(view.documentView.document === presented.document)
+    XCTAssertEqual(view.interaction.availability, .ready)
+  }
+
   func testMoveAndRemoveCommandsPublishFinalPageOrder() throws {
     let fixture = makeFixture(pageCount: 3, activePageIndex: 1)
     defer { fixture.view.dispose(); fixture.window.isHidden = true }

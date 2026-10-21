@@ -47,6 +47,13 @@
   preserves published data; presentation failure reports an error without
   rolling back valid core data. A presentation superseded by a newer structural
   publication reports nothing; the replacement publishes state.
+- PDFKit receives a structural presentation only once the container is in a
+  window with nonzero bounds. Earlier publication (an opened document attached
+  before mount) defers installation to container layout; PDFKit's page
+  controller otherwise keeps a stale page view. Deferral detaches any previously
+  shown PDFKit document because its viewer state, and with it the working-file
+  lease, retires immediately. A pager-direction change keeps a pending
+  structural request; it cancels only navigation requests.
 - Core commands finish at publication. Viewer commands separately await page,
   overlay, transform, and viewport readiness.
 - Import/reorder/rotation preserve selected identity; deletion selects the

@@ -68,6 +68,7 @@ extension ViewerCanvas {
     textInteractionOverlay.discardForDocumentReplacement()
     cancelActiveStroke(clearLive: false)
     interaction.cancelPresentation()
+    presentationInstallDeferred = false
     interaction.viewport.supersede()
     pageNavigationRequestID &+= 1
 

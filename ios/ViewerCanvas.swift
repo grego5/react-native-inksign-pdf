@@ -55,8 +55,24 @@ final class InkSignPdfViewGestureDelegate: NSObject, UIGestureRecognizerDelegate
   }
 }
 
+/// Reports layout after constraints size the PDF view, making a deferred presentation installable.
+final class ViewerContainerView: UIView {
+  var onLayout: (() -> Void)?
+
+  override func layoutSubviews() {
+    super.layoutSubviews()
+    onLayout?()
+  }
+
+  override func didMoveToWindow() {
+    super.didMoveToWindow()
+    if window != nil { setNeedsLayout() }
+  }
+}
+
 final class ViewerCanvas: HybridInkSignViewSpec {
-  let container = UIView()
+  private let containerView = ViewerContainerView()
+  var container: UIView { containerView }
   let documentView = PDFView()
   let pdfViewInteractionOwnership = PDFViewInteractionOwnership()
   let overlayProvider = PageOverlayProvider()
@@ -118,8 +134,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     applyTextDirection()
     coreObserver = documentCore.observe { [weak self] change in self?.documentCoreDidChange(change) }
     guard let state = documentCoordinator.document else { emitChange(force: true); return }
-    installStructuralPresentation(state, generation: documentCoordinator.generation,
-      viewport: nil, selectedPageID: state.pages.first?.id, fitPage: true,
+    installStructuralPresentation(state, viewport: nil, selectedPageID: state.pages.first?.id, fitPage: true,
       completion: structuralPresentationCompletion())
   }
 
@@ -144,6 +159,8 @@ final class ViewerCanvas: HybridInkSignViewSpec {
   }
   var documentCoordinator: InkSignPdfDocumentCoordinator { documentCore.coordinator }
   var viewerDocument: InkSignPdfViewerDocumentState?
+  /// The current structural presentation waits for layout before PDFKit receives it.
+  var presentationInstallDeferred = false
   lazy var textInteractionOverlay = InkSignPdfTextInteractionOverlay(frame: .zero)
   private lazy var pdfViewGestureDelegate = InkSignPdfViewGestureDelegate(owner: self)
   private(set) lazy var interaction = ViewerInteractionCoordinator(host: self)
@@ -265,6 +282,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
   override init() {
     super.init()
     container.clipsToBounds = true
+    containerView.onLayout = { [weak self] in self?.containerDidLayout() }
     documentView.backgroundColor = .white
     documentView.isOpaque = true
     documentView.displayMode = .singlePage
@@ -377,6 +395,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
         NotificationCenter.default.removeObserver(observer)
         self.pdfScaleObserver = nil
       }
+      self.containerView.onLayout = nil
       self.onStateChange = nil
       self.onPageChange = nil
       self.onZoomChange = nil

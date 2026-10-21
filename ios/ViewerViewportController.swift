@@ -113,7 +113,9 @@ final class ViewerViewportController {
 
   func applyPagerDirectionNow() {
     guard Thread.isMainThread else { return }
-    interaction.cancelPresentation()
+    // A structural request, possibly deferred until layout, owns the next presentation and
+    // applies its viewport on completion; cancelling it would leave the viewer suspended.
+    if interaction.presentation?.structural != true { interaction.cancelPresentation() }
     let currentPage = documentView.currentPage
     let currentDestination = documentView.currentDestination
     let currentScale = documentView.scaleFactor

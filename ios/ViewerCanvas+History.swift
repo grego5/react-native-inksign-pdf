@@ -42,7 +42,7 @@ extension ViewerCanvas {
           ?? state.pages[min(oldIndex, state.pages.count - 1)].id
         let selectedPage = state.pages[state.index(of: selected)!]
         let fitPage = oldID != selected || viewerDocument?.activePDFPage.rotation != selectedPage.geometry.rotation
-        installStructuralPresentation(state, generation: documentCoordinator.generation,
+        installStructuralPresentation(state,
           viewport: try? interaction.viewport.currentViewportSnapshot(), selectedPageID: selected, fitPage: fitPage,
           completion: structuralPresentationCompletion())
         return
