@@ -14,6 +14,8 @@
 
 #include "pdfium-adapter/PdfiumDocumentSession.hpp"
 #include "pdfium-adapter/PdfiumPageAssembler.hpp"
+#include "pdfium-adapter/PdfiumPngImage.hpp"
+#include <exception>
 
 namespace {
 
@@ -60,6 +62,41 @@ bool readJavaPath(JNIEnv* env, jstring value, std::string& path) {
 }
 
 }  // namespace
+
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_margelo_nitro_inksignpdf_PdfiumPageAssembler_encodeGrayscalePng(
+    JNIEnv* env, jclass, jobject bitmap) {
+  try {
+    AndroidBitmapInfo info{};
+    if (bitmap == nullptr || AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS ||
+        info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 || info.width == 0 || info.width > 8192 ||
+        info.height == 0 || info.height > 8192) {
+      env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "Grayscale PNG bitmap is invalid");
+      return nullptr;
+    }
+    void* pixels = nullptr;
+    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) {
+      env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), "Unable to read grayscale PNG bitmap");
+      return nullptr;
+    }
+    ScopedBitmapUnlock unlock{env, bitmap};
+    std::vector<std::uint8_t> png;
+    auto result = margelo::nitro::inksignpdf::pdfium::encodeGrayscalePng4(
+        {static_cast<const std::uint8_t*>(pixels), static_cast<std::size_t>(info.stride) * info.height},
+        info.width, info.height, info.stride, 4, png);
+    if (!result) {
+      env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), result.message.c_str());
+      return nullptr;
+    }
+    auto bytes = env->NewByteArray(static_cast<jsize>(png.size()));
+    if (bytes != nullptr) env->SetByteArrayRegion(bytes, 0, static_cast<jsize>(png.size()),
+        reinterpret_cast<const jbyte*>(png.data()));
+    return bytes;
+  } catch (const std::exception& exception) {
+    env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), exception.what());
+    return nullptr;
+  }
+}
 
 extern "C" JNIEXPORT jdoubleArray JNICALL
 Java_com_margelo_nitro_inksignpdf_PdfiumPageAssembler_nativeAssemble(

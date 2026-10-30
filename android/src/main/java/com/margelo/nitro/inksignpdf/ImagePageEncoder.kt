@@ -14,7 +14,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
-/** Converts one selected image into the page-sized JPEG consumed by PDFium. */
+/** Preserves supported compressed images; rasterizes for resolution or encoding changes. */
 internal object ImagePageEncoder {
   private const val DPI = 200.0
   private const val POINTS_PER_INCH = 72.0
@@ -53,13 +53,14 @@ internal object ImagePageEncoder {
       orientation == ExifInterface.ORIENTATION_TRANSVERSE
     val orientedWidth = if (rotatedDimensions) bounds.outHeight else bounds.outWidth
     val orientedHeight = if (rotatedDimensions) bounds.outWidth else bounds.outHeight
+    val grayscalePng = isGrayscalePng4(source)
+    val supported = bounds.outMimeType == "image/jpeg" || grayscalePng
     val pointsPerSourcePixel = min(
       page.width / orientedWidth,
       page.height / orientedHeight,
     )
-    val rasterDpi = targetDpi?.let { requestedDpi ->
-      min(requestedDpi, POINTS_PER_INCH / pointsPerSourcePixel)
-    } ?: DPI
+    val sourceDpi = POINTS_PER_INCH / pointsPerSourcePixel
+    val rasterDpi = min(targetDpi ?: if (supported) sourceDpi else DPI, sourceDpi)
     val requestedPixelsPerPoint = rasterDpi / POINTS_PER_INCH
     val longestPageEdge = max(page.width, page.height)
     val maxPixelsPerPoint = MAX_PAGE_EDGE_PX / longestPageEdge
@@ -83,6 +84,17 @@ internal object ImagePageEncoder {
       orientedHeight * pointsPerSourcePixel,
       pixelsPerPoint,
     )
+    if (supported && jpegQuality == null &&
+      (targetDpi == null || orientedWidth <= imageTargetWidth && orientedHeight <= imageTargetHeight)
+    ) {
+      return PdfiumAppendRequest(
+        type = PageType.IMAGE, imageBytes = source.readBytes(),
+        pageWidth = page.width, pageHeight = page.height,
+        placement = preservedPlacement(orientation,
+          orientedWidth * pointsPerSourcePixel, orientedHeight * pointsPerSourcePixel, page),
+      )
+    }
+    val keepGrayscale = grayscalePng && jpegQuality == null
     val sample = calculateSample(
       orientedWidth,
       orientedHeight,
@@ -153,14 +165,19 @@ internal object ImagePageEncoder {
           Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
         )
       }
-      val output = ByteArrayOutputStream()
-      val quality = jpegQuality?.times(100.0)?.roundToInt() ?: JPEG_QUALITY
-      check(pageBitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)) {
-        "Unable to encode selected image"
+      val bytes = if (keepGrayscale) {
+        PdfiumPageAssembler.encodeGrayscalePng(pageBitmap)
+      } else {
+        val output = ByteArrayOutputStream()
+        val quality = jpegQuality?.times(100.0)?.roundToInt() ?: JPEG_QUALITY
+        check(pageBitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)) {
+          "Unable to encode selected image"
+        }
+        output.toByteArray()
       }
       return PdfiumAppendRequest(
         type = PageType.IMAGE,
-        imageBytes = output.toByteArray(),
+        imageBytes = bytes,
         pageWidth = page.width,
         pageHeight = page.height,
         placement = PdfiumImagePlacement(
@@ -175,8 +192,39 @@ internal object ImagePageEncoder {
     }
   }
 
+  private fun preservedPlacement(orientation: Int, width: Double, height: Double,
+    page: PdfPageDimensions): PdfiumImagePlacement {
+    val unit = when (orientation) {
+      2 -> PdfiumImagePlacement(a = -1.0, e = 1.0)
+      3 -> PdfiumImagePlacement(a = -1.0, d = -1.0, e = 1.0, f = 1.0)
+      4 -> PdfiumImagePlacement(d = -1.0, f = 1.0)
+      5 -> PdfiumImagePlacement(a = 0.0, b = -1.0, c = -1.0, d = 0.0, e = 1.0, f = 1.0)
+      6 -> PdfiumImagePlacement(a = 0.0, b = -1.0, c = 1.0, d = 0.0, f = 1.0)
+      7 -> PdfiumImagePlacement(a = 0.0, b = 1.0, c = 1.0, d = 0.0)
+      8 -> PdfiumImagePlacement(a = 0.0, b = 1.0, c = -1.0, d = 0.0, e = 1.0)
+      else -> PdfiumImagePlacement()
+    }
+    return PdfiumImagePlacement(a = unit.a * width, b = unit.b * height,
+      c = unit.c * width, d = unit.d * height,
+      e = (page.width - width) / 2.0 + unit.e * width,
+      f = (page.height - height) / 2.0 + unit.f * height)
+  }
+
   private fun pagePixels(points: Double, pixelsPerPoint: Double): Int =
     ceil(points * pixelsPerPoint).toInt()
+
+  // Encoding admission only; the shared PNG/PDF boundary validates all chunks and samples.
+  private fun isGrayscalePng4(source: File): Boolean = source.inputStream().use { input ->
+    val header = ByteArray(29)
+    var count = 0
+    while (count < header.size) {
+      val read = input.read(header, count, header.size - count)
+      if (read < 0) return@use false
+      count += read
+    }
+    header.copyOfRange(0, 8).contentEquals(byteArrayOf(137.toByte(), 80, 78, 71, 13, 10, 26, 10)) &&
+      header[24] == 4.toByte() && header[25] == 0.toByte() && header[28] == 0.toByte()
+  }
 
   private fun calculateSample(
     width: Int,

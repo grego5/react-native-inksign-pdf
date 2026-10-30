@@ -1,5 +1,6 @@
 package com.margelo.nitro.inksignpdf
 
+import android.graphics.Bitmap
 import java.io.File
 
 internal enum class PdfiumAssemblyOperation(val value: Int) {
@@ -36,6 +37,9 @@ internal data class PdfiumAssemblyRequest(
 
 /** Synchronous JNI boundary for one worker-owned, transactional PDF mutation. */
 internal object PdfiumPageAssembler {
+  @JvmStatic
+  external fun encodeGrayscalePng(bitmap: Bitmap): ByteArray
+
   fun assemble(
     input: File?,
     request: PdfiumAssemblyRequest,
