@@ -107,17 +107,30 @@ extension InkSignViewTestSupport where Self: XCTestCase {
   func makeFixture(
     pageCount: Int = 2,
     activePageIndex: Int = 0,
-    applyInitialViewport: Bool = true
+    applyInitialViewport: Bool = true,
+    cropBox: CGRect? = nil,
+    sourceText: String? = nil
   ) -> (view: ViewerCanvas, window: UIWindow, pages: [UUID]) {
     let document = PDFDocument()
     for index in 0..<pageCount {
       let size = CGSize(width: 300 + index * 100, height: 400)
-      let image = UIGraphicsImageRenderer(size: size).image { context in
-        UIColor.white.setFill()
-        context.fill(CGRect(origin: .zero, size: size))
+      let page: PDFPage
+      if let sourceText {
+        let bytes = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: size)).pdfData { renderer in
+          renderer.beginPage()
+          NSAttributedString(string: sourceText, attributes: [.font: UIFont.systemFont(ofSize: 24)])
+            .draw(at: CGPoint(x: 40, y: 100))
+        }
+        page = PDFDocument(data: bytes)!.page(at: 0)!
+      } else {
+        let image = UIGraphicsImageRenderer(size: size).image { context in
+          UIColor.white.setFill()
+          context.fill(CGRect(origin: .zero, size: size))
+        }
+        page = PDFPage(image: image)!
       }
-      let page = PDFPage(image: image)!
       page.setBounds(CGRect(origin: .zero, size: size), for: .mediaBox)
+      if let cropBox { page.setBounds(cropBox, for: .cropBox) }
       document.insert(page, at: index)
     }
 

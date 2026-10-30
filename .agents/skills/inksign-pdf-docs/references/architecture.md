@@ -101,6 +101,20 @@ Resource contracts: [Android lifecycle](android/view-lifecycle.md),
 - `getSelectedText()` returns null or a core-retaining text handle. Selection and
   navigation changes preserve it; document/page/target invalidation rejects use.
 
+### Source-word selection
+
+- Prepared pages cache canonical word indexes from raw PDFium analysis. Words are
+  Unicode White_Space-delimited runs on one visual row; spelling is preserved.
+- A view-mode long press anchors a visible box to the hit word. Dragging resizes
+  it; intersecting words are selected in source order, with solid word highlights.
+  Release presents platform-localized Copy. Copy joins same-row words with spaces
+  and row transitions with newlines.
+- Selection is transient active-page state, independent of document content,
+  history, export, and editable annotation selection. Outside taps, navigation
+  takeover, and mode/page/geometry/document retirement clear it.
+- Ownership and native input: [Android](android/viewport-input.md#source-word-input),
+  [iOS](swift-ios/viewport-input.md#source-word-input).
+
 ### Layout and editing
 
 - Dimensions are hard limits; `maxLines` caps complete lines without forcing a

@@ -177,6 +177,8 @@ internal class ViewerCanvas(
   internal val perfetto = InkPerfetto()
   private var editMode = false
   private var structuralWriteActive = false
+  internal val sourceSelectionReady: Boolean
+    get() = !disposed && !structuralWriteActive && !editMode && !isTextFocusAnimating()
   internal fun setStructuralWriteActive(active: Boolean) {
     requireOnUiThread()
     structuralWriteActive = active

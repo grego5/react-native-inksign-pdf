@@ -194,7 +194,7 @@ internal class DocumentAttachmentTest {
         session = owner.setMode(InputMode.TEXT, null)
         val host = owner.view as FrameLayout
         val surface = host.getChildAt(0) as ViewerCanvas
-        overlay = host.getChildAt(2) as TextInteractionOverlay
+        overlay = (0 until host.childCount).map(host::getChildAt).filterIsInstance<TextInteractionOverlay>().single()
         val tap = checkNotNull(surface.textPresentationSnapshot()).transform.map(PagePoint(80.0, 100.0))
         val time = android.os.SystemClock.uptimeMillis()
         for ((action, stamp) in listOf(MotionEvent.ACTION_DOWN to time, MotionEvent.ACTION_UP to time + 10)) {
