@@ -364,7 +364,10 @@ final class ViewerInteractionCoordinator {
 extension ViewerCanvas: ViewerInteractionHost {
   var interactionGeneration: UInt64? { viewerDocument == nil ? nil : documentCoordinator.generation }
   var textActivity: InteractionMode { textInteractionOverlay.interactionMode() }
-  func finishTextInteraction() { textInteractionOverlay.finishForLifecycle() }
+  func finishTextInteraction() {
+    sourceTextSelection.reset()
+    textInteractionOverlay.finishForLifecycle()
+  }
   func armTextInteraction(_ token: InkSignPdfModeSessionToken) throws {
     try textInteractionOverlay.armPlacement(generation: token.generation, options: token.textOptions)
   }
@@ -375,9 +378,11 @@ extension ViewerCanvas: ViewerInteractionHost {
     if runningCommand?.modeSession === token { runningCommand?.cancel() }
   }
   func applyInputPolicy(ink: Bool, enabled: Bool) {
+    sourceTextSelection.presentationChanged()
     configureCanvasInteraction(canvasView)
     pdfViewInteractionOwnership.update(pdfView: documentView, editing: ink,
-      interactionsEnabled: enabled, placementRecognizer: textInteractionOverlay.placementTapRecognizer)
+      interactionsEnabled: enabled, sourceSelectionEnabled: acceptsSourceTextSelection,
+      placementRecognizer: textInteractionOverlay.placementTapRecognizer)
   }
   func publishInteractionState(force: Bool) { emitChange(force: force) }
   func enableCoordinateTap(_ enabled: Bool) {

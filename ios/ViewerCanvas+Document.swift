@@ -63,6 +63,7 @@ extension ViewerCanvas {
   }
 
   func clearPresentation() {
+    sourceTextSelection.reset()
     let retiring = viewerDocument
     defer { withExtendedLifetime(retiring) {} }
     textInteractionOverlay.discardForDocumentReplacement()

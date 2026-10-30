@@ -177,7 +177,7 @@ Programmatic `untracked: true` skips history unless the target already has track
   Options: zoom, verticalAnchor (`top`, `bottom`, `center`), edgeOffset in page points.
 - `view.requestUserTap()` — Consume one valid page tap and return its coordinates.
   Page/mode changes or detach cancel it.
-- `view.getSelectedText()` — Read native selection as a text handle or null.
+- `view.getSelectedText()` — Read the selected editable module annotation as a text handle or null.
 - `text.getValue()`, `text.setValue(text, options?)`, `text.setOptions(options)`,
   `text.adjustSize(delta)` — Address that selected target after selection changes.
 
@@ -191,6 +191,14 @@ ordinary document pages remain usable independently. Catch cancellation with
 
 Android debug builds expose `startDebugRecording()`, `stopDebugRecording()`, and
 `exportDebugRecording()` on the viewer ref.
+
+### Copy PDF source words
+
+In view mode, long-press a source word and drag to resize the selection box.
+Release to show the platform-localized **Copy** menu; tap outside to clear.
+Selected words copy in source order, with spaces within rows and newlines between
+rows. Selection uses embedded PDF text on the active page and leaves document
+content and editable annotation selection unchanged.
 
 ## Events and configuration
 

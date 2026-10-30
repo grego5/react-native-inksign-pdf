@@ -202,7 +202,7 @@ internal class HybridInkSignViewTextKeyTest {
       val textId = setPreparedText(page, bounds, "note")
       val host = view.view as FrameLayout
       val surface = host.getChildAt(0) as ViewerCanvas
-      val overlay = host.getChildAt(2) as TextInteractionOverlay
+      val overlay = (0 until host.childCount).map(host::getChildAt).filterIsInstance<TextInteractionOverlay>().single()
       assertTrue("an idle view must return null", view.getSelectedText().isSecond)
 
       val selected = AtomicReference<Variant_HybridTextHandleSpec_NullType>()

@@ -567,7 +567,9 @@ class PdfiumSmokeInstrumentationTest {
     return textPagePdf(content, pageWidth = 120)
   }
 
-  private fun textPagePdf(content: String, pageWidth: Int = 100, pageHeight: Int = 100,
+}
+
+internal fun textPagePdf(content: String, pageWidth: Int = 100, pageHeight: Int = 100,
                           cropBox: String? = null, rotation: Int = 0): ByteArray {
     val objects = listOf(
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
@@ -592,4 +594,3 @@ class PdfiumSmokeInstrumentationTest {
     pdf.append(xrefOffset).append("\n%%EOF\n")
     return pdf.toString().toByteArray(Charsets.ISO_8859_1)
   }
-}

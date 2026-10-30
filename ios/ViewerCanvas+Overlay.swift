@@ -67,6 +67,7 @@ extension ViewerCanvas {
   }
 
   func refreshActiveOverlayTransform() {
+    sourceTextSelection.presentationChanged()
     interaction.viewport.reconcileTextViewportInset()
     interaction.viewport.scheduleZoomReport()
     guard let state = viewerDocument,
@@ -77,6 +78,7 @@ extension ViewerCanvas {
   /// Reports a completed gesture mutation. Presentation callbacks only refresh
   /// dependent state; they never issue another viewport mutation.
   func refreshOverlayTransform(_ overlay: InkCanvasView, for pageID: UUID) {
+    sourceTextSelection.presentationChanged()
     interaction.viewport.scheduleZoomReport()
     guard isSupportedPage(pageID), attachedOverlayPage == pageID,
           let state = viewerDocument,

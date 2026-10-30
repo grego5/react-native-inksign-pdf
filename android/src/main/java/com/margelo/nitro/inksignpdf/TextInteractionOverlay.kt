@@ -1550,7 +1550,7 @@ internal class TextInteractionOverlay(
     else -> null
   }
 
-  private fun hitTest(viewX: Float, viewY: Float): Long? {
+  internal fun hitTest(viewX: Float, viewY: Float): Long? {
     val presentation = lastPresentation ?: return null
     val pageScale = hypot(presentation.transform.a, presentation.transform.b)
     return presentation.annotations.asReversed().firstOrNull { annotation ->

@@ -66,7 +66,7 @@ final class ViewerContainerView: UIView {
 
   override func didMoveToWindow() {
     super.didMoveToWindow()
-    if window != nil { setNeedsLayout() }
+    if window != nil { setNeedsLayout() } else { onLayout?() }
   }
 }
 
@@ -162,6 +162,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
   /// The current structural presentation waits for layout before PDFKit receives it.
   var presentationInstallDeferred = false
   lazy var textInteractionOverlay = InkSignPdfTextInteractionOverlay(frame: .zero)
+  lazy var sourceTextSelection = InkSignPdfSourceTextSelectionController(owner: self)
   private lazy var pdfViewGestureDelegate = InkSignPdfViewGestureDelegate(owner: self)
   private(set) lazy var interaction = ViewerInteractionCoordinator(host: self)
   var pageNavigationRequestID: UInt64 = 0
@@ -310,7 +311,9 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     overlayProvider.owner = self
     canvasView.owner = self
     textInteractionOverlay.owner = self
+    _ = sourceTextSelection
     textInteractionOverlay.onInteractionModeChanged = { [weak self] in
+      self?.sourceTextSelection.presentationChanged()
       self?.interaction.textActivityChanged()
     }
     textInteractionOverlay.onTextSelectionChange = { [weak self] selection in
@@ -348,6 +351,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     interaction.dispose()
     pageNavigationRequestID &+= 1
     textInteractionOverlay.discardForDisposal()
+    sourceTextSelection.dispose()
     documentView.document = nil
     overlayProvider.dispose()
     viewerDocument = nil
@@ -367,6 +371,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
       self.interaction.dispose()
       self.cancelViewerCommands()
       self.textInteractionOverlay.discardForDisposal()
+      self.sourceTextSelection.dispose()
       self.cancelActiveStroke(clearLive: false)
 
       self.pageNavigationRequestID &+= 1

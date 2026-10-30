@@ -22,6 +22,7 @@ internal class PreparedPage(
     },
   )
   val labels: List<PreparedTextLabel> = preparedTextLabels(sourceAnalysis)
+  val sourceWords: SourceTextWords by lazy(LazyThreadSafetyMode.NONE) { SourceTextWords(analysis.glyphs) }
   private val orientations = HashMap<Int, ProjectedPage>()
 
   fun projected(page: PdfPageDimensions): ProjectedPage = orientations.getOrPut(page.rotation) {
