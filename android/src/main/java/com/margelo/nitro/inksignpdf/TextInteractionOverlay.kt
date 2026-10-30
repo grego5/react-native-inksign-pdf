@@ -2,6 +2,7 @@ package com.margelo.nitro.inksignpdf
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.Canvas
 import android.graphics.DashPathEffect
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -332,6 +333,27 @@ internal class TextInteractionOverlay(
   private val annotationGesture = LongPressDragTracker(this) {
     (pendingTouch?.target as? TouchTarget.Annotation)?.let(::beginDragging)
   }
+  private var outlineAnimator: android.animation.ValueAnimator? = null
+  private var pendingOutlineResize = false
+  private var outlinePoints: FloatArray? = null
+  private var outlineTarget: FloatArray? = null
+  private var outlineEditing = false
+  private val activeOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+  private val activeOutlinePath = android.graphics.Path()
+  private val activeOutline = object : android.graphics.drawable.Drawable() {
+    override fun draw(canvas: Canvas) {
+      val points = outlinePoints ?: return
+      activeOutlinePath.rewind()
+      activeOutlinePath.moveTo(points[0], points[1])
+      for (i in 1..3) activeOutlinePath.lineTo(points[i * 2], points[i * 2 + 1])
+      activeOutlinePath.close()
+      canvas.drawPath(activeOutlinePath, activeOutlinePaint)
+    }
+    override fun setAlpha(alpha: Int) { activeOutlinePaint.alpha = alpha; invalidateSelf() }
+    override fun setColorFilter(filter: android.graphics.ColorFilter?) { activeOutlinePaint.colorFilter = filter; invalidateSelf() }
+    @Deprecated("Deprecated in Android")
+    override fun getOpacity(): Int = android.graphics.PixelFormat.TRANSLUCENT
+  }
   private var interactionState: InteractionState = InteractionState.Idle
   internal var onTextSelectionChange: ((TextSelection?) -> Unit)? = null
   private var emittedSelection: TextSelection? = null
@@ -387,7 +409,7 @@ internal class TextInteractionOverlay(
 
   private fun refreshEditorBackground() {
     val state = interactionState as? InteractionState.Editing ?: return
-    editor?.background = editorBackground(editorFill(state.textColor), outlinePaint.color)
+    editor?.background = editorBackground(editorFill(state.textColor))
   }
 
   private fun editorFill(textColor: Int): Int {
@@ -406,6 +428,7 @@ internal class TextInteractionOverlay(
 
   init {
     setWillNotDraw(false)
+    overlay.add(activeOutline)
     clipChildren = false
     clipToPadding = false
     isClickable = false
@@ -578,7 +601,7 @@ internal class TextInteractionOverlay(
   }
 
   private fun appLayoutIsRtl(): Boolean =
-    ViewCompat.getLayoutDirection(viewerCanvas) == View.LAYOUT_DIRECTION_RTL
+    viewerCanvas.layoutDirection == View.LAYOUT_DIRECTION_RTL
 
   internal fun cancelPendingPlacement() {
     if (interactionState !is InteractionState.Placing) return
@@ -796,7 +819,8 @@ internal class TextInteractionOverlay(
 
   override fun onDraw(canvas: android.graphics.Canvas) {
     super.onDraw(canvas)
-    val presentation = lastPresentation ?: return
+    val presentation = lastPresentation ?: run { presentOutline(null, false); return }
+    var selectedOutline: RectF? = null
     val annotations = when (val state = interactionState) {
       is InteractionState.Dragging -> presentation.annotations.map { annotation ->
         if (annotation.id == state.original.id) annotationAt(state.original, state.position)
@@ -845,7 +869,18 @@ internal class TextInteractionOverlay(
         selectedBackgroundPaint.color = checkNotNull(selectedBackgroundColor)
         canvas.drawRect(rect, selectedBackgroundPaint)
       }
-      canvas.drawRect(rect, if (selected) selectedOutlinePaint else outlinePaint)
+      if (selected) selectedOutline = rect else canvas.drawRect(rect, outlinePaint)
+    }
+    val entry = editor
+    if (editingId != null && entry != null) {
+      val points = floatArrayOf(0f, 0f, entry.width.toFloat(), 0f,
+        entry.width.toFloat(), entry.height.toFloat(), 0f, entry.height.toFloat())
+      entry.matrix.mapPoints(points)
+      for (i in 0..3) { points[i * 2] += entry.left; points[i * 2 + 1] += entry.top }
+      presentOutline(points, true)
+    } else {
+      presentOutline(selectedOutline?.let { floatArrayOf(it.left, it.top, it.right, it.top,
+        it.right, it.bottom, it.left, it.bottom) }, false)
     }
   }
 
@@ -1091,7 +1126,7 @@ internal class TextInteractionOverlay(
       inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
       isSingleLine = false
       setHorizontallyScrolling(false)
-      background = editorBackground(editorFill(state.textColor), outlinePaint.color)
+      background = editorBackground(editorFill(state.textColor))
       setText(value)
       configureEditorPreservingSelection(
         this,
@@ -1917,11 +1952,11 @@ internal class TextInteractionOverlay(
     return fontSize * scale
   }
 
-  private fun editorBackground(fill: Int, stroke: Int): GradientDrawable =
+  private fun editorBackground(fill: Int): GradientDrawable =
     GradientDrawable().apply {
       shape = GradientDrawable.RECTANGLE
       setColor(fill)
-      setStroke(dp(1), stroke)
+
     }
 
   private fun updateEditorPadding(entry: InputTargetView, fontSizePx: Double, constrainedFlow: Boolean) {
@@ -1934,8 +1969,59 @@ internal class TextInteractionOverlay(
 
   private fun dp(value: Int): Int = (value * density).toInt()
 
+  private fun outlineRole(state: InteractionState): Pair<Triple<Long, Int, Long>, Boolean>? = when (state) {
+    is InteractionState.Editing -> Triple(state.generation, state.pageIndex, state.id) to true
+    is InteractionState.Selected -> Triple(state.generation, state.pageIndex, state.annotation.id) to false
+    else -> null
+  }
+
+  private fun presentOutline(target: FloatArray?, editing: Boolean) {
+    val style = if (editing) outlinePaint else selectedOutlinePaint
+    var changed = outlineEditing != editing || activeOutlinePaint.color != style.color ||
+      activeOutlinePaint.strokeWidth != style.strokeWidth
+    outlineEditing = editing
+    activeOutlinePaint.set(style)
+    if (editing) activeOutlinePaint.pathEffect = null
+    activeOutline.setBounds(0, 0, width, height)
+    val resize = pendingOutlineResize
+    pendingOutlineResize = false
+    if (target == null) {
+      changed = changed || outlinePoints != null
+      outlineAnimator?.cancel()
+      outlineAnimator = null
+      outlinePoints = null
+      outlineTarget = null
+    } else if (outlineTarget?.contentEquals(target) != true) {
+      changed = true
+      val from = outlinePoints?.copyOf()
+      outlineAnimator?.cancel()
+      outlineAnimator = null
+      outlineTarget = target
+      outlinePoints = target.copyOf()
+      if (resize && from != null && android.animation.ValueAnimator.areAnimatorsEnabled()) {
+        outlinePoints = from.copyOf()
+        outlineAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+          duration = 120
+          addUpdateListener {
+            val progress = it.animatedValue as Float
+            outlinePoints = FloatArray(8) { index -> from[index] + (target[index] - from[index]) * progress }
+            activeOutline.invalidateSelf()
+          }
+          start()
+        }
+      }
+    }
+    if (changed) activeOutline.invalidateSelf()
+  }
+
   private fun transitionTo(next: InteractionState) {
+    val before = outlineRole(interactionState)
+    val after = outlineRole(next)
     interactionState = next
+    if (before != after) {
+      pendingOutlineResize = before != null && after != null && before.first == after.first
+      if (!pendingOutlineResize) presentOutline(null, false)
+    }
     val selection = selectedText()
     if (selection != emittedSelection) {
       emittedSelection = selection
