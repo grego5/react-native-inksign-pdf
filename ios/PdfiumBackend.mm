@@ -2,6 +2,7 @@
 
 #include "pdfium-adapter/PdfiumDocumentSession.hpp"
 #include "pdfium-adapter/PdfiumPageAssembler.hpp"
+#include "pdfium-adapter/PdfiumPngImage.hpp"
 #include "pdfium-adapter/PdfiumContentWriter.hpp"
 #include <cmath>
 #include <cstring>
@@ -164,6 +165,26 @@ std::vector<std::uint8_t> ownedBytes(NSData *data) {
 @end
 
 @implementation InkSignPdfPdfiumBackend
++ (NSData *)encodeGrayscalePng:(NSData *)pixels width:(NSInteger)width
+                        height:(NSInteger)height rowStride:(NSInteger)rowStride
+                         error:(NSError **)error {
+  try {
+    if (width <= 0 || width > 8192 || height <= 0 || height > 8192 || rowStride <= 0) {
+      report(error, {pdfium::PdfiumErrorCode::InvalidInput, "Grayscale PNG dimensions are invalid"});
+      return nil;
+    }
+    std::vector<std::uint8_t> png;
+    auto result = pdfium::encodeGrayscalePng4(
+        {static_cast<const std::uint8_t*>(pixels.bytes), pixels.length},
+        static_cast<int>(width), static_cast<int>(height), rowStride, 1, png);
+    if (!result) { report(error, result); return nil; }
+    return [NSData dataWithBytes:png.data() length:png.size()];
+  } catch (const std::exception& exception) {
+    report(error, {pdfium::PdfiumErrorCode::MutationFailed, exception.what()});
+    return nil;
+  }
+}
+
 + (NSData *)writeData:(NSData *)data
                 pages:(NSArray<InkSignPdfPdfiumPageMetadata *> *)pages
             rotations:(NSArray<NSNumber *> *)rotations

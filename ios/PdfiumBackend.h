@@ -85,6 +85,10 @@ typedef NS_ENUM(NSInteger, InkSignPdfPdfiumAssemblyOperation) {
 @end
 
 @interface InkSignPdfPdfiumBackend : NSObject
++ (nullable NSData *)encodeGrayscalePng:(NSData *)pixels width:(NSInteger)width
+                                height:(NSInteger)height rowStride:(NSInteger)rowStride
+                                 error:(NSError * _Nullable * _Nullable)error
+    NS_SWIFT_NAME(encodeGrayscalePng(pixels:width:height:rowStride:));
 + (nullable NSData *)writeData:(NSData *)data
                          pages:(NSArray<InkSignPdfPdfiumPageMetadata *> *)pages
                      rotations:(NSArray<NSNumber *> *)rotations

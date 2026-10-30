@@ -17,17 +17,18 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AndroidImagePageEncoderTest {
   @Test
-  fun squareImageUsesWhiteContainBackground() {
+  fun squareImageUsesPdfContainPlacementWithoutReencoding() {
     val source = temporaryJpeg(width = 20, height = 20)
     try {
       val encoded = ImagePageEncoder.encode(source, PdfPageDimensions(72.0, 144.0))
       val bytes = checkNotNull(encoded.imageBytes)
+      org.junit.Assert.assertArrayEquals(source.readBytes(), bytes)
+      assertEquals(PdfiumImagePlacement(a = 72.0, d = 72.0, f = 36.0), encoded.placement)
       val bitmap = checkNotNull(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
       try {
-        assertEquals(200, bitmap.width)
-        assertEquals(400, bitmap.height)
-        assertTrue(isNearlyWhite(bitmap.getPixel(10, 10)))
-        assertTrue(Color.red(bitmap.getPixel(100, 200)) > 180)
+        assertEquals(20, bitmap.width)
+        assertEquals(20, bitmap.height)
+        assertTrue(Color.red(bitmap.getPixel(10, 10)) > 180)
       } finally {
         bitmap.recycle()
       }

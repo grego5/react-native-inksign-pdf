@@ -153,6 +153,7 @@ add_library(ReactNativeInkSignPdf SHARED
   src/main/cpp/InkEngineJni.cpp
   ${INKSIGN_PDFIUM_ADAPTER_ROOT}/PdfiumDocumentSession.cpp
   ${INKSIGN_PDFIUM_ADAPTER_ROOT}/PdfiumPageAssembler.cpp
+  ${INKSIGN_PDFIUM_ADAPTER_ROOT}/PdfiumPngImage.cpp
   ${INKSIGN_PDFIUM_ADAPTER_ROOT}/PdfiumContentWriter.cpp
   ${INKSIGN_PDFIUM_ADAPTER_ROOT}/PdfiumFontCoverage.cpp
   ${INKSIGN_PDFIUM_ADAPTER_ROOT}/PdfiumFontFallback.cpp
@@ -184,6 +185,7 @@ else()
 endif()
 target_link_libraries(ReactNativeInkSignPdf
   android
+  z
   jnigraphics
   PDFium
   ${INK_ENGINE_LINK_TARGETS}

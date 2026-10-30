@@ -17,6 +17,7 @@ Pod::Spec.new do |s|
     'ios/*.{h,m,mm,swift}',
     'core/pdfium-adapter/PdfiumDocumentSession.cpp',
     'core/pdfium-adapter/PdfiumPageAssembler.cpp',
+    'core/pdfium-adapter/PdfiumPngImage.cpp',
     'core/pdfium-adapter/PdfiumContentWriter.cpp',
     'core/pdfium-adapter/PdfiumFontCoverage.cpp',
     'core/pdfium-adapter/PdfiumFontFallback.cpp',
@@ -36,7 +37,7 @@ Pod::Spec.new do |s|
     'CLANG_CXX_LIBRARY' => 'libc++'
   }
   s.requires_arc = true
-  s.libraries    = ['c++']
+  s.libraries    = ['c++', 'z']
   s.frameworks   = ['UIKit', 'PencilKit', 'QuartzCore', 'CoreGraphics', 'CoreText', 'PDFKit', 'ImageIO', 'UniformTypeIdentifiers', 'PhotosUI']
   s.dependency 'React-Core'
   s.dependency 'React-Fabric/components/view'

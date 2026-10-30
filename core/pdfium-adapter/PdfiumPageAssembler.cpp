@@ -1,5 +1,6 @@
 #include "pdfium-adapter/PdfiumPageGeometry.hpp"
 #include "pdfium-adapter/PdfiumPageAssembler.hpp"
+#include "pdfium-adapter/PdfiumPngImage.hpp"
 #include "pdfium-adapter/PdfiumLibraryInternal.hpp"
 
 #include <fpdf_edit.h>
@@ -229,6 +230,21 @@ PdfiumError appendImage(FPDF_DOCUMENT document,
       !finite(input.pageWidth) || !finite(input.pageHeight) ||
       !validPlacement(input.placement) || input.rotation < 0 || input.rotation > 3) {
     return invalidInput("image page input is invalid");
+  }
+
+  constexpr unsigned char pngSignature[] = {137, 80, 78, 71, 13, 10, 26, 10};
+  if (input.bytes.size() >= sizeof(pngSignature) &&
+      std::memcmp(input.bytes.data(), pngSignature, sizeof(pngSignature)) == 0) {
+    std::vector<std::uint8_t> pngPage;
+    if (auto error = makeGrayscalePngPage(input, pngPage); !error) return error;
+    FPDF_DOCUMENT source = nullptr;
+    if (auto error = loadDocument(pngPage, source,
+          PdfiumErrorCode::SourceDocumentOpenFailed, "PNG image page"); !error) return error;
+    ScopedDocument sourceScope(source);
+    if (!FPDF_ImportPagesByIndex(document, source, nullptr, 0, static_cast<int>(pageIndex))) {
+      return {PdfiumErrorCode::MutationFailed, "Unable to import PNG image page"};
+    }
+    return {};
   }
 
   ScopedPage page(FPDFPage_New(document, static_cast<int>(pageIndex),
