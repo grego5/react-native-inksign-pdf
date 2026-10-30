@@ -226,9 +226,16 @@ Details: [Android history](android/view-lifecycle.md#page-history-and-disposal),
   backend consumption and retires abandoned copies after producer callbacks finish.
 - Imports preserve viewer selection. Reorder/rotation preserve selection identity;
   deletion selects the page at the removed index or last survivor.
-- PDF inputs preserve pages. Images contain-fit to the page, defaulting to A4,
-  200 DPI, JPEG quality 0.72. Explicit DPI enables the source-resolution cap;
-  raster limits preserve page aspect ratio. JPEG opening uses the shared encoder.
+- PDF inputs preserve pages. Images contain-fit to the page, defaulting to A4.
+  JPEGs and non-interlaced 4-bit grayscale PNGs retain compressed samples unless
+  an explicit DPI cap requires downsampling or JPEG quality requests re-encoding.
+  PDF placement applies source orientation without rasterization. Downsampled
+  grayscale PNGs retain 4-bit encoding; explicit JPEG quality converts them to JPEG.
+  Other image formats normalize at up to 200 DPI/JPEG quality 0.72 by default.
+  Rasterization never upscales source pixels and caps page edges at 8192 pixels.
+  Shared PDFium assembly
+  validates PNG chunks, checksums, filters, and sample counts before publication,
+  admitting at most 256 MiB of decoded rows.
 - Page tags are optional immutable, nonempty, nonunique exact-match strings.
   `getPageIdsByTag()` reads ordered IDs; `getPage({ tag, index? })` prepares a match
   (default index 0; missing: `page_not_found`). Tags survive structural edits and

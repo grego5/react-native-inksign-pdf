@@ -263,6 +263,11 @@ await document.addPages({
 });
 ```
 
+JPEGs and scanner 4-bit grayscale PNGs keep their compressed image data by default.
+`targetDpi` downsamples only when needed; grayscale PNGs remain 4-bit. Setting
+`jpegQuality` explicitly requests JPEG encoding. Fitting onto A4 alone does not
+re-encode the image.
+
 ### Fill an empty field
 
 ```ts
