@@ -96,8 +96,26 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
   private var selectedOutlineColor = UIColor(white: 100.0 / 255, alpha: 210.0 / 255)
   private var editorBackgroundColor: UIColor?
   private var selectedBackgroundColor: UIColor?
+  private var pendingOutlineResize = false
+  private var activeOutlineBounds: CGRect?
+  private lazy var activeOutlineLayer: CAShapeLayer = {
+    let outline = CAShapeLayer()
+    outline.fillColor = UIColor.clear.cgColor
+    outline.zPosition = 1
+    layer.addSublayer(outline)
+    return outline
+  }()
   private var interactionState: InteractionState = .idle {
     didSet {
+      let before = outlineRole(oldValue)
+      let after = outlineRole(interactionState)
+      if let before, let after, before.id == after.id {
+        if before.editing != after.editing { pendingOutlineResize = true }
+      } else {
+        pendingOutlineResize = false
+        activeOutlineLayer.removeAllAnimations()
+        presentOutline(nil)
+      }
       let wasPlacing: Bool
       if case .placing = oldValue { wasPlacing = true } else { wasPlacing = false }
       let isPlacing: Bool
@@ -537,11 +555,48 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     placementRuleCache = nil
   }
 
+  private func outlineRole(_ state: InteractionState) -> (id: UInt64, editing: Bool)? {
+    switch state {
+    case .editing(let state): return (state.id, true)
+    case .selected(let id): return (id, false)
+    default: return nil
+    }
+  }
+
+  private func presentOutline(_ bounds: CGRect?, editing: Bool = false) {
+    let resize = pendingOutlineResize
+    pendingOutlineResize = false
+    let previousPath = activeOutlineLayer.presentation()?.path ?? activeOutlineLayer.path
+    let path = bounds.map { UIBezierPath(rect: $0).cgPath }
+    if bounds != activeOutlineBounds {
+      activeOutlineLayer.removeAllAnimations()
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      activeOutlineLayer.path = path
+      CATransaction.commit()
+      activeOutlineBounds = bounds
+      if resize, let previousPath, let path, !UIAccessibility.isReduceMotionEnabled {
+        let animation = CABasicAnimation(keyPath: "path")
+        animation.fromValue = previousPath
+        animation.toValue = path
+        animation.duration = 0.12
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        activeOutlineLayer.add(animation, forKey: "outlineResize")
+      }
+    }
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    activeOutlineLayer.strokeColor = (editing ? outlineColor : selectedOutlineColor).cgColor
+    activeOutlineLayer.lineWidth = editing ? outlineStrokeWidth : selectedOutlineStrokeWidth
+    activeOutlineLayer.lineDashPattern = editing ? nil : [4, 4]
+    CATransaction.commit()
+  }
+
   override func draw(_ rect: CGRect) {
     guard let transform = owner?.pageToOverlayTransform,
-          let owner else { return }
+          let owner else { presentOutline(nil); return }
     let pageSize = owner.activePageSize()
-    guard pageSize.width > 0, pageSize.height > 0 else { return }
+    guard pageSize.width > 0, pageSize.height > 0 else { presentOutline(nil); return }
     var annotations = owner.activeTextAnnotations()
     let excludedID = editingID ?? draggingID
     annotations.removeAll { $0.id == excludedID }
@@ -578,18 +633,11 @@ final class InkSignPdfTextInteractionOverlay: UIView, UITextViewDelegate,
     }
     if case .editing = interactionState, editor != nil {
       guard let editor else { return }
-      let path = UIBezierPath(rect: editor.convert(editor.bounds, to: self))
-      outlineColor.setStroke()
-      path.lineWidth = outlineStrokeWidth
-      path.stroke()
+      presentOutline(editor.convert(editor.bounds, to: self), editing: true)
       return
     }
-    guard let selection else { return }
-    let path = UIBezierPath(rect: outlineBounds(for: selection, transform: transform))
-    selectedOutlineColor.setStroke()
-    path.lineWidth = selectedOutlineStrokeWidth
-    path.setLineDash([4, 4], count: 2, phase: 0)
-    path.stroke()
+    guard let selection else { presentOutline(nil); return }
+    presentOutline(outlineBounds(for: selection, transform: transform))
   }
 
   func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
