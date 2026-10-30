@@ -516,7 +516,6 @@ std::string writeImpl(
     const auto baseline = textRunGeometry[firstGeometry + 2];
     const auto fontSize = textRunGeometry[firstGeometry + 3];
     const auto lineColor = textRunColors[firstRun];
-    const auto baseDirectionRtl = textRunBaseDirections[firstRun] != 0;
     const auto textAlignment = textRunAlignments[firstRun];
 
     std::vector<std::size_t> logicalRuns = lineRunIndices;
