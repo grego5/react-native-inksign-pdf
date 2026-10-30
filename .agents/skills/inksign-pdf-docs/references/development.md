@@ -74,6 +74,8 @@
 The external `vmac` adapter owns Mac orchestration and the `inksignpdf` profile.
 The profile contains its test/build scripts, Podfile helper, and log/publish tools;
 these scripts are maintained outside this source repository.
+`vmac test inksignpdf` runs tests through GitHub Actions using `gh`;
+`--build-only` and IPA builds use the configured Mac.
 
 ```powershell
 vmac test inksignpdf DocumentCoreTests
@@ -82,11 +84,9 @@ vmac test inksignpdf --build-only
 vmac log inksignpdf
 ```
 
-Omit selectors to run the configured test scheme. `--build-only` invokes Xcode
-`build-for-testing`, producing test artifacts without an IPA. Runs snapshot tracked
-and nonignored untracked source into a Git bundle, verify the Mac checkout, and
-hold one checkout lock through execution and cleanup. Global machine environment
-settings use manually installed tooling; project setup is owned by the profile.
+Omit selectors to use the profile's default test selection. Tests use a temporary
+GitHub branch containing the local source snapshot. `--build-only` invokes Xcode
+`build-for-testing` on the configured Mac, producing test artifacts without an IPA.
 
 The MCP exposes `run_tests({project: 'inksignpdf', tests: ['DocumentCoreTests']})`,
 `status`, `logs`, and `cancel`. `buildOnly: true` builds test artifacts. IPA archive,

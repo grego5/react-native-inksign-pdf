@@ -16,6 +16,10 @@ on:
           - lifecycle
           - all
           - build-only
+      tests:
+        description: Optional test classes or class/method selectors, one per line
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -33,6 +37,7 @@ jobs:
         working-directory: example
     env:
       CI: '1'
+      IOS_TEST_SELECTORS: ${{ inputs.tests }}
 
     steps:
       - name: Check out source
@@ -140,6 +145,18 @@ jobs:
               exit 1
               ;;
           esac
+          if [ -n "$IOS_TEST_SELECTORS" ]; then
+            test_args=""
+            while IFS= read -r selector || [ -n "$selector" ]; do
+              [ -n "$selector" ] || continue
+              if [[ ! "$selector" =~ ^[A-Za-z_][A-Za-z0-9_]*(/[A-Za-z_][A-Za-z0-9_]*)?$ ]]; then
+                echo "Invalid test selector: $selector" >&2
+                exit 1
+              fi
+              test_args="$test_args -only-testing:__TEST_TARGET__/$selector"
+            done <<< "$IOS_TEST_SELECTORS"
+            test -n "$test_args"
+          fi
           echo "IOS_TEST_ARGS_TEMPLATE=$test_args" >> "$GITHUB_ENV"
 
       - name: Build for testing
