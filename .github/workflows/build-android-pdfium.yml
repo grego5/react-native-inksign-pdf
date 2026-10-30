@@ -7,9 +7,9 @@ permissions:
   contents: read
 
 env:
-  PDFIUM_WORKFLOW_REV: 5325fa6d0d9379329f10f98fdc4839b4e40f2e79
-  PDFIUM_UPSTREAM_BRANCH: chromium/8086
-  PDFIUM_VERSION: 157.0.8086.0
+  PDFIUM_WORKFLOW_REV: 4bdb7acd45b39ef6a7fc2a5b4c83f0398e45c9a6
+  PDFIUM_UPSTREAM_BRANCH: chromium/8125
+  PDFIUM_VERSION: 158.0.8125.0
   PDFIUM_ANDROID_NDK: 27.1.12297006
 
 jobs:
@@ -106,7 +106,10 @@ jobs:
           grep -Fq 'android_ndk_root = "//third_party/android_toolchain/ndk"' "$android_config"
           sed -i 's|android_ndk_root = "//third_party/android_toolchain/ndk"|android_ndk_root = "//third_party/inksign_android_ndk"|' "$android_config"
           grep -Fq 'android_ndk_root = "//third_party/inksign_android_ndk"' "$android_config"
+          # SME requires compiler runtime symbols unavailable in the pinned NDK.
+          sed -i '/echo "default_min_sdk_version = 23"/a\      echo "libyuv_use_sme = false"' steps/05-configure.sh
           ./steps/05-configure.sh
+          grep -Fxq 'libyuv_use_sme = false' "$PDFium_BUILD_DIR/args.gn"
           test -f "$PDFium_BUILD_DIR/build.ninja"
           grep -R -F -q --include='*.ninja' 'third_party/inksign_android_ndk' "$PDFium_BUILD_DIR"
           ./steps/06-build.sh

@@ -25,8 +25,8 @@ release pin and checksums are maintained in `android/ink-engine-release.json`.
 
 ## PDFium
 
-The `core/third_party/pdfium` package contains PDFium `157.0.8086.0` from
-`chromium/8086` at commit `2fd6cff57d9412cc42ef1a7e4e0a59b13a1e7cec`.
+The `core/third_party/pdfium` package contains PDFium `158.0.8125.0` from
+`chromium/8125` at commit `43d55e429cf72c21e9a1e60475b50feefa16fda9`.
 Android links static archives built with NDK `27.1.12297006` and pinned
 `bblanchon/pdfium-binaries` tooling. Release provenance, archive sizes, and
 SHA-256 checksums are recorded in `core/third_party/pdfium/manifest.json`.
