@@ -30,9 +30,11 @@ final class PDFViewInteractionOwnership {
   func update(pdfView: PDFView,
               editing: Bool,
               interactionsEnabled: Bool,
+              sourceSelectionEnabled: Bool = false,
               placementRecognizer: UIGestureRecognizer) {
     // PDFKit must hit-test page overlays before their canvas/editor can own input.
     pdfView.isInMarkupMode = interactionsEnabled
+    if sourceSelectionEnabled { pdfView.clearSelection() }
     if !interactionsEnabled {
       remember(pdfView)
       pdfView.isUserInteractionEnabled = false

@@ -79,6 +79,7 @@ class HybridInkSignView internal constructor(
 
   /** Detaches the current document and closes it when the view owns it. */
   private fun detachDocument(commitDraft: Boolean = true) {
+    sourceSelection.reset()
     viewportRequestID += 1L
     pageNavigationRequestID += 1L
     if (commitDraft && documentState.hasDocument) finishInteractionForLifecycle()
@@ -96,10 +97,20 @@ class HybridInkSignView internal constructor(
     textOverlay.bindCore(null)
   }
   private val artifactPolicy = CacheArtifactPolicy.initialize(context)
-  private val container: FrameLayout = object : FrameLayout(context) {
+  private inner class ViewerContainer : FrameLayout(context) {
+    fun cancelObservedTouch() {
+      val time = android.os.SystemClock.uptimeMillis()
+      val cancel = MotionEvent.obtain(time, time, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+      super.dispatchTouchEvent(cancel)
+      cancel.recycle()
+    }
+
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
       if (event.actionMasked == MotionEvent.ACTION_DOWN) coordinateTouchActive = isPickingPageCoords
-      if (!coordinateTouchActive) return super.dispatchTouchEvent(event)
+      if (!coordinateTouchActive) {
+        if (sourceSelection.onTouch(event)) return true
+        return super.dispatchTouchEvent(event)
+      }
       // The whole stream stays with the picker, including cancellation or resolution at UP.
       viewerCanvas.handleViewportTouch(event)
       coordinateTapDetector.onTouchEvent(event)
@@ -109,6 +120,7 @@ class HybridInkSignView internal constructor(
       return true
     }
   }
+  private val container: ViewerContainer = ViewerContainer()
   internal fun isAttachedTo(capturedCore: DocumentCore): Boolean = !disposed && attachedCore === capturedCore
   internal val documentState: ViewerDocumentState get() = viewerCanvas.documentState
   private val inkEngine = InkEngine()
@@ -125,6 +137,12 @@ class HybridInkSignView internal constructor(
     core = null,
   )
   private val textOverlay = TextInteractionOverlay(context, viewerCanvas)
+  internal val sourceSelection: SourceTextSelectionController = SourceTextSelectionController(
+    container, viewerCanvas, viewerScope, { attachedCore },
+    { !disposed && !isPickingPageCoords && textOverlay.interactionMode() == InteractionMode.VIEW },
+    { x, y -> textOverlay.hitTest(x, y) != null },
+    { container.cancelObservedTouch() },
+  )
   private val mainHandler = Handler(Looper.getMainLooper())
   @Volatile private var viewportRequestID = 0L
   private var pageNavigationRequestID = 0L
@@ -278,6 +296,7 @@ class HybridInkSignView internal constructor(
         FrameLayout.LayoutParams.MATCH_PARENT,
       ),
     )
+    container.addView(sourceSelection.highlights, FrameLayout.LayoutParams(-1, -1))
     container.addView(
       textOverlay,
       FrameLayout.LayoutParams(
@@ -299,13 +318,15 @@ class HybridInkSignView internal constructor(
     updatePenConfiguration()
     viewerCanvas.textAnnotationBeingEdited = textOverlay::editingAnnotationId
     viewerCanvas.onTextContentChanged = { textOverlay.syncContent() }
-    viewerCanvas.onTextTransformChanged = { textOverlay.syncTransform() }
+    viewerCanvas.onTextTransformChanged = { textOverlay.syncTransform(); sourceSelection.presentationChanged() }
     viewerCanvas.onModeChanged = {
+      sourceSelection.reset()
       textOverlay.cancelPendingPlacement()
       if (viewerCanvas.isEditMode) textOverlay.clearSelectionForHostMode()
     }
-    viewerCanvas.onWindowFocusLost = textOverlay::finishForLifecycle
+    viewerCanvas.onWindowFocusLost = { textOverlay.finishForLifecycle(); sourceSelection.reset() }
     textOverlay.onInteractionModeChanged = {
+      sourceSelection.reset()
       emitState()
     }
     textOverlay.setDefaultFontSize(defaultTextFontSize)
@@ -315,6 +336,7 @@ class HybridInkSignView internal constructor(
       }
     }
     viewerCanvas.onPageChange = { page ->
+      sourceSelection.presentationChanged()
       pendingPageCoords?.target?.let { if (!coordinateTargetIsCurrent(it)) cancelCoordinateRequest() }
       if (!disposed) emitState()
     }
@@ -363,6 +385,7 @@ class HybridInkSignView internal constructor(
         emitState()
       }
       DocumentChange.StructuralWriteStarted -> {
+        sourceSelection.reset()
         viewerCanvas.setStructuralWriteActive(true)
       }
       DocumentChange.Pages -> {
@@ -494,6 +517,7 @@ class HybridInkSignView internal constructor(
       documentState.pageMetadata(documentState.activePageIndex).geometryRevision == target.geometryRevision
 
   private fun finishInteractionForLifecycle() {
+    sourceSelection.reset()
     if (isPickingPageCoords) cancelCoordinateRequest()
     textOverlay.finishForLifecycle()
   }

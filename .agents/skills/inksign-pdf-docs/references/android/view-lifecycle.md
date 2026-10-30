@@ -19,6 +19,9 @@
   Current rotation supplies lookup/snapping projections without a PDF rescan.
   The core retains prepared contexts; page handles reference them weakly.
   Deletion releases affected targets/contexts; owner retirement releases all.
+- Prepared pages retain source-word indexes on the owner executor; the container
+  owns selection and menus on main without native page handles. Retirement cancels
+  pending input/preparation and clears presentation. See [input](viewport-input.md#source-word-input).
 - The worker's source-analysis LRU is bounded by eight pages and 8 MiB estimated
   storage. This backend cache is separate from retained prepared-page contexts.
 - Base-raster ownership and navigation handoff:

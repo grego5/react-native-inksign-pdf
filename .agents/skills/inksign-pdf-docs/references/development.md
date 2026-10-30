@@ -96,6 +96,12 @@ Record snapshot ID, test counts, `testOutcome`, and `runnerTermination` separate
 Xcode can report results before its process exits. A zero-test result or successful
 build alone does not establish behavior.
 
+GitHub XCTest runs enable per-test timeouts: 180 seconds by default, at most
+300 seconds. Source-selection interaction tests request 60 seconds. Timeout
+diagnostics are retained in the uploaded `.xcresult` bundle.
+Copy-action assertions use a unique app pasteboard; production Copy writes to
+the system general pasteboard.
+
 ### Fallback: run iOS tests on GitHub Actions
 
 - When the local Mac VM is unavailable, use the repository's iOS workflow on a

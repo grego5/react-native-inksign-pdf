@@ -65,6 +65,23 @@
 - Shared [lookup/value/focus](../architecture.md#geometry-and-text-targets);
   [cache lifetime](view-lifecycle.md#ownership).
 
+## Source-word input
+
+- `InkSignPdfSourceTextSelectionController` owns long-press input, canonical box
+  selection, page-overlay highlights, and `UIEditMenuInteraction`. UIKit supplies
+  the Copy label through the highlight responder. Shared
+  [selection semantics](../architecture.md#source-word-selection) apply.
+- Admission requires ready view-mode presentation outside annotations and captures
+  document/generation/page/geometry identity. PDFView conversion and
+  `PageGeometry.canonicalToPDFTransform` map touches and highlights.
+- `PDFViewInteractionOwnership` clears PDFKit selection. Public recognizer
+  relationships make pans wait for long-press admission: early movement scrolls,
+  while a held word owns the box drag. Pinch remains simultaneous. Retired presses
+  stay terminal until UIKit resets them.
+- Menu actions check selection identity; presentation updates reposition only a
+  visible menu. Device validation covers PDFKit arbitration, menu placement,
+  annotation priority, and pan/pinch recovery.
+
 ## Navigation and picking
 
 - Page selection preserves pending presentation until a replacement passes readiness

@@ -16,6 +16,9 @@
 - Import-time PDFium analysis retains source geometry. Display projections and
   directional-pair caches survive reorder/rotation; page retirement releases them.
   Snapping and field resolution share the projection.
+- Prepared pages retain source-word indexes on main; the viewer owns selection,
+  recognizers, highlights, and menus without PDFPage or reader leases. Presentation
+  retirement clears them. See [input](viewport-input.md#source-word-input).
 - A `DocumentOptions` prop creates a view-owned document with
   `HybridInkSignDocument(options:)`; `ownedOptions` marks ownership. Content-equal
   options keep it; any replacement, detach, dispose, or deinit closes it. Borrowed

@@ -192,6 +192,9 @@ jobs:
             -destination "$IOS_DESTINATION" \
             -derivedDataPath "$RUNNER_TEMP/ios-derived-data" \
             -resultBundlePath "$RUNNER_TEMP/ios-tests.xcresult" \
+            -test-timeouts-enabled YES \
+            -default-test-execution-time-allowance 180 \
+            -maximum-test-execution-time-allowance 300 \
             test-without-building "${test_args[@]}" 2>&1 | tee "$RUNNER_TEMP/ios-tests.log"
 
       - name: Verify executed test count
@@ -213,7 +216,7 @@ jobs:
             --output-path "$RUNNER_TEMP/ios-test-attachments"
 
       - name: Upload Xcode diagnostics
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: ios-validation-diagnostics

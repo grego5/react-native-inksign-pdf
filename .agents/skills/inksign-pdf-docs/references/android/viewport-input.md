@@ -69,6 +69,20 @@
 - Project source rules into current display before selection; finalize formatting
   before measuring visible bounds. [Cache/target lifetime](view-lifecycle.md#ownership).
 
+## Source-word input
+
+- `SourceTextSelectionController` owns long-press input, canonical box selection,
+  highlights below annotations, and floating `ActionMode` Copy. Shared
+  [selection semantics](../architecture.md#source-word-selection) apply.
+- Admission yields to picking, annotations, editing, and unavailable presentation.
+  Preparation runs through the core FIFO; claiming input rechecks document,
+  generation, page, geometry, and gesture identity before cancelling child input.
+- Selection/menu lifetime is independent of the held gesture. Retired claimed
+  streams remain consumed until release; a second pointer hands off to viewport
+  navigation. Menu destruction clears its selection without cancelling newer input.
+- Device validation covers menu placement, crop/rotation/zoom alignment,
+  annotation priority, and pan/pinch recovery.
+
 ## Ink and navigation
 
 - View mode admits page pulls at content edges; pan/pinch remain viewport input.

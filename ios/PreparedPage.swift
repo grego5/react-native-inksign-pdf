@@ -4,6 +4,15 @@ import Foundation
 /// Owner-executor cache of immutable source analysis and its four projections.
 final class InkSignPdfPreparedPage {
   let analysis: InkSignPdfPageAnalysis
+  private var cachedSourceWords: InkSignPdfSourceTextWords?
+
+  var sourceWords: InkSignPdfSourceTextWords {
+    precondition(Thread.isMainThread)
+    if let cachedSourceWords { return cachedSourceWords }
+    let words = InkSignPdfSourceTextWords(analysis: analysis)
+    cachedSourceWords = words
+    return words
+  }
   private var projections: [Int: InkSignPdfProjectedPage] = [:]
 
   init(analysis: InkSignPdfPageAnalysis) { self.analysis = analysis }
