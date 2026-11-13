@@ -1,0 +1,41 @@
+{
+  "$schema": "https://nitro.margelo.com/nitro.schema.json",
+  "cxxNamespace": [
+    "inksignpdf"
+  ],
+  "ios": {
+    "iosModuleName": "ReactNativeInkSignPdf"
+  },
+  "android": {
+    "androidNamespace": [
+      "inksignpdf"
+    ],
+    "androidCxxLibName": "ReactNativeInkSignPdf"
+  },
+  "autolinking": {
+    "InkSignView": {
+      "ios": {
+        "language": "swift",
+        "implementationClassName": "ViewerCanvas"
+      },
+      "android": {
+        "language": "kotlin",
+        "implementationClassName": "HybridInkSignView"
+      }
+    },
+    "InkSignDocumentFactory": {
+      "android": {
+        "implementationClassName": "HybridInkSignDocumentFactory",
+        "language": "kotlin"
+      },
+      "ios": {
+        "implementationClassName": "HybridInkSignDocumentFactory",
+        "language": "swift"
+      }
+    }
+  },
+  "ignorePaths": [
+    "**/node_modules",
+    "lib"
+  ]
+}
