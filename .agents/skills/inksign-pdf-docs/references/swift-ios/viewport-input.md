@@ -33,7 +33,13 @@
 - Snapping uses cached labels: above-rule tolerance is max(screen tolerance,
   label line-height), with editor line-height for unlabeled rules. Below-rule
   tolerance is screen-based. PDFium supplies solid/dotted rule candidates,
-  including table-border candidates.
+  including table-border candidates. Dotted rules come from rows of dot-sized
+  fills. Each fill's subpaths are grouped by touching or overlapping bounds,
+  so a compound path can paint several dots while holes and nested contours
+  stay part of their enclosing shape. Typed blanks of 3+ adjacent painted
+  underscore characters on one line, in either glyph order, are rules along
+  the bottom of their character boxes; a space ends a run, and invisible or
+  clip-only text is ignored.
 - TextKit owns live wrapping/caret/selection. Measure at final wrapping width,
   include the trailing empty line, and enforce the renderer's line-height minimum.
   Apply bounds before caret following; remeasure before commit.

@@ -162,6 +162,8 @@ struct PdfiumDocumentSession::Impl final {
     bool hasRules = false;
     std::vector<unsigned long> text;
     std::vector<std::optional<PdfiumTextKeyMatch>> characterBounds;
+    // Characters whose text object paints no glyphs (invisible or clip-only).
+    std::vector<bool> unpaintedCharacters;
     std::vector<int> visualRows;
     std::vector<double> visualRowTops;
     std::vector<double> visualRowBottoms;
@@ -171,6 +173,7 @@ struct PdfiumDocumentSession::Impl final {
     std::size_t estimatedBytes() const {
       return sizeof(PageAnalysis) + text.capacity() * sizeof(unsigned long) +
           characterBounds.capacity() * sizeof(std::optional<PdfiumTextKeyMatch>) +
+          unpaintedCharacters.capacity() / 8 +
           visualRows.capacity() * sizeof(int) +
           visualRowTops.capacity() * sizeof(double) +
           visualRowBottoms.capacity() * sizeof(double) +
@@ -511,6 +514,7 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
       if (count > 0) {
         analysis.text.resize(static_cast<std::size_t>(count));
         analysis.characterBounds.resize(static_cast<std::size_t>(count));
+        analysis.unpaintedCharacters.assign(static_cast<std::size_t>(count), false);
       }
       const auto mapCharacterBox = [&](double left, double right, double bottom,
                                        double top, int index)
@@ -527,6 +531,11 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
       for (int index = 0; index < count; ++index) {
         analysis.text[static_cast<std::size_t>(index)] =
             FPDFText_GetUnicode(textPage, index);
+        if (FPDF_PAGEOBJECT textObject = FPDFText_GetTextObject(textPage, index)) {
+          const auto mode = FPDFTextObj_GetTextRenderMode(textObject);
+          analysis.unpaintedCharacters[static_cast<std::size_t>(index)] =
+              mode == FPDF_TEXTRENDERMODE_INVISIBLE || mode == FPDF_TEXTRENDERMODE_CLIP;
+        }
         double left = 0.0;
         double right = 0.0;
         double bottom = 0.0;
@@ -637,6 +646,20 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
 
   std::vector<Shape> filledShapes;
   std::vector<Shape> verticalFilledShapes;
+  // Canonical bounds of one filled shape; dot-sized shapes feed the row grouping.
+  const auto appendFilledShape = [&](double minX, double minY, double maxX, double maxY) {
+    const double width = maxX - minX;
+    const double height = maxY - minY;
+    const double clippedLeft = std::max(0.0, minX);
+    const double clippedRight = std::min(pageWidth, maxX);
+    const double centerY = (minY + maxY) / 2.0;
+    if (width > 0.1 && height > 0.1 && width <= 8.0 && height <= 8.0 &&
+        clippedRight > clippedLeft && centerY >= 0.0 && centerY <= pageHeight) {
+      filledShapes.push_back({clippedLeft, clippedRight, centerY});
+      verticalFilledShapes.push_back(
+          {std::max(0.0, minY), std::min(pageHeight, maxY), (minX + maxX) / 2.0});
+    }
+  };
   const int objectCount = FPDFPage_CountObjects(page.get());
   for (int objectIndex = 0; objectIndex < objectCount; ++objectIndex) {
     FPDF_PAGEOBJECT object = FPDFPage_GetObject(page.get(), objectIndex);
@@ -712,17 +735,98 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
       maxX = std::max(maxX, display->x);
       maxY = std::max(maxY, display->y);
     }
-    if (!validBounds) continue;
-    const double width = maxX - minX;
-    const double height = maxY - minY;
-    const double clippedLeft = std::max(0.0, minX);
-    const double clippedRight = std::min(pageWidth, maxX);
-    const double centerY = (minY + maxY) / 2.0;
-    if (fillMode != FPDF_FILLMODE_NONE && width > 0.1 && height > 0.1 &&
-        width <= 8.0 && height <= 8.0 && clippedRight > clippedLeft &&
-        centerY >= 0.0 && centerY <= pageHeight) {
-      filledShapes.push_back({clippedLeft, clippedRight, centerY});
-      verticalFilledShapes.push_back({std::max(0.0, minY), std::min(pageHeight, maxY), (minX + maxX) / 2.0});
+    if (!validBounds || fillMode == FPDF_FILLMODE_NONE) continue;
+    // A single fill may draw several dots as subpaths (`m l l l` repeated, then
+    // one `f`), so each painted subpath is its own shape. A subpath nested
+    // inside another one is a hole or overlap of the enclosing shape under
+    // either fill rule, never a separate dot.
+    struct Contour final { double minX, minY, maxX, maxY; };
+    std::vector<Contour> contours;
+    FS_MATRIX matrix{};
+    const int segmentCount = FPDFPageObj_GetMatrix(object, &matrix)
+        ? FPDFPath_CountSegments(object) : 0;
+    bool hasSubpath = false;
+    bool subpathValid = true;
+    double subMinX = 0.0, subMinY = 0.0, subMaxX = 0.0, subMaxY = 0.0;
+    const auto flushSubpath = [&] {
+      if (hasSubpath && subpathValid) contours.push_back({subMinX, subMinY, subMaxX, subMaxY});
+      hasSubpath = false;
+      subpathValid = true;
+    };
+    for (int segmentIndex = 0; segmentIndex < segmentCount; ++segmentIndex) {
+      FPDF_PATHSEGMENT segment = FPDFPath_GetPathSegment(object, segmentIndex);
+      float x = 0.0f;
+      float y = 0.0f;
+      if (segment == nullptr || !FPDFPathSegment_GetPoint(segment, &x, &y)) {
+        subpathValid = false;
+        continue;
+      }
+      if (FPDFPathSegment_GetType(segment) == FPDF_SEGMENT_MOVETO) flushSubpath();
+      // Bezier control points are included, so curved dots get conservative bounds.
+      const auto point = toCanonicalPoint(
+          matrix.a * x + matrix.c * y + matrix.e,
+          matrix.b * x + matrix.d * y + matrix.f);
+      if (!point) {
+        subpathValid = false;
+        continue;
+      }
+      if (!hasSubpath) {
+        subMinX = subMaxX = point->x;
+        subMinY = subMaxY = point->y;
+        hasSubpath = true;
+      } else {
+        subMinX = std::min(subMinX, point->x);
+        subMaxX = std::max(subMaxX, point->x);
+        subMinY = std::min(subMinY, point->y);
+        subMaxY = std::max(subMaxY, point->y);
+      }
+    }
+    flushSubpath();
+    if (contours.size() < 2) {
+      appendFilledShape(minX, minY, maxX, maxY);
+      continue;
+    }
+    // Contours whose bounds touch or overlap paint one connected shape: a hole,
+    // a nested contour, or a dot built from pieces. Merge each connected group
+    // and treat the group's bounds as the shape.
+    constexpr double kTouchEpsilon = 0.01;
+    std::sort(contours.begin(), contours.end(),
+              [](const Contour& left, const Contour& right) { return left.minX < right.minX; });
+    std::vector<std::size_t> parent(contours.size());
+    for (std::size_t index = 0; index < parent.size(); ++index) parent[index] = index;
+    const auto root = [&](std::size_t index) {
+      while (parent[index] != index) index = parent[index] = parent[parent[index]];
+      return index;
+    };
+    std::vector<std::size_t> active;  // Contours whose x-range may still touch later ones.
+    for (std::size_t index = 0; index < contours.size(); ++index) {
+      const auto& contour = contours[index];
+      active.erase(std::remove_if(active.begin(), active.end(), [&](std::size_t other) {
+        return contours[other].maxX + kTouchEpsilon < contour.minX;
+      }), active.end());
+      for (const auto other : active) {
+        const auto& previous = contours[other];
+        if (previous.minY <= contour.maxY + kTouchEpsilon &&
+            contour.minY <= previous.maxY + kTouchEpsilon) {
+          parent[root(index)] = root(other);
+        }
+      }
+      active.push_back(index);
+    }
+    std::vector<Contour> groups(contours.size(), Contour{
+        (std::numeric_limits<double>::infinity)(), (std::numeric_limits<double>::infinity)(),
+        -(std::numeric_limits<double>::infinity)(), -(std::numeric_limits<double>::infinity)()});
+    for (std::size_t index = 0; index < contours.size(); ++index) {
+      auto& group = groups[root(index)];
+      group.minX = std::min(group.minX, contours[index].minX);
+      group.minY = std::min(group.minY, contours[index].minY);
+      group.maxX = std::max(group.maxX, contours[index].maxX);
+      group.maxY = std::max(group.maxY, contours[index].maxY);
+    }
+    for (std::size_t index = 0; index < contours.size(); ++index) {
+      if (root(index) != index) continue;
+      appendFilledShape(groups[index].minX, groups[index].minY,
+                        groups[index].maxX, groups[index].maxY);
     }
   }
 
@@ -775,6 +879,44 @@ PdfiumError PdfiumDocumentSession::inspectHorizontalSnapCandidates(
   };
   appendDotRows(filledShapes, false);
   appendDotRows(verticalFilledShapes, true);
+  // Typed fill-in blanks: 3+ adjacent painted underscore characters on one line
+  // form a rule along the bottom of their character boxes. Any other character,
+  // including a space, ends the run. PDFium may return an RTL line's glyphs in
+  // right-to-left order, so adjacency is accepted in either direction.
+  constexpr std::size_t kMinimumUnderscoreRun = 3;
+  const auto isBlankGlyph = [&](std::size_t index) {
+    const auto code = analysis.text[index];
+    return (code == 0x5F || code == 0xFF3F) && analysis.characterBounds[index] &&
+        !analysis.unpaintedCharacters[index];
+  };
+  for (std::size_t index = 0; index < analysis.text.size();) {
+    if (!isBlankGlyph(index)) {
+      ++index;
+      continue;
+    }
+    const auto& first = *analysis.characterBounds[index];
+    double runLeft = first.left;
+    double runRight = first.right;
+    double runBottom = first.bottom;
+    std::size_t runEnd = index + 1;
+    while (runEnd < analysis.text.size() && isBlankGlyph(runEnd)) {
+      const auto& next = *analysis.characterBounds[runEnd];
+      const auto& previous = *analysis.characterBounds[runEnd - 1];
+      const double tolerance = std::max(1.0, (previous.right - previous.left) * 0.5);
+      const bool adjacent = std::abs(next.left - previous.right) <= tolerance ||
+          std::abs(previous.left - next.right) <= tolerance;
+      if (std::abs(next.lineCenter - previous.lineCenter) > 2.0 || !adjacent) break;
+      runLeft = std::min(runLeft, next.left);
+      runRight = std::max(runRight, next.right);
+      runBottom = std::max(runBottom, next.bottom);
+      ++runEnd;
+    }
+    if (runEnd - index >= kMinimumUnderscoreRun) {
+      appendLine({std::max(0.0, runLeft), runBottom},
+                 {std::min(pageWidth, runRight), runBottom}, 0.0);
+    }
+    index = runEnd;
+  }
   const auto toSourceDisplay = [&](double x, double y) -> Point {
     switch (sourceRotation) {
       case 0: return {x, y};

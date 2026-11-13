@@ -336,6 +336,111 @@ class PdfiumSmokeInstrumentationTest {
   }
 
   @Test
+  fun pdfiumSplitsOneFilledPathOfDotSubpathsIntoADottedRule() {
+    val content = buildString {
+      for (x in 20..170 step 2) append("$x 50 m ${x + 1} 50 l ${x + 1} 51 l $x 51 l\n")
+      append("f\n")
+    }
+    PdfiumRenderSession.open(textPagePdf(content, pageWidth = 200)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue(
+        "One fill drawing a row of dot subpaths should form a dotted rule: $rules",
+        rules.any { it.right - it.left >= 140.0 },
+      )
+    }
+  }
+
+  @Test
+  fun pdfiumTreatsThreeOrMoreAdjacentUnderscoresAsARule() {
+    val blank = "BT /F1 10 Tf 10 50 Td (_____) Tj ET\n"
+    PdfiumRenderSession.open(textPagePdf(blank)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue(
+        "A run of typed underscores should form a rule: $rules",
+        rules.any { it.left < 12.0 && it.right - it.left >= 20.0 && it.y > 48.0 && it.y < 54.0 },
+      )
+    }
+    val tooShort = "BT /F1 10 Tf 10 50 Td (__) Tj ET\nBT /F1 10 Tf 10 30 Td (_ _ _) Tj ET\n"
+    PdfiumRenderSession.open(textPagePdf(tooShort)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue("Two underscores or spaced underscores are not a rule: $rules", rules.isEmpty())
+    }
+  }
+
+  @Test
+  fun pdfiumFindsUnderscoreBlanksOnRightToLeftLines() {
+    // Hebrew glyph names give the line RTL characters, so PDFium may return the
+    // trailing underscores in right-to-left order.
+    val font = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica " +
+      "/Encoding << /Differences [128 /afii57664 /afii57665 /afii57666] >> >>"
+    val content = "BT /F2 10 Tf 10 50 Td (_____: \\200\\201\\202) Tj ET\n"
+    PdfiumRenderSession.open(textPagePdf(content, extraFont = font)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue(
+        "Underscores beside RTL text should still form a rule: $rules",
+        rules.any { it.right - it.left >= 20.0 },
+      )
+    }
+  }
+
+  @Test
+  fun pdfiumIgnoresUnderscoresThatPaintNoGlyphs() {
+    val content = "BT 3 Tr /F1 10 Tf 10 50 Td (_____) Tj ET\n" +
+      "BT 7 Tr /F1 10 Tf 10 30 Td (_____) Tj ET\n"
+    PdfiumRenderSession.open(textPagePdf(content)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue("Invisible or clip-only underscores are not a rule: $rules", rules.isEmpty())
+    }
+  }
+
+  @Test
+  fun pdfiumJoinsDotsPaintedInSmallCompoundBatches() {
+    val content = buildString {
+      for (pair in 0 until 3) {
+        for (dot in 0 until 2) {
+          val x = 20 + (pair * 2 + dot) * 2
+          append("$x 50 m ${x + 1} 50 l ${x + 1} 51 l $x 51 l\n")
+        }
+        append("f\n")
+      }
+    }
+    PdfiumRenderSession.open(textPagePdf(content)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue(
+        "Six dots painted as three two-dot paths should form a rule: $rules",
+        rules.any { it.left < 21.0 && it.right > 30.0 },
+      )
+    }
+  }
+
+  @Test
+  fun pdfiumKeepsRingDotsWholeAndIgnoresCutoutHoles() {
+    val rings = buildString {
+      for (dot in 0 until 6) {
+        val x = 20 + dot * 4
+        append("$x 50 2 2 re ${x + 0.5} 50.5 1 1 re\n")
+      }
+      append("f*\n")
+    }
+    PdfiumRenderSession.open(textPagePdf(rings)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue(
+        "A row of ring dots in one even-odd path should form a rule: $rules",
+        rules.any { it.left < 21.0 && it.right > 41.0 },
+      )
+    }
+    val cutouts = buildString {
+      append("10 40 80 20 re\n")
+      for (hole in 0 until 10) append("${15 + hole * 3} 49 1 1 re\n")
+      append("f*\n")
+    }
+    PdfiumRenderSession.open(textPagePdf(cutouts)).use { session ->
+      val rules = session.horizontalSnapCandidates(0)
+      assertTrue("Holes cut from a larger fill are not dots: $rules", rules.isEmpty())
+    }
+  }
+
+  @Test
   fun suppliedFallbackChangesRenderingOfAnUnavailableSourceFont() {
     val fallback = listOf(
       File("/system/fonts/Roboto-Regular.ttf"),
@@ -570,16 +675,19 @@ class PdfiumSmokeInstrumentationTest {
 }
 
 internal fun textPagePdf(content: String, pageWidth: Int = 100, pageHeight: Int = 100,
-                          cropBox: String? = null, rotation: Int = 0): ByteArray {
-    val objects = listOf(
+                          cropBox: String? = null, rotation: Int = 0,
+                          extraFont: String? = null): ByteArray {
+    val fonts = "/F1 5 0 R" + (extraFont?.let { " /F2 6 0 R" } ?: "")
+    val objects = listOfNotNull(
       "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
       "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
       "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 $pageWidth $pageHeight] " +
         (cropBox?.let { "/CropBox [$it] " } ?: "") + "/Rotate $rotation " +
-        "/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
+        "/Resources << /Font << $fonts >> >> /Contents 4 0 R >>\nendobj\n",
       "4 0 obj\n<< /Length ${content.toByteArray(Charsets.ISO_8859_1).size} >>\n" +
         "stream\n$content\nendstream\nendobj\n",
       "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+      extraFont?.let { "6 0 obj\n$it\nendobj\n" },
     )
     val pdf = StringBuilder("%PDF-1.4\n")
     val offsets = objects.map { objectText ->
@@ -588,9 +696,9 @@ internal fun textPagePdf(content: String, pageWidth: Int = 100, pageHeight: Int 
       offset
     }
     val xrefOffset = pdf.toString().toByteArray(Charsets.ISO_8859_1).size
-    pdf.append("xref\n0 6\n0000000000 65535 f \n")
+    pdf.append("xref\n0 ${objects.size + 1}\n0000000000 65535 f \n")
     offsets.forEach { offset -> pdf.append("%010d 00000 n \n".format(offset)) }
-    pdf.append("trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n")
+    pdf.append("trailer\n<< /Size ${objects.size + 1} /Root 1 0 R >>\nstartxref\n")
     pdf.append(xrefOffset).append("\n%%EOF\n")
     return pdf.toString().toByteArray(Charsets.ISO_8859_1)
   }

@@ -134,6 +134,42 @@ final class PlacementRuleDetectorTests: XCTestCase {
     XCTAssertTrue(dottedRows.allSatisfy { $0.maxX - $0.minX > 290 })
   }
 
+  func testScansTypedUnderscoreRunsAsRules() throws {
+    let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: 12)]
+    let url = try makePDF { _ in
+      NSAttributedString(string: "____________", attributes: attributes).draw(at: CGPoint(x: 80, y: 120))
+      NSAttributedString(string: "__", attributes: attributes).draw(at: CGPoint(x: 80, y: 200))
+      NSAttributedString(string: "_ _ _", attributes: attributes).draw(at: CGPoint(x: 80, y: 260))
+    }
+    defer { try? FileManager.default.removeItem(at: url) }
+
+    let rules = try scan(url)
+    XCTAssertEqual(rules.count, 1, "Only the run of 3+ adjacent underscores is a rule: \(rules)")
+    let rule = try XCTUnwrap(rules.first)
+    XCTAssertTrue(rule.minX < 82 && rule.maxX - rule.minX > 50 && rule.y > 120 && rule.y < 145,
+                  "\(rule)")
+  }
+
+  func testScansRowsOfDotSubpathsInOneFilledPath() throws {
+    let dotsURL = try makePDF { context in
+      for row in 0..<3 {
+        context.beginPath()
+        for column in 0..<34 {
+          context.addRect(CGRect(x: 32 + CGFloat(column * 3),
+                                 y: 230 + CGFloat(row * 22),
+                                 width: 1.2,
+                                 height: 1.2))
+        }
+        context.fillPath()
+      }
+    }
+    defer { try? FileManager.default.removeItem(at: dotsURL) }
+
+    let dottedRows = try scan(dotsURL)
+    XCTAssertEqual(dottedRows.count, 3)
+    XCTAssertTrue(dottedRows.allSatisfy { $0.maxX - $0.minX > 95 })
+  }
+
   func testScansAnUpperPageWritingRule() throws {
     let url = try makePDF { context in
       context.setLineWidth(1)
