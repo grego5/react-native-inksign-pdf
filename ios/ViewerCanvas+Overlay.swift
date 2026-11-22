@@ -46,6 +46,7 @@ extension ViewerCanvas {
     refreshOverlayTransform(overlay, for: pageID)
     textInteractionOverlay.syncContent()
     finishPagePresentationIfReady()
+    publishReadinessIfChanged()
   }
 
   func overlayDidEndDisplaying(_ overlay: InkCanvasView, for pageID: UUID) {
@@ -55,6 +56,7 @@ extension ViewerCanvas {
     interaction.finishInteraction()
     invalidateOverlayTransformCache()
     interaction.synchronizePolicy()
+    publishReadinessIfChanged()
   }
 
   func overlayLayoutChanged(_ overlay: InkCanvasView) {
@@ -64,6 +66,7 @@ extension ViewerCanvas {
     refreshOverlayTransform(overlay, for: pageID)
     finishPagePresentationIfReady()
     interaction.synchronizePolicy()
+    publishReadinessIfChanged()
   }
 
   func refreshActiveOverlayTransform() {

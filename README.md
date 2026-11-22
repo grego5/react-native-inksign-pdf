@@ -203,7 +203,9 @@ content and editable annotation selection unchanged.
 ## Events and configuration
 
 - `onStateChange(state)` — Viewer mode, current page index, document ID/count,
-  dirty state, and nullable error.
+  dirty state, nullable error, and `ready`. Start `setMode`, viewport, and focus
+  workflows once `ready` is true for the expected `documentId`; it turns false
+  during page presentation, before layout, and (iOS) outside a window.
 - `onPageChange(page)` — Current page ID, dimensions, rotation and undo/redo state.
 - `onTextSelectionChange(selection)` — Selected page/text ID or null.
 - `onZoomChange(zoom)` — Settled fit-relative zoom: 1 fits, above 1 zooms in.

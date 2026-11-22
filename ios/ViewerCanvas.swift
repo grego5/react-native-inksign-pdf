@@ -179,7 +179,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
   var endedDrawingTransactionID: UInt64?
   var endedDrawingContext: InkSignPdfCorePageContext?
   var nextDrawingTransactionID: UInt64 = 0
-  var lastChange: (Int, Bool, String, String?, String?, Int?)?
+  var lastChange: (Int, Bool, String, String?, String?, Int?, Bool)?
   var lastPublicPage: PageChangeEvent?
   var documentID: String? { attachedCore?.coordinator.documentID }
   var loadError: String?
@@ -421,7 +421,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
     Promise.rejected(withError: InkSignPdfExportError.notReady)
   }
 
-  enum OperationError: LocalizedError {
+  enum OperationError: InkSignPdfPublicError {
     case cancelled
 
     var errorDescription: String? {
@@ -431,7 +431,7 @@ final class ViewerCanvas: HybridInkSignViewSpec {
 
 
 
-  enum ViewportError: LocalizedError {
+  enum ViewportError: InkSignPdfPublicError {
     case invalidOptions(String)
     case notReady
     case cancelled

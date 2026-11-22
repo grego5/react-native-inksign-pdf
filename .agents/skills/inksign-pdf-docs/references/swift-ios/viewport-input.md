@@ -18,6 +18,11 @@
   scene; document-owned selection survives ordinary scene inactivity.
 - `onZoomChange` waits for stable scale/fit and finished PDFView gestures; emit
   only with ready presentation. Shared [events](../architecture.md#state-and-events).
+- `ViewerState.ready` is `isInteractionReady`: a viewer document, no pending page
+  presentation, and `ViewportReadiness.allowsCommand(fitToPage: false)` (window,
+  non-empty bounds, active overlay attached with its page transform). Presentation
+  begin/cancel/completion, container layout or window change, and overlay
+  display/layout/end publish a change; teardown cancellation stays silent.
 - `ViewerInteractionCoordinator` derives exclusive input policy from picker,
   text activity, base view/ink mode, and presentation readiness. PDFKit/PencilKit
   reconcile this policy on overlay attachment/layout.

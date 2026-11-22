@@ -281,6 +281,8 @@ internal class ViewerCanvas(
   var onTextTransformChanged: (() -> Unit)? = null
   var onModeChanged: (() -> Unit)? = null
   var onWindowFocusLost: (() -> Unit)? = null
+  /** Reports a [isModeTransitionReady] change outside a state transaction. */
+  var onReadinessChanged: (() -> Unit)? = null
   internal val isEditMode: Boolean get() = editMode
 
   init {
@@ -295,6 +297,10 @@ internal class ViewerCanvas(
     }
     documentController.onVisibleTilesReady = ::onVisibleTilesReady
     documentController.onVisibleTilesFailed = ::onVisibleTilesFailed
+    documentController.onViewportCommandReadinessChanged = {
+      if (stateNotificationsSuspended > 0) stateNotificationPending = true
+      else onReadinessChanged?.invoke()
+    }
   }
 
   fun installDocumentPresentation(
@@ -777,6 +783,10 @@ internal class ViewerCanvas(
     documentController.requireViewportCommandReady()
   }
 
+  /** Public `ViewerState.ready`: [requireModeTransitionReady] would pass. */
+  val isModeTransitionReady: Boolean
+    get() = !disposed && documentController.isViewportCommandReady()
+
   internal fun focusField(
     request: ViewportRequest,
     isCurrent: () -> Boolean,
@@ -1205,6 +1215,7 @@ internal class ViewerCanvas(
     onPageChange = null
     removeCallbacks(reportSettledZoom)
     onZoomChange = null
+    onReadinessChanged = null
     pageSwitchRequestId += 1L
     lastReportedState = InkState(false, false, false)
     inkRenderer.clearCompleted()

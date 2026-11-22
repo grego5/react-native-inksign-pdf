@@ -15,7 +15,7 @@ final class InkSignPdfDocumentCoordinator {
     let addedPageCount: Int
     let changed: Bool
   }
-  enum PageMutationError: LocalizedError, Equatable {
+  enum PageMutationError: InkSignPdfPublicError, Equatable {
     case activePageMissing
 
     var errorDescription: String? {

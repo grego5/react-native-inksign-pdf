@@ -42,7 +42,7 @@ final class InkSignPdfNamedFont: Equatable {
   static func == (left: InkSignPdfNamedFont, right: InkSignPdfNamedFont) -> Bool { left === right }
 }
 
-enum FontError: LocalizedError {
+enum FontError: InkSignPdfPublicError {
   case invalid
   case conflict(String)
   case notLoaded(String)

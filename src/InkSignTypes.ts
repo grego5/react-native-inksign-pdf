@@ -204,6 +204,12 @@ export interface ViewerState extends DocumentState {
   error: string | null
   /** Active zero-based page index; null when no document is open. */
   pageIndex: number | null
+  /**
+   * True while the view accepts setMode, viewport, and focus commands for documentId.
+   * Each change is reported through onStateChange; false while the active page is being
+   * presented, before layout, and while the view is outside a window.
+   */
+  ready: boolean
 }
 
 export type InteractionMode =

@@ -147,12 +147,12 @@ final class InkSignPdfCacheArtifactPolicy {
   private static let workingSourcePattern = try! NSRegularExpression(pattern: "^\\.working-[^/]+\\.pdf$")
   private static let exportSnapshotPattern = try! NSRegularExpression(pattern: "^\\.snapshot-[^/]+\\.pdf$")
 
-  enum ConfigurationError: LocalizedError {
+  enum ConfigurationError: InkSignPdfPublicError {
     case invalidLeaf
     var errorDescription: String? { "cache directory name must be one non-empty directory component" }
   }
 
-  enum CacheError: LocalizedError {
+  enum CacheError: InkSignPdfPublicError {
     case unavailable
     case invalidOutput
     var errorDescription: String? {

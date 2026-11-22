@@ -47,13 +47,14 @@ namespace margelo::nitro::inksignpdf {
     InteractionMode mode     SWIFT_PRIVATE;
     std::optional<std::variant<nitro::NullType, std::string>> error     SWIFT_PRIVATE;
     std::optional<std::variant<nitro::NullType, double>> pageIndex     SWIFT_PRIVATE;
+    bool ready     SWIFT_PRIVATE;
     std::optional<std::variant<nitro::NullType, std::string>> documentId     SWIFT_PRIVATE;
     double pageCount     SWIFT_PRIVATE;
     bool isDirty     SWIFT_PRIVATE;
 
   public:
     ViewerState() = default;
-    explicit ViewerState(InteractionMode mode, std::optional<std::variant<nitro::NullType, std::string>> error, std::optional<std::variant<nitro::NullType, double>> pageIndex, std::optional<std::variant<nitro::NullType, std::string>> documentId, double pageCount, bool isDirty): mode(mode), error(error), pageIndex(pageIndex), documentId(documentId), pageCount(pageCount), isDirty(isDirty) {}
+    explicit ViewerState(InteractionMode mode, std::optional<std::variant<nitro::NullType, std::string>> error, std::optional<std::variant<nitro::NullType, double>> pageIndex, bool ready, std::optional<std::variant<nitro::NullType, std::string>> documentId, double pageCount, bool isDirty): mode(mode), error(error), pageIndex(pageIndex), ready(ready), documentId(documentId), pageCount(pageCount), isDirty(isDirty) {}
 
   public:
     friend bool operator==(const ViewerState& lhs, const ViewerState& rhs) = default;
@@ -72,6 +73,7 @@ namespace margelo::nitro {
         JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode"))),
         JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "error"))),
         JSIConverter<std::optional<std::variant<nitro::NullType, double>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageIndex"))),
+        JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "ready"))),
         JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "documentId"))),
         JSIConverter<double>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageCount"))),
         JSIConverter<bool>::fromJSI(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty")))
@@ -82,6 +84,7 @@ namespace margelo::nitro {
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "mode"), JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::toJSI(runtime, arg.mode));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "error"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.error));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageIndex"), JSIConverter<std::optional<std::variant<nitro::NullType, double>>>::toJSI(runtime, arg.pageIndex));
+      obj.setProperty(runtime, PropNameIDCache::get(runtime, "ready"), JSIConverter<bool>::toJSI(runtime, arg.ready));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "documentId"), JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::toJSI(runtime, arg.documentId));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "pageCount"), JSIConverter<double>::toJSI(runtime, arg.pageCount));
       obj.setProperty(runtime, PropNameIDCache::get(runtime, "isDirty"), JSIConverter<bool>::toJSI(runtime, arg.isDirty));
@@ -98,6 +101,7 @@ namespace margelo::nitro {
       if (!JSIConverter<margelo::nitro::inksignpdf::InteractionMode>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "mode")))) return false;
       if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "error")))) return false;
       if (!JSIConverter<std::optional<std::variant<nitro::NullType, double>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageIndex")))) return false;
+      if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "ready")))) return false;
       if (!JSIConverter<std::optional<std::variant<nitro::NullType, std::string>>>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "documentId")))) return false;
       if (!JSIConverter<double>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "pageCount")))) return false;
       if (!JSIConverter<bool>::canConvert(runtime, obj.getProperty(runtime, PropNameIDCache::get(runtime, "isDirty")))) return false;

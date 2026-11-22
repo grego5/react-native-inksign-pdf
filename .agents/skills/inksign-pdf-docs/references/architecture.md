@@ -47,9 +47,14 @@ Resource contracts: [Android lifecycle](android/view-lifecycle.md),
 ## State and events
 
 - Document `getState()`: identity, page count, aggregate dirty state. Viewer
-  `onStateChange` adds current page index, mode, and nullable error. A document
+  `onStateChange` adds current page index, mode, nullable error, and `ready`. A document
   always reports its identity; an empty one has zero pages and a null viewer page
   index. A viewer without a document reports null identity, view mode, and clean state.
+- `ready` is true exactly while `setMode`, session viewport, and focus commands pass
+  the platform readiness check for the reported document; each flip emits one
+  `onStateChange`. A page index can be published while `ready` is false. Commands
+  issued before `ready` throw `view_not_ready`. Platform predicates:
+  [Android](android/viewport-input.md), [iOS](swift-ios/viewport-input.md).
 - Page `getState()`: stable identity, current index/count, displayed dimensions,
   clockwise rotation (0/90/180/270), `hasInk`, `hasText`, dirty, undo/redo.
   Inspection does not activate the page or parse PDF content.
@@ -188,7 +193,7 @@ Details: [Android history](android/view-lifecycle.md#page-history-and-disposal),
   navigation supersedes it. Document imports preserve viewer selection.
 - `setMode()` replaces the session token, including same-mode requests. Without a
   document, view mode is a no-op returning an inactive session; ink/text require
-  readiness. Mode-scoped methods/pages cancel on supersession, detach, close, or
+  `ViewerState.ready`. Mode-scoped methods/pages cancel on supersession, detach, close, or
   disposal. Navigation, reorder, and internal text transitions retain the token.
 - `requestUserTap()` owns exclusive `pageCoords` input, capturing document/page/
   geometry identity. Waiting releases the viewer queue. Page/geometry/mode changes
@@ -203,6 +208,8 @@ Details: [Android history](android/view-lifecycle.md#page-history-and-disposal),
 - Recheck identity before publication, async callbacks, and promise settlement.
   Superseded work rejects `operation_cancelled`; settle once. Completed edits
   remain committed; running resources retire after their users finish.
+- Public errors reach JS as `code: message`. Nitro stringifies Swift errors with
+  `String(describing:)`, so iOS error types conform to `InkSignPdfPublicError`.
 
 ## Import and export
 

@@ -29,6 +29,9 @@ data class ViewerState(
   val pageIndex: Variant_NullType_Double?,
   @DoNotStrip
   @Keep
+  val ready: Boolean,
+  @DoNotStrip
+  @Keep
   val documentId: Variant_NullType_String?,
   @DoNotStrip
   @Keep
@@ -45,6 +48,7 @@ data class ViewerState(
     return Objects.deepEquals(this.mode, other.mode)
       && Objects.deepEquals(this.error, other.error)
       && Objects.deepEquals(this.pageIndex, other.pageIndex)
+      && Objects.deepEquals(this.ready, other.ready)
       && Objects.deepEquals(this.documentId, other.documentId)
       && Objects.deepEquals(this.pageCount, other.pageCount)
       && Objects.deepEquals(this.isDirty, other.isDirty)
@@ -55,6 +59,7 @@ data class ViewerState(
       mode,
       error,
       pageIndex,
+      ready,
       documentId,
       pageCount,
       isDirty
@@ -69,8 +74,8 @@ data class ViewerState(
     @Keep
     @Suppress("unused")
     @JvmStatic
-    private fun fromCpp(mode: InteractionMode, error: Variant_NullType_String?, pageIndex: Variant_NullType_Double?, documentId: Variant_NullType_String?, pageCount: Double, isDirty: Boolean): ViewerState {
-      return ViewerState(mode, error, pageIndex, documentId, pageCount, isDirty)
+    private fun fromCpp(mode: InteractionMode, error: Variant_NullType_String?, pageIndex: Variant_NullType_Double?, ready: Boolean, documentId: Variant_NullType_String?, pageCount: Double, isDirty: Boolean): ViewerState {
+      return ViewerState(mode, error, pageIndex, ready, documentId, pageCount, isDirty)
     }
   }
 }

@@ -50,7 +50,9 @@ extension ViewerCanvas {
 
   func containerDidLayout() {
     sourceTextSelection.presentationChanged()
-    guard !disposed, presentationInstallDeferred, canInstallPresentation else { return }
+    guard !disposed else { return }
+    defer { publishReadinessIfChanged() }
+    guard presentationInstallDeferred, canInstallPresentation else { return }
     presentationInstallDeferred = false
     guard viewerDocument != nil, interaction.presentation != nil else { return }
     installPresentedDocument()

@@ -4,7 +4,7 @@ import PDFKit
 import PencilKit
 import UIKit
 
-enum InkSignPdfPdfiumExporterError: LocalizedError {
+enum InkSignPdfPdfiumExporterError: InkSignPdfPublicError {
   case unreadableSource
   case invalidPageOrder
   case unsupportedInk(String)

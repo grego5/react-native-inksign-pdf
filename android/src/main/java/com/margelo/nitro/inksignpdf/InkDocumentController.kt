@@ -82,6 +82,9 @@ internal class InkDocumentController(
   private var viewportSize = ViewportSize(0.0, 0.0, density)
   private var viewport: PageViewport? = null
   private var pageDimensions: PdfPageDimensions? = null
+  private var viewportCommandReady = false
+  /** Called on the UI thread when [isViewportCommandReady] changes. */
+  var onViewportCommandReadinessChanged: (() -> Unit)? = null
   private var scaling = false
   private var lastScrollerX = 0
   private var lastScrollerY = 0
@@ -153,6 +156,7 @@ internal class InkDocumentController(
     requestVisibleTiles()
     requestInvalidate()
     signalUsableViewportSize()
+    publishViewportCommandReadiness()
   }
 
   /** Installs a viewport fully configured before an open candidate is committed. */
@@ -166,6 +170,7 @@ internal class InkDocumentController(
     viewport = prepared
     invalidateTiles()
     requestInvalidate()
+    publishViewportCommandReadiness()
   }
 
   fun hasUsableViewportSize(): Boolean =
@@ -213,6 +218,7 @@ internal class InkDocumentController(
     viewport = null
     invalidateTiles()
     requestInvalidate()
+    publishViewportCommandReadiness()
   }
 
   fun onSizeChanged(width: Int, height: Int) {
@@ -228,6 +234,7 @@ internal class InkDocumentController(
     }
     requestVisibleTiles()
     signalUsableViewportSize()
+    publishViewportCommandReadiness()
   }
 
   fun setKeyboardOcclusion(bottomPx: Double) {
@@ -322,14 +329,23 @@ internal class InkDocumentController(
         "PDF view was disposed",
       )
     }
-    if (pageDimensions == null || viewport == null || viewportSize.widthPx <= 0.0 ||
-      viewportSize.heightPx <= 0.0
-    ) {
+    if (!isViewportCommandReady()) {
       throw PdfSessionException(
         "view_not_ready",
         "A loaded PDF must have a laid-out viewport",
       )
     }
+  }
+
+  /** Page and laid-out viewport exist, so viewport and mode commands can run. */
+  fun isViewportCommandReady(): Boolean =
+    !disposed && pageDimensions != null && viewport != null && hasUsableViewportSize()
+
+  private fun publishViewportCommandReadiness() {
+    val ready = isViewportCommandReady()
+    if (ready == viewportCommandReady) return
+    viewportCommandReady = ready
+    onViewportCommandReadinessChanged?.invoke()
   }
 
   fun applyViewport(request: ViewportRequest) {

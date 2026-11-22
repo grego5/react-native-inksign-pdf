@@ -45,6 +45,8 @@ namespace margelo::nitro::inksignpdf {
       jni::local_ref<JVariant_NullType_String> error = this->getFieldValue(fieldError);
       static const auto fieldPageIndex = clazz->getField<JVariant_NullType_Double>("pageIndex");
       jni::local_ref<JVariant_NullType_Double> pageIndex = this->getFieldValue(fieldPageIndex);
+      static const auto fieldReady = clazz->getField<jboolean>("ready");
+      jboolean ready = this->getFieldValue(fieldReady);
       static const auto fieldDocumentId = clazz->getField<JVariant_NullType_String>("documentId");
       jni::local_ref<JVariant_NullType_String> documentId = this->getFieldValue(fieldDocumentId);
       static const auto fieldPageCount = clazz->getField<double>("pageCount");
@@ -55,6 +57,7 @@ namespace margelo::nitro::inksignpdf {
         mode->toCpp(),
         error != nullptr ? std::make_optional(error->toCpp()) : std::nullopt,
         pageIndex != nullptr ? std::make_optional(pageIndex->toCpp()) : std::nullopt,
+        static_cast<bool>(ready),
         documentId != nullptr ? std::make_optional(documentId->toCpp()) : std::nullopt,
         pageCount,
         static_cast<bool>(isDirty)
@@ -67,7 +70,7 @@ namespace margelo::nitro::inksignpdf {
      */
     [[maybe_unused]]
     static jni::local_ref<JViewerState::javaobject> fromCpp(const ViewerState& value) {
-      using JSignature = JViewerState(jni::alias_ref<JInteractionMode>, jni::alias_ref<JVariant_NullType_String>, jni::alias_ref<JVariant_NullType_Double>, jni::alias_ref<JVariant_NullType_String>, double, jboolean);
+      using JSignature = JViewerState(jni::alias_ref<JInteractionMode>, jni::alias_ref<JVariant_NullType_String>, jni::alias_ref<JVariant_NullType_Double>, jboolean, jni::alias_ref<JVariant_NullType_String>, double, jboolean);
       static const auto clazz = javaClassStatic();
       static const auto create = clazz->getStaticMethod<JSignature>("fromCpp");
       return create(
@@ -75,6 +78,7 @@ namespace margelo::nitro::inksignpdf {
         JInteractionMode::fromCpp(value.mode),
         value.error.has_value() ? JVariant_NullType_String::fromCpp(value.error.value()) : nullptr,
         value.pageIndex.has_value() ? JVariant_NullType_Double::fromCpp(value.pageIndex.value()) : nullptr,
+        value.ready,
         value.documentId.has_value() ? JVariant_NullType_String::fromCpp(value.documentId.value()) : nullptr,
         value.pageCount,
         value.isDirty

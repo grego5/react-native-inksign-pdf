@@ -341,6 +341,7 @@ open class HybridInkSignView internal constructor(
       if (!disposed) emitState()
     }
     viewerCanvas.onZoomChange = { zoom -> if (!disposed) onZoomChange?.invoke(zoom) }
+    viewerCanvas.onReadinessChanged = { if (!disposed) emitState() }
   }
 
   private var loadError: String? = null
@@ -939,6 +940,7 @@ open class HybridInkSignView internal constructor(
       isDirty = document.isDirty,
       mode = if (isPickingPageCoords) InteractionMode.PAGECOORDS else textOverlay.interactionMode(),
       error = loadError?.let { Variant_NullType_String.create(it) } ?: Variant_NullType_String.create(NullType.NULL),
+      ready = documentState.hasDocument && viewerCanvas.isModeTransitionReady,
     )
     if (value == lastPublicState) return
     lastPublicState = value

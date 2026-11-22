@@ -68,7 +68,7 @@ extension ViewerCanvas {
     defer { withExtendedLifetime(retiring) {} }
     textInteractionOverlay.discardForDocumentReplacement()
     cancelActiveStroke(clearLive: false)
-    interaction.cancelPresentation()
+    interaction.cancelPresentation(publish: false)
     presentationInstallDeferred = false
     interaction.viewport.supersede()
     pageNavigationRequestID &+= 1

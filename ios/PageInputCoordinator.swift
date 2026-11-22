@@ -180,7 +180,7 @@ final class InkSignPdfPageInputCoordinator: NSObject {
     complete(request, with: .failure(PageInputError.operationCancelled))
   }
 
-  enum PageInputError: LocalizedError, Equatable {
+  enum PageInputError: InkSignPdfPublicError, Equatable {
     case missingPresenter
     case ambiguousPresenter
     case operationInProgress

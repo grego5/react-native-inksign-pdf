@@ -670,12 +670,26 @@ final class InkSignViewLifecycleTests: XCTestCase, InkSignViewTestSupport {
         XCTAssertEqual(view.documentView.bounds.width, 0)
         applyProps()
       }
+      // The active page is published before its presentation can accept mode commands.
+      XCTAssertNotNil(states.last?.pageIndex)
+      XCTAssertEqual(states.last?.ready, false)
+      XCTAssertThrowsError(try view.setMode(mode: .ink, options: nil)) { error in
+        XCTAssertEqual(String(describing: error),
+          "view_not_ready: The PDF view is not ready for a mode transition")
+      }
       controller.view.layoutIfNeeded()
 
       try awaitViewerPageReady(view)
       XCTAssertEqual(view.interaction.availability, .ready)
       XCTAssertNil(view.loadError)
       XCTAssertEqual(states.last?.pageCount, 1)
+      XCTAssertEqual(states.last?.ready, true)
+      let readyEdges = zip(states, states.dropFirst()).filter { !$0.ready && $1.ready }
+      XCTAssertEqual(readyEdges.count, 1)
+      XCTAssertNoThrow(try view.setMode(mode: .ink, options: nil))
+
+      view.view.removeFromSuperview()
+      XCTAssertEqual(states.last?.ready, false)
       view.dispose()
       window.isHidden = true
     }

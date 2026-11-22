@@ -60,12 +60,27 @@ extension ViewerCanvas {
     let document = documentStateSnapshot()
     let mode = interactionMode()
     let pageIndex = viewerDocument?.activePageIndex
-    let tuple = (Int(document.pageCount), document.isDirty, mode.stringValue, documentID, loadError, pageIndex)
+    let ready = isInteractionReady
+    let tuple = (Int(document.pageCount), document.isDirty, mode.stringValue, documentID, loadError, pageIndex, ready)
     guard force || lastChange == nil || lastChange!.0 != tuple.0 ||
-            lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 || lastChange!.4 != tuple.4 || lastChange!.5 != tuple.5 else { return }
+            lastChange!.1 != tuple.1 || lastChange!.2 != tuple.2 || lastChange!.3 != tuple.3 || lastChange!.4 != tuple.4 ||
+            lastChange!.5 != tuple.5 || lastChange!.6 != tuple.6 else { return }
     lastChange = tuple
     onStateChange?(ViewerState(mode: mode, error: loadError.map { .second($0) } ?? .first(.null),
-      pageIndex: pageIndex.map { .second(Double($0)) } ?? .first(.null),
+      pageIndex: pageIndex.map { .second(Double($0)) } ?? .first(.null), ready: ready,
       documentId: document.documentId, pageCount: document.pageCount, isDirty: document.isDirty))
+  }
+
+  /// Public `ViewerState.ready`: the active page presentation is installed and mode,
+  /// viewport, and focus commands pass the viewport readiness check.
+  var isInteractionReady: Bool {
+    viewerDocument != nil && interaction.presentation == nil &&
+      interaction.viewport.viewportReadiness().allowsCommand(fitToPage: false)
+  }
+
+  /// Publishes state when a window, layout, or overlay change flips readiness.
+  func publishReadinessIfChanged() {
+    guard !disposed, lastChange?.6 != isInteractionReady else { return }
+    emitChange()
   }
 }

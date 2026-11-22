@@ -18,7 +18,7 @@ public extension ViewerState {
   /**
    * Create a new instance of `ViewerState`.
    */
-  init(mode: InteractionMode, error: Variant_NullType_String?, pageIndex: Variant_NullType_Double?, documentId: Variant_NullType_String?, pageCount: Double, isDirty: Bool) {
+  init(mode: InteractionMode, error: Variant_NullType_String?, pageIndex: Variant_NullType_Double?, ready: Bool, documentId: Variant_NullType_String?, pageCount: Double, isDirty: Bool) {
     self.init(mode, { () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
       if let __unwrappedValue = error {
         return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
@@ -45,7 +45,7 @@ public extension ViewerState {
       } else {
         return .init()
       }
-    }(), { () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
+    }(), ready, { () -> bridge.std__optional_std__variant_nitro__NullType__std__string__ in
       if let __unwrappedValue = documentId {
         return bridge.create_std__optional_std__variant_nitro__NullType__std__string__({ () -> bridge.std__variant_nitro__NullType__std__string_ in
           switch __unwrappedValue {
@@ -112,6 +112,11 @@ public extension ViewerState {
         return nil
       }
     }()
+  }
+  
+  @inline(__always)
+  var ready: Bool {
+    return self.__ready
   }
   
   @inline(__always)

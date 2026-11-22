@@ -32,6 +32,7 @@ export default function App() {
     documentId: null,
     pageCount: 0,
     pageIndex: null,
+    ready: false,
     isDirty: false,
     mode: 'view',
     error: null,

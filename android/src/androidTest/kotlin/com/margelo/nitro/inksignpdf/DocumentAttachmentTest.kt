@@ -470,6 +470,46 @@ internal class DocumentAttachmentTest {
   }
 
   @Test
+  fun readyStateTracksViewportLayoutAndGatesModeCommands() {
+    NativeTestRuntime.initialize()
+    val instrumentation = InstrumentationRegistry.getInstrumentation()
+    val source = source()
+    val document = await { HybridInkSignDocument(instrumentation.targetContext).initializeSource(source.path) }
+    var view: HybridInkSignView? = null
+    try {
+      instrumentation.runOnMainSync {
+        val attached = HybridInkSignView(instrumentation.targetContext)
+        view = attached
+        val states = mutableListOf<ViewerState>()
+        attached.onStateChange = { states.add(it) }
+        attached.document = Variant_HybridInkSignDocumentSpec_DocumentOptions.First(document)
+        assertEquals(0.0, states.last().pageIndex?.asSecondOrNull())
+        assertTrue(!states.last().ready)
+        val notReady = runCatching { attached.setMode(InputMode.INK, null) }.exceptionOrNull()
+        assertEquals("view_not_ready", (notReady as PdfSessionException).code)
+
+        val beforeLayout = states.size
+        attached.view.measure(View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY),
+          View.MeasureSpec.makeMeasureSpec(800, View.MeasureSpec.EXACTLY))
+        attached.view.layout(0, 0, 600, 800)
+        assertEquals("Layout publishes readiness once", beforeLayout + 1, states.size)
+        assertTrue(states.last().ready)
+        assertEquals(document.getState().documentId, states.last().documentId)
+        attached.setMode(InputMode.INK, null)
+
+        attached.view.measure(View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.EXACTLY),
+          View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.EXACTLY))
+        attached.view.layout(0, 0, 0, 0)
+        assertTrue(!states.last().ready)
+      }
+    } finally {
+      instrumentation.runOnMainSync { view?.onDropView() }
+      await { document.close() }
+      source.delete()
+    }
+  }
+
+  @Test
   fun pageCallbackRegisteredAfterAttachmentReceivesCurrentSnapshot() {
     NativeTestRuntime.initialize()
     val instrumentation = InstrumentationRegistry.getInstrumentation()

@@ -13,6 +13,10 @@
   controls double taps.
 - Open/page changes fit unless viewport options override. Page callbacks follow
   installation; newer navigation requests replace pending ones.
+- `ViewerState.ready` is an open document plus
+  `InkDocumentController.isViewportCommandReady()`: page dimensions, a viewport,
+  and a non-empty viewport size. Page installation, clearing, and size changes
+  publish flips; changes inside a state transaction publish when it ends.
 - `onZoomChange` reports settled scale/fit, deduplicated per page; initial
   presentation and page/size changes emit when ready. Wait for touch/navigation
   completion and stable zoom/fit.

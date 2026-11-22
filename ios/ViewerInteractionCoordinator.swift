@@ -11,6 +11,7 @@ protocol ViewerInteractionHost: ViewerViewportHost {
   func retireSessionCommands(_ token: InkSignPdfModeSessionToken)
   func applyInputPolicy(ink: Bool, enabled: Bool)
   func publishInteractionState(force: Bool)
+  func publishReadinessIfChanged()
   func enableCoordinateTap(_ enabled: Bool)
   func enqueueCoordinatePicker(_ token: InkSignPdfModeSessionToken?,
     start: @escaping () throws -> Void, failure: @escaping (Error) -> Void)
@@ -319,6 +320,7 @@ final class ViewerInteractionCoordinator {
     availability = structural ? .structural : .navigation
     synchronizePolicy()
     old?.finish(.failure(ViewerCanvas.ViewportError.cancelled))
+    host.publishReadinessIfChanged()
     return request
   }
   func presentationIsCurrent(_ request: PresentationRequest) -> Bool {
@@ -332,7 +334,8 @@ final class ViewerInteractionCoordinator {
     presentation = nil
     return true
   }
-  func cancelPresentation() {
+  /// Teardown passes `publish: false`; its caller publishes the replacement state.
+  func cancelPresentation(publish: Bool = true) {
     let request = presentation
     presentation = nil
     presentationRevision &+= 1
@@ -341,6 +344,7 @@ final class ViewerInteractionCoordinator {
       synchronizePolicy()
     }
     request?.finish(.failure(ViewerCanvas.ViewportError.cancelled))
+    if publish { host.publishReadinessIfChanged() }
   }
   func dispose() {
     guard hostReference != nil else {

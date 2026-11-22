@@ -1,6 +1,14 @@
 import Foundation
 
-enum InkSignPdfLoadError: LocalizedError {
+/// Nitro converts a thrown Swift error with `String(describing:)`, so public errors describe
+/// themselves with their coded message instead of the enum case name.
+protocol InkSignPdfPublicError: LocalizedError, CustomStringConvertible {}
+
+extension InkSignPdfPublicError {
+  var description: String { errorDescription ?? String(reflecting: type(of: self)) }
+}
+
+enum InkSignPdfLoadError: InkSignPdfPublicError {
   case invalidSource
   case failed
   case empty
@@ -16,7 +24,7 @@ enum InkSignPdfLoadError: LocalizedError {
   }
 }
 
-enum InkSignPdfExportError: LocalizedError {
+enum InkSignPdfExportError: InkSignPdfPublicError {
     case notReady
     case empty
     case invalidOutput
@@ -38,7 +46,7 @@ enum InkSignPdfExportError: LocalizedError {
     }
   }
 
-enum TextError: LocalizedError, CustomStringConvertible {
+enum TextError: InkSignPdfPublicError {
   case fontNotLoaded
   case notReady
   case notFocused
@@ -92,7 +100,7 @@ enum TextError: LocalizedError, CustomStringConvertible {
   }
 }
 
-enum MutablePageError: LocalizedError {
+enum MutablePageError: InkSignPdfPublicError {
   case notReady
   case operationInProgress
   case operationCancelled
