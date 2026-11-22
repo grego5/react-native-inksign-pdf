@@ -2,12 +2,12 @@
 
 This directory contains the public PDFium headers, licenses, and provenance
 metadata used by the native rendering and page-assembly adapters. The source is
-pinned to PDFium `158.0.8125.0` on `chromium/8125`; see `manifest.json` for the
+pinned to PDFium `160.0.8165.0` on `chromium/8165`; see `manifest.json` for the
 exact revision and build provenance.
 
 The native binaries are not committed to Git. Their archive sizes and SHA-256
 checksums are pinned in `manifest.json`. Gradle fetches the
-`pdfium-158.0.8125.0-static` GitHub Release into the ignored
+`pdfium-160.0.8165.0-static` GitHub Release into the ignored
 `android/build/pdfium` directory and verifies its artifacts.
 
 Android uses static `libpdfium.a` archives that are final-linked into the native
