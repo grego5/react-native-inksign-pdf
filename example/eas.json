@@ -1,0 +1,42 @@
+{
+  "cli": {
+    "version": ">= 16.18.1",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "debug": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_NAME": "Inksign PDF Debug",
+        "EXPO_PUBLIC_PACKAGE_NAME": "dev.grego5.inksignpdf",
+        "EXPO_PUBLIC_SLUG": "inksign-pdf-test",
+        "EXPO_PUBLIC_URL_SCHEME": "inksign-pdf",
+        "EXPO_PUBLIC_ENABLE_DEBUG_RECORDER": "true"
+      }
+    },
+    "preview-tracing": {
+      "distribution": "internal",
+      "android": {
+        "gradleCommand": ":app:assembleDebug"
+      },
+      "env": {
+        "EXPO_PUBLIC_APP_NAME": "Inksign PDF Preview Trace",
+        "EXPO_PUBLIC_PACKAGE_NAME": "dev.grego5.inksignpdf",
+        "EXPO_PUBLIC_SLUG": "inksign-pdf-test",
+        "EXPO_PUBLIC_URL_SCHEME": "inksign-pdf",
+        "EXPO_PUBLIC_ENABLE_DEBUG_RECORDER": "true"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_APP_NAME": "Inksign PDF Preview",
+        "EXPO_PUBLIC_PACKAGE_NAME": "dev.grego5.inksignpdf",
+        "EXPO_PUBLIC_SLUG": "inksign-pdf-test",
+        "EXPO_PUBLIC_URL_SCHEME": "inksign-pdf",
+        "EXPO_PUBLIC_ENABLE_DEBUG_RECORDER": "false"
+      }
+    }
+  }
+}

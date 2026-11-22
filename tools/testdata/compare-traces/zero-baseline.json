@@ -1,0 +1,9 @@
+{
+  "trace": "zero-baseline.perfetto-trace",
+  "file_size_bytes": 103,
+  "file_size_cross_check": true,
+  "metrics": [
+    {"section": "native_timing", "metric": "average", "scope": "cpp_geometry", "value": 0, "unit": "ms"}
+  ],
+  "anomalies": []
+}
