@@ -174,7 +174,7 @@ internal class InkEngine {
           else -> throw InkEngineException(-result)
         }
       }
-      resultFrame!!
+      resultFrame
     }
   }
 
@@ -217,7 +217,7 @@ internal class InkEngine {
           else -> throw InkEngineException(-result)
         }
       }
-      resultFrame!!
+      resultFrame
     }
   }
 
@@ -276,7 +276,7 @@ internal class InkEngine {
           else -> throw InkEngineException(-result)
         }
       }
-      resultFrame!!
+      resultFrame
     }
   }
 

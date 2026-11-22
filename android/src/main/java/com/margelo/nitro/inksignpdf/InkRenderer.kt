@@ -168,10 +168,10 @@ internal class InkDisplayBatch(
             }
         }
         check(initialized)
-        sourceBounds.left = floor(sourceBounds.left).toFloat()
-        sourceBounds.top = floor(sourceBounds.top).toFloat()
-        sourceBounds.right = ceil(sourceBounds.right).toFloat()
-        sourceBounds.bottom = ceil(sourceBounds.bottom).toFloat()
+        sourceBounds.left = floor(sourceBounds.left)
+        sourceBounds.top = floor(sourceBounds.top)
+        sourceBounds.right = ceil(sourceBounds.right)
+        sourceBounds.bottom = ceil(sourceBounds.bottom)
         boundsValid = true
     }
 }

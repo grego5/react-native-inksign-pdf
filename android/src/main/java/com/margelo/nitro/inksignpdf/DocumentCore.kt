@@ -67,7 +67,7 @@ internal class DocumentCore(
     text.targetId(context, id.toDouble())
     endTextEdit()
     DocumentTextEdit(context, page, id,
-      page.history.textState.target(id).annotation, coordinator.textTarget(id)?.options
+      page.history.textState.target(id).annotation, coordinator.textTarget(id).options
     ).also { activeTextEdit = it }
   }
 
@@ -86,7 +86,7 @@ internal class DocumentCore(
     if (id != null && edit.id != id) return
     activeTextEdit = null
     edit.cancel()
-    if (edit.baseline == null) coordinator.textTarget(edit.id)?.options = edit.initialOptions
+    if (edit.baseline == null) coordinator.textTarget(edit.id).options = edit.initialOptions
     changed(DocumentChange.EditEnded(edit))
     changed(DocumentChange.Text(edit.context.pageId))
   }

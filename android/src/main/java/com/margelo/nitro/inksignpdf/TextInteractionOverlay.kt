@@ -638,9 +638,8 @@ internal class TextInteractionOverlay(
         options?.alignment ?: TextAlignment.START, verticalAnchor)
     } catch (_: PdfSessionException) { return }
     val pageId = presentation.pageId
-    val initialBounds = flowBounds ?: PageRect(pagePoint.x, pagePoint.y, pagePoint.x, pagePoint.y)
     val id = core.text.reserve(DocumentPageContext(presentation.generation, pageId),
-      PageCoordinates(presentation.page).displayToCanonical(initialBounds),
+      PageCoordinates(presentation.page).displayToCanonical(flowBounds),
       options?.let { TextAnnotationOptions(null, it.font, null, null, it.direction, it.maxLines, it.alignment, it.verticalAnchor) })
     val state = InteractionState.Editing(
       id = id,
@@ -1312,9 +1311,7 @@ internal class TextInteractionOverlay(
         state.position.x + delta.x - origin.x,
         state.position.y + delta.y - origin.y,
       ),
-      flowBounds?.let {
-        TextIntrinsicSize(it.right - it.left, it.bottom - it.top)
-      } ?: TextIntrinsicSize(state.original.intrinsicWidth, state.original.intrinsicHeight),
+      TextIntrinsicSize(flowBounds.right - flowBounds.left, flowBounds.bottom - flowBounds.top),
       presentation.page,
     )
     invalidate()
@@ -1334,9 +1331,7 @@ internal class TextInteractionOverlay(
     val flowBounds = original.placementBounds
     val position = clampPosition(
       state.position,
-      flowBounds?.let {
-        TextIntrinsicSize(it.right - it.left, it.bottom - it.top)
-      } ?: TextIntrinsicSize(original.intrinsicWidth, original.intrinsicHeight),
+      TextIntrinsicSize(flowBounds.right - flowBounds.left, flowBounds.bottom - flowBounds.top),
       checkNotNull(lastPresentation).page,
     )
     val updated = annotationAt(original, position)
@@ -1698,7 +1693,7 @@ internal class TextInteractionOverlay(
       ).coerceAtLeast(0.0) / scale
     val lineBottom = (
       entry.compoundPaddingTop.toDouble() + layout.getLineBottom(line) - entry.scrollY
-      ).toDouble() / scale
+      ) / scale
     val horizontalInset =
       (max(entry.compoundPaddingLeft, entry.compoundPaddingRight) + dp(1)) / scale
     val verticalInset =
